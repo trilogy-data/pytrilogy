@@ -78,17 +78,24 @@ in `formal/README.md`. Leads left:
   declaration is one more FD claim the data can break, so it needs a
   validation check: the grain check over the union of the arms, which
   `cross_check_exact` already covers if the family is treated as one table.
-- **OPEN WRONG ANSWER (on main too): a derivation over a subset-merged key
-  pads rows.** With `auto merged_group <- coalesce(raw_group, -1); merge
-  merged_group into ~group_id;` and `raw_groups (eid: event_id, gid:
-  raw_group)`, `select group_id * 10 as g, event_id, group_regions` returns a
-  group with no events as `(30, NULL, [1])`, while `select group_id, event_id,
-  group_regions` does not. Both send the same root request; the derived form
-  sources `group_id` off `raw_groups` (the merge origin's coalesce), whose
-  binding is partial, and the `partial_domain` rule FULL-joins the group list
-  to complete it. The fuzzer's `merged_axis_pin` family hits it on random
-  seeds 5001 and 5009 (`group_beside_row_key_under_bucket_merged_group`); the
-  fixed-seed CI corpus passes.
+- **Not a bug: a derivation over a subset-merged key can pad a key that the
+  plain spelling does not, when a COMPLETE binding's claim is false.** With
+  `merge merged_group into ~group_id` beside `events (gid: group_id)` and a
+  group with no event, `select group_id * 10 as g, event_id, group_name`
+  read `group_id` through the `~` merge and padded that group, while
+  `select group_id, ...` read `events`' complete binding and did not. The
+  model claims every group has an event; completeness validation reports the
+  claim, and with honest data (or `events (gid: ~group_id)`) both spellings
+  agree (`tests/engine/test_subset_merged_key_derivation.py`). The fuzzer's
+  random seeds break that claim for the base `events` table; the
+  `merged_axis_pin` family lists regions only for groups with events.
+- **A pinned CASE over a merged unnest key alone raises the keyless-join
+  guard** (on main too). With `auto bucket <- case when region_id = 0 ...`
+  (no property of `region_id` read) over `merge group_region into region_id`,
+  `select event_id where bucket = 'S'` joins the pin's `regions` scan to the
+  row stream holding `region_id` on no key, and the guard names it. The
+  fuzzer family's bucket also reads `region_kind` and plans. An error, not a
+  wrong answer.
 - **`select city, count(tree_id) where ecoregion_id = 3`** over
   `tests/engine/test_grain_pin_unnest_merge_filter.py`'s model raises
   "could only be placed after the aggregates". The atom reads the merged

@@ -477,9 +477,10 @@ a design decision or a bug.
   `_pin_input_placements`' FD test and the declared-keys test it replaced
   agree on every placement in 2,314 grain-pin, unnest and partial tests
   (4,377 calls, 20 with a host); no distinguishing shape was found.
-  One wrong answer the family found stays open: a derivation over a
-  subset-merged key is sourced through the merge origin's partial binding and
-  pads a key with no rows (`docs/handoff_formalization_next.md`, area 0).
+  Two mismatches the family found on random seeds were its own fixture: the
+  base `events` table binds `group_id` complete while a random group has no
+  event, and a `~` merge of that key licenses padding the group. With honest
+  data both spellings agree (`tests/engine/test_subset_merged_key_derivation.py`).
 
 ## Limits
 

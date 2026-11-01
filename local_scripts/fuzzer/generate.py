@@ -3952,7 +3952,9 @@ def _merged_axis_pin_cases(seed: SeedData) -> list[FuzzCase]:
     sharing a region comes back with the wrong group, or a NULL one (#821,
     when `group_id` is also a merge target). The oracles join the seed rows
     directly; a group with no region reads the
-    ELSE branch, as the pin does."""
+    ELSE branch, as the pin does. Regions are listed only for groups with
+    events: `events` binds `group_id` complete, a claim a listed group without
+    an event breaks, and a `~` merge then licenses padding that group."""
     events = seed.events.select_sql()
     groups = seed.groups.select_sql()
     site = seed.events.rows[0][5]
@@ -3975,7 +3977,8 @@ query '''select eid, gid, sid from ({events}) as e where sid = '{site}' ''';
 
 root datasource group_region_lists (gid: group_id, regions: ?group_regions)
 grain (group_id)
-query '''select gid, {regions} as regions from ({groups}) as g''';
+query '''select gid, {regions} as regions from ({groups}) as g
+where gid in (select gid from ({events}) as e)''';
 
 root datasource region_kinds (rid: region_id, kind: ?region_kind)
 grain (region_id)
