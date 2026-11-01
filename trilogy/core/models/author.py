@@ -2592,7 +2592,9 @@ def _function_of_addresses(
     if concept.derivation != Derivation.BASIC or concept.lineage is None:
         return False
     return all(
-        _function_of_addresses(environment.concepts[ref.address], addresses, environment)
+        _function_of_addresses(
+            environment.concepts[ref.address], addresses, environment
+        )
         for ref in concept.lineage.concept_arguments
     )
 

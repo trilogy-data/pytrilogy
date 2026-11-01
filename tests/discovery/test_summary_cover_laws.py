@@ -237,6 +237,7 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
     },
 }
 
+
 def _run(model: str, query: str) -> tuple[str, list[tuple]]:
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
@@ -314,34 +315,46 @@ def test_scalar_of_an_aggregates_grain(select: str, where: str):
     "query,expected",
     [
         (
-            "auto c <- case when bucket = 'Native' then count(tree_id) by bucket end;"
-            " select sum(c) as n;",
+            (
+                "auto c <- case when bucket = 'Native' then count(tree_id) by bucket end;"
+                " select sum(c) as n;"
+            ),
             [(4,)],
         ),
         (
-            "auto ub <- upper(bucket);"
-            " auto c <- case when ub = 'NATIVE' then count(tree_id) by bucket end;"
-            " select sum(c) as n;",
+            (
+                "auto ub <- upper(bucket);"
+                " auto c <- case when ub = 'NATIVE' then count(tree_id) by bucket end;"
+                " select sum(c) as n;"
+            ),
             [(4,)],
         ),
         (
-            "select sum(case when bucket = 'Native' then count(tree_id) by bucket end)"
-            " as n where city = 'A';",
+            (
+                "select sum(case when bucket = 'Native' then count(tree_id) by bucket end)"
+                " as n where city = 'A';"
+            ),
             [(3,)],
         ),
         (
-            "auto cb <- count(tree_id) by bucket;"
-            " select bucket, sum(case when bucket = 'Native' then cb end) as n;",
+            (
+                "auto cb <- count(tree_id) by bucket;"
+                " select bucket, sum(case when bucket = 'Native' then cb end) as n;"
+            ),
             [("Introduced", None), ("Native", 4), (None, None)],
         ),
         (
-            "auto cbc <- count(tree_id) by bucket, city;"
-            " select city, sum(case when bucket = 'Native' then cbc end) as n;",
+            (
+                "auto cbc <- count(tree_id) by bucket, city;"
+                " select city, sum(case when bucket = 'Native' then cbc end) as n;"
+            ),
             [("A", 3), ("B", 1)],
         ),
         (
-            "auto cb <- count(tree_id) by bucket;"
-            " select avg(case when bucket is null then 0 else cb end) as n;",
+            (
+                "auto cb <- count(tree_id) by bucket;"
+                " select avg(case when bucket is null then 0 else cb end) as n;"
+            ),
             [(2.0,)],
         ),
         (
