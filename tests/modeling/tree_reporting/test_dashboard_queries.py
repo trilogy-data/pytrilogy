@@ -120,3 +120,19 @@ def test_pins_name_extracted_cases() -> None:
     known = {f"{case['city']} {case['id']}" for case in harness.QUERIES["cases"]}
     assert set(SERVED) - known == set()
     assert set(WRONG_ANSWERS) - known == set()
+
+
+@pytest.mark.parametrize(
+    "group", sorted({(c["city"], c["group"]) for c in CASES.values()})
+)
+def test_batch_compile_answers_like_one_at_a_time(group: tuple[str, str]) -> None:
+    """A page compiled in one environment, as pyserver's `/generate_queries`
+    does, answers each query as it is answered alone, from the same files."""
+    keys = [k for k, c in CASES.items() if (c["city"], c["group"]) == group]
+    env = harness.dashboard_environment(group[0], True).duplicate()
+    for index, key in enumerate(keys):
+        sql = harness.generate_sql(CASES[key], env=env, scope=f"q{index}")
+        alone = compiled(key, True)
+        assert harness.served_from(sql) == harness.served_from(alone), key
+        if not unordered_limit(CASES[key]["query"]):
+            assert same_rows(harness.execute(sql), harness.execute(alone)), key

@@ -119,16 +119,29 @@ def filter_clause(
     return final.where_clause if isinstance(final, SelectStatement) else None
 
 
-def generate_sql(case: dict[str, Any], summaries: bool = True) -> str:
-    env = dashboard_environment(case["city"], summaries).duplicate()
+def generate_sql(
+    case: dict[str, Any],
+    summaries: bool = True,
+    env: Environment | None = None,
+    scope: str = "q0",
+) -> str:
+    """One case, in a fresh copy of its city's environment unless `env` is
+    given: pyserver's `/generate_queries` compiles a page's queries in one
+    environment, sweeping each query's derived concepts after it."""
+    env = env or dashboard_environment(case["city"], summaries).duplicate()
+    previous = {k: v for k, v in env.concepts.items() if v.name in case["query"]}
     _, parsed = parse_text(case["query"], env)
     final = parsed[-1]
     assert isinstance(final, SelectStatement)
     parameters = {**context(case["city"])["parameters"], **case["parameters"]}
-    conditional = filter_clause(case["filters"], parameters, env, "q0")
+    conditional = filter_clause(case["filters"], parameters, env, scope)
     if conditional:
         final.where_clauses = [*final.where_clauses, conditional]
     processed = DIALECT.generate_queries(env, [final])[-1]
+    for address in final.locally_derived:
+        env.remove_concept(address)
+        if address in previous:
+            env.add_concept(previous[address], force=True)
     return bind(
         DIALECT.compile_statement(processed),
         {k.lstrip(":"): v for k, v in parameters.items()},

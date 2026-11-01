@@ -2688,6 +2688,7 @@ def _project_planned_keys(
     not render (`cluster_id`, computed off other aggregates) is looked up from
     a built producer keyed within the parent's outputs."""
     out: list[StrategyNode] = []
+    authored = environment.all_scoped_join_group_members()
     for parent in parents:
         gid = _origin_group(parent, origin)
         outputs = {c.address for c in parent.output_concepts}
@@ -2708,11 +2709,15 @@ def _project_planned_keys(
             if len(owed) > len(rendered)
             else frozenset()
         )
+        # an authored relation's member or a rowset handle pairs as authored,
+        # never through a producer of it
         lookups = [
             producer
             for c in owed
             if c not in rendered
             and c.address in determined
+            and c.address not in authored
+            and c.derivation != Derivation.ROWSET
             and (producer := _key_lookup(c, outputs, producers)) is not None
         ]
         if not rendered and not lookups:
