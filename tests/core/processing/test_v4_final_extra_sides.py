@@ -25,6 +25,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _FinalExtras,
     _group_applies_conditions,
     _join_gate_hosts,
+    _parent_nodes_for,
     _planned_region_reads,
     _planned_side,
     _row_condition_before_aggregate,
@@ -337,3 +338,47 @@ def test_parent_region_reads_are_its_planned_groups():
     ]
     with pytest.raises(ValueError, match="no planned group"):
         _planned_region_reads(graph, attrs, [_Wrap([])], origin)
+
+
+def test_parent_covered_only_by_a_sibling_holding_its_planned_regions():
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    tree_id = env.concepts["local.tree_id"]
+    built = {
+        gid: SelectNode(
+            input_concepts=[tree_id],
+            output_concepts=[tree_id],
+            environment=env,
+            datasource=env.datasources["trees"],
+        )
+        for gid in ("domain", "sib")
+    }
+    graph = nx.DiGraph()
+    graph.add_edge("domain", "agg")
+    graph.add_edge("sib", "agg")
+    attrs = {
+        "domain": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.tree_id",),
+            extent_spans=frozenset({"local.tree_id"}),
+        ),
+        "sib": _attrs(Derivation.AGGREGATE, "local.tree_id"),
+        "agg": _attrs(Derivation.AGGREGATE, "local.x_genus"),
+    }
+
+    parents = _parent_nodes_for(
+        graph,
+        {},
+        attrs,
+        built,
+        "agg",
+        env,
+        None,
+        None,
+        needed={"local.tree_id"},
+        root_requests={},
+        mandatory_list=[],
+        aggregate_inputs=["domain", "sib"],
+    )
+
+    assert [p.group_id for p in parents] == ["domain", "sib"]
