@@ -503,9 +503,8 @@ def _entity_keys(
     environment: BuildEnvironment,
     visited: set[str] | None = None,
 ) -> frozenset[str]:
-    """The entity keys a concept is a function of. A key is its own entity:
-    the `keys` it carries are an FK-path addressing artifact (`customer_id`
-    bound on `orders` lists `order_id`), not a determinant. So is a property
+    """The entity keys a concept is a function of. A key is its own entity,
+    whatever tables bind it (`customer_id` bound on `orders`). So is a property
     that identifies the rows of some source (`region`, the grain of
     `region_dim`). Anything else lives on its keys' entities: an aggregate `by
     status` is keyed on the order. A BASIC is a function of what it READS

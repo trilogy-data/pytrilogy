@@ -189,10 +189,9 @@ def check_if_group_required(
         return GroupRequiredResponse(target_grain, comp_grain, False)
     # FD closure: an upstream grain component the target functionally
     # determines is constant within each output row, so the rows are already
-    # unique at the target grain. The one-level `keys` checks below cannot see
-    # past a derived key whose raw keys reach outside the grain (cluster_id
-    # keyed on tree_id AND the grid cells tree_id determines). Declared
-    # keys/grains only, never the domain graph: an authored scoped-join
+    # unique at the target grain, however many key hops away (cluster_id keyed
+    # on tree_id AND the grid cells tree_id determines). Declared keys, grains
+    # and datasource bindings only, never the domain graph: an authored scoped-join
     # equality (`subset join fut.period + 53 = agg.period`) merges its ends
     # into one ≡-class there, but it holds only on matched rows, and treating
     # it as an FD elides the re-aggregation and flips the join preserving.
@@ -221,20 +220,6 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Difference concept {x.address} purpose {x.purpose} keys {x.keys}"
         )
 
-    # a difference of only properties whose keys sit in the source grain does
-    # not need a group; a key the parent NULL-pads is not such a key
-    if difference and all(
-        x.keys
-        and all(
-            environment.concepts[z].address in comp_grain.components - nullable
-            for z in x.keys
-        )
-        for x in difference
-    ):
-        logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
-        )
-        return GroupRequiredResponse(target_grain, comp_grain, False)
     if difference and all(x.purpose == Purpose.KEY for x in difference):
         logger.info(
             f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
