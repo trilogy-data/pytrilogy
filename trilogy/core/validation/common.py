@@ -18,6 +18,9 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.statements.execute import ProcessedQuery
 
+# how many violating rows a failed check reports before it just says "at least N"
+SAMPLE_LIMIT = 10
+
 
 class ExpectationType(Enum):
     LOGICAL = "logical"

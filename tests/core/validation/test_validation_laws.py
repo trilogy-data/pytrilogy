@@ -9,6 +9,8 @@ claim fails:
 - `completeness_exact`: a complete binding holds every value any source holds
 - `unique_prop_exact`: a `unique` property maps to one key, NULL a key value
 - `containment_exact`: every row of a `complete where` arm satisfies its claim
+- `Binding.cross_check_exact` (formal/Trilogy/Binding.lean): a binding's
+  dependency holds over every table binding its columns, NULL a value
 """
 
 import random
@@ -193,6 +195,65 @@ def test_containment_exact(seed: int):
     )
     holds = all(v is not None and v > cut for _, v in rows)
     assert (not errors) == holds, (cut, rows, errors)
+
+
+def _binding_errors(exec: Executor, text: str) -> list[str]:
+    return [
+        e
+        for e in _errors(exec, text, ValidationScope.CONCEPTS)
+        if "claims determines it model-wide" in e
+    ]
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_binding_fd_check_exact(seed: int):
+    rng = random.Random(seed)
+    species = range(rng.randint(1, 4))
+    dim = [(s, _maybe(rng, rng.randint(0, 2), 0.2)) for s in species]
+    trees = []
+    for t in range(rng.randint(1, 6)):
+        s = rng.choice(species)
+        c = dim[s][1] if rng.random() < 0.7 else _maybe(rng, rng.randint(0, 2), 0.2)
+        trees.append((t, s, c))
+    exec = _executor()
+    _table(exec, "dim", ["s", "c"], dim)
+    _table(exec, "trees", ["t", "s", "c"], trees)
+    errors = _binding_errors(
+        exec,
+        "key t int; key s int; key c int;\n"
+        "datasource dim (s, c: ?c) grain (s) address dim;\n"
+        "datasource trees (t, s, c: ?c) grain (t) address trees;",
+    )
+    pairs = {(s, c) for s, c in dim} | {(s, c) for _, s, c in trees}
+    holds = len({s for s, _ in pairs}) == len(pairs)
+    assert (not errors) == holds, (dim, trees, errors)
+
+
+def test_family_arms_break_a_dimension_binding():
+    """`Binding.binding_breaks_on_another_table`: each table passes its grain
+    check, yet the species dimension's `species -> city` fails on the arms."""
+    exec = _executor()
+    exec.execute_raw_sql(
+        "CREATE TABLE dim AS SELECT 'Acer' AS species, 'A' AS city;"
+        "CREATE TABLE trees_a AS SELECT 1 AS tree_id, 'Acer' AS species, 'A' AS city;"
+        "CREATE TABLE trees_b AS SELECT 2 AS tree_id, 'Acer' AS species, 'B' AS city;"
+    )
+    model = """key tree_id int; key species string; key city string;
+datasource species_dim (species, city) grain (species) address dim;
+partial datasource trees_a (tree_id, species, city) grain (tree_id)
+complete where city = 'A' address trees_a;
+partial datasource trees_b (tree_id, species, city) grain (tree_id)
+complete where city = 'B' address trees_b;"""
+    errors = _binding_errors(exec, model)
+    assert len(errors) == 1 and "local.city" in errors[0], errors
+    assert "'Acer'" in errors[0] and "species_dim" in errors[0], errors
+    fixed = _executor()
+    fixed.execute_raw_sql(
+        "CREATE TABLE dim AS SELECT 'Acer' AS species, 'A' AS city;"
+        "CREATE TABLE trees_a AS SELECT 1 AS tree_id, 'Acer' AS species, 'A' AS city;"
+        "CREATE TABLE trees_b AS SELECT 2 AS tree_id, 'Tilia' AS species, 'B' AS city;"
+    )
+    assert not _binding_errors(fixed, model)
 
 
 def test_decimal_value_against_float_bound():

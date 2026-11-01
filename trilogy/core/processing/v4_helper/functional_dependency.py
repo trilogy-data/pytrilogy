@@ -79,12 +79,16 @@ def _fd_rows(
     (the foreign key on a fact table, an attribute on a dimension), over the
     table's `row_determinants`: an arm is unique on its grain only among its
     own rows. The authored bindings, not a plan's scope: a heal or a hidden
-    partition arm leaves a column's concept unchanged."""
+    partition arm leaves a column's concept unchanged. A grainless table
+    identifies no row, so it determines nothing; its columns carry an empty
+    grain, which would read as constants (`Binding.grainless_determines_nothing`)."""
     for concept in environment.concepts.values():
         yield _row(concept, _grain_of(concept))
     for datasource in environment.datasources.values():
         grain = frozenset(datasource.grain.components)
         determinants = datasource.row_determinants
+        if not determinants:
+            continue
         for concept in datasource.output_concepts:
             components = _grain_of(concept)
             yield _row(concept, determinants if components == grain else components)
