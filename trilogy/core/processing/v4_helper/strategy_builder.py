@@ -4823,6 +4823,24 @@ def _group_region_reads(
     return frozenset(out)
 
 
+def _planned_region_reads(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    parents: Sequence[StrategyNode],
+    origin: dict[int, str],
+) -> list[frozenset[str]]:
+    """Each of `parents`' region reads, off the group the plan built it for."""
+    reads = []
+    for parent in parents:
+        if (gid := _origin_group(parent, origin)) is None:
+            raise ValueError(
+                f"[v4] {type(parent).__name__} parent maps to no planned group; "
+                "its region reads are unplanned."
+            )
+        reads.append(_group_region_reads(group_graph, attrs, gid))
+    return reads
+
+
 def _region_paired_args(
     filter_only: set[str],
     available: set[str],
@@ -5878,7 +5896,9 @@ def _assemble_final_node(
     # Each filter-only arg no side holds (e.g. the global aggregate) joins
     # from the producer the plan elected, as a hidden cross-join input; a ROOT
     # side carried its own through its wrap.
-    spans = frozenset().union(*(region_reads(p) for p in parents))
+    spans = frozenset().union(
+        *_planned_region_reads(group_graph, attrs, parents, origin)
+    )
     arg_nodes, arg_concepts = _filter_arg_parents(built, extras.arg_producers)
     # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
     # beside a boundary outputting rs.sa) must ride the merge as a hidden
@@ -6436,7 +6456,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         applied = applied_atoms.conditional if applied_atoms else None
         # a parent holds a region's rows when it reads its domain, the
         # domain itself or a derivation over what it carries (`upper(name)`)
-        reads = [region_reads(p) for p in parents]
+        reads = _planned_region_reads(group_graph, attrs, parents, origin)
         domains = [p for p, read in zip(parents, reads) if read]
         if derivation == Derivation.AGGREGATE and domains:
             # an aggregate evaluated OVER a region: its row-stream
@@ -6570,7 +6590,12 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             parents,
             ctx.folds.render(ctx.folds.aggregate_inputs.get(gid, ())),
             environment,
-            region_spans=frozenset().union(*(region_reads(p) for p in parents)),
+            region_spans=frozenset().union(
+                *(
+                    _group_region_reads(group_graph, attrs, build.group_id)
+                    for build in parent_builds
+                )
+            ),
         )
     # Normalize aggregate inputs to the row grain implied by their
     # arguments before the aggregate runs. This is generic across aggregate
