@@ -3394,7 +3394,6 @@ def _pre_merge_parents(
     )
     _widen_merge_join_keys(parents, environment, join_key_addresses)
     if plan is not None and origin is not None:
-        _carry_planned_keys(parents, origin, plan, environment)
         parents = _project_planned_keys(
             parents,
             origin,
