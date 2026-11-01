@@ -186,46 +186,9 @@ questions:
 
 ### 1c. Summary coverage (`Cover.lean` follow-ons)
 
-`tests/discovery/test_summary_cover_laws.py` runs each `Cover.lean` rule's
-shapes under five filters; every open miss is a strict xfail in `OPEN`, keyed
-by rule. A fix deletes its entry. Open, in the order the dashboard needs them
-(`tests/modeling/tree_reporting/expectations.py` pins the real queries):
-- **Rule 2, filtered counts** (`summary:local-native-share`,
-  `species:sp-biome-fit`). Rollup matching rejects a `count(x ? c)` argument.
-  The re-sum is `sum(case when c then n end)` (`Cover.case_count_exact`), so
-  `c`'s columns must reach the CTE that re-sums; with a property of `species`
-  that is after the enrichment join, not at the summary scan. Rewriting to
-  `sum(count(x) by A ? c)` at build time is not it: that misses too, and a
-  filtered count is 0 where the rewrite is NULL. Once this lands,
-  `count_distinct(x ? c)` follows through `distinct_key_counts`.
-- **Rule 4 under a WHERE the target does not determine**
-  (`species:sp-top-species`: `coalesce(common_names[1], species)` and a total
-  under `species not in (...)`). The WHERE pins one summary scan
-  (`_plan_finer_filter_rollup`). `_summary_leaves` walks the statement's stale
-  pre-`reaggregate_partials` lineage, so it sees `count(tree_id) by *` as
-  reading `tree_id` and declines. Resolving that walk through the environment
-  lets it through, but the pinned plan then groups the partials by their own
-  values and answers per species (wrong rows). Fix the pinned plan first, then
-  the walk.
-- **Rule 5, existence** (`species:context`). A selection with no aggregate is
-  sourced from its columns' bindings; the summary is not offered as proof that
-  a key value exists in the filtered rows (`Cover.exists_by_value`). This is
-  source selection (`source_planning.py`, `test_cheapest_source_laws.py`).
-- **Rule 6, relations keyed on the grain** (the nativeness charts).
-  `Cover.keyed_relation_count` says the re-sum must join the summary to
-  DISTINCT `(key, value)` pairs (`Cover.collapsed_fanout_double_counts`). The
-  tree plan itself counts a list repeating an element twice per element
-  (`[1, 1]` counts its tree twice for ecoregion 1) but once per biome; the
-  summary path must match both. Keep `fans_out_rollup` and
-  `_group_fanning_parents` intact.
-- `sum(case when bucket = 'Native' then count(tree_id) by bucket end)` reads 8
-  from the trees and 4 from the summary, on main too. The trees fan the
-  per-bucket count across its species rows; the summary answer is the one the
-  semantics give.
-- Under a WHERE on `plant_year`, a scalar of a key (`split(species, ' ')[1]`)
-  is not read from the year summary.
-- `select common_names[1] as c` and `select split(species, ' ')[1] as g` under
-  `where plant_year > 2000` raise a keyless-join error with no summary at all.
+See `docs/handoff_summary_cover_next.md`: the approach, and the open items in
+order. It starts with a pre-existing wrong answer on main, a CASE over a
+per-bucket aggregate that fans out.
 
 ### 1b. Cheapest source (`Cost.lean` follow-ons)
 
