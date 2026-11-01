@@ -58,8 +58,34 @@ unnested list (area 0b).
      ingests TPC-DS and validates it against the `std` types. That is how
      tightening `std.date.day_of_week` to `[1..7]` broke on `d_dow` (0-6),
      which led to `day_of_week_zero_index`.
+7. **Lessons from #838 (`Unnest.lean`).**
+   - Make the data honest for the claim the model states. A plain `merge` is
+     EQUAL; random data that lists a region the other side lacks breaks it,
+     and the padding that follows looks like a bug and isn't one.
+   - Check the reference against a law the engine must keep before reading a
+     mismatch as a bug: `P or false` equals `P`, a filter never adds rows, an
+     OR keeps every row its disjuncts keep. Two of #838's bugs surfaced only as
+     such a disagreement.
+   - Before opening the PR, remove each planner change one at a time and rerun the suite
+     plus the fuzzer family. Three of #838's changes turned out to be covered by
+     later ones and were dropped.
+   - Run the broad suite again after the last change. A late change in #838
+     broke the literal `unnest([true, false, ...])` case in
+     `tests/engine/test_duckdb.py::test_sum_bool`.
+   - Adding fuzzer specs changes `CASES_PER_SEED` in
+     `local_scripts/fuzzer/test_fuzzer.py`. CI does not run that file (it runs
+     `pytest tests/` and `python -m local_scripts.fuzzer`), so run it yourself.
+   - Reduce a big fuzzer repro by deleting statements one at a time while the
+     wrong row persists: #838's `~group_id` cross join came down to one extra
+     table.
 
 ## Candidate areas
+
+**Suggested next: area 2, optimizer rule soundness.** Every other area has had
+a round; no optimizer rule has. Start with `join_upgrade.py` and
+`strip_redundant_not_null.py`, whose guards `NullReject.lean` already models,
+then move to `predicate_pushdown.py`, the riskiest. The leads in areas 0, 0b, 1
+and 1b are smaller and suit a short round.
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
