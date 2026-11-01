@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -158,19 +159,18 @@ def subgraph_concepts(
     """The concepts a datasource subgraph reads. The graph keys a node by
     canonical address, so two requested names for one expression (`total`
     beside `sum(amount) by order_id as explicit`) are one node: each of them
-    comes back, not only the `canonical_concepts` winner."""
-    concepts = [
-        environment.canonical_concepts[extract_address(c)]
-        for c in subgraph
-        if c.startswith("c~")
-    ]
-    addresses = {c.address for c in concepts}
-    canonicals = {c.canonical_address for c in concepts}
-    return concepts + [
-        c
-        for c in unique(list(requested), "address")
-        if c.canonical_address in canonicals and c.address not in addresses
-    ]
+    comes back, not only the `canonical_concepts` winner. The winner itself
+    comes back only when nothing requested shares its canonical: an unrequested
+    name (`planted_year` declared after `plant_year`, both `year(plant_date)`)
+    would otherwise join the scan's outputs and its grain."""
+    by_canonical: dict[str, list[BuildConcept]] = defaultdict(list)
+    for c in unique(list(requested), "address"):
+        by_canonical[c.canonical_address].append(c)
+    out: list[BuildConcept] = []
+    for node in (n for n in subgraph if n.startswith("c~")):
+        winner = environment.canonical_concepts[extract_address(node)]
+        out.extend(by_canonical.get(winner.canonical_address) or [winner])
+    return unique(out, "address")
 
 
 def create_select_node_candidate(
