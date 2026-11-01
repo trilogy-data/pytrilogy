@@ -1,0 +1,49 @@
+# The published cross-city rollup, as a *source*.
+#
+# One `root datasource` over `full_tree_info_v{n}.parquet` and nothing else.
+# Root means unmanaged: a job importing this reads the rollup and never tries
+# to build it, so a consumer can declare the rollup as an input without
+# adopting it as a target.
+#
+# There are three files naming this one parquet and they are three different
+# jobs' views of it, which is why they are not one file:
+#
+#   full_tree_publish.preql  writes it (a managed datasource over one
+#                            multi-file read of the city parquets) — the
+#                            `publish-full` job, and the only writer
+#   this file                reads it, unmanaged — imported by consumers whose
+#                            job must not rebuild it
+#   tree_info.preql          the seventeen-city *union model*, which is not a
+#                            job entrypoint at all: it is what the app's
+#                            dashboard queries resolve against, and its per-city
+#                            partitions are what let the planner answer a
+#                            single-city chart from that city's parquet
+#
+# The datasource name matters and is not cosmetic. trilogy-cloud derives a
+# schedule tick's ordering from asset identity, and an address built from an
+# f-string is not a join key — a templated address is keyed by the datasource's
+# *name* instead. So `full_tree_publish.preql`'s target and this source share
+# the name `full_tree_info` deliberately: that shared key is what makes the
+# platform order `publish-full` before the jobs that consume the rollup, in one
+# tick, instead of us guessing an hour's gap between two crons.
+
+import tree_common;
+
+property tree_id.data_source string; # originating dataset, as every city materialises it and the rollup carries it
+
+root datasource full_tree_info (
+    tree_id: tree_id,
+    city: city,
+    data_source: data_source,
+    species: species,
+    cultivar: ?cultivar,
+    crown_width_m: ?crown_width_m,
+    tree_name: ?tree_name,
+    plant_date: ?plant_date,
+    diameter_at_breast_height: ?diameter_at_breast_height,
+    latitude: ?latitude,
+    longitude: ?longitude,
+    submission_photo_url: ?submission_photo_url,
+)
+grain (tree_id)
+file f`./fixtures/full_tree_info_v{data_version}.parquet`;

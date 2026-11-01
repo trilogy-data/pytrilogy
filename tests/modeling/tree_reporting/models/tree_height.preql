@@ -1,0 +1,93 @@
+# Tree height from a LIDAR canopy survey, shared by every city that has one.
+#
+# A few cities publish their canopy LIDAR segmented into one object per crown,
+# with the crown's height: Boston (497k crowns, 2024) and Cambridge (60k,
+# 2024).  A crown is not a tree row -- it has no species and no lasting id,
+# and the segmentation merges touching crowns -- so it never enters the
+# cluster merge as a source.  It is an attribute every tree row looks up by
+# position, the way ../tree_position.preql looks up "is this under a roof":
+#
+#   * a staging job (canopy_staging/{code}_canopy_staging.preql) rasterises
+#     the city's crowns onto the fixed position grid and publishes ONE ROW PER
+#     CELL UNDER A CROWN, each carrying that crown's height (shared/canopy.py);
+#   * this file keys every raw row into that grid, looks its cell up, and
+#     carries the crown's height through the cluster merge.
+#
+# Every class of row asks, which is what makes this useful for imagery: a
+# bulk prediction is a crown centre read off NAIP, so it lands near the
+# middle of a LIDAR crown and finds one more reliably than a geocoded
+# inventory trunk does.  See docs/TREE_HEIGHT.md for the match rates.
+#
+# What a city model has to do to take part, and nothing else:
+#
+#   import ..tree_height;
+#   root datasource {lc}_canopy_height (...) grain (canopy_cell)
+#       file `.../staging/{lc}_canopy_height.parquet`;
+#   a probe on that object's publication time, folded into the city's
+#       published watermark so a new survey rebuilds the parquet;
+#   the published target maps ?height_m.
+#
+# A city that does not import this file publishes no height column at all;
+# nothing in ../tree_dedup.preql or the rollup depends on one.
+#
+# ---------------------------------------------------------------------------
+# The grid
+# ---------------------------------------------------------------------------
+#
+# The position grid's cell, exactly (0.00002 deg x 0.00003 deg, ~2.2 x 2.5 m
+# at Boston), packed the same way, so shared/canopy.py keys its table with
+# the same constants in shared/ingest.py and test_tree_height.py pins that
+# they agree.  A separate concept from `snap_cell` so a city can import
+# either file without the other.
+#
+# ---------------------------------------------------------------------------
+# Where in the merge it applies
+# ---------------------------------------------------------------------------
+#
+# Per raw row, before the cluster merge, like the position correction: a join
+# keyed on the merged (aggregate-derived) position is the planner path
+# ../tree_dedup.preql documents as not yet planning.  The merge then differs
+# from @by_source in one way: an absorbed PREDICTION may lend its height.
+# @by_source keeps a prediction's values out of any cluster another source is
+# in because they are a model's guesses; this value is the survey's, looked
+# up at the prediction's point, and that point is a crown centre where an
+# inventory row's is a kerbside geocode.  It is still the last resort.
+
+import tree_dedup;
+
+const canopy_cell_lat_deg <- 0.00002;
+const canopy_cell_lon_deg <- 0.00003;
+
+# The row's cell, packed as lon_index * 1e8 + lat_index, derived from the
+# row's own coordinates.  A row with no coordinates matches nothing.
+auto canopy_cell <- cast(floor(raw_longitude / canopy_cell_lon_deg) as bigint) * 100000000
+    + cast(floor(raw_latitude / canopy_cell_lat_deg) as bigint);
+
+# The staged lookup, one row per cell under a crown (shared/canopy.py,
+# HEIGHT_COLUMNS).
+property canopy_cell.canopy_height_m float; # height of the crown over this cell, metres, from the survey
+property canopy_cell.canopy_crown_id string; # the crown object, '{SURVEY}-{objectid}'; not stable across surveys
+property canopy_cell.canopy_crown_radius_m float; # that crown's radius, metres, as the survey gives it (clamped)
+property canopy_cell.canopy_source string; # the survey, e.g. BOSTON_LIDAR_2024
+
+# What the published parquet carries: the height alone.  Which survey and
+# which crown stay in the staging table.  No other attribute publishes its
+# own provenance (the row's merged_sources is the convention), and both
+# surveys here are 2024 LIDAR made the same way, so a label would restate the
+# tree's city; a per-crown id is not stable across surveys and would invite
+# consumers to key on it.  A year or method column earns its place once
+# heights of different kinds or vintages are mixed; see docs/TREE_HEIGHT.md.
+property tree_id.height_m float; # tree height in metres, from a LIDAR canopy survey: the height of the crown over the tree's point. Null where the city has no survey or the point is under no crown.
+
+# @by_source, with a prediction's value admitted last whatever the cluster.
+def by_survey(value) -> coalesce(
+    (max(value ? source_class = 'community') by cluster_id),
+    (max(value ? source_class = 'municipal') by cluster_id),
+    (max(value ? source_class = 'satellite') by cluster_id),
+    (max(value ? source_class = 'osm') by cluster_id),
+    (max(value ? source_class = 'predicted') by cluster_id)
+);
+
+auto merged_height_m <- @by_survey(canopy_height_m);
+
+merge merged_height_m into height_m;

@@ -1,0 +1,62 @@
+import tree_common;
+import ussfo.sf_tree_info;
+import usbos.boston_tree_info;
+import ussto.stoughton_tree_info;
+
+# Each city models its originating dataset as its own enum key so Trilogy can
+# prove per-city partition coverage (see core.preql). Merging them here — and
+# only here — gives the cross-city Parquet a single `data_source` concept
+# without disturbing how each city model resolves.
+key data_source string; # originating dataset for the tree record
+merge ussfo_source into data_source;
+merge usbos_source into data_source;
+merge ussto_source into data_source;
+
+# The dedup columns (`merged_sources`, `merged_tree_ids`) are
+# the one shared derivation in tree_dedup.preql, computed inside each city's
+# own build over that city's rows; the city parquets carry them and nothing is
+# derived or merged for them here.  Asking the planner to resolve the cluster
+# aggregate over the union of every city fails outright:
+#
+#   UnresolvableQueryException: Planner emitted a keyless join between
+#   row-bearing sources that share a join axis: ...unioned_at_local_data_source
+#   _local_tree_id_grouped_by_local.usbos_cell_a... This would render as a
+#   cross join (ON 1=1) and fan out; the join axis was lost upstream.
+#
+# The cross-city Parquet does not carry them.  The browser worker only ever
+# loads the per-city Parquet, so it filters on that column and skips the
+# filter on the full-file fallback path.
+
+auto latest_update_through <- greatest(ussfo_published_data_updated_through,
+usbos_published_data_updated_through,
+ussto_published_data_updated_through);
+# --- Merged union datasource ---
+
+datasource tree_info (
+    tree_id,
+    city,
+    data_source,
+    species,
+    tree_name,
+    ?plant_date,
+    ?diameter_at_breast_height,
+    ?latitude,
+    ?longitude,
+    ?submission_photo_url,
+    latest_update_through
+)
+grain (tree_id)
+# No `freshness by`, deliberately: this rollup is NOT built from this
+# environment. Planned here, with the merge in scope, the planner loses the
+# partition-completeness proofs and published the rollup as OSM-only for 15
+# of 16 cities. raw/full_tree_publish.preql (the `urban-tree-full` cloud
+# job) copies it unconditionally from the seventeen city parquets instead;
+# without a watermark this datasource is never stale, so no refresh that
+# imports this file can rebuild it wrongly.
+#
+# This file is not an entrypoint for any job, and must not become one. It is
+# the model the *app's* dashboard queries resolve against: `dashboard_context`
+# imports it, and it is the per-city `complete where city = 'X'` partitions it
+# brings with it that let the planner answer a single-city chart from that
+# city's parquet rather than downloading this whole rollup into the browser.
+file f`./fixtures/full_tree_info_v{data_version}.parquet`;

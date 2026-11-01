@@ -1,0 +1,88 @@
+# The published dashboard summaries, as *sources*: what the browser's
+# dashboard scope imports. `tree_rollups.preql` builds them.
+#
+# Same two rules as full_tree_info_source.preql: the root is named like the
+# managed datasource that writes it, and it is root, so nothing that imports
+# this ever tries to rebuild it. `rollup_tree_count` is declared exactly as
+# the producer declares it; that derivation is what lets the planner answer
+# `count(tree_id)` from the summary (test_tree_rollups.py pins both).
+#
+# The two lookups beside them bind plain properties: the producer's
+# derivations (an average, a list aggregate) are how they were built, not
+# something the browser should try to recompute.
+import tree_common;
+import tree_summary_grains;
+import tree_enrichment;
+
+auto rollup_tree_count <- count(tree_id);
+
+root datasource tree_rollup_species (
+    city: city,
+    species: species,
+    rollup_tree_count: rollup_tree_count,
+)
+grain (city, species)
+file f`./fixtures/tree_rollup_species_v{data_version}.parquet`;
+
+root datasource tree_rollup_year (
+    city: city,
+    species: species,
+    plant_year: plant_year,
+    rollup_tree_count: rollup_tree_count,
+)
+grain (city, species, plant_year)
+file f`./fixtures/tree_rollup_year_v{data_version}.parquet`;
+
+root datasource tree_rollup_dbh (
+    city: city,
+    species: species,
+    dbh_class: dbh_class,
+    rollup_tree_count: rollup_tree_count,
+)
+grain (city, species, dbh_class)
+file f`./fixtures/tree_rollup_dbh_v{data_version}.parquet`;
+
+root datasource tree_rollup_cell (
+    city: city,
+    species: species,
+    map_cell_latitude: map_cell_latitude,
+    map_cell_longitude: map_cell_longitude,
+    rollup_tree_count: rollup_tree_count,
+)
+grain (city, species, map_cell_latitude, map_cell_longitude)
+file f`./fixtures/tree_rollup_cell_v{data_version}.parquet`;
+
+root datasource tree_rollup_coarse_cell (
+    city: city,
+    species: species,
+    map_coarse_cell_latitude: map_coarse_cell_latitude,
+    map_coarse_cell_longitude: map_coarse_cell_longitude,
+    rollup_tree_count: rollup_tree_count,
+)
+grain (city, species, map_coarse_cell_latitude, map_coarse_cell_longitude)
+file f`./fixtures/tree_rollup_coarse_cell_v{data_version}.parquet`;
+
+property city.city_latitude float; # mean latitude of the city's trees
+property city.city_longitude float; # mean longitude of the city's trees
+
+root datasource tree_rollup_city (
+    city: city,
+    city_latitude: city_latitude,
+    city_longitude: city_longitude,
+)
+grain (city)
+file f`./fixtures/tree_rollup_city_v{data_version}.parquet`;
+
+property species.native_biomes list<string>; # distinct biomes of the species' native ecoregions
+property species.native_realms list<string>; # distinct realms of the species' native ecoregions
+
+# Carries `native_ecoregions` as well as the enrichment table, so a bucket
+# over all three lists reads one table (see tree_rollups.preql).
+root datasource species_native_range (
+    species: species,
+    native_ecoregions: ?native_ecoregions,
+    native_biomes: ?native_biomes,
+    native_realms: ?native_realms,
+)
+grain (species)
+file f`./fixtures/species_native_range_v{data_version}.parquet`;

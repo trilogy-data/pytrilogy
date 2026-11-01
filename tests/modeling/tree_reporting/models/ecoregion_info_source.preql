@@ -1,0 +1,20 @@
+# The published ecoregion dimension, as a *source*: the columns a consumer of
+# published data reads (biome and realm), never the geometry.
+#
+# Root means unmanaged: a job importing this reads the table and never tries
+# to build it; `ecoregion_info.preql` is the writer. The datasource is named
+# `ecoregion_info`, like the managed one, so trilogy-cloud orders a job that
+# imports this after `refresh-ecoregions` in the same tick (the same rule as
+# full_tree_info_source.preql).
+
+import core;
+import ecoregion_common;
+
+root datasource ecoregion_info (
+    ecoregion_id,
+    ?biome,
+    ?realm,
+    ecoregion_data_updated_through,
+)
+grain (ecoregion_id)
+file f`./fixtures/ecoregion_info_v{data_version}.parquet`;

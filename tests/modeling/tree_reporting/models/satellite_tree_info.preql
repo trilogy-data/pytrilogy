@@ -1,0 +1,16 @@
+import tree_common;
+
+# Reviewed aerial-imagery detections: the fourth source partition, for the
+# cities imagery has been run over.  The shape is the community one and for
+# the same reasons -- one freshness *column* per city (a row per city would
+# let one publish move every city's watermark, because the probe is a plain
+# MAX over every row the script emits), and the rows declared in each city's
+# own model as a `complete where city = 'X' and {code}_source =
+# 'SATELLITE_X'` partition reading ../satellite_tree_info.py, never here.
+#
+# A city is added by listing it in SATELLITE_DATA_SOURCES (shared/ingest.py),
+# declaring its column below, and wiring its model:
+# `test_satellite_city_is_fully_wired` names whatever is missing.
+property <*>.ussfo_satellite_data_updated_through datetime; # when published satellite trees for USSFO are through
+property <*>.usbos_satellite_data_updated_through datetime; # when published satellite trees for USBOS are through
+property <*>.usnyc_satellite_data_updated_through datetime; # when published satellite trees for USNYC are through

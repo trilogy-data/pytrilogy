@@ -1378,12 +1378,13 @@ def _group_fanning_parents(
     parents: list[StrategyNode],
     partials: list[BuildConcept],
     needed: set[str],
-) -> list[StrategyNode]:
+) -> list[StrategyNode] | None:
     """A parent finer than the summary carrying `partials` repeats each summary
     row once per row of its own, and the re-sum then counts those repeats.
     When it supplies nothing the request needs beyond the columns it shares
     with the summary, it only restricts the summary's rows: group it to those
-    columns so the join pairs one row per summary row."""
+    columns so the join pairs one row per summary row. When it does, the
+    summary cannot answer: None."""
     hosts = _summary_partial_hosts(parents, partials)
     if len(hosts) != 1:
         return parents
@@ -1394,15 +1395,14 @@ def _group_fanning_parents(
         grain = parent.grain.components if parent.grain is not None else set()
         shared = [c for c in parent.output_concepts if c.address in host_addresses]
         own = {c.address for c in parent.output_concepts} - host_addresses
-        if (
-            parent is host
-            or not grain
-            or grain <= host_addresses
-            or not shared
-            or own & needed
-        ):
+        if parent is host or not grain or grain <= host_addresses or not shared:
             regrouped.append(parent)
             continue
+        if own & needed:
+            # it supplies a column at its own finer grain, so the summary rows
+            # repeat per row of it and no regroup can undo that
+            return None
+
         regrouped.append(
             GroupNode(
                 output_concepts=shared,
@@ -1455,7 +1455,10 @@ def _merge_component_sources(
     requested = {concept.address for concept in request.outputs}
     targets = [concept for concept in outputs if concept.address in requested]
     rollup = merge_rollup_concepts(
-        (parent.grain for parent in parents),
+        (
+            (parent.grain, frozenset(c.address for c in parent.output_concepts))
+            for parent in parents
+        ),
         targets,
         request.environment.concepts,
     )
@@ -1464,7 +1467,10 @@ def _merge_component_sources(
     partials = [] if rollup else _summary_partials(parents, targets)
     if partials:
         needed = requested | {c.address for c in condition_row_args(request.conditions)}
-        parents = _group_fanning_parents(request, parents, partials, needed)
+        grouped = _group_fanning_parents(request, parents, partials, needed)
+        if grouped is None:
+            return None
+        parents = grouped
         inputs = unique(
             [concept for parent in parents for concept in parent.usable_outputs],
             "address",

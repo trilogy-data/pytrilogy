@@ -1,0 +1,70 @@
+# Each city's own ecoregion: the RESOLVE ecoregion at its centroid.
+#
+# The ecoregion dimension plays two roles in this model. Imported plainly
+# (`ecoregion_id`, `biome`, `realm`), it is the ecoregions a species is native
+# to: `tree_enrichment` merges the unnested `native_ecoregions` into it. Here it
+# is imported a second time as `home`, and this datasource binds a city to one
+# row of it, so `home.biome` is the city's biome. The two never share a concept.
+#
+# This used to be `property city.ecoregion_id <- case ...` in core.preql, a
+# derivation of the native key itself. That gave one concept both meanings, and
+# whether a query planned then depended on import order (pytrilogy#817).
+#
+# The dashboards and the chat read the city's ecoregion, biome and realm as
+# constants (`src/src/composables/dashboardContextSource.ts`);
+# `dashboardContextSource.test.ts` holds that table to this one, and
+# `test_city_wiring.py` checks every city has a row. `tools/new_city.py` adds it.
+import core;
+import ecoregion_info as home;
+
+datasource city_home_ecoregion (
+    city,
+    ecoregion_id: home.ecoregion_id,
+)
+grain (city)
+query '''
+select * from (values
+    ('USSFO', 423),
+    ('USNYC', 339),
+    ('USBOS', 339),
+    ('FRPAR', 664),
+    ('USBTV', 334),
+    ('CAVAN', 364),
+    ('DEBER', 654),
+    ('NLAMS', 664),
+    ('GBLON', 663),
+    ('AUMEL', 176),
+    ('ARBUE', 576),
+    ('USLAX', 422),
+    ('USWAS', 399),
+    ('USTEM', 435),
+    ('GRATH', 785),
+    ('GRMLO', 785),
+    ('GRSAN', 785),
+    ('USDEN', 402),
+    ('CACAL', 394),
+    ('CAEDM', 386),
+    ('CAWPG', 397),
+    ('CATOR', 342),
+    ('CAMTL', 334),
+    ('CAQUE', 334),
+    ('CALON', 334),
+    ('CAHFX', 338),
+    ('CAKGN', 334),
+    ('CALET', 396),
+    ('CAVIC', 364),
+    ('CAKEL', 362),
+    ('CANWE', 364),
+    ('CAMIS', 342),
+    ('CAOTT', 334),
+    ('CABUR', 342),
+    ('CAAJX', 342),
+    ('CAMON', 335),
+    ('JPTYO', 682),
+    ('COBOG', 477),
+    ('TWTPE', 283),
+    ('DKCPH', 647),
+    ('FIHEL', 717),
+    ('USSTO', 387)
+) as t(city, ecoregion_id)
+''';

@@ -2463,6 +2463,23 @@ def union_unhealed_partial_addresses(
     }
 
 
+def _complete_where_pins(datasource: BuildDatasource) -> dict[str, frozenset]:
+    """The literals each column a datasource's `complete where` pins with a
+    top-level `x = a` / `x in (...)` atom."""
+    from trilogy.core.processing.condition_utility import (
+        _pinned_values,
+        decompose_condition,
+    )
+
+    if datasource.non_partial_for is None:
+        return {}
+    pins: dict[str, frozenset] = {}
+    for atom in decompose_condition(datasource.non_partial_for.conditional):
+        if (pinned := _pinned_values(atom)) is not None:
+            pins[pinned[0]] = pinned[1]
+    return pins
+
+
 @dataclass(slots=True)
 class BuildUnionDatasource:
     children: list[BuildDatasource]
@@ -2495,13 +2512,17 @@ class BuildUnionDatasource:
     def bound_discriminators(self) -> frozenset[str]:
         """The columns the arms' `complete where` clauses read that every arm
         binds. Each base row has one value of each, so the arms partition the
-        rows on them."""
+        rows on them. One several arms all pin to the same value (`city = 'A'`
+        on each source of one city) separates none of them, so it is no
+        discriminator of the union; a stack of one arm keeps its own."""
         bound = {c.concept.address for c in self.columns}
+        pins = [_complete_where_pins(child) for child in self.children]
         return frozenset(
             address
             for child in self.children
             for address in child.bound_discriminators
             if address in bound
+            and (len(pins) == 1 or len({p.get(address) for p in pins}) > 1)
         )
 
     @property

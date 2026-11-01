@@ -1,0 +1,189 @@
+import tree_common;
+import ecoregion_common;
+
+# --- Species only, deliberately -------------------------------------------
+#
+# This file used to `import tree_info`, the seventeen-city union model, so
+# that a reader of `tree_enrichment` also had the tree rows in scope. That
+# import pulled every city model into the enrichment *job's* bundle, and
+# `trilogy refresh` adopts every managed datasource it can reach — so the
+# enrichment lane probed all seventeen municipal portals on every tick and
+# could rebuild a city's Parquet itself: concurrently with that city's own
+# job, and inside the enrichment lane's container rather than the city's
+# (Berlin is sized at 4 GiB; enrichment runs with 2, and a full Berlin
+# rebuild is what OOM-killed the old combined lane). With per-city ingest
+# jobs that reach is the whole problem, not a convenience.
+#
+# So enrichment now declares the species dimension and nothing else. It is a
+# pure consumer of published data — `tree_enrichment.py` and
+# `tree_enrichment_probe.py` read `full_tree_info` by URL, not through the
+# model — and its refresh resolves to exactly one asset, this file's own
+# parquet. Verify with:
+#
+#     cd data && trilogy refresh --dry-run raw/tree_enrichment.preql
+#
+# A reader that wants trees *and* enrichment imports both, which is what
+# `src/src/composables/dashboardContextSource.ts` does.
+#
+# Do not add a `full_tree_info` root datasource to this file. It was tried, to
+# give the enrichment *job* a declared input the platform could order on, and
+# it broke a chart: with the rollup and the seventeen city models both in
+# scope the planner has two ways to answer the same question, and the summary
+# page's tree count under a nativeness cross-filter came back 2 where the
+# fixtures say 3. The smoke tests did not catch it (they check the base
+# per-city queries); `pnpm test:queries` did.
+#
+# The job's ordering after the rollup is declared instead, in the
+# `[dependencies]` table of data/trilogy.toml. This file is the job's
+# entrypoint: `trilogy refresh <file>` builds what the file declares
+# (pytrilogy >= 0.3.368), and this is the file that declares the enrichment
+# parquet.
+
+# Species dimension. The existing `species` key already serves as the canonical
+# scientific-name identifier, so we extend it instead of introducing a separate
+# `species_id` key and forcing downstream join changes.
+property species.genus string;
+property species.species_epithet string;
+property species.family string;
+property species.synonyms list<string>; # other scientific names for this taxon (e.g. Platanus x acerifolia for Platanus x hispanica); the ingest folds SPECIES_SYNONYMS onto the accepted name, and the alias rows published under each synonym key list the accepted name here
+
+property species.common_names list<string>; # ordered by familiarity / prevalence
+property species.description string; # short ecology / appearance / urban planting note
+property species.is_evergreen bool;
+
+property species.mature_height_min_ft float;
+property species.mature_height_max_ft float;
+property species.canopy_spread_min_ft float;
+property species.canopy_spread_max_ft float;
+
+property species.growth_rate enum<string>['slow', 'moderate', 'fast'];
+property species.lifespan_min_years int;
+property species.lifespan_max_years int;
+
+property species.drought_tolerance enum<string>['low', 'moderate', 'high'];
+property species.water_needs enum<string>['low', 'moderate', 'high'];
+
+property species.sun_exposure list<enum<string>['full_sun', 'partial_shade', 'shade']>;
+property species.soil_preferences list<string>; # clay | loam | sandy | rocky | well_drained | moist
+property species.root_behavior enum<string>['non_invasive', 'moderate', 'invasive'];
+
+property species.coastal_tolerance bool;
+property species.salt_tolerance bool;
+property species.pollution_tolerance string; # low | moderate | high
+
+property species.bloom_months list<int>; # 1-12
+property species.wildlife_value enum<string>['low', 'moderate', 'high'];
+property species.fire_risk enum<string>['low', 'moderate', 'high'];
+
+property species.tree_form string; # broadleaf | conifer | palm | columnar | ornamental | spreading | weeping | multi_trunk | default
+
+property species.usda_zone_min int;
+property species.usda_zone_max int;
+
+property species.native_ecoregions list<int>; # list of ecoregion_id values where the species is native
+
+property species.enriched_at datetime;
+
+property species.photo_url string; # optional URL to a representative photo of the species -- in practice a foliage / flower close-up, which is what the iNaturalist default photo usually is
+property species.photo_license string; # license identifier for the photo
+property species.photo_attribution string; # attribution text for the photo
+property species.trunk_photo_url string; # legacy field name: optional full-tree view showing the crown and overall shape, picked by hand in enrichment/admin/server.py
+property species.trunk_photo_license string; # license identifier for the full-tree photo
+property species.trunk_photo_attribution string; # attribution text for the full-tree photo
+
+auto tree_eco_region<- unnest(native_ecoregions);
+
+merge tree_eco_region into ecoregion_id;
+
+
+# Root datasource: runs the Python script to fetch and enrich new species.
+# Emits the full merged table (existing + newly enriched rows).
+root datasource raw_tree_enrichment (
+    species,
+    ?genus,
+    ?species_epithet,
+    ?family,
+    ?synonyms,
+    ?common_names,
+    ?description,
+    ?is_evergreen,
+    ?mature_height_min_ft,
+    ?mature_height_max_ft,
+    ?canopy_spread_min_ft,
+    ?canopy_spread_max_ft,
+    ?growth_rate,
+    ?lifespan_min_years,
+    ?lifespan_max_years,
+    ?drought_tolerance,
+    ?water_needs,
+    ?sun_exposure,
+    ?soil_preferences,
+    ?root_behavior,
+    ?coastal_tolerance,
+    ?salt_tolerance,
+    ?pollution_tolerance,
+    ?bloom_months,
+    ?wildlife_value,
+    ?fire_risk,
+    ?tree_form,
+    ?usda_zone_min,
+    ?usda_zone_max,
+    ?native_ecoregions,
+    ?photo_url,
+    ?photo_license,
+    ?photo_attribution,
+    ?trunk_photo_url,
+    ?trunk_photo_license,
+    ?trunk_photo_attribution,
+    enriched_at,
+)
+grain (species)
+file `./tree_enrichment.py`;
+
+# Cached datasource: reads/writes the persisted parquet in GCS.
+# Use this for day-to-day queries to avoid re-running enrichment.
+datasource tree_enrichment (
+    species,
+    ?genus,
+    ?species_epithet,
+    ?family,
+    ?synonyms,
+    ?common_names,
+    ?description,
+    ?is_evergreen,
+    ?mature_height_min_ft,
+    ?mature_height_max_ft,
+    ?canopy_spread_min_ft,
+    ?canopy_spread_max_ft,
+    ?growth_rate,
+    ?lifespan_min_years,
+    ?lifespan_max_years,
+    ?drought_tolerance,
+    ?water_needs,
+    ?sun_exposure,
+    ?soil_preferences,
+    ?root_behavior,
+    ?coastal_tolerance,
+    ?salt_tolerance,
+    ?pollution_tolerance,
+    ?bloom_months,
+    ?wildlife_value,
+    ?fire_risk,
+    ?tree_form,
+    ?usda_zone_min,
+    ?usda_zone_max,
+    ?native_ecoregions,
+    ?photo_url,
+    ?photo_license,
+    ?photo_attribution,
+    ?trunk_photo_url,
+    ?trunk_photo_license,
+    ?trunk_photo_attribution,
+    enriched_at,
+)
+grain (species)
+file f`./fixtures/tree_enrichment_v{data_version}.parquet`
+freshness by `./tree_enrichment_probe.py`
+# Species are only ever added; a build that lost a quarter of them is refused
+# and the published table kept (`kept`, core.preql).
+assert @kept(species, 0.75);
