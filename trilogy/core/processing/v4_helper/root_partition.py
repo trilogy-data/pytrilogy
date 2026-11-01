@@ -61,6 +61,8 @@ def _needs_pristine_scan(
 ) -> bool:
     """The calc reads a row POPULATION, so its scan must not see the
     SELECT-side WHERE atoms."""
+    if concept_attrs[n].derivation == Derivation.UNNEST:
+        return _defines_existence_set(concept_graph, concept_edges, n)
     if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
         return True
     # An existence source (a semijoin RHS, `x in <set>`) is a separate
