@@ -484,7 +484,7 @@ def _held(
 ) -> frozenset[str]:
     return (
         _from_row_parents(group_graph, attrs, gid, environment)
-        | _carries(
+        | carries(
             attrs[gid],
             identity,
             sibling_keys,
@@ -531,7 +531,7 @@ def _joined_on(group: GroupAttrs) -> frozenset[str]:
     )
 
 
-def _carries(
+def carries(
     group: GroupAttrs,
     identity: frozenset[str],
     sibling_keys: frozenset[str],

@@ -132,7 +132,7 @@ from .functional_dependency import (
 )
 from .group_graph import read_row_parents, row_parents, trace_group_graph
 from .history import V4History
-from .join_plan import JoinPlan, elect_bridges, plan_final_join
+from .join_plan import JoinPlan, carries, elect_bridges, plan_final_join
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
@@ -3251,7 +3251,7 @@ def _pre_merge_parents(
     if plan is not None and built is not None:
         parents = _join_elected_bridges(
             parents,
-            [(built[gid], plan.keys_for(gid)) for gid in plan.extras],
+            [(_planned_side(built, gid), plan.keys_for(gid)) for gid in plan.extras],
             environment,
         )
     all_outputs = readable_outputs(parents)
@@ -4421,20 +4421,17 @@ def _join_elected_bridges(
 
 def _bridge_candidates(
     group_graph: nx.DiGraph,
-    order: Sequence[str],
-    unbuilt: Collection[str] = (),
+    planned: Sequence[str],
     consumer: str = FINAL_NODE_ID,
 ) -> list[str]:
-    """The groups the build order decides before `consumer` (every group, for
-    the FINAL: one feeding no output may sort after it) that are still in the
-    plan and not `unbuilt`, most derived first. A group folded into its readers
-    left the plan at its turn."""
-    decided = order if consumer == FINAL_NODE_ID else order[: order.index(consumer)]
-    groups = {
-        gid
-        for gid in decided
-        if gid in group_graph and gid != FINAL_NODE_ID and gid not in unbuilt
-    }
+    """The `planned` groups, in build order, decided before `consumer` (every
+    group, for the FINAL: one feeding no output may sort after it) that are
+    still in the plan, most derived first. A group folded into its readers left
+    the plan at its turn."""
+    decided = (
+        planned if consumer == FINAL_NODE_ID else planned[: planned.index(consumer)]
+    )
+    groups = {gid for gid in decided if gid in group_graph and gid != FINAL_NODE_ID}
     return sorted(
         groups,
         key=lambda gid: (
@@ -4472,15 +4469,22 @@ def _filter_arg_producers(
 
 
 def _planned_side(built: dict[str, StrategyNode], gid: str) -> StrategyNode:
-    """The node of a side the FINAL plan elected. A FINAL-only group whose
-    outputs another group delivers may build nothing; electing it is a plan
-    that cannot be assembled."""
+    """The node of a side a join plan elected. A planned group may build
+    nothing (a FINAL-only group whose outputs another group delivers, a
+    disconnected scan); electing it is a plan that cannot be assembled."""
     if (node := built.get(gid)) is None:
         raise UnbuiltGroupException(
-            f"[v4] FINAL join plan elected group {gid}, which built nothing. "
-            "This is a planner bug."
+            f"[v4] join plan elected group {gid}, which built nothing."
         )
     return node
+
+
+def _uncovered_final_side(
+    built: dict[str, StrategyNode], planned: list[str]
+) -> StrategyNode:
+    """The FINAL when no group covers a mandatory concept: the first planned
+    group."""
+    return _planned_side(built, planned[0])
 
 
 def _filter_arg_parents(
@@ -5032,7 +5036,7 @@ def _assemble_sole_contributor(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
-    candidates: Sequence[str],
+    cover: "_FinalCover",
     environment: BuildEnvironment,
 ) -> StrategyNode:
     """FINAL when one group covers every output: that group's node, deduped
@@ -5072,21 +5076,20 @@ def _assemble_sole_contributor(
     # name where status is null`: the condition scan carries `customer_id`,
     # the domain hides it), or on a column the holder carries beside its
     # outputs (`count(order_id) by city`), which the dedup to `name` would
-    # strip.
+    # strip. A feeder pairs on what its rows hold or can be widened to.
     relation_paired_feeders = False
     region_paired_feeders = False
     if final_conditions is not None and not final_already_applied:
-        sole_avail = {o.address for o in sole_node.output_concepts}
-        feeder_nodes, _ = _filter_arg_parents(
-            built,
-            _filter_arg_producers(
-                group_graph, attrs, candidates, filter_only_addrs - sole_avail
-            ),
-        )
-        feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
+        sole_avail = cover.holds(gid)
+        feeder_outs = [
+            carries(attrs[feeder], frozenset(), frozenset(), environment)
+            for feeder in _filter_arg_producers(
+                group_graph, attrs, cover.groups, filter_only_addrs - sole_avail
+            ).values()
+        ]
         scoped_addrs = environment.all_scoped_join_group_members()
         relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
-        spans = region_reads(sole_node)
+        spans = _group_region_reads(group_graph, attrs, gid)
         region_paired_feeders = bool(spans) and any(
             outs & (spans | sole_avail) - mandatory_addresses for outs in feeder_outs
         )
@@ -5291,6 +5294,13 @@ class _FinalCover:
     per_group: dict[str, list[BuildConcept]]
     projections: dict[str, list[BuildConcept]]
     passthroughs: dict[str, list[BuildConcept]]
+    rendered: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def holds(self, gid: str) -> frozenset[str]:
+        """The columns contributor `gid` reaches the FINAL with: what it
+        renders, and what the election owes on it."""
+        owed = self.projections.get(gid, []) + self.passthroughs.get(gid, [])
+        return self.rendered.get(gid, frozenset()) | {c.address for c in owed}
 
 
 def _elect_final_cover(
@@ -5318,7 +5328,7 @@ def _elect_final_cover(
     )
     if not cover.per_group:
         return cover
-    rendered = renders(group_graph, group_edges, attrs, environment)
+    rendered = cover.rendered = renders(group_graph, group_edges, attrs, environment)
     _add_partial_completion_contributors(
         groups, cover.per_group, attrs, rendered, environment
     )
@@ -5407,7 +5417,7 @@ def _assemble_final_node(
     if not per_group:
         return apply_final_conditions(
             _group_to_grain_if_required(
-                next(iter(built.values())),
+                _uncovered_final_side(built, cover.groups),
                 mandatory_list,
                 final_contract,
                 environment,
@@ -5438,7 +5448,7 @@ def _assemble_final_node(
             group_graph,
             attrs,
             built,
-            cover.groups,
+            cover,
             environment,
         )
 
@@ -5930,7 +5940,8 @@ class _GroupBuild:
     root_requests: dict[str, RootRequest]
     feeder_cache: _CleanFeederCache
     unbuilt: dict[str, list[BuildConcept]]
-    order: list[str]
+    # the groups the plan builds, in build order (`_FinalCover.groups`)
+    planned: list[str]
     # the plan before any fold: a group's build reads its readers there
     readers: "_Plan"
     folds: "_FoldPlan"
@@ -6114,7 +6125,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
     join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
-    candidates = _bridge_candidates(group_graph, ctx.order, ctx.unbuilt, gid)
+    candidates = _bridge_candidates(group_graph, ctx.planned, gid)
     if derivation == Derivation.UNION:
         parents = _union_arm_parents(
             parent_builds, attrs, environment, needed, group_graph, built, candidates
@@ -6615,28 +6626,6 @@ def build_strategy_node(
         readers,
         arms_delivered,
     )
-    built: dict[str, StrategyNode] = {}
-    unbuilt: dict[str, list[BuildConcept]] = {}
-    ctx = _GroupBuild(
-        group_graph,
-        group_edges,
-        attrs,
-        mandatory_list,
-        environment,
-        g,
-        history,
-        complete_partials,
-        staged_conditions,
-        depth,
-        arms_delivered,
-        built,
-        {},
-        _CleanFeederCache(environment, g, history),
-        unbuilt,
-        order,
-        readers,
-        folds,
-    )
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     plan_scope = environment.span_scope
 
@@ -6658,6 +6647,28 @@ def build_strategy_node(
         cover = _elect_final_cover(
             group_graph, group_edges, attrs, contributors, mandatory_list, environment
         )
+    built: dict[str, StrategyNode] = {}
+    unbuilt: dict[str, list[BuildConcept]] = {}
+    ctx = _GroupBuild(
+        group_graph,
+        group_edges,
+        attrs,
+        mandatory_list,
+        environment,
+        g,
+        history,
+        complete_partials,
+        staged_conditions,
+        depth,
+        arms_delivered,
+        built,
+        {},
+        _CleanFeederCache(environment, g, history),
+        unbuilt,
+        cover.groups,
+        readers,
+        folds,
+    )
     for gid in order:
         if gid == FINAL_NODE_ID or gid in folds.inlined:
             continue
