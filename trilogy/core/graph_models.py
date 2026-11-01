@@ -344,7 +344,10 @@ def prune_sources_for_aggregates(
     # Compare grains by canonical address so canonically-equivalent components
     # (e.g. `x_date.year` and `year_via_func` sharing the same lineage hash)
     # don't disqualify a precomputed datasource that binds the named form.
-    addr_to_canonical = {bc.address: bc.canonical_address for bc in g.concepts.values()}
+    addr_to_canonical = {
+        bc.address: bc.canonical_address
+        for bc in [*g.concepts.values(), *all_concepts]
+    }
 
     def grain_key(grain) -> frozenset[str]:
         if grain.abstract:

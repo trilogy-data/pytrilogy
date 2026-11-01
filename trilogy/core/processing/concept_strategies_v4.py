@@ -561,43 +561,37 @@ def materialized_root_addresses(
         mandatory_list, rolled_roots, rollup_sources, target_grain, where, environment
     ):
         return frozenset(out)
-    pinned = bool(filter_finer_row_args(where, target_grain, environment.concepts))
     return frozenset(
         out
         | rolled_roots
-        | _summary_bound_expressions(mandatory_list, rollup_sources, pinned)
+        | _summary_bound_expressions(
+            mandatory_list + list(condition_args_by_address.values()),
+            rollup_sources,
+        )
     )
 
 
 def _summary_bound_expressions(
     mandatory_list: list[BuildConcept],
     rollup_sources: list[BuildDatasource],
-    pinned: bool,
 ) -> set[str]:
     """Scalar demands a rollup's summary stores (`year(plant_date)` in its
     grain) are read from it beside the rolled aggregate; rebuilt from the fact
-    rows they would join those rows back onto the summary and fan it out.
-    Only the pinned finer-filter scan binds a same-expression alias (`year(
-    plant_date) as y`) by canonical; elsewhere the column must be named. A
-    scalar over a stored column (`plant_year::int`, a rename of it) reads
-    that column from the summary."""
-    bound = {
-        c.canonical_address if pinned else c.address
-        for ds in rollup_sources
-        for c in ds.output_concepts
+    rows they would join those rows back onto the summary and fan it out. A
+    stored column answers its value under any spelling (`plant_date.year`,
+    `year(plant_date) as y`), and a scalar over one (`plant_year::int`, a
+    rename) reads it from the summary. So does a WHERE over one: a function of
+    the summary's grain filters its rows before the re-sum."""
+    bound = {c.canonical_address for ds in rollup_sources for c in ds.output_concepts}
+    return {
+        concept.address
+        for concept in walk_lineage(
+            mandatory_list,
+            descend=lambda c: c.derivation == Derivation.BASIC
+            and c.canonical_address not in bound,
+        )
+        if concept.derivation == Derivation.BASIC and concept.canonical_address in bound
     }
-    out: set[str] = set()
-    for concept in walk_lineage(
-        mandatory_list,
-        descend=lambda c: c.derivation == Derivation.BASIC
-        and (c.canonical_address if pinned else c.address) not in bound,
-    ):
-        if (
-            concept.derivation == Derivation.BASIC
-            and (concept.canonical_address if pinned else concept.address) in bound
-        ):
-            out.add(concept.address)
-    return out
 
 
 def _keyed_grain(

@@ -246,14 +246,14 @@ def _concepts_with_grain_keys(
         if concept.derivation == Derivation.AGGREGATE:
             aggregate_axes.update(concept.grain.components)
     # a scalar axis (`plant_year::int`) is read off the columns it computes
-    # from, at the axis grain too
-    aggregate_axes.update(
-        c.address
+    # from, at the axis grain too, under any spelling of them
+    axis_values = {
+        c.canonical_address
         for c in walk_lineage(
             [environment.concepts[a] for a in aggregate_axes if a in environment.concepts],
             descend=lambda c: c.derivation == Derivation.BASIC,
         )
-    )
+    }
     for concept in concepts:
         expanded.append(concept)
         # A merged attribute (`union`/`subset join`, `merge`) canonical inherits
@@ -263,7 +263,10 @@ def _concepts_with_grain_keys(
         # axis where the final merge already pairs the arms).
         if is_join_key_group(concept.address, environment):
             continue
-        if concept.address in aggregate_axes:
+        if (
+            concept.address in aggregate_axes
+            or concept.canonical_address in axis_values
+        ):
             continue
         for address in concept.grain.components:
             if address not in environment.concepts:

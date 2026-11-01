@@ -191,9 +191,9 @@ def finer_than_grain(
         return False
     components = set(grain.components)
     if concept.address in components or concept.canonical_address in {
-        concepts_by_address[c].canonical_address
+        concepts_by_address[source].canonical_address
         for c in components
-        if c in concepts_by_address
+        if (source := renamed_source(c, concepts_by_address)) in concepts_by_address
     }:
         return False
     return not (
@@ -304,9 +304,6 @@ def get_rollup_concepts(
         for component in target_grain.components
         if component in concepts_by_address
     ]
-    target_canonicals = [c.canonical_address for c in target_concepts]
-    if len(target_canonicals) != len(set(target_canonicals)):
-        return []
     if datasource_grain.issubset(target_grain):
         return []
     # The table must be able to GROUP BY the target grain: every component bound
