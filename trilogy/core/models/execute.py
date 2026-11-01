@@ -771,7 +771,10 @@ class CTE:
         def has_local_aggregate(c: BuildConcept) -> bool:
             # does the rendered column value of `c` contain an aggregate computed
             # in this CTE? A concept sourced from a parent is a plain column here,
-            # so any aggregate in its lineage was already materialized upstream.
+            # so any aggregate in its lineage was already materialized upstream,
+            # unless it is a partial this CTE re-sums.
+            if c.address in rollup_addresses:
+                return True
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.AGGREGATE:
@@ -874,13 +877,34 @@ class CTE:
                 return bool(has_local_aggregate(c))
             return c.purpose == Purpose.METRIC
 
+        def read_values(c: BuildConcept) -> list[BuildConcept]:
+            # an aggregate value a parent computed, read bare inside an
+            # expression this CTE aggregates (`sum(n) / total` beside a joined
+            # grand total): constant per group, so a group key of its own
+            if self.source_map.get(c.address) and c.address not in rollup_addresses:
+                return [c] if c.is_aggregate else []
+            if c.derivation != Derivation.BASIC or c.lineage is None:
+                return []
+            return [
+                value
+                for x in c.lineage.rendered_concept_arguments
+                for value in read_values(x)
+            ]
+
         if not self.group_to_grain:
             return []
         # Two keys that render as one column or expression are one key
         # (distinct aliases over the same column).
         keys: list[BuildConcept] = []
         bindings: set[tuple[str, ...]] = set()
-        for c in unique(self.output_columns, "address"):
+        outputs = unique(self.output_columns, "address")
+        candidates = outputs + [
+            value
+            for c in outputs
+            if c.derivation == Derivation.BASIC and has_local_aggregate(c)
+            for value in read_values(c)
+        ]
+        for c in unique(candidates, "address"):
             if check_is_not_in_group(c) or (
                 c.address in self.hidden_concepts
                 and c.derivation == Derivation.MULTISELECT

@@ -72,7 +72,10 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing import null_provenance, plan_trace
-from trilogy.core.processing.aggregate_rollup import reaggregate_partials
+from trilogy.core.processing.aggregate_rollup import (
+    distinct_key_counts,
+    reaggregate_partials,
+)
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     append_existence_check,
@@ -1045,7 +1048,15 @@ def _reaggregate_partials(
 ) -> BuildSelectLineage:
     """Point every coarser aggregate the statement demands at a finer demanded
     partial of it, in this statement's own environment."""
-    rewritten = reaggregate_partials(
+    rewritten = distinct_key_counts(
+        statement.output_components,
+        statement.where_clause,
+        environment.concepts,
+        environment.datasources.values(),
+    )
+    for address, concept in rewritten.items():
+        environment.concepts[address] = concept
+    rewritten |= reaggregate_partials(
         statement.output_components,
         environment.concepts,
         environment.datasources.values(),

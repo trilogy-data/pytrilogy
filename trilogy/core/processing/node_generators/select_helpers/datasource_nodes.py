@@ -269,12 +269,53 @@ def create_select_node(
     return finalize_select_node(candidate, environment, depth, defer_group)
 
 
+def _computed_from(
+    address: str, available: set[str], environment: BuildEnvironment
+) -> bool:
+    if address in available:
+        return True
+    concept = environment.concepts.get(address)
+    if concept is None or concept.derivation != Derivation.BASIC:
+        return False
+    arguments = concept.concept_arguments
+    return bool(arguments) and all(
+        _computed_from(argument.address, available, environment)
+        for argument in arguments
+    )
+
+
+def _computed_axes_grain(
+    grain: BuildGrain, concepts: list[BuildConcept], environment: BuildEnvironment
+) -> BuildGrain:
+    """An aggregate is no grain component of a scan that reads the columns its
+    axis is computed from (`count(x) by plant_year::int` beside `plant_year`):
+    the scan holds it as a partial at their grain, re-aggregated where the
+    axis is computed."""
+    rows = {c.address for c in concepts if not c.is_aggregate}
+    computed = {
+        c.address
+        for c in concepts
+        if c.is_aggregate
+        and c.address in grain.components
+        and c.grain.components
+        and not c.grain.abstract
+        and all(_computed_from(a, rows, environment) for a in c.grain.components)
+    }
+    if not computed:
+        return grain
+    return BuildGrain(components=grain.components - computed)
+
+
 def scan_target_grain(
     concepts: list[BuildConcept], environment: BuildEnvironment
 ) -> BuildGrain:
     """A merged attribute read without its own key is the grain itself: a
     scan of it is joined on the value, so its rows must be distinct values."""
-    grain = BuildGrain.from_concepts(concepts, environment=environment)
+    grain = _computed_axes_grain(
+        BuildGrain.from_concepts(concepts, environment=environment),
+        concepts,
+        environment,
+    )
     addresses = {c.address for c in concepts}
     merged = {
         c.address

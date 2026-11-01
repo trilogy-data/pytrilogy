@@ -519,7 +519,7 @@ def materialized_root_addresses(
             exact
             or condition_only
             or not (is_aggregate and _is_rollable_aggregate(concept))
-            or not at_own_grain(concept, row_grain)
+            or not at_own_grain(concept, row_grain, environment.concepts)
         ):
             continue
         # ROLLUP: a finer-grain table binds the same aggregate expression and it
@@ -561,34 +561,36 @@ def materialized_root_addresses(
         mandatory_list, rolled_roots, rollup_sources, target_grain, where, environment
     ):
         return frozenset(out)
-    pinned = bool(filter_finer_row_args(where, target_grain, environment.concepts))
     return frozenset(
         out
         | rolled_roots
-        | _summary_bound_expressions(mandatory_list, rollup_sources, pinned)
+        | _summary_bound_expressions(
+            mandatory_list + list(condition_args_by_address.values()),
+            rollup_sources,
+        )
     )
 
 
 def _summary_bound_expressions(
     mandatory_list: list[BuildConcept],
     rollup_sources: list[BuildDatasource],
-    pinned: bool,
 ) -> set[str]:
     """Scalar demands a rollup's summary stores (`year(plant_date)` in its
     grain) are read from it beside the rolled aggregate; rebuilt from the fact
-    rows they would join those rows back onto the summary and fan it out.
-    Only the pinned finer-filter scan binds a same-expression alias (`year(
-    plant_date) as y`) by canonical; elsewhere the column must be named."""
-    bound = {
-        c.canonical_address if pinned else c.address
-        for ds in rollup_sources
-        for c in ds.output_concepts
-    }
+    rows they would join those rows back onto the summary and fan it out. A
+    stored column answers its value under any spelling (`plant_date.year`,
+    `year(plant_date) as y`), and a scalar over one (`plant_year::int`, a
+    rename) reads it from the summary. So does a WHERE over one: a function of
+    the summary's grain filters its rows before the re-sum."""
+    bound = {c.canonical_address for ds in rollup_sources for c in ds.output_concepts}
     return {
-        c.address
-        for c in mandatory_list
-        if c.derivation == Derivation.BASIC
-        and (c.canonical_address if pinned else c.address) in bound
+        concept.address
+        for concept in walk_lineage(
+            mandatory_list,
+            descend=lambda c: c.derivation == Derivation.BASIC
+            and c.canonical_address not in bound,
+        )
+        if concept.derivation == Derivation.BASIC and concept.canonical_address in bound
     }
 
 
@@ -730,7 +732,10 @@ def _nested_rollup_roots(
             concept.address in mandatory
             or concept.derivation != Derivation.AGGREGATE
             or not _is_rollable_aggregate(concept)
-            or not all(at_own_grain(concept, grain) for grain in rows[concept.address])
+            or not all(
+                at_own_grain(concept, grain, environment.concepts)
+                for grain in rows[concept.address]
+            )
         ):
             continue
         sources = _rollup_sources(
