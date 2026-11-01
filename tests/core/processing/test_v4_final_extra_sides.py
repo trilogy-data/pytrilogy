@@ -18,6 +18,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _group_applies_conditions,
     _join_gate_hosts,
     _planned_side,
+    _row_condition_before_aggregate,
     _uncovered_final_side,
 )
 
@@ -26,6 +27,8 @@ key tree_id string;
 property tree_id.raw_species string;
 auto genus <- substring(raw_species, 1, 3);
 auto x_genus <- count(tree_id) by genus;
+auto is_oak <- case when raw_species = 'oak' then 1 else 0 end;
+auto oaks <- sum(is_oak);
 datasource trees (tree_id: tree_id, sp: raw_species)
 grain (tree_id)
 address trees;
@@ -202,3 +205,37 @@ def test_sole_contributor_reads_where_condition_placement_put_the_atom(
 ):
     graph, attrs, where = _placed_atom_graph(host, mode)
     assert _group_applies_conditions(graph, attrs, "basic", where) is applied
+
+
+@pytest.mark.parametrize(
+    "derivation,member,column,applied",
+    [
+        (Derivation.AGGREGATE, "local.x_genus", "local.raw_species", True),
+        (Derivation.AGGREGATE, "local.x_genus", "local.oaks", False),
+        (Derivation.AGGREGATE, "local.oaks", "local.raw_species", False),
+        (Derivation.AGGREGATE, "local.oaks", "local.tree_id", True),
+        (Derivation.WINDOW, "local.x_genus", "local.raw_species", False),
+    ],
+)
+def test_row_condition_applies_before_an_aggregate_whose_input_rows_hold_it(
+    derivation: Derivation, member: str, column: str, applied: bool
+):
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    graph = nx.DiGraph()
+    graph.add_edges_from([("root", "agg"), ("agg", FINAL_NODE_ID)])
+    attrs = {
+        "root": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
+        "agg": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=derivation,
+            primary_members=(member,),
+            output_concepts=(member, "local.genus"),
+        ),
+        FINAL_NODE_ID: _attrs(None),
+    }
+    where = BuildWhereClause(
+        conditional=BuildComparison(
+            left=env.concepts[column], right="oak", operator=ComparisonOperator.EQ
+        )
+    )
+    assert _row_condition_before_aggregate(graph, attrs, "agg", where, env) is applied
