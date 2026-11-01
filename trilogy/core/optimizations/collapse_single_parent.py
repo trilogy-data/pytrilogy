@@ -350,6 +350,31 @@ def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     return False
 
 
+def aggregate_inputs(cte: CTE) -> set[str]:
+    """Every address the aggregates `cte` computes itself read, through
+    filters and expressions (`count(species ? n > 0)` reads `n`)."""
+    out: set[str] = set()
+    stack = [
+        arg
+        for column in cte.output_columns
+        if not cte.source_map.get(column.address)
+        and column.lineage is not None
+        and (
+            column.derivation == Derivation.AGGREGATE
+            or isinstance(column.lineage, BuildAggregateWrapper)
+        )
+        for arg in column.lineage.concept_arguments
+    ]
+    while stack:
+        concept = stack.pop()
+        if concept.address in out:
+            continue
+        out.add(concept.address)
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return out
+
+
 def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     for column in cte.output_columns:
         if column not in parent.output_columns:
@@ -391,9 +416,15 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         ]
         parent.group_to_grain = True
         parent.grain = cte.grain
-        # the child's re-sum of a summary column now runs over the parent's rows
+        # The child's re-sum of a summary column now runs over the parent's
+        # rows, and so does the parent's, except one an aggregate the child
+        # computes reads: that is the aggregate's input, already at the
+        # child's input grain, and re-summing it there would nest them.
+        aggregated = aggregate_inputs(cte)
         parent.rollup_concepts = unique(
-            parent.rollup_concepts + cte.rollup_concepts, "address"
+            cte.rollup_concepts
+            + [r for r in parent.rollup_concepts if r.address not in aggregated],
+            "address",
         )
     elif merge_mode == MergeMode.WINDOW:
         # The parent's intermediate columns may still be referenced by window

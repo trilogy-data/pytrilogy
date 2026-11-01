@@ -744,6 +744,31 @@ temp table names, `test_gcat::test_environment`, the
 `test_validate_fix` chunked statement, and two tests that compile nothing in
 an archive export. 0 of 205 corpus plans moved.
 
+**The FINAL merge and the aggregate build read planned region spans.** Three
+decisions read `region_reads` off built nodes: which spans the
+multi-contributor FINAL merge emits as hidden region keys, which of an
+aggregate's parents are region domains (and so `domain_spans`), and the
+`region_spans` the aggregate build hands `_project_basic_aggregate_inputs`.
+Each now reads `_group_region_reads` over the planned groups:
+`_planned_region_reads` maps each parent back to its group through `origin`
+(raising on a parent that maps to none), and the aggregate's projection reads
+its planned predecessors.
+
+Measured over the same suites: 3,784 FINAL merges, 14,797 aggregate domain
+choices and 14,770 aggregate projections. All but 2, 4 and 4 agreed. Every
+disagreement is Open item 2: in `test_derived_key_domain` and one
+`test_rowset_declared_join_pairing` query, the outer ROOT re-sources a gate
+argument (`avg(customer_id) by *`, `count(customer_id) by *`) through a nested
+plan whose `customer_id` extent group the outer graph does not hold. The 2
+FINAL merges emit the same region keys either way. The 4 aggregate
+disagreements are one query (`count(customer_id) by * > 2 and activity =
+'dormant'`, twice) whose rendered SQL is byte-identical under the swap. SQL
+capture over the same suites (13,159 statements) against part 19 moved no
+plan: only the `grain_check` hash-seed column order (40), BigQuery temp table
+names, `test_gcat::test_environment`, the
+`test_declared_join_beside_a_property_of_the_superset_key` join type, and two
+tests that compile nothing in an archive export. 0 of 205 corpus plans moved.
+
 **Open.**
 
 1. The fold widen still projects the aggregate's merge after
@@ -753,14 +778,21 @@ an archive export. 0 of 205 corpus plans moved.
 2. A ROOT that re-sources a filter argument through a nested plan reads that
    plan's region domain, which the outer group graph does not hold. The
    planned region reads cannot see it until the nested plan's domains are
-   stage-2 facts. The FINAL WHERE applier reads the planned region reads
-   there and its widen is a no-op; no decision depends on the domain yet.
-3. Region spans are still read off built nodes in two places: the FINAL
-   merge's `region_reads(p) for p in parents` (which spans it emits as hidden
-   region keys), and `_build_group`'s `region_reads(p)` over each group's
-   parents, one of which feeds `_project_basic_aggregate_inputs`. The planned
-   twin is `_group_region_reads` over the planned parents. Probe them before
-   swapping; the nested-plan gap in item 2 applies.
+   stage-2 facts. The FINAL WHERE applier, the FINAL merge's region keys and
+   the aggregate's domain parents read the planned reads; at every probed
+   case the decision or its SQL came out the same.
+3. `_parent_nodes_for` still reads `region_reads` off `built[pgid]` twice:
+   the guard that keeps a ROOT reading a region from being re-sourced as a
+   slice, and the descendant-cover check (`region_reads(node) <=
+   region_reads(other_node)`). Both have `_group_region_reads(pgid)` as a
+   planned twin, but the slice guard is exactly item 2's case (the ROOT that
+   reads a nested plan's domain), so it waits on item 2. Probe both first.
+4. The merge, fold and pairing helpers (`_drop_ancestor_parents`,
+   `_fold_passthrough_parents`, `_fold_covered_contributors`,
+   `_carries_through`, `_pads_a_value_null_group`,
+   `_pair_inside_padding_streams`) read `region_reads` over assembled node
+   lists that include wraps and folds. They are not classified yet as
+   applied decisions or decisions to move.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the

@@ -25,6 +25,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _FinalExtras,
     _group_applies_conditions,
     _join_gate_hosts,
+    _planned_region_reads,
     _planned_side,
     _row_condition_before_aggregate,
     _uncovered_final_side,
@@ -307,3 +308,32 @@ def test_uncovered_final_dedups_its_first_planned_group():
 
     assert isinstance(final, GroupNode)
     assert [c.address for c in final.output_concepts] == [species.address]
+
+
+@dataclass
+class _Wrap:
+    parents: list
+
+
+def test_parent_region_reads_are_its_planned_groups():
+    graph = nx.DiGraph()
+    graph.add_edge("domain", "rows")
+    graph.add_node("solid")
+    attrs = {
+        "domain": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROOT,
+            extent_spans=frozenset({"local.tree_id"}),
+        ),
+        "rows": _attrs(Derivation.BASIC, "local.genus"),
+        "solid": _attrs(Derivation.ROOT, "local.tree_id"),
+    }
+    rows, solid = _Wrap([]), _Wrap([])
+    origin = {id(rows): "rows", id(solid): "solid"}
+
+    assert _planned_region_reads(graph, attrs, [_Wrap([rows]), solid], origin) == [
+        frozenset({"local.tree_id"}),
+        frozenset(),
+    ]
+    with pytest.raises(ValueError, match="no planned group"):
+        _planned_region_reads(graph, attrs, [_Wrap([])], origin)

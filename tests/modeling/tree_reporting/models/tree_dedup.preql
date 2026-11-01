@@ -1,0 +1,502 @@
+# Cross-source dedup and attribute merge, shared by every city tree model.
+#
+# A city's tree parquet is built from up to five partitions -- the municipal
+# inventory, approved community submissions, OpenStreetMap, reviewed
+# aerial-imagery detections, and bulk imagery predictions -- that overlap by construction: the same tree is
+# re-mapped by OSM, submitted by someone who found it already in the
+# inventory, or detected by the imagery model in a city that later publishes
+# it.  This file resolves the overlap once,
+# for all cities: rows that describe the same tree are grouped under ONE
+# canonical cluster id, every canonical attribute (`species`, `latitude`, ...)
+# is picked from the cluster's rows by a value function, and the row whose
+# tree_id equals its cluster id is the survivor.  The rows it absorbed are not
+# published at all -- see "The prune" at the bottom.
+#
+# What a city model has to do to take part, and nothing else:
+#
+#   import ..tree_dedup;
+#   auto {lc}_source_label <- concat({lc}_source, '');
+#   merge {lc}_source_label into source_label;
+#   ... every raw source maps `raw_species`, `raw_latitude`, ... (not the
+#       canonical concepts), and the published target maps `species`,
+#       `latitude`, ... plus `merged_sources`, `merged_tree_ids` and
+#       `reported_missing`, and carries
+#       `where tree_id = cluster_id and reported_missing = false` to drop the
+#       absorbed rows and the trees an approved report says are gone.
+#   merge merged_dbh into diameter_at_breast_height;   # or @corrected_dbh(<its own dbh>)
+#   merge merged_latitude into latitude;               # or import ../tree_position.preql,
+#   merge merged_longitude into longitude;             #   which merges the corrected point
+#
+# The cell size each city matches at lives in DEDUP_CELL_METRES in
+# shared/ingest.py, with the per-city calibration; ./dedup_cells.py turns it
+# into degrees at that city's latitude.  Add a city there and it is wired.
+#
+# ---------------------------------------------------------------------------
+# Spatial matching: four staggered grids
+# ---------------------------------------------------------------------------
+#
+# Two rows match when they share a grid cell in ANY of four copies of a grid
+# offset by half a cell in x, y and both.  Two points within half a cell of
+# each other always share a cell in at least one copy, so a 10m cell is a
+# guaranteed match within 5m, with possible matches out to a cell diagonal
+# (~14m).  Trilogy joins are equality-only, so this is the equi-join stand-in
+# for a radius query; an unnest-based 3x3 neighbourhood would give an exact
+# radius but sits on the merged-unnest planner path that has regressed twice.
+#
+# Why the guarantee is 5m for most cities and not 10m: distance alone cannot
+# separate a re-mapped inventory tree from the next tree in a planted row --
+# Tempe's inventory has a MEDIAN planting spacing of 6.5m.  What separates
+# them is pair structure, measured by osm_dedup_validation.py: below 5m an
+# OSM point and its nearest inventory tree are mutual nearest neighbours
+# >=88% of the time (the same tree, offset by GPS or imagery error); in the
+# 5-10m band that collapses to 15-50% in most cities, i.e. mostly distinct
+# neighbours.  Three cities (Buenos Aires, Burlington, Los Angeles) break at
+# 10m instead and use a 20m cell.  A missed duplicate double-renders one dot;
+# a false match hides a real tree, so an ambiguous band is left alone.
+#
+# ---------------------------------------------------------------------------
+# Cluster assignment, by source class
+# ---------------------------------------------------------------------------
+#
+#   municipal row  -> itself
+#   community row  -> the lowest municipal id sharing a cell, else itself
+#   satellite row  -> the lowest municipal id sharing a cell, else the lowest
+#                     community id sharing a cell, else itself
+#   OSM row        -> the lowest municipal id sharing a cell, else the lowest
+#                     community id, else the lowest satellite id, else itself
+#   predicted row  -> as an OSM row, else the lowest OSM id sharing a cell,
+#                     else itself.  Nothing ever joins a predicted row: two
+#                     predictions side by side stay two trees (the model's
+#                     own peak suppression already decided that).
+#
+# A predicted row (`PREDICTED_{code}`, bulk imagery output nobody reviewed)
+# is the weakest evidence there is, so it only fills the map where no other
+# source has a tree: wherever it is absorbed it lends the cluster nothing --
+# not a species, not a position, not a crown -- and its own values publish
+# only when it is alone.  See "Attribute merge" below.
+#
+# The satellite tier is what reconciles imagery with a portal: a detection
+# accepted in the reviewer publishes as its own tree until the city's
+# inventory catches up, and the day a municipal row lands in its cell the
+# detection is absorbed into that row's cluster, its id kept in
+# `merged_tree_ids` and its label in `merged_sources`.  A detection the
+# reviewer explicitly linked to an inventory tree is exported at that tree's
+# own coordinates (satellite_tree_info.py), so it shares every grid cell with
+# it and the link cannot be lost to the grid's half-cell guarantee.
+#
+# The row's class is expressed as an aggregate at its own grain
+# (`min(tree_id ? <class>) by row_key`) rather than as a `case` on the source,
+# because pytrilogy 0.3.343 cannot combine a per-cell aggregate with both the
+# source and tree_id in one expression (it emits a keyless join), and cannot
+# group that self-aggregate by tree_id itself either -- a string alias of the
+# key plans.  See upstream_repro/keyless_join_cell_aggregate.
+
+import tree_common;
+
+# --- Raw (pre-merge) attributes -------------------------------------------
+#
+# Every raw source in every city maps its columns onto these.  The canonical
+# concepts in tree_common are then derived by the merge below and `merge`d in
+# -- the pattern boston_tree_info.preql has long used to impute dbh.  A raw
+# source that mapped `species` directly would give the planner a second,
+# unmerged way to answer for it.
+property tree_id.raw_species string;
+property tree_id.raw_cultivar string;
+property tree_id.raw_tree_name string;
+property tree_id.raw_plant_date date;
+property tree_id.raw_latitude float;
+property tree_id.raw_longitude float;
+property tree_id.raw_dbh float;
+property tree_id.raw_crown_width_m float;
+property tree_id.raw_photo_url string;
+
+# The row's `data_source` value as a plain string.  Each city merges its own
+# `{lc}_source` enum in; the enum itself stays per city because that is what
+# proves a city's partition union complete (see core.preql).
+property tree_id.source_label string;
+
+# The labels follow one convention -- `COMMUNITY_{code}`, `OSM_{code}`,
+# `SATELLITE_{code}`, and anything else is a municipal dataset -- enforced by
+# DATA_SOURCES in shared/ingest.py, so the class needs no per-city table.
+auto source_class <- case
+    when substring(source_label, 1, 10) = 'COMMUNITY_' then 'community'
+    when substring(source_label, 1, 10) = 'SATELLITE_' then 'satellite'
+    when substring(source_label, 1, 4) = 'OSM_' then 'osm'
+    when substring(source_label, 1, 10) = 'PREDICTED_' then 'predicted'
+    else 'municipal'
+end;
+
+# --- Grid cells, sized per city -------------------------------------------
+#
+# An inline table rather than a python datasource, because this file is also
+# in the browser's model bundle and is planned on a resolver that has no
+# scripts: pytrilogy drops a `file` datasource whose path does not exist, and
+# an unbound cell size made the planner error out while exploring the merge
+# instead of reading the published parquet.  Regenerate with
+# `uv run tools/dedup_cells.py --write`; `test_dedup_cells.py` checks it is current.
+property city.cell_lat_deg float; # one grid cell, in degrees of latitude
+property city.cell_lon_deg float; # one grid cell, in degrees of longitude at the city's latitude
+
+# BEGIN dedup_cells -- generated by dedup_cells.py from DEDUP_CELL_METRES; do not edit
+root datasource dedup_cells (
+    city: city,
+    cell_lat_deg: cell_lat_deg,
+    cell_lon_deg: cell_lon_deg,
+)
+grain (city)
+query '''
+SELECT * FROM (VALUES
+    ('ARBUE', 0.00017966, 0.00021833),
+    ('AUMEL', 0.00008983, 0.00011373),
+    ('CAAJX', 0.00005390, 0.00007476),
+    ('CABUR', 0.00003593, 0.00004943),
+    ('CACAL', 0.00003593, 0.00005713),
+    ('CAEDM', 0.00005390, 0.00009067),
+    ('CAHFX', 0.00017966, 0.00025287),
+    ('CAKEL', 0.00008983, 0.00013939),
+    ('CAKGN', 0.00005390, 0.00007535),
+    ('CALET', 0.00005390, 0.00008333),
+    ('CALON', 0.00005390, 0.00007691),
+    ('CAMIS', 0.00005390, 0.00007443),
+    ('CAMON', 0.00005390, 0.00007774),
+    ('CAMTL', 0.00005390, 0.00007697),
+    ('CANWE', 0.00007186, 0.00011000),
+    ('CAOTT', 0.00005390, 0.00007656),
+    ('CAQUE', 0.00007186, 0.00010506),
+    ('CATOR', 0.00005390, 0.00007458),
+    ('CAVAN', 0.00008983, 0.00013762),
+    ('CAVIC', 0.00005390, 0.00008124),
+    ('CAWPG', 0.00005390, 0.00008358),
+    ('COBOG', 0.00007186, 0.00007210),
+    ('DEBER', 0.00008983, 0.00014756),
+    ('DKCPH', 0.00007186, 0.00012743),
+    ('FIHEL', 0.00007186, 0.00014460),
+    ('FRPAR', 0.00008983, 0.00013658),
+    ('GBLON', 0.00008983, 0.00014430),
+    ('GRATH', 0.00008983, 0.00011396),
+    ('GRMLO', 0.00008983, 0.00011208),
+    ('GRSAN', 0.00008983, 0.00011161),
+    ('JPTYO', 0.00007186, 0.00008848),
+    ('NLAMS', 0.00008983, 0.00014706),
+    ('TWTPE', 0.00008983, 0.00009919),
+    ('USBOS', 0.00008983, 0.00012155),
+    ('USBTV', 0.00017966, 0.00025178),
+    ('USDEN', 0.00008983, 0.00011675),
+    ('USLAX', 0.00017966, 0.00021678),
+    ('USNYC', 0.00008983, 0.00011849),
+    ('USSFO', 0.00008983, 0.00011361),
+    ('USSTO', 0.00008983, 0.00012265),
+    ('USTEM', 0.00008983, 0.00010759),
+    ('USWAS', 0.00008983, 0.00011542)
+) AS t(city, cell_lat_deg, cell_lon_deg)
+''';
+# END dedup_cells
+
+# One bigint per cell rather than a 'lon:lat' string.  The cell is a join
+# and grouping key in eight hash tables per build (four grids, each
+# aggregated and joined back), and a build's memory is those hash tables:
+# measured on Berlin's 765k-row union, string keys cost 11% more peak RSS
+# than integer ones (upstream_repro/redundant_group_by/memory).  The lon
+# index is at most 180 / 0.00009 ~ 2.0e6 and the lat index at most
+# 90 / 0.00009 ~ 1.0e6, so 1e7 keeps the two apart with no collisions and
+# the key stays under 2e13, well inside a bigint.
+def grid_cell(dx, dy) ->
+    cast(floor(raw_longitude / cell_lon_deg + dx) as bigint) * 10000000
+    + cast(floor(raw_latitude / cell_lat_deg + dy) as bigint);
+
+auto cell_a <- @grid_cell(0, 0);
+auto cell_b <- @grid_cell(0.5, 0);
+auto cell_c <- @grid_cell(0, 0.5);
+auto cell_d <- @grid_cell(0.5, 0.5);
+
+# --- Cluster id --------------------------------------------------------------
+#
+# Three anchor tiers, one per class that can own a cluster: a municipal row,
+# a person's submission, and a reviewed detection.  Each tier is an aggregate
+# over the same four cells, so the satellite tier costs four more grouped
+# aggregates per build; what a grouped aggregate costs on Berlin's union is
+# measured in upstream_repro/redundant_group_by/memory.
+def municipal_anchor(cell) -> min(tree_id ? source_class = 'municipal') by cell;
+def person_anchor(cell) -> min(tree_id ? source_class = 'municipal' or source_class = 'community') by cell;
+def any_anchor(cell) -> min(tree_id ? source_class != 'osm' and source_class != 'predicted') by cell;
+# The last tier, for predicted rows only: an OSM node is a tree a person
+# mapped, so it absorbs a prediction beside it.  OSM rows never reach it (two
+# OSM nodes in a cell stay two trees, as they always have), which is why it
+# is gated on the row's own class rather than added to the coalesce for all.
+def osm_anchor(cell) -> min(tree_id ? source_class = 'osm') by cell;
+
+auto municipal_anchor_a <- @municipal_anchor(cell_a);
+auto municipal_anchor_b <- @municipal_anchor(cell_b);
+auto municipal_anchor_c <- @municipal_anchor(cell_c);
+auto municipal_anchor_d <- @municipal_anchor(cell_d);
+
+auto person_anchor_a <- @person_anchor(cell_a);
+auto person_anchor_b <- @person_anchor(cell_b);
+auto person_anchor_c <- @person_anchor(cell_c);
+auto person_anchor_d <- @person_anchor(cell_d);
+
+auto anchor_a <- @any_anchor(cell_a);
+auto anchor_b <- @any_anchor(cell_b);
+auto anchor_c <- @any_anchor(cell_c);
+auto anchor_d <- @any_anchor(cell_d);
+
+auto osm_anchor_a <- @osm_anchor(cell_a);
+auto osm_anchor_b <- @osm_anchor(cell_b);
+auto osm_anchor_c <- @osm_anchor(cell_c);
+auto osm_anchor_d <- @osm_anchor(cell_d);
+
+# "Self if <class>": the row's own id when it is of that class, else null.
+auto row_key <- concat(tree_id, '#');
+auto self_if_municipal <- @municipal_anchor(row_key);
+auto self_if_person <- @person_anchor(row_key);
+auto self_if_not_osm <- @any_anchor(row_key);
+auto self_if_predicted <- min(tree_id ? source_class = 'predicted') by row_key;
+auto predicted_osm_anchor <- case
+    when self_if_predicted is not null then coalesce(osm_anchor_a, osm_anchor_b, osm_anchor_c, osm_anchor_d)
+    else null
+end;
+
+auto cluster_id <- coalesce(
+    self_if_municipal,
+    municipal_anchor_a, municipal_anchor_b, municipal_anchor_c, municipal_anchor_d,
+    self_if_person,
+    person_anchor_a, person_anchor_b, person_anchor_c, person_anchor_d,
+    self_if_not_osm,
+    anchor_a, anchor_b, anchor_c, anchor_d,
+    predicted_osm_anchor,
+    tree_id
+);
+
+# --- Approved corrections ----------------------------------------------------
+#
+# A tree report (reviewer/modifications.ts) corrects a tree already on the map:
+# its species, its DBH, its position, or that it is gone.  The reviewer
+# publishes the approved ones to `community/tree_modifications.ndjson`, and
+# ./tree_modification_info.py resolves them to one row per tree, the latest
+# report winning field by field.  A report names the tree id the reporter saw,
+# which is the id of the published row -- the cluster survivor -- so the
+# correction lands on that row and the survivor publishes it.
+#
+# The rows carry their own key, merged PARTIALLY into tree_id: `~` makes the
+# join a LEFT OUTER from the tree rows, so a tree with no report keeps its row
+# and a report for a tree in another city (or no longer in any source) adds
+# none.  A plain merge would be a FULL join over the coalesced key and publish
+# the other city's reported trees here.  The datasource is declared once, in
+# this shared file, because it is not one of a city's source partitions: every
+# city reads the same export and the join keeps only its own trees.
+key modified_tree_id string; # the published tree an approved tree report corrects
+property modified_tree_id.modified_species string; # the species the latest report gave this tree, as an accepted scientific name
+property modified_tree_id.modified_dbh float; # the trunk diameter, inches, the latest report gave this tree
+property modified_tree_id.modified_latitude float; # the corrected position's latitude (always with its longitude)
+property modified_tree_id.modified_longitude float; # the corrected position's longitude (always with its latitude)
+property modified_tree_id.modified_missing bool; # the latest approved report says this tree is gone
+
+root datasource tree_modifications (
+    tree_id: modified_tree_id,
+    species: modified_species,
+    diameter_at_breast_height: modified_dbh,
+    latitude: modified_latitude,
+    longitude: modified_longitude,
+    missing: modified_missing,
+)
+grain (modified_tree_id)
+file `./tree_modification_info.py`;
+
+merge modified_tree_id into ~tree_id;
+
+# Whether the latest approved report says the tree is gone.  Every target
+# stores it and gates on it (see "The prune"); the rows the tree's cluster
+# absorbed are not published either, since they never are.
+auto reported_missing <- coalesce(modified_missing, false);
+
+# --- Attribute merge over the cluster ---------------------------------------
+#
+# `@by_source` is the default value function: a non-null value wins, and when
+# more than one source has one the community value is taken first (it carries
+# a person and a photo), then the municipal inventory, then the reviewed
+# detection (a person confirmed it, but its position is a crown centre and
+# its diameter an estimate the ingest does not even publish), then OSM.
+# A predicted row's value is taken only when the cluster has nothing else in
+# it (its top rank is a prediction's 0), so an absorbed prediction can never
+# fill a gap another source left -- a model's genus filling an inventory row's
+# missing species would publish a guess under the inventory's id.
+# Grouped aggregates inside a function argument list have to be
+# parenthesised, or the parser reads `by k, next_arg` as a multi-column group.
+def by_source(value) -> coalesce(
+    (max(value ? source_class = 'community') by cluster_id),
+    (max(value ? source_class = 'municipal') by cluster_id),
+    (max(value ? source_class = 'satellite') by cluster_id),
+    (max(value ? source_class = 'osm') by cluster_id),
+    case when cluster_top_rank = 0 then (max(value ? source_class = 'predicted') by cluster_id) else null end
+);
+
+auto source_rank <- case
+    when source_class = 'community' then 4
+    when source_class = 'municipal' then 3
+    when source_class = 'satellite' then 2
+    when source_class = 'osm' then 1
+    else 0
+end;
+# The best source in the cluster; 0 means every row in it is a prediction.
+auto cluster_top_rank <- max(source_rank) by cluster_id;
+
+# Species: the most specific name wins (binomial > genus > a sentinel that
+# still says something, like Palm or Dead > Unknown); ties go to the
+# higher-ranked source.  Encoded as a sortable key so a single max() picks one
+# value -- Trilogy has no arg_max.
+auto species_specificity <- case
+    when raw_species = 'Unknown' then 0
+    when raw_species = 'Palm' or raw_species = 'Shrub' or raw_species = 'Cactus' or raw_species = 'Dead' then 1
+    when strpos(raw_species, ' ') = 0 then 2
+    else 3
+end;
+auto species_key <- concat(cast(species_specificity as string), cast(source_rank as string), '|', raw_species);
+# An approved correction wins over every source.
+# A prediction's name is left out of the contest, and used only when the
+# cluster is the prediction alone.
+auto merged_species <- coalesce(
+    modified_species,
+    substring((max(species_key ? source_class != 'predicted') by cluster_id), 4, 200),
+    case when cluster_top_rank = 0 then substring((max(species_key) by cluster_id), 4, 200) else null end
+);
+
+# Position comes from the survivor's own source via @by_source, which is a
+# single row, so latitude and longitude always travel together.  Preferring a
+# partner's unshared point over an address centroid is parked: it needs either
+# a string round-trip (`cast(... as float)` renders 32-bit REAL) or a filtered
+# aggregate on an aggregate-derived flag, which does not plan yet.
+# The merge with the approved correction on top, as functions, so a city
+# (or ../tree_position.preql) that merges its own value -- Boston's imputed
+# dbh, the Overture-placed point -- applies corrections by calling the same
+# helper rather than repeating the coalesce.  A corrected position is final:
+# the ingest only ever emits the pair, and it is not snapped again.
+def corrected_dbh(dbh) -> coalesce(modified_dbh, @by_source(dbh));
+def corrected_latitude(lat) -> coalesce(modified_latitude, @by_source(lat));
+def corrected_longitude(lon) -> coalesce(modified_longitude, @by_source(lon));
+
+auto merged_latitude <- @corrected_latitude(raw_latitude);
+auto merged_longitude <- @corrected_longitude(raw_longitude);
+auto merged_tree_name <- @by_source(raw_tree_name);
+# The cultivar travels by source rather than with the winning species: a
+# community submission that names the selection is more specific than an
+# inventory row that does not, and the same order @by_source already uses.
+auto merged_cultivar <- @by_source(raw_cultivar);
+auto merged_plant_date <- @by_source(raw_plant_date);
+auto merged_photo_url <- @by_source(raw_photo_url);
+auto merged_crown_width_m <- @by_source(raw_crown_width_m);
+
+# A negative dbh is a source's own "not measured" sentinel; null it before the
+# merge so a real measurement from another source can win.
+auto cleaned_dbh <- case when raw_dbh < 0 then null else raw_dbh end;
+auto merged_dbh <- @corrected_dbh(cleaned_dbh);
+
+# Provenance: every source that contributed to the cluster, and every id the
+# survivor absorbed, so no id is ever lost -- a link to an absorbed tree can be
+# resolved to its survivor.
+auto merged_sources <- array_to_string(array_sort(array_distinct((array_agg(source_label) by cluster_id))), ',');
+auto merged_tree_ids <- nullif(array_to_string(array_sort((array_agg(tree_id ? tree_id != cluster_id) by cluster_id)), ','), '');
+
+merge merged_species into species;
+merge merged_tree_name into tree_name;
+merge merged_cultivar into cultivar;
+merge merged_plant_date into plant_date;
+merge merged_photo_url into submission_photo_url;
+merge merged_crown_width_m into crown_width_m;
+# dbh is merged by the city model, not here: Boston imputes a missing value
+# from the city-and-species average of the merged values and merges
+# `processed_dbh` instead, and two merges into one concept is a conflict.
+# Position is merged by the city model too, for the same reason: a city that
+# imports ../tree_position.preql publishes the corrected point (moved off a
+# road or out of a building) as `latitude` and `longitude`, and one that does
+# not merges `merged_latitude` and `merged_longitude` itself.
+
+# ---------------------------------------------------------------------------
+# The prune
+# ---------------------------------------------------------------------------
+#
+# Each city's published target carries
+# `where tree_id = cluster_id and reported_missing = false`, so the parquet
+# holds exactly one row per tree, and none for a tree an approved report says
+# is gone (a later report that gives it values back restores it).
+#
+# A target's `where` is applied whenever its parquet is read, so it may only
+# name a column every published parquet already has: add the column to the
+# targets first, let each city rebuild, check with
+# `tools/published_columns.py <column>`, and only then gate on it.  Absorbed rows are not published, and
+# no client-side filter is needed to hide them; `merged_tree_ids` is where an
+# absorbed id survives, so a link to one can still be resolved to its survivor.
+#
+# This was blocked for a long time and the shape of the block is worth keeping.
+# pytrilogy 0.3.343 parsed a target-side `where` and silently did not apply it
+# when materialising; 0.3.347 applied it but then demanded the partial
+# partitions be provably exhaustive over the whole `city` enum -- which one
+# city's partitions never are -- and failed with `no complete sources found`.
+# 0.3.348 plans the gate inside the target's own partition scope, after the
+# union and the cell aggregates it depends on.  So this file needs 0.3.348 or
+# later; on an older planner the prune does not fail loudly, it either does
+# nothing or refuses to resolve.  upstream_repro/keyless_join_cell_aggregate
+# has the three spellings and the enum toggle that isolated it.
+
+# ---------------------------------------------------------------------------
+# The datasource shapes every city declares
+# ---------------------------------------------------------------------------
+#
+# Each city reads the same partitions and publishes the same target; only the
+# city's own source enum, its watermark, its `complete where` and its file
+# differ.  A city datasource `extends` one of these and declares just those:
+#
+#   root partial datasource {city}_raw_tree_info extends tree_partition (
+#       data_source: {lc}_source,
+#   )
+#   complete where city = '{CODE}' and {lc}_source = '{LABEL}'
+#   file `./{city}_tree_info.py`;
+#
+# A column the child names again takes the child's binding: an OSM partition
+# re-binds `species: ?raw_species`, NYC reads `genusspecies: raw_species`.  A
+# child cannot drop a column, so a source that lacks one emits it as null.
+
+template datasource tree_partition (
+    tree_id: tree_id,
+    city: city,
+    species: raw_species,
+    tree_name: ?raw_tree_name,
+    plant_date: ?raw_plant_date,
+    latitude: ?raw_latitude,
+    longitude: ?raw_longitude,
+    diameter_at_breast_height: ?raw_dbh,
+    submission_photo_url: ?raw_photo_url,
+    cultivar: ?raw_cultivar,
+    crown_width_m: ?raw_crown_width_m,
+)
+grain (tree_id);
+
+# A build may not shed more than a quarter of the city's trees, or of any
+# municipal or OSM source (each city adds one `@source_kept` per such label to
+# its own target: the template cannot name the city's source enum).  See
+# `kept` in core.preql.
+template datasource published_tree_info (
+    tree_id,
+    city,
+    species,
+    ?tree_name,
+    ?plant_date,
+    ?diameter_at_breast_height,
+    ?latitude,
+    ?longitude,
+    ?submission_photo_url,
+    ?cultivar,
+    ?crown_width_m,
+    # Redundant on its face -- the prune means it always equals tree_id -- and
+    # once dropped from the scaffold for exactly that reason, which left three
+    # cities with fourteen columns where every other had fifteen.  It is the
+    # column any check of the prune reads.  Keep it;
+    # `test_every_city_publishes_cluster_id` pins it.
+    cluster_id,
+    merged_sources,
+    ?merged_tree_ids,
+    reported_missing,
+)
+grain (tree_id)
+# The prune; see above.  A child's own `where` is ANDed onto it.
+where tree_id = cluster_id and reported_missing = false
+assert @kept(tree_id, 0.75);

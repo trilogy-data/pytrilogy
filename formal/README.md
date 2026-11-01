@@ -42,6 +42,7 @@ a design decision or a bug.
 | `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
+| `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
 
 ## What it found
 
@@ -522,8 +523,28 @@ a design decision or a bug.
   The `merged_axis_pin` family adds an aggregate over the merged key and an
   OR beside it; the full fuzzer passes 3,132 of 3,132.
 
+- **A summary answered one value under one spelling only.** `Cover.lean`
+  names six rules for when a count summary covers a query, and
+  `tests/discovery/test_summary_cover_laws.py` runs each rule's shapes under
+  five filters. On main, 169 of the 190 coverable cases missed and 2 raised;
+  now 96 miss, none raise and none answer differently. A rename
+  (`species as s`) failed the "aggregate at its own grain" gate, which compared
+  grains by address (`Cover.target_by_value`). A column listed twice was refused
+  outright (`Cover.duplicate_target_slice`). A scalar of a stored column
+  (`plant_year::int`) was never offered by the summary, because derivable
+  concepts were walked only from expressions over raw columns. `plant_date.year`
+  beside a stored `year(plant_date)` was bound by name only, so its WHERE ran on
+  the tree rows and joined the summary count. `count_distinct(tree_id)` now reads
+  as `count(tree_id)` wherever every grouping and WHERE column is a function of
+  `tree_id` (`Cover.count_distinct_of_key_exact`). A re-summed partial read
+  inside an expression (`n / count(x) by *`) was put in the GROUP BY and failed
+  to bind, as did a grand total joined beside it; both shapes raised on main.
+  Filtered counts, totals under a WHERE the target does not determine,
+  existence and relations stay misses, held by strict xfails. One shape
+  disagrees on main and here: `sum(case when bucket = 'Native' then
+  count(tree_id) by bucket end)` reads 8 from the trees and 4 from the summary.
 - **Plans that one optimizer rule happened to repair, and padded plans that
-  dropped or invented rows** (`Rewrite.lean`, 0.3.439). Disabling each rule
+  dropped or invented rows** (`Rewrite.lean`, 0.3.441). Disabling each rule
   over the fuzzer corpus (1,305 cases, 2,140 firings) changed no rows, but
   the TPC-DS corpus and a padded model checked against a pre-joined twin
   found eleven bugs, most on main and several masked by the rule that ran:

@@ -1,12 +1,14 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.models.build import (
     ROLLUP_REAGGREGATES,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
+    BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
@@ -75,8 +77,9 @@ def _safe_dropped_grain(
     seen: frozenset[str] = frozenset(),
 ) -> bool:
     """`dropped` is a function of the aggregated row, so each row sits in one
-    group of it: a row key, a property of row keys, or a property of such
-    properties (`tree_form` of `species` of `tree_id`)."""
+    group of it: a row key, a property of row keys, a property of such
+    properties (`tree_form` of `species` of `tree_id`), or a scalar of such
+    functions (`split(species, ' ')[1]`)."""
     if dropped.granularity == Granularity.SINGLE_ROW:
         return True
     if dropped.address in base_keys:
@@ -85,6 +88,20 @@ def _safe_dropped_grain(
         return True
     if _datasource_proves_functional_dependency(dropped, base_keys, datasources):
         return True
+    if dropped.derivation == Derivation.BASIC and dropped.lineage is not None:
+        seen = seen | {dropped.address}
+        arguments = dropped.lineage.concept_arguments
+        return bool(arguments) and all(
+            argument.address not in seen
+            and _safe_dropped_grain(
+                concepts_by_address.get(argument.address, argument),
+                base_keys,
+                datasources,
+                concepts_by_address,
+                seen,
+            )
+            for argument in arguments
+        )
     if dropped.purpose != Purpose.PROPERTY or not dropped.keys:
         return False
     seen = seen | {dropped.address}
@@ -190,9 +207,9 @@ def finer_than_grain(
         return False
     components = set(grain.components)
     if concept.address in components or concept.canonical_address in {
-        concepts_by_address[c].canonical_address
+        concepts_by_address[source].canonical_address
         for c in components
-        if c in concepts_by_address
+        if (source := renamed_source(c, concepts_by_address)) in concepts_by_address
     }:
         return False
     return not (
@@ -202,15 +219,47 @@ def finer_than_grain(
     )
 
 
-def at_own_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
+def at_own_grain(
+    concept: BuildConcept,
+    grain: BuildGrain,
+    concepts_by_address: Mapping[str, BuildConcept] | None = None,
+) -> bool:
     """An aggregate a request at `grain` asks for at that grain. One at
     another grain (`count(x) by *` beside per-city rows) is a separate value
-    the request joins, never one it groups."""
-    return _grain_identity(concept.grain) == _grain_identity(grain)
+    the request joins, never one it groups. A rename is the value it names
+    (`species as s` groups as `species`)."""
+    return _grain_identity(concept.grain, concepts_by_address) == _grain_identity(
+        grain, concepts_by_address
+    )
 
 
-def _grain_identity(grain: BuildGrain) -> frozenset[str]:
-    return frozenset() if grain.abstract else frozenset(grain.components)
+def renamed_source(
+    address: str, concepts_by_address: Mapping[str, BuildConcept]
+) -> str:
+    """The address a chain of pure renames ends at."""
+    seen = {address}
+    concept = concepts_by_address.get(address)
+    while (
+        concept is not None
+        and isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+        and len(concept.lineage.concept_arguments) == 1
+        and concept.lineage.concept_arguments[0].address not in seen
+    ):
+        address = concept.lineage.concept_arguments[0].address
+        seen.add(address)
+        concept = concepts_by_address.get(address)
+    return address
+
+
+def _grain_identity(
+    grain: BuildGrain, concepts_by_address: Mapping[str, BuildConcept] | None = None
+) -> frozenset[str]:
+    if grain.abstract:
+        return frozenset()
+    if concepts_by_address is None:
+        return frozenset(grain.components)
+    return frozenset(renamed_source(c, concepts_by_address) for c in grain.components)
 
 
 def pending_rollups(
@@ -271,9 +320,6 @@ def get_rollup_concepts(
         for component in target_grain.components
         if component in concepts_by_address
     ]
-    target_canonicals = [c.canonical_address for c in target_concepts]
-    if len(target_canonicals) != len(set(target_canonicals)):
-        return []
     if datasource_grain.issubset(target_grain):
         return []
     # The table must be able to GROUP BY the target grain: every component bound
@@ -412,8 +458,39 @@ def arm_rollup_concepts(
     ]
 
 
+def fans_out_rollup(
+    parents: list[tuple[BuildGrain | None, frozenset[str]]],
+    rollable: list[BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> bool:
+    """A parent the summary's rows join to more than one row of: its grain is
+    not determined by the summary's (the tree rows beside a year summary they
+    supply `planted_year` to), so each summary row repeats per tree and a
+    re-sum counts it that many times."""
+    rolled = {c.address for c in rollable}
+    summary_keys: set[str] = set()
+    for grain, outputs in parents:
+        if outputs & rolled and grain:
+            summary_keys |= set(grain.components)
+    if not summary_keys:
+        return False
+    for grain, outputs in parents:
+        if outputs & rolled or not grain:
+            continue
+        for address in set(grain.components) - summary_keys:
+            concept = concepts_by_address.get(address)
+            if (
+                concept is None
+                or concept.purpose != Purpose.PROPERTY
+                or not concept.keys
+                or not concept.keys.issubset(summary_keys)
+            ):
+                return True
+    return False
+
+
 def merge_rollup_concepts(
-    parent_grains: Iterable[BuildGrain | None],
+    parents: Iterable[tuple[BuildGrain | None, frozenset[str]]],
     all_concepts: list[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
 ) -> list[BuildConcept]:
@@ -426,10 +503,13 @@ def merge_rollup_concepts(
     rollable = [c for c in all_concepts if c.is_aggregate and _is_rollable_aggregate(c)]
     if not rollable or len(rollable) != sum(1 for c in all_concepts if c.is_aggregate):
         return []
+    parents = list(parents)
     merge_components: set[str] = set()
-    for grain in parent_grains:
+    for grain, _ in parents:
         if grain and grain.components:
             merge_components.update(grain.components)
+    if fans_out_rollup(parents, rollable, concepts_by_address):
+        return []
     target_components = {c.address for c in all_concepts if not c.is_aggregate}
     # A grain component must actually be summed AWAY. When every one of them
     # survives into the output the merge already sits at the target's row
@@ -570,3 +650,86 @@ def reaggregate_partials(
             fine = min(candidates, key=lambda c: (len(c.grain.components), c.address))
             rewritten[coarse.address] = _reaggregated(coarse, fine)
     return rewritten
+
+
+def _distinct_count_key(concept: BuildConcept) -> BuildConcept | None:
+    """The key a `count_distinct(k)` counts, `k ? c` included."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return None
+    function = concept.lineage.function
+    if function.operator != FunctionType.COUNT_DISTINCT:
+        return None
+    arguments = function.concept_arguments
+    if len(arguments) != 1:
+        return None
+    key = arguments[0]
+    if isinstance(key.lineage, BuildFilterItem) and isinstance(
+        key.lineage.content, BuildConcept
+    ):
+        key = key.lineage.content
+    return key if key.purpose == Purpose.KEY else None
+
+
+def distinct_key_counts(
+    demanded: Iterable[BuildConcept],
+    conditions: BuildWhereClause | None,
+    concepts_by_address: Mapping[str, BuildConcept],
+    datasources: Iterable[BuildDatasource],
+) -> dict[str, BuildConcept]:
+    """Each demanded `count_distinct(k)` a summary storing `count(k)` can
+    answer, re-expressed as `count(k)` (`Cover.count_distinct_of_key_exact`):
+    on rows where every grouping and WHERE column is a function of the key,
+    each value of `k` is one row. An unnested or other fanned-out column
+    repeats the key, so it keeps its distinct count."""
+    datasource_list = list(datasources)
+    stored = {
+        c.rollup_signature
+        for ds in datasource_list
+        for c in ds.output_concepts
+        if c.rollup_signature is not None
+    }
+    row_columns = [
+        c
+        for c in (conditions.row_arguments if conditions else [])
+        if c.granularity != Granularity.SINGLE_ROW
+    ]
+    rewritten: dict[str, BuildConcept] = {}
+    for concept in _distinct_counts(demanded, concepts_by_address):
+        key = _distinct_count_key(concept)
+        if key is None or (FunctionType.COUNT, (key.canonical_address,)) not in stored:
+            continue
+        assert isinstance(concept.lineage, BuildAggregateWrapper)
+        grouping = [
+            concepts_by_address.get(address)
+            for address in _grain_identity(concept.grain)
+        ]
+        if not all(
+            column is not None
+            and _safe_dropped_grain(
+                column, {key.address}, datasource_list, concepts_by_address
+            )
+            for column in [*grouping, *row_columns]
+        ):
+            continue
+        count = replace(concept.lineage.function, operator=FunctionType.COUNT)
+        rewritten[concept.address] = replace(
+            concept, lineage=replace(concept.lineage, function=count)
+        )
+    return rewritten
+
+
+def _distinct_counts(
+    concepts: Iterable[BuildConcept], concepts_by_address: Mapping[str, BuildConcept]
+) -> list[BuildConcept]:
+    found: dict[str, BuildConcept] = {}
+    stack = list(concepts)
+    while stack:
+        concept = concepts_by_address.get(stack.pop().address)
+        if concept is None or concept.address in found:
+            continue
+        found[concept.address] = concept
+        if concept.lineage is not None and not isinstance(
+            concept.lineage, BuildFilterItem
+        ):
+            stack.extend(concept.lineage.concept_arguments)
+    return [c for c in found.values() if _distinct_count_key(c) is not None]

@@ -1,0 +1,46 @@
+# The published species enrichment table, as a *source*.
+#
+# One `root datasource` over `tree_enrichment_v{n}.parquet`, mapping only the
+# columns a consumer of published data needs (the taxonomy, the growth
+# form and the native range), and nothing else. Root means unmanaged: a job importing this reads
+# the table and never tries to build it -- the managed declaration in
+# `tree_enrichment.preql` is the one whose refresh runs the LLM.
+#
+# This is `full_tree_info_source.preql` for the enrichment table, and the
+# same two rules apply:
+#
+#   * The datasource is named `tree_enrichment`, the same as the managed one,
+#     on purpose. trilogy-cloud derives a tick's ordering from asset names when
+#     the address is templated, so a job that imports this file is ordered
+#     after `refresh-enrichment` in the same schedule tick.
+#   * `species: ~species`, not `partial datasource`. The table is complete for
+#     every column it carries but does not hold every species, and that is a
+#     partial *key*: the planner pads the join, a tree whose species has no
+#     row yet is still predicted (with its fallbacks), and the columns and
+#     the scalars derived from them stay complete at tree grain. Declared as
+#     a partial datasource, every column and every derivation over one is
+#     partial too, and pytrilogy >= 0.3.391 refuses `predicted_dbh_cm` and
+#     its siblings as "only resolvable from partial sources". Declared fully
+#     complete, the species join becomes an INNER JOIN and unenriched trees
+#     disappear. `test_tree_predictions.py` pins the spelling.
+#   * It must never be in the frontend's model bundle. `tree_enrichment.preql`
+#     declares `genus` as a property of `species`; this file declares it as a
+#     key so a coefficient table can be joined on it, and the two declarations
+#     cannot share a scope. `test_tree_predictions.py` checks the bundle.
+
+import tree_common;
+
+key genus string; # the genus the enrichment table assigns the species -- corrected for a misspelt binomial, and occasionally a superseded name (Sapium for Triadica)
+property species.tree_form string; # broadleaf | conifer | palm | columnar | ornamental | spreading | weeping | multi_trunk | default
+property species.common_names list<string>; # ordered by familiarity; the first is what the map shows as the tree's name
+property species.native_ecoregions list<int>; # ecoregion_id values where the species is native
+
+root datasource tree_enrichment (
+    species: ~species,
+    genus: ?genus,
+    tree_form: ?tree_form,
+    common_names: ?common_names,
+    native_ecoregions: ?native_ecoregions,
+)
+grain (species)
+file f`./fixtures/tree_enrichment_v{data_version}.parquet`;

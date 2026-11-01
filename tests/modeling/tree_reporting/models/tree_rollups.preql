@@ -1,0 +1,163 @@
+# Summary tables the city dashboards answer their default views from.
+#
+# The Summary and Species pages open with forty-odd charts, and most of them
+# are a tree count grouped by species or by something that hangs off species
+# (a growth form, a hardiness bucket): answerable from a few thousand
+# (city, species) rows instead of a scan of the city's tree file, which is
+# 110 MB for Boston. With `tree_rollup_source.preql` in the dashboard scope
+# the planner reads the summary wherever it can and re-sums it per bucket;
+# a query it cannot answer from the summary still reads the trees.
+#
+# Built from the published cross-city rollup, through a root named
+# `full_tree_info` (full_tree_info_source.preql), so this job runs after
+# publish-full in the same tick. It is never in the frontend bundle; the
+# browser reads the parquet through tree_rollup_source.preql, whose root
+# carries the same datasource name and the same `rollup_tree_count`.
+#
+# Five grains. Each finer one adds a tree-level bucket from
+# tree_summary_grains.preql to (city, species): plant year, DBH class and the
+# dot map's cells. Species stays in every grain because every page filter is
+# a species property, so a filtered chart is still a re-sum. A chart is served
+# only when it groups by the bucket concept itself, under its own name
+# (pytrilogy #827); the dashboard queries are written that way. They are
+# written in city order, so a phone's range reads fetch only its city's row
+# groups of the one cross-city file.
+#
+# Two lookups sit beside them, for the charts a count summary cannot serve on
+# its own: each city's tree centroid, and each species' native range as lists.
+import tree_common;
+import tree_summary_grains;
+import full_tree_info_source;
+import tree_enrichment_source;
+import ecoregion_info_source;
+
+property <*>.rollup_inputs_published_through datetime;
+
+# The newer of the rollup's and the enrichment table's publication; only the
+# rollup matters here, and a rebuild on an enrichment change costs seconds.
+root datasource rollup_inputs_probe (
+    data_updated_through: rollup_inputs_published_through
+)
+file `./prediction_inputs_probe.py`;
+
+auto rollup_tree_count <- count(tree_id);
+
+datasource tree_rollup_species (
+    city,
+    species,
+    rollup_tree_count,
+    rollup_inputs_published_through,
+)
+grain (city, species)
+file f`./fixtures/tree_rollup_species_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+# A city that lost a quarter of its species, or had its parquet missing from
+# the rollup's scan, is refused and the published summary kept.
+assert @kept_by(species, city, 0.75);
+
+datasource tree_rollup_year (
+    city,
+    species,
+    plant_year,
+    rollup_tree_count,
+    rollup_inputs_published_through,
+)
+grain (city, species, plant_year)
+file f`./fixtures/tree_rollup_year_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+order by city asc, species asc
+assert @kept_by(species, city, 0.75);
+
+datasource tree_rollup_dbh (
+    city,
+    species,
+    dbh_class,
+    rollup_tree_count,
+    rollup_inputs_published_through,
+)
+grain (city, species, dbh_class)
+file f`./fixtures/tree_rollup_dbh_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+order by city asc, species asc
+assert @kept_by(species, city, 0.75);
+
+# About 4M rows across every city, 170k for Boston: the per-city dot map.
+datasource tree_rollup_cell (
+    city,
+    species,
+    map_cell_latitude,
+    map_cell_longitude,
+    rollup_tree_count,
+    rollup_inputs_published_through,
+)
+grain (city, species, map_cell_latitude, map_cell_longitude)
+file f`./fixtures/tree_rollup_cell_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+order by city asc, species asc
+storage (row_group_size = 20480)
+assert @kept_by(species, city, 0.75);
+
+# About 0.75M rows: the all-cities dot map.
+datasource tree_rollup_coarse_cell (
+    city,
+    species,
+    map_coarse_cell_latitude,
+    map_coarse_cell_longitude,
+    rollup_tree_count,
+    rollup_inputs_published_through,
+)
+grain (city, species, map_coarse_cell_latitude, map_coarse_cell_longitude)
+file f`./fixtures/tree_rollup_coarse_cell_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+order by city asc, species asc
+storage (row_group_size = 20480)
+assert @kept_by(species, city, 0.75);
+
+# The mean position of each city's trees: where the Species page's world map
+# puts the city. A city property, so the map is a count by city plus this
+# lookup instead of an average over the city's tree file.
+auto city_latitude <- avg(latitude) by city;
+auto city_longitude <- avg(longitude) by city;
+
+datasource tree_rollup_city (
+    city,
+    city_latitude,
+    city_longitude,
+    rollup_inputs_published_through,
+)
+grain (city)
+file f`./fixtures/tree_rollup_city_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+assert @kept(city, 0.75);
+
+# Each species' native range as three lists: its ecoregions (copied from the
+# enrichment table), and the distinct biomes and realms those ecoregions
+# fall in. The dashboards' nativeness bucket is a test of the active city's
+# ecoregion, biome and realm against these lists, one answer per species, so
+# a species native to several ecoregions is counted once (the per-ecoregion
+# bucket it replaces counted its trees once per match) and the bucket is a
+# species property the (city, species) summary re-sums.
+#
+# The ecoregions are copied here rather than read from the enrichment table
+# beside the other two lists: a species property built from two species-grain
+# tables is not served from the summary (pytrilogy #827), one built from one
+# table is.
+#
+# The build also writes one row with a null species, holding the biomes and
+# realms of every ecoregion no species is native to (pytrilogy #835).
+auto native_ecoregion <- unnest(native_ecoregions);
+merge native_ecoregion into ecoregion_id;
+auto native_biomes <- array_sort(array_distinct(array_agg(biome) by species));
+auto native_realms <- array_sort(array_distinct(array_agg(realm) by species));
+
+datasource species_native_range (
+    species,
+    ?native_ecoregions,
+    ?native_biomes,
+    ?native_realms,
+    rollup_inputs_published_through,
+)
+grain (species)
+file f`./fixtures/species_native_range_v{data_version}.parquet`
+freshness by rollup_inputs_published_through
+assert @kept(species, 0.75);

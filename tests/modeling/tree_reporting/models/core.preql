@@ -1,0 +1,60 @@
+key city enum<string>['USSFO', 'USNYC', 'USBOS', 'FRPAR', 'USBTV', 'CAVAN', 'DEBER', 'NLAMS', 'GBLON', 'AUMEL', 'ARBUE', 'USLAX', 'USWAS', 'USTEM', 'GRATH', 'GRMLO', 'GRSAN', 'USDEN', 'CACAL', 'CAEDM', 'CAWPG', 'CATOR', 'CAMTL', 'CAQUE', 'CALON', 'CAHFX', 'CAKGN', 'CALET', 'CAVIC', 'CAKEL', 'CANWE', 'CAMIS', 'CAOTT', 'CABUR', 'CAAJX', 'CAMON', 'JPTYO', 'COBOG', 'TWTPE', 'DKCPH', 'FIHEL', 'USSTO']; # UN/LOCODE-style code for the source city
+
+# The dataset each tree row came from is modelled as a *per-city* enum key
+# (`ussfo_source`, `usbos_source`, …) declared in each city's tree model, not as
+# one global key here. Trilogy proves a city's Parquet is complete by checking
+# that its raw sources cover every value of the partitioning enum, so a global
+# 30-value enum is never covered by any single city's two sources and the whole
+# model fails to resolve — verified, as does a plain `key data_source string`.
+# Each city aliases its key to the physical column `data_source`, so every tree
+# Parquet still exposes one uniformly named column. The full value list lives in
+# DATA_SOURCES in data/raw/shared/ingest.py; data/raw/tests/test_data_sources.py
+# asserts the two stay in sync.
+
+# The data_source / submission_photo_url additions did not need a bump: the
+# deployed app selects a strict subset of the new columns, so an old app reading
+# a rebuilt parquet is fine, and rolling the app back stays fine. Boston drops
+# `usbos_source` in favour of `data_source`, but nothing outside the preql models
+# ever read that column. A bump would also have forced the LLM-backed enrichment
+# parquet and every landmark parquet to re-materialize for no reason, since they
+# all share this one param.
+#
+# The ordering that does matter: refresh the parquets before deploying the app.
+# The new worker selects data_source / submission_photo_url by name, so it fails
+# to load against a not-yet-rebuilt parquet.
+param data_version string default '2';
+
+# ---------------------------------------------------------------------------
+# Publish guards
+# ---------------------------------------------------------------------------
+#
+# A published datasource carries `assert` clauses that are checked on every
+# build before it replaces its parquet: `prior(...)` is the same aggregate over
+# the parquet about to be replaced.  A failing build leaves the published
+# parquet untouched and fails the run, which is what a portal that suddenly
+# serves 100 rows instead of 1.47M (Bogotá, 2026-10-13) needs.  The tree and
+# landmark templates (tree_dedup.preql, landmark_common.preql) carry `kept`, and
+# each city target adds `source_kept` per municipal and OSM label.
+#
+# Ratios, not floors: no number here has to be revised as a city grows.  A
+# quarter is well clear of a normal rebuild (inventories gain trees; OSM and
+# reviewed imagery are absorbed a few at a time) and well short of a collapse.
+#
+# Edges, from pytrilogy: the first build of an asset has no prior and passes
+# with a warning; a schema change does too.  Counts are compared filtered, never
+# `by data_source`, because a group missing from the new build always fails,
+# and a city's community or satellite rows can legitimately all be absorbed.
+#
+# A drop known to be real (a portal migration that sheds rows) is built once,
+# locally, with `trilogy refresh <file> --skip-validation <datasource>`; that
+# build becomes the next one's prior.  Cloud jobs cannot pass the flag.
+#
+# `prior` needs pytrilogy 0.3.389 (0.3.391 to check it on a partial city
+# target), and enrichment/_tree_shared.py parses this
+# file at import, so every uv script that imports it pins
+# `pytrilogy>=0.3.391`: an unpinned one reuses whatever uv has cached.
+def kept(key, pct) -> count(key) >= pct * prior(count(key));
+# The cross-city rollups compare city by city, so one city's parquet missing
+# from the scan fails the build rather than quietly emptying that city.
+def kept_by(key, dim, pct) -> count(key) by dim >= pct * prior(count(key) by dim);
+def source_kept(key, source, label, pct) -> count(key ? source = label) >= pct * prior(count(key ? source = label));

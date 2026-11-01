@@ -856,7 +856,13 @@ def gen_select_merge_node(
         # no group keys.
         rollup_targets = outputs or all_concepts
         rollup_at_merge = merge_rollup_concepts(
-            (parent_node.grain for parent_node in parents),
+            (
+                (
+                    parent_node.grain,
+                    frozenset(c.address for c in parent_node.output_concepts),
+                )
+                for parent_node in parents
+            ),
             rollup_targets,
             environment.concepts,
         )

@@ -224,6 +224,14 @@ class JoinHoist(OptimizationRule):
                 continue
             if j.has_predicate:
                 continue
+            # another join keyed off this dim would lose its left side
+            if any(
+                pair.node.name == j.right.name
+                for other in cte.joins
+                if isinstance(other, Join) and other is not j
+                for pair in other.pairs or []
+            ):
+                continue
             join: Join = j
             join_keys_left = {p.left.address for p in join.pairs or []}
             join_keys_right = {p.right.address for p in join.pairs or []}

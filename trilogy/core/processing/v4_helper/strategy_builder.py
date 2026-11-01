@@ -1848,6 +1848,15 @@ def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
     return list(iter_row_lineage(concept))
 
 
+def _output_spelling(
+    concept: BuildConcept, outputs: dict[str, BuildConcept]
+) -> BuildConcept | None:
+    """The output naming `concept`'s column: itself, or a merge twin."""
+    if concept.address in outputs:
+        return outputs[concept.address]
+    return next((o for o in outputs.values() if concept.address in o.pseudonyms), None)
+
+
 def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept]:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
@@ -2699,6 +2708,94 @@ def _carry_planned_keys(
         )
 
 
+def _project_planned_keys(
+    parents: list[StrategyNode],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    environment: BuildEnvironment,
+    producers: Sequence[StrategyNode] = (),
+) -> list[StrategyNode]:
+    """Hand each parent the planned keys widening in place could not. One its
+    outputs render is projected over it: the plan pairs `min(x) by row_key`
+    with an aggregate by `tree_id` on `row_key`. One they determine but do
+    not render (`cluster_id`, computed off other aggregates) is looked up from
+    a built producer keyed within the parent's outputs."""
+    out: list[StrategyNode] = []
+    authored = environment.all_scoped_join_group_members()
+    for parent in parents:
+        gid = _origin_group(parent, origin)
+        outputs = {c.address for c in parent.output_concepts}
+        owed = _join_key_concepts(
+            parents, environment, set(plan.keys_for(gid) if gid else ()) - outputs
+        )
+        # a projection only stands in for the in-place widening an aggregate
+        # cannot take; anything widenable already declined what it skipped
+        rendered = [
+            c
+            for c in owed
+            if isinstance(parent, GroupNode)
+            and concept_satisfiable(c, outputs)
+            and not _carry_needs_own_node(c)
+        ]
+        determined = (
+            build_fd_closure(environment, frozenset(outputs), include_empty_grain=False)
+            if len(owed) > len(rendered)
+            else frozenset()
+        )
+        # an authored relation's member or a rowset handle pairs as authored,
+        # never through a producer of it
+        lookups = [
+            producer
+            for c in owed
+            if c not in rendered
+            and c.address in determined
+            and c.address not in authored
+            and c.derivation != Derivation.ROWSET
+            and (producer := _key_lookup(c, outputs, producers)) is not None
+        ]
+        if not rendered and not lookups:
+            out.append(parent)
+            continue
+        node = parent
+        if lookups:
+            looked_up = [
+                c
+                for c in owed
+                if c not in rendered and any(c.address in p.output_lcl for p in lookups)
+            ]
+            node = MergeNode(
+                input_concepts=readable_outputs([parent, *lookups]),
+                output_concepts=[*parent.output_concepts, *looked_up],
+                environment=environment,
+                parents=[parent, *unique(lookups, "identifier")],
+            )
+        if rendered:
+            node = SelectNode(
+                output_concepts=list(node.output_concepts),
+                input_concepts=list(node.output_concepts),
+                environment=environment,
+                parents=[node],
+                partial_concepts=list(node.partial_concepts),
+            )
+            widen_projection(node, rendered)
+        if gid is not None:
+            origin[id(node)] = gid
+        out.append(node)
+    return out
+
+
+def _key_lookup(
+    key: BuildConcept, outputs: set[str], producers: Sequence[StrategyNode]
+) -> StrategyNode | None:
+    """A producer of `key` whose grain the parent's outputs hold, so joining
+    it on that grain looks one value up per parent row."""
+    for producer in producers:
+        grain = set(producer.resolve().grain.components)
+        if key.address in producer.output_lcl and grain and grain <= outputs:
+            return producer
+    return None
+
+
 def _carry_join_keys(
     parents: list[StrategyNode],
     join_key_concepts: list[BuildConcept],
@@ -2815,8 +2912,12 @@ def _widen_unnest_passthrough(
     node: UnnestNode, join_key_concepts: list[BuildConcept]
 ) -> None:
     """An unnest repeats each parent row per element, so it carries any column
-    its parent already emits beside the element; it computes nothing else."""
-    outputs = {c.address for c in node.output_concepts}
+    its parent already emits beside the element; it computes nothing else. The
+    element is emitted under any merge twin of it too (`ecoregion_id` beside
+    `unnest(native_ecoregions)`), which is no parent column to carry."""
+    outputs = {
+        address for c in node.output_concepts for address in (c.address, *c.pseudonyms)
+    }
     from_parents = parent_output_addresses(node)
     carried = [
         c
@@ -3325,6 +3426,14 @@ def _pre_merge_parents(
         environment,
     )
     _widen_merge_join_keys(parents, environment, join_key_addresses)
+    if plan is not None and origin is not None:
+        parents = _project_planned_keys(
+            parents,
+            origin,
+            plan,
+            environment,
+            [built[gid] for gid in candidates if built and gid in built],
+        )
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if plan is not None and built is not None:
@@ -4840,6 +4949,24 @@ def _group_region_reads(
     return frozenset(out)
 
 
+def _planned_region_reads(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    parents: Sequence[StrategyNode],
+    origin: dict[int, str],
+) -> list[frozenset[str]]:
+    """Each of `parents`' region reads, off the group the plan built it for."""
+    reads = []
+    for parent in parents:
+        if (gid := _origin_group(parent, origin)) is None:
+            raise ValueError(
+                f"[v4] {type(parent).__name__} parent maps to no planned group; "
+                "its region reads are unplanned."
+            )
+        reads.append(_group_region_reads(group_graph, attrs, gid))
+    return reads
+
+
 def _region_paired_args(
     filter_only: set[str],
     available: set[str],
@@ -5896,7 +6023,9 @@ def _assemble_final_node(
     # Each filter-only arg no side holds (e.g. the global aggregate) joins
     # from the producer the plan elected, as a hidden cross-join input; a ROOT
     # side carried its own through its wrap.
-    spans = frozenset().union(*(region_reads(p) for p in parents))
+    spans = frozenset().union(
+        *_planned_region_reads(group_graph, attrs, parents, origin)
+    )
     arg_nodes, arg_concepts = _filter_arg_parents(built, extras.arg_producers)
     # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
     # beside a boundary outputting rs.sa) must ride the merge as a hidden
@@ -6454,7 +6583,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         applied = applied_atoms.conditional if applied_atoms else None
         # a parent holds a region's rows when it reads its domain, the
         # domain itself or a derivation over what it carries (`upper(name)`)
-        reads = [region_reads(p) for p in parents]
+        reads = _planned_region_reads(group_graph, attrs, parents, origin)
         domains = [p for p, read in zip(parents, reads) if read]
         if derivation == Derivation.AGGREGATE and domains:
             # an aggregate evaluated OVER a region: its row-stream
@@ -6588,7 +6717,12 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             parents,
             ctx.folds.render(ctx.folds.aggregate_inputs.get(gid, ())),
             environment,
-            region_spans=frozenset().union(*(region_reads(p) for p in parents)),
+            region_spans=frozenset().union(
+                *(
+                    _group_region_reads(group_graph, attrs, build.group_id)
+                    for build in parent_builds
+                )
+            ),
         )
     # Normalize aggregate inputs to the row grain implied by their
     # arguments before the aggregate runs. This is generic across aggregate
@@ -6656,6 +6790,18 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                         )
                         concept_match = candidate
                         break
+                    else:
+                        # No parent renders it, so it is derived at the
+                        # aggregate: keep the row columns it reads (a merge
+                        # twin a parent outputs under its other name) in the
+                        # dedup, which then groups on them too.
+                        for arg in _row_lineage_closure(candidate)[1:]:
+                            read = _output_spelling(
+                                arg, normalize_parent_output_by_addr
+                            )
+                            if read is not None and read.address not in matched_addrs:
+                                matched_addrs.add(read.address)
+                                normalize_concepts.append(read)
             if concept_match is not None and concept_match.address not in matched_addrs:
                 matched_addrs.add(concept_match.address)
                 normalize_concepts.append(concept_match)

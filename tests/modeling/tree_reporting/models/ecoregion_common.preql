@@ -1,0 +1,23 @@
+key ecoregion_id int;
+
+property ecoregion_id.ecoregion_name string; # e.g. California coastal sage and chaparral
+property ecoregion_id.realm string; # nearctic | palearctic | neotropical | afrotropical | indo_malay | australasia | oceania | antarctic
+property ecoregion_id.biome string; # canonical biome name
+property ecoregion_id.biome_code int;
+property ecoregion_id.realm_code string;
+
+property ecoregion_id.country_codes list<string>;
+property ecoregion_id.centroid_lat float;
+property ecoregion_id.centroid_lon float;
+
+property ecoregion_id.geometry_geojson string;
+property ecoregion_id.bbox_min_lat float;
+property ecoregion_id.bbox_min_lon float;
+property ecoregion_id.bbox_max_lat float;
+property ecoregion_id.bbox_max_lon float;
+
+property ecoregion_id.is_terrestrial bool;
+property ecoregion_id.source_version string;
+property ecoregion_id.enriched_at datetime;
+
+property <*>.ecoregion_data_updated_through datetime;
