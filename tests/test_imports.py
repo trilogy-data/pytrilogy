@@ -474,3 +474,34 @@ def test_stdlib_sibling_import_under_dict_resolver():
     )
     env.parse("import lineitem;")
     assert "usd" in env.data_types
+
+
+REDECLARED_MODULES = {
+    "eco_common": "key ecoregion_id int;\nproperty ecoregion_id.biome string;",
+    "core": "import eco_common;\nkey city string;\n"
+    "property city.ecoregion_id <- case when city = 'A' then 1 else 2 end;",
+    "eco_info": "import core;\nimport eco_common;\n"
+    "datasource eco (ecoregion_id, biome) grain (ecoregion_id) address eco;",
+    "tree_common": "import core;\nkey tree_id string;",
+    "trees": "import tree_common;\n"
+    "datasource trees (tree_id, city) grain (tree_id) address trees;",
+}
+
+
+def _redeclared_env(tmp_path: Path, order: list[str]) -> Environment:
+    for name, text in REDECLARED_MODULES.items():
+        (tmp_path / f"{name}.preql").write_text(text)
+    env = Environment(working_path=tmp_path)
+    env.parse("\n".join(f"import {name};" for name in order))
+    return env
+
+
+def test_reimported_module_does_not_replay_superseded_declaration(tmp_path):
+    """`core` redeclares `ecoregion_id` as a city property; `eco_info` imports
+    the key after it and binds that. Reaching `core` again through another
+    module must not replay the property over the binding, in either order."""
+    for order in (["eco_info", "trees"], ["trees", "eco_info"]):
+        env = _redeclared_env(tmp_path, order)
+        assert env.concepts["ecoregion_id"].lineage is None, order
+        bound = {c.address for c in env.datasources["eco"].output_concepts}
+        assert "local.ecoregion_id" in bound, order

@@ -401,6 +401,26 @@ def _reads_only_axis(
     return True
 
 
+def _sourced_members(axis: str, environment: BuildEnvironment) -> set[str]:
+    """Members of `axis`'s key group some datasource binds as authored, or
+    derives from an authored column: the arms a request on it can coalesce."""
+    found = coalescing_axis_group(axis, environment)
+    members = (
+        found[1] if found else environment.scoped_join_key_groups.get(axis, {axis})
+    )
+    bound = set().union(*environment.domain_graph.bound_by_datasource().values())
+    sourced: set[str] = set()
+    for member in members:
+        concept = environment.concepts.get(member)
+        if member in bound or (
+            concept is not None
+            and concept.lineage is not None
+            and any(arg.address in bound for arg in concept.lineage.concept_arguments)
+        ):
+            sourced.add(member)
+    return sourced
+
+
 def drop_axis_scalar_bindings(
     axes: set[str],
     candidates: dict[str, SourceCandidate],
@@ -409,7 +429,10 @@ def drop_axis_scalar_bindings(
 ) -> dict[str, SourceCandidate]:
     """A scalar of a requested coalescing axis alone is a function of the
     COALESCED key: one arm's scan computing it inline leaves it NULL on the
-    other arms' rows. Unbind it, so it is computed above the arms' merge."""
+    other arms' rows. Unbind it, so it is computed above the arms' merge. An
+    axis only one member of which has a source has no arms to coalesce (a
+    `merge` whose other side nothing binds), so its scalars stay bound."""
+    axes = {axis for axis in axes if len(_sourced_members(axis, environment)) > 1}
     if not axes:
         return candidates
     out = dict(candidates)

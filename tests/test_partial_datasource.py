@@ -1,6 +1,6 @@
 import pytest
 
-from trilogy import parse
+from trilogy import Environment, parse
 from trilogy.core.enums import Modifier
 from trilogy.parsing.render import Renderer
 
@@ -504,3 +504,19 @@ address `p.d.runs_b`;
         engine.generate_sql("select id, status;")
     # Narrowing to one partition still resolves off that arm alone.
     assert engine.generate_sql("select id, status where shard = 'a';")
+
+
+def test_partial_key_binding_carries_assert():
+    env = Environment()
+    env.parse("""
+key species string;
+property species.genus string;
+def kept(key, pct) -> count(key) >= pct * prior(count(key));
+datasource enrichment (species: ~species, genus: ?genus)
+grain (species)
+address enrichment
+assert @kept(species, 0.75);
+""")
+    datasource = env.datasources["enrichment"]
+    assert datasource.non_partial_for is None
+    assert len(datasource.assertions) == 1

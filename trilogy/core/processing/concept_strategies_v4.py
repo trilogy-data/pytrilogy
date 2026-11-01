@@ -549,13 +549,25 @@ def _summary_bound_expressions(
     }
 
 
-def _keyed_grain(grain: BuildGrain, environment: BuildEnvironment) -> BuildGrain:
+def _keyed_grain(
+    grain: BuildGrain, environment: BuildEnvironment, windows: bool = False
+) -> BuildGrain:
     """`grain` with each aggregate component read as its own grain: a select of
-    `sum(x) by k` alone has the aggregate as its grain, and `k` as its rows."""
+    `sum(x) by k` alone has the aggregate as its grain, and `k` as its rows.
+    With `windows`, a window keyed at a grain is read the same way: it is
+    evaluated once per row of that grain and adds none."""
     components: set[str] = set()
     for address in grain.components:
         concept = environment.concepts.get(address)
-        if concept is not None and concept.is_aggregate:
+        if concept is not None and (
+            concept.is_aggregate
+            or (
+                windows
+                and concept.derivation == Derivation.WINDOW
+                and concept.grain.components
+                and not concept.grain.abstract
+            )
+        ):
             components |= set(concept.grain.components)
         else:
             components.add(address)
@@ -686,7 +698,9 @@ def _nested_row_grains(
     stack = [(concept, mandatory_list) for concept in mandatory_list]
     while stack:
         concept, beside = stack.pop()
-        grain = _keyed_grain(BuildGrain.from_concepts(beside), environment)
+        grain = _keyed_grain(
+            BuildGrain.from_concepts(beside), environment, windows=True
+        )
         key = (concept.address, frozenset(grain.components))
         if key in seen:
             continue
@@ -718,12 +732,18 @@ def _finer_filter_reaches_rollup(
     reached = walk_lineage(
         [c for c in mandatory_list if c.address not in rolled_roots],
         descend=lambda c: c.address not in rolled_roots,
+        resolve=lambda c: environment.concepts.get(c.address) or c,
     )
     leaves = [c for c in reached if c.lineage is None]
-    if BuildGrain.from_concepts([*mandatory_list, *leaves]) == target_grain:
+    if BuildGrain.from_concepts([*mandatory_list, *leaves]) in (
+        target_grain,
+        _keyed_grain(target_grain, environment, windows=True),
+    ):
         return True
     if any(
-        c.derivation == Derivation.AGGREGATE and c.address not in rolled_roots
+        c.derivation == Derivation.AGGREGATE
+        and c.address not in rolled_roots
+        and not _aggregates_rolled_groups(c, rolled_roots, rollup_sources, environment)
         for c in reached
     ):
         return False
@@ -733,6 +753,28 @@ def _finer_filter_reaches_rollup(
             ds, _summary_leaves(demands, rolled_roots, ds), environment.concepts
         )
         for ds in rollup_sources
+    )
+
+
+def _aggregates_rolled_groups(
+    concept: BuildConcept,
+    rolled_roots: set[str],
+    rollup_sources: list[BuildDatasource],
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate over the rolled groups (`count(species ? count(tree_id)
+    by species > 0)`) reads one row per group, so it rides the pinned scan.
+    One over the summary's raw rows would count each group once per row it
+    rolls up, and one the summary stores a partial of must be rolled itself."""
+    if any(
+        _datasource_has_matching_rollup_aggregate(ds, concept) for ds in rollup_sources
+    ):
+        return False
+    return any(
+        c.address in rolled_roots
+        for c in walk_lineage(
+            [concept], resolve=lambda c: environment.concepts.get(c.address) or c
+        )
     )
 
 

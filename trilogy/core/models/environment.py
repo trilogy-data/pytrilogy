@@ -100,6 +100,10 @@ class ImportedSymbols:
     functions: set[str] = field(default_factory=set)
     data_types: set[str] = field(default_factory=set)
     merges: set[tuple[str, str, JoinType]] = field(default_factory=set)
+    # address -> structural signatures of declarations an import replaced. A
+    # module reached again through another import edge must not replay them:
+    # otherwise which declaration wins depends on import order.
+    superseded: dict[str, set[tuple]] = field(default_factory=dict)
 
     def duplicate(self) -> ImportedSymbols:
         return ImportedSymbols(
@@ -108,7 +112,12 @@ class ImportedSymbols:
             functions=set(self.functions),
             data_types=set(self.data_types),
             merges=set(self.merges),
+            superseded={k: set(v) for k, v in self.superseded.items()},
         )
+
+    def absorb_superseded(self, other: ImportedSymbols) -> None:
+        for address, signatures in other.superseded.items():
+            self.superseded.setdefault(address, set()).update(signatures)
 
 
 @dataclass
@@ -1474,6 +1483,8 @@ class Environment:
         # we can't exit early
         # as there may be new concepts
         if projection is None:
+            if source is not self:
+                self.imported.absorb_superseded(source.imported)
             for k, concept in list(source.concepts.all_items()):
                 if INTERNAL_NAMESPACE in concept.namespace:
                     continue
@@ -1587,6 +1598,18 @@ class Environment:
             if (excluded or is_hidden) and target_key not in self.concepts.hidden:
                 self.concepts.hidden.add(target_key)
             return
+        existing = self.concepts.data.get(target_key)
+        replaced = (
+            concept_structural_signature(existing)
+            if existing is not None and not isinstance(existing, UndefinedConcept)
+            else None
+        )
+        signature = concept_structural_signature(concept)
+        if replaced is not None and replaced != signature:
+            if signature in self.imported.superseded.get(target_key, ()):
+                self.imported.concepts.add(target_key)
+                return
+            self.imported.superseded.setdefault(target_key, set()).add(replaced)
         new = self.add_concept(concept)
         self.imported.concepts.add(target_key)
         self.imported.concepts.add(new.address)
