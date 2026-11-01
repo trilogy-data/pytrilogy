@@ -20,13 +20,14 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
-    get_rollup_concepts,
     holds_every_kept_row,
     merge_rollup_concepts,
+    source_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -88,6 +89,28 @@ __all__ = [
 ]
 
 
+def _candidate_rollup_edges(
+    g: ReferenceGraph,
+    node: str,
+    datasource: BuildDatasource | BuildUnionDatasource,
+) -> list[tuple[str, str]]:
+    """The graph's rollup candidacy edges off `node` (`env_processor.rollup_
+    edges`): aggregates it does not bind but could roll up to."""
+    if not isinstance(datasource, BuildDatasource):
+        return []
+    bound = {c.address for c in datasource.output_concepts}
+    out: list[tuple[str, str]] = []
+    for neighbor in list(g.neighbors(node)):
+        concept = g.concepts.get(neighbor)
+        if (
+            concept is not None
+            and concept.is_aggregate
+            and concept.address not in bound
+        ):
+            out.extend([(node, neighbor), (neighbor, node)])
+    return out
+
+
 def create_pruned_concept_graph(
     g: ReferenceGraph,
     all_concepts: list[BuildConcept],
@@ -104,11 +127,10 @@ def create_pruned_concept_graph(
     target_grain = BuildGrain.from_concepts(all_concepts)
     rollup_edges: list[tuple[str, str]] = []
     for node_address, datasource in list(g.datasources.items()):
-        if not isinstance(datasource, BuildDatasource):
-            continue
         if not holds_every_kept_row(datasource, conditions):
+            g.remove_edges_from(_candidate_rollup_edges(g, node_address, datasource))
             continue
-        for concept in get_rollup_concepts(
+        for concept in source_rollup_concepts(
             datasource=datasource,
             requested_concepts=all_concepts,
             concepts_by_address=concepts_by_address,

@@ -39,6 +39,7 @@ ROW_COLUMNS = "(tree_id, city, species, height: ?height) grain (tree_id)"
 CITY_SPECIES = "(city, species, n: n, h: ?h) grain (city, species)"
 CITY = "(city, n: n, h: ?h) grain (city)"
 SPECIES = "(species, n: n, h: ?h) grain (species)"
+SPECIES_CITY = "(species, city, n: n, h: ?h) grain (species)"
 
 SUMMARY_MODEL = """
 auto n <- count(tree_id);
@@ -55,6 +56,10 @@ def _arm(name: str, columns: str, arm: str) -> str:
 
 SOURCES = {
     "trees": f"datasource trees {ROW_COLUMNS} address trees_t;",
+    # States that each tree has one city and one species, but as a partial
+    # table answers nothing: a summary's rollup rests on these FDs alone.
+    "tree_fds": "partial datasource tree_fds (tree_id, city, species) grain (tree_id)"
+    " address trees_t;",
     **{
         f"trees_{a}": _arm(f"trees_{a}", ROW_COLUMNS, a)
         for a in ("a", "b", "c", "ain", "bc")
@@ -64,6 +69,7 @@ SOURCES = {
     },
     **{f"c_{a}": _arm(f"c_{a}", CITY, a) for a in ("a", "bc")},
     **{f"s_{a}": _arm(f"s_{a}", SPECIES, a) for a in ("a", "b", "c")},
+    **{f"sc_{a}": _arm(f"sc_{a}", SPECIES_CITY, a) for a in ("a", "b", "c")},
 }
 
 
@@ -71,9 +77,15 @@ def _tables() -> list[str]:
     out = [
         f"create table trees_t as select * from (values {ROWS}) t(tree_id, city, species, height)"
     ]
-    grains = {"trees": "*", "cs": "city, species", "c": "city", "s": "species"}
+    grains = {
+        "trees": "*",
+        "cs": "city, species",
+        "c": "city",
+        "s": "species",
+        "sc": "species, city",
+    }
     for name in SOURCES:
-        if name == "trees":
+        if name in ("trees", "tree_fds"):
             continue
         kind, arm = name.rsplit("_", 1)
         keys = grains[kind]
@@ -90,24 +102,34 @@ def _tables() -> list[str]:
 @dataclass(frozen=True)
 class Scope:
     sources: tuple[str, ...]
-    must_answer: bool
+    rows: bool
+    rollups: bool
+
+    def must_answer(self, query: str) -> bool:
+        return self.rows if query.startswith("rows-") else self.rollups
 
 
 SCOPES = {
-    "rows_points": Scope(("trees_a", "trees_b", "trees_c"), True),
-    "rows_value_set": Scope(("trees_a", "trees_bc"), True),
-    "rows_parenthesized": Scope(("trees_ain", "trees_bc"), True),
-    "rows_value_set+summaries": Scope(("trees_a", "trees_bc", "cs_a", "cs_bc"), True),
-    "rows_value_set+city": Scope(("trees_a", "trees_bc", "c_a", "c_bc"), True),
-    "base+value_set_summary": Scope(("trees", "cs_bc"), True),
-    "base+summary_family": Scope(("trees", "cs_a", "cs_bc"), True),
-    "base+city_family": Scope(("trees", "c_a", "c_bc", "cs_a"), True),
-    "base+overlap": Scope(("trees", "cs_ab", "cs_bc"), True),
-    "base+unbound_arms": Scope(("trees", "s_a", "s_b", "s_c"), True),
-    "summary_family": Scope(("cs_a", "cs_b", "cs_c"), False),
-    "summary_value_set_family": Scope(("cs_a", "cs_bc"), False),
-    "overlap": Scope(("cs_ab", "cs_bc", "c_a"), False),
-    "unbound_arms": Scope(("s_a", "s_b", "s_c"), False),
+    "rows_points": Scope(("trees_a", "trees_b", "trees_c"), True, True),
+    "rows_value_set": Scope(("trees_a", "trees_bc"), True, True),
+    "rows_parenthesized": Scope(("trees_ain", "trees_bc"), True, True),
+    "rows_value_set+summaries": Scope(
+        ("trees_a", "trees_bc", "cs_a", "cs_bc"), True, True
+    ),
+    "rows_value_set+city": Scope(("trees_a", "trees_bc", "c_a", "c_bc"), True, True),
+    "base+value_set_summary": Scope(("trees", "cs_bc"), True, True),
+    "base+summary_family": Scope(("trees", "cs_a", "cs_bc"), True, True),
+    "base+city_family": Scope(("trees", "c_a", "c_bc", "cs_a"), True, True),
+    "base+overlap": Scope(("trees", "cs_ab", "cs_bc"), True, True),
+    "base+unbound_arms": Scope(("trees", "s_a", "s_b", "s_c"), True, True),
+    "base+bound_arms": Scope(("trees", "sc_a", "sc_b", "sc_c"), True, True),
+    "summary_family": Scope(("tree_fds", "cs_a", "cs_b", "cs_c"), False, True),
+    "summary_value_set_family": Scope(("tree_fds", "cs_a", "cs_bc"), False, True),
+    "bound_arms": Scope(("tree_fds", "sc_a", "sc_b", "sc_c"), False, True),
+    "summary_family_no_fds": Scope(("cs_a", "cs_b", "cs_c"), False, False),
+    "bound_arms_no_fds": Scope(("sc_a", "sc_b", "sc_c"), False, False),
+    "overlap": Scope(("cs_ab", "cs_bc", "c_a"), False, False),
+    "unbound_arms": Scope(("s_a", "s_b", "s_c"), False, False),
 }
 
 FILTERS = {
@@ -147,6 +169,7 @@ def engine() -> Executor:
     executor = Dialects.DUCK_DB.default_executor()
     for statement in _tables():
         executor.execute_raw_sql(statement)
+    executor.connection.commit()
     return executor
 
 
@@ -167,7 +190,7 @@ def test_partition_family_answers_like_the_table(
 ):
     case = SCOPES[scope]
     expected = _rows(engine, ("trees",), QUERIES[query])
-    if case.must_answer:
+    if case.must_answer(query):
         assert _rows(engine, case.sources, QUERIES[query]) == expected
         return
     try:

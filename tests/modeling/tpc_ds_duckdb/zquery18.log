@@ -1,11 +1,11 @@
 query_id = "18"
-gen_length = 6787
+gen_length = 6769
 preql_size = 1797
 comp_size = 1593
 generated_sql = """
 
 WITH 
-abundant as (
+uneven as (
 SELECT
     \"cs_billing_customer_customers\".\"C_BIRTH_YEAR\" as \"cs_billing_customer_birth_year\",
     \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_sk\",
@@ -20,14 +20,14 @@ FROM
 WHERE
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_sale_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
 ),
-uneven as (
+yummy as (
 SELECT
-    \"abundant\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
-    \"abundant\".\"cs_item_sk\" as \"cs_item_sk\",
-    \"abundant\".\"cs_order_number\" as \"cs_order_number\",
-    \"abundant\".\"cs_pos_customer_demographic_dependent_count\" as \"row_dep_count\"
+    \"uneven\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
+    \"uneven\".\"cs_item_sk\" as \"cs_item_sk\",
+    \"uneven\".\"cs_order_number\" as \"cs_order_number\",
+    \"uneven\".\"cs_pos_customer_demographic_dependent_count\" as \"row_dep_count\"
 FROM
-    \"abundant\"),
+    \"uneven\"),
 questionable as (
 SELECT
     \"cs_billing_customer_current_address_customer_address\".\"CA_COUNTRY\" as \"cs_billing_customer_current_address_country\",
@@ -51,7 +51,7 @@ FROM
 WHERE
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_sale_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
 ),
-yummy as (
+juicy as (
 SELECT
     \"questionable\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",
     \"questionable\".\"cs_billing_customer_current_address_county\" as \"cs_billing_customer_current_address_county\",
@@ -62,36 +62,36 @@ SELECT
     \"questionable\".\"cs_net_profit\" as \"cs_net_profit\",
     \"questionable\".\"cs_quantity\" as \"cs_quantity\",
     \"questionable\".\"cs_sales_price\" as \"cs_sales_price\",
-    \"uneven\".\"row_birth_year\" as \"row_birth_year\",
-    \"uneven\".\"row_dep_count\" as \"row_dep_count\"
-FROM
-    \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
-SELECT
-    \"yummy\".\"cs_item_id\" as \"cs_item_id\",
-    \"yummy\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",
-    \"yummy\".\"cs_billing_customer_current_address_state\" as \"cs_billing_customer_current_address_state\",
-    \"yummy\".\"cs_billing_customer_current_address_county\" as \"cs_billing_customer_current_address_county\",
-    avg(cast(\"yummy\".\"cs_quantity\" as numeric(12,2))) as \"agg1\",
-    avg(cast(\"yummy\".\"cs_list_price\" as numeric(12,2))) as \"agg2\",
-    avg(cast(\"yummy\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3\",
-    avg(cast(\"yummy\".\"cs_sales_price\" as numeric(12,2))) as \"agg4\",
-    avg(cast(\"yummy\".\"cs_net_profit\" as numeric(12,2))) as \"agg5\",
-    avg(cast(\"yummy\".\"row_birth_year\" as numeric(12,2))) as \"agg6\",
-    avg(cast(\"yummy\".\"row_dep_count\" as numeric(12,2))) as \"agg7\"
+    \"yummy\".\"row_birth_year\" as \"row_birth_year\",
+    \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
     \"yummy\"
+    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+SELECT
+    \"juicy\".\"cs_item_id\" as \"cs_item_id\",
+    \"juicy\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",
+    \"juicy\".\"cs_billing_customer_current_address_state\" as \"cs_billing_customer_current_address_state\",
+    \"juicy\".\"cs_billing_customer_current_address_county\" as \"cs_billing_customer_current_address_county\",
+    avg(cast(\"juicy\".\"cs_quantity\" as numeric(12,2))) as \"agg1\",
+    avg(cast(\"juicy\".\"cs_list_price\" as numeric(12,2))) as \"agg2\",
+    avg(cast(\"juicy\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3\",
+    avg(cast(\"juicy\".\"cs_sales_price\" as numeric(12,2))) as \"agg4\",
+    avg(cast(\"juicy\".\"cs_net_profit\" as numeric(12,2))) as \"agg5\",
+    avg(cast(\"juicy\".\"row_birth_year\" as numeric(12,2))) as \"agg6\",
+    avg(cast(\"juicy\".\"row_dep_count\" as numeric(12,2))) as \"agg7\"
+FROM
+    \"juicy\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 HAVING
     count(*) > 0
 
 ORDER BY 
-    \"yummy\".\"cs_billing_customer_current_address_country\" asc nulls first,
-    \"yummy\".\"cs_billing_customer_current_address_state\" asc nulls first,
-    \"yummy\".\"cs_billing_customer_current_address_county\" asc nulls first,
-    \"yummy\".\"cs_item_id\" asc nulls first,
-    grouping(\"yummy\".\"cs_billing_customer_current_address_country\") asc nulls first,
-    grouping(\"yummy\".\"cs_billing_customer_current_address_state\") asc nulls first,
-    grouping(\"yummy\".\"cs_billing_customer_current_address_county\") asc nulls first
+    \"juicy\".\"cs_billing_customer_current_address_country\" asc nulls first,
+    \"juicy\".\"cs_billing_customer_current_address_state\" asc nulls first,
+    \"juicy\".\"cs_billing_customer_current_address_county\" asc nulls first,
+    \"juicy\".\"cs_item_id\" asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_current_address_country\") asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_current_address_state\") asc nulls first,
+    grouping(\"juicy\".\"cs_billing_customer_current_address_county\") asc nulls first
 LIMIT (100)"""

@@ -1852,31 +1852,28 @@ def _pin_input_placements(
             is_presence_probe(addr) for addr in row_inputs
         ):
             continue
-        input_keys: set[str] = set()
-        for addr in row_inputs:
-            ca = scope.attrs_by_address.get(addr)
-            if ca is None:
-                break
-            input_keys |= ca.keys or {addr}
-        else:
-            for gid, anchors in hosts.items():
-                if gid in placement.group_ids:
-                    continue
-                if input_keys <= anchors or (
-                    not row_inputs & scope.group_members[gid]
-                    and any(
-                        h not in scope.pin_sealed_relatable
-                        and anchors <= scope.group_members[h]
-                        for h in placement.group_ids
+        if any(addr not in scope.attrs_by_address for addr in row_inputs):
+            continue
+        for gid, anchors in hosts.items():
+            if gid in placement.group_ids:
+                continue
+            if build_fd_determines_all(
+                scope.environment, anchors, row_inputs, include_empty_grain=False
+            ) or (
+                not row_inputs & scope.group_members[gid]
+                and any(
+                    h not in scope.pin_sealed_relatable
+                    and anchors <= scope.group_members[h]
+                    for h in placement.group_ids
+                )
+            ):
+                extra.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(gid,),
+                        reason=PlacementReason.PIN_INPUT,
                     )
-                ):
-                    extra.append(
-                        ConditionPlacement(
-                            atom=atom,
-                            group_ids=(gid,),
-                            reason=PlacementReason.PIN_INPUT,
-                        )
-                    )
+                )
     return extra
 
 

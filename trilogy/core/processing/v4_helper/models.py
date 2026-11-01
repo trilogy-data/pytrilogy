@@ -336,6 +336,10 @@ class ConceptAttrs:
     # behind a foreign key the fact binds). `keys` is one FD step; this is the
     # chain.
     determining_key_roots: frozenset[str] = frozenset()
+    # The determinant sets of the datasources binding this concept as a column
+    # (`BuildDatasource.row_determinants`): a table binding a key beside its
+    # grain declares it a function of that grain.
+    binding_determinants: tuple[frozenset[str], ...] = ()
     # Addresses this concept answers for under another identity (scoped-join
     # canonical collapse, `merge into`): lets grouping relate a property root
     # to its key root when the key was collapsed onto a different address.

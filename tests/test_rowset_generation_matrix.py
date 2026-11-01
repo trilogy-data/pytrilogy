@@ -131,13 +131,12 @@ _MATRIX: list[tuple[str, str, object]] = [
     ),
     (
         # HAVING inside the rowset, then enrich a base-keyed property via join.
-        # HAVING sum>9 keeps items 1,2 -> apple, banana. Joins are
-        # row-preserving: items outside the rowset survive NULL-padded, so the
-        # restriction to rowset rows is the explicit `rs.sq is not null`.
+        # `rs.k ⊆ item_id` preserves every item; `rs.sq is not null` keeps the
+        # rowset rows (items 1,2 -> apple, banana).
         "having_then_enrich_property",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
+        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nsubset join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10)],
     ),
     (
@@ -146,7 +145,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "having_then_enrich_property_preserving",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nsubset join rs.k = item_id\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", None)],
     ),
     (

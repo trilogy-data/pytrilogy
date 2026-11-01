@@ -8,7 +8,7 @@ from trilogy.core.processing.nodes import merge_node
 
 _UNION_IMPUTE_QUERY = """
 key tree_id int;
-key city enum<string>['USBOS', 'USCAM'];
+property tree_id.city enum<string>['USBOS', 'USCAM'];
 property tree_id.species string;
 property tree_id._raw_dbh float;
 property tree_id.diameter_at_breast_height float;

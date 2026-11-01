@@ -426,12 +426,15 @@ def overlap_components(sets: Sequence[Collection[str]]) -> list[list[int]]:
     )
 
 
-def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
+def _property_key_pairs(
+    main_items: list[NodeItem], properties_only: bool = True
+) -> list[tuple[str, str]]:
     """(property root, key root) pairs among `main_items`: a property and its
     declared key sit on one entity row, so they co-source even when no lineage
     joins them. A key collapsed onto another identity (scoped join, `merge
     into`) is present under the canonical address only; the mate's pseudonyms
-    declare the identity."""
+    declare the identity. Without `properties_only`, a key determined by
+    another root pairs with it too."""
     node_by_addr = {data.address: node for node, data in main_items}
     node_by_pseudonym: dict[str, str] = {}
     for node, data in main_items:
@@ -439,7 +442,7 @@ def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
             node_by_pseudonym.setdefault(pseudonym, node)
     pairs: list[tuple[str, str]] = []
     for node, data in main_items:
-        if data.purpose != Purpose.PROPERTY:
+        if properties_only and data.purpose != Purpose.PROPERTY:
             continue
         for key_addr in data.keys | data.determining_key_roots:
             key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
@@ -604,7 +607,9 @@ def _relation_side_partitions(
             continue
         adjacency[u].add(v)
         adjacency[v].add(u)
-    for node, key_node in _property_key_pairs(main_items):
+    # A root the others determine sits on their entity row, so on their side,
+    # key or not (`trees` binds `species` beside `tree_id`).
+    for node, key_node in _property_key_pairs(main_items, properties_only=False):
         adjacency[node].add(key_node)
         adjacency[key_node].add(node)
     by_key: dict[str, list[str]] = defaultdict(list)

@@ -424,8 +424,27 @@ a design decision or a bug.
     (`Stack.unbound_arm_repeats_grain`). Stacking stores one row per grain
     value, each that value's whole aggregate, when the grain determines the
     arm (`Stack.stacked_keys_nodup`, `Stack.stacked_summary_sum_exact`). An
-    arm now joins a family only when its discriminator is bound (the FK rule
-    claims the grain determines it) or follows from declared keys.
+    arm then joined a family only when its discriminator was bound or
+    followed from declared keys. The next entry replaces the bound case.
+- **A table binding a key rewrote that key's identity, and summary families
+  never served a rollup.** A datasource binding a KEY beside its grain made
+  the grain that key's `keys` (`Environment.fk_derived_keys`, last
+  declaration wins), so a per-city arm binding `city` beside grain `species`
+  claimed species determines city everywhere. Bindings are now functional
+  dependency facts that every FD reader consults: a table binding a column
+  beside its grain says its row determinants determine the column, and an
+  arm's row determinants include a bound discriminator, since an arm is
+  unique on its grain only among its own rows
+  (`Stack.unbound_arm_repeats_grain`). On main, 77 of 810 cases in
+  `tests/discovery/test_partition_family_laws.py` failed: 9 wrong answers by
+  `(city, species)` and 68 declines across stacked summary families and
+  bound-arm families, which now serve rollups
+  (`Stack.stacked_summary_sum_exact`). Retiring the last readers of the old
+  keys turned up one more wrong answer: a pinned WHERE over a merged unnest
+  axis split `species` off `tree_id`, which one table binds together, and
+  re-read species by ecoregion alone, returning NULL species rows (2 cases in
+  `tests/engine/test_grain_pin_unnest_merge_filter.py` fail on main). The
+  binding FDs themselves have no Lean model yet.
 
 ## Limits
 

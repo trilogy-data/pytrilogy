@@ -2438,6 +2438,17 @@ def _synthetic_dimension_regraft_parent(
         concept_attr_fd_determines(concept_attrs, key, address) for address in inputs
     ):
         return None
+    # An aggregate is a function of its grain only over the rows the
+    # statement's filters keep: no unfiltered lookup holds its value.
+    if any(
+        attrs_.address in inputs
+        and (
+            attrs_.derivation in GROUPING_DERIVATIONS
+            or attrs_.aggregate_operator is not None
+        )
+        for attrs_ in concept_attrs.values()
+    ):
+        return None
     if not any(
         key <= set(attrs[candidate].grain_components)
         for candidate in group_graph.nodes

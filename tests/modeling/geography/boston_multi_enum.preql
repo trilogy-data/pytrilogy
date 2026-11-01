@@ -1,6 +1,6 @@
 key tree_id string;
 key city enum<string>['USBOS', 'USNYC'];
-key usbos_source enum<string>['CITY', 'ARBORETUM'];
+property tree_id.usbos_source enum<string>['CITY', 'ARBORETUM'];
 property <*>.boston_data_updated_through datetime;
 
 root datasource boston_freshness (

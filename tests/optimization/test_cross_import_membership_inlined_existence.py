@@ -14,9 +14,8 @@ dependency CTEs, not the already-inlined datasource, so the pushed subselect
 rendered against a phantom CTE (`... in (select cs_item_items."cs_item_id" from
 cs_item_items ...)`) that was never emitted -> DuckDB CatalogException. The fix
 propagates the inlined datasource alongside the source-map entry so the pushed
-subselect renders against the real table. Since the group graph became the
-set's only planner, the set is read off the `catalog` scan that carries the
-key, not a second `items` scan.
+subselect renders against the real table. `cs.item.id` is the item
+dimension's key, so the set reads the `items` table it is complete on.
 """
 
 from trilogy import Dialects
@@ -77,7 +76,7 @@ def test_cross_import_membership_inlined_existence_renders_and_executes():
     # the pushed-down existence subselect must read from the real table, not a
     # phantom CTE named after the inlined datasource's source key
     assert "from cs_item_items" not in sql
-    assert "from catalog as cs_catalog" in sql
+    assert "from items as cs_item_items" in sql
     rows = [
         (int(r[0]), float(r[1])) for r in executor.execute_text(QUERY)[0].fetchall()
     ]

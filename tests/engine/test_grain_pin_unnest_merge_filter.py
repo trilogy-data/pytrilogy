@@ -152,6 +152,14 @@ union all select 'b1', 'elm' ''';
             "select upper(species) as s where city = 'A' and bucket = 'Same' order by s;",
             [("OAK",), ("PINE",)],
         ),
+        (
+            "select upper(species) as s, city where city = 'A' and bucket = 'Same' order by s;",
+            [("OAK", "A"), ("PINE", "A")],
+        ),
+        (
+            "select upper(species) as s, tree_id where bucket = 'Same' order by s;",
+            [("OAK", "t1"), ("PINE", "t2")],
+        ),
     ],
 )
 def test_pinned_filter_beside_species_grain_outputs(

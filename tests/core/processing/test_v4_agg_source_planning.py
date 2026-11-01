@@ -181,7 +181,7 @@ def test_finer_filter_source_picks_finer_summary():
     )
     match = _finer_filter_rollup_source(request)
     assert match is not None
-    ds, joined = match
+    _, ds, joined = match
     assert isinstance(ds, BuildDatasource)
     assert ds.name == "agg_by_customer_date"
     assert not joined
