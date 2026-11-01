@@ -1332,7 +1332,7 @@ def _parent_nodes_for(
         # customer with no order once the slice stopped hitting a stale cache)
         if _group_region_reads(group_graph, attrs, pgid):
             return node.copy()
-        parent_outputs ={concept.address for concept in node.output_concepts}
+        parent_outputs = {concept.address for concept in node.output_concepts}
         slice_addresses = needed & parent_outputs
         # A scoped-relation member this scan carries for its MATE (the rowset
         # handle the merge joins on) is rendered from the mate's own column, so
@@ -1463,9 +1463,9 @@ def _parent_nodes_for(
             ):
                 continue
             # a region's rows are covered by nothing that does not hold them
-            if not _group_region_reads(
-                group_graph, attrs, pgid
-            ) <= _group_region_reads(group_graph, attrs, other_pgid):
+            if not _group_region_reads(group_graph, attrs, pgid) <= _group_region_reads(
+                group_graph, attrs, other_pgid
+            ):
                 continue
             if my_provides <= provides(other_pgid, other_node):
                 covered_by_descendant = True
