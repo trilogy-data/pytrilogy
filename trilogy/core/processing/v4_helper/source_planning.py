@@ -250,7 +250,11 @@ def _concepts_with_grain_keys(
     axis_values = {
         c.canonical_address
         for c in walk_lineage(
-            [environment.concepts[a] for a in aggregate_axes if a in environment.concepts],
+            [
+                environment.concepts[a]
+                for a in aggregate_axes
+                if a in environment.concepts
+            ],
             descend=lambda c: c.derivation == Derivation.BASIC,
         )
     }

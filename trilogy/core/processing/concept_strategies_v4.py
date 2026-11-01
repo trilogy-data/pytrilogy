@@ -732,7 +732,10 @@ def _nested_rollup_roots(
             concept.address in mandatory
             or concept.derivation != Derivation.AGGREGATE
             or not _is_rollable_aggregate(concept)
-            or not all(at_own_grain(concept, grain) for grain in rows[concept.address])
+            or not all(
+                at_own_grain(concept, grain, environment.concepts)
+                for grain in rows[concept.address]
+            )
         ):
             continue
         sources = _rollup_sources(

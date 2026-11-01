@@ -345,8 +345,7 @@ def prune_sources_for_aggregates(
     # (e.g. `x_date.year` and `year_via_func` sharing the same lineage hash)
     # don't disqualify a precomputed datasource that binds the named form.
     addr_to_canonical = {
-        bc.address: bc.canonical_address
-        for bc in [*g.concepts.values(), *all_concepts]
+        bc.address: bc.canonical_address for bc in [*g.concepts.values(), *all_concepts]
     }
 
     def grain_key(grain) -> frozenset[str]:

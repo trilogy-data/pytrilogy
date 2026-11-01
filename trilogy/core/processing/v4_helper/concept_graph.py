@@ -1136,7 +1136,7 @@ def _scalar_of_materialized(
     return bool(arguments) and all(
         argument.address in materialized_roots
         or _scalar_of_materialized(
-            environment.concepts.get(argument.address, argument),
+            environment.concepts.get(argument.address) or argument,
             materialized_roots,
             environment,
         )

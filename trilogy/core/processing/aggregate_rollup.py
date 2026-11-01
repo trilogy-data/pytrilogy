@@ -689,7 +689,8 @@ def distinct_key_counts(
         if c.rollup_signature is not None
     }
     row_columns = [
-        c for c in (conditions.row_arguments if conditions else [])
+        c
+        for c in (conditions.row_arguments if conditions else [])
         if c.granularity != Granularity.SINGLE_ROW
     ]
     rewritten: dict[str, BuildConcept] = {}

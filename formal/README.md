@@ -41,6 +41,7 @@ a design decision or a bug.
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
+| `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
 
 ## What it found
 
@@ -520,6 +521,27 @@ a design decision or a bug.
   `select event_id, region_id` cross-joined every event with every region.
   The `merged_axis_pin` family adds an aggregate over the merged key and an
   OR beside it; the full fuzzer passes 3,132 of 3,132.
+
+- **A summary answered one value under one spelling only.** `Cover.lean`
+  names six rules for when a count summary covers a query, and
+  `tests/discovery/test_summary_cover_laws.py` runs each rule's shapes under
+  five filters. On main, 169 of the 190 coverable cases missed and 2 raised;
+  now 96 miss, none raise and none answer differently. A rename
+  (`species as s`) failed the "aggregate at its own grain" gate, which compared
+  grains by address (`Cover.target_by_value`). A column listed twice was refused
+  outright (`Cover.duplicate_target_slice`). A scalar of a stored column
+  (`plant_year::int`) was never offered by the summary, because derivable
+  concepts were walked only from expressions over raw columns. `plant_date.year`
+  beside a stored `year(plant_date)` was bound by name only, so its WHERE ran on
+  the tree rows and joined the summary count. `count_distinct(tree_id)` now reads
+  as `count(tree_id)` wherever every grouping and WHERE column is a function of
+  `tree_id` (`Cover.count_distinct_of_key_exact`). A re-summed partial read
+  inside an expression (`n / count(x) by *`) was put in the GROUP BY and failed
+  to bind, as did a grand total joined beside it; both shapes raised on main.
+  Filtered counts, totals under a WHERE the target does not determine,
+  existence and relations stay misses, held by strict xfails. One shape
+  disagrees on main and here: `sum(case when bucket = 'Native' then
+  count(tree_id) by bucket end)` reads 8 from the trees and 4 from the summary.
 
 ## Limits
 

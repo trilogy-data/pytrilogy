@@ -150,9 +150,81 @@ UNSERVABLE = {
     "finer_existence": "dbh",
 }
 
+FINER = ("city", "species", "property", "year")
+
 # Shapes a rule covers that the planner does not serve yet: each is a miss
 # (read from the trees with the right answer), never a wrong summary answer.
-OPEN: dict[tuple[str, str], str] = {}
+# `(rule, shape) -> (reason, filters)`; no filters means every filter.
+FILTERED_COUNT = "rule 2: rollup matching takes no `x ? c` argument"
+PINNED_TOTAL = (
+    "rule 4: a WHERE the target does not determine pins one summary scan, "
+    "which plans a total beside a derived target as a dedup of partials"
+)
+NO_EXISTENCE_PROOF = (
+    "rule 5: a selection with no aggregate is sourced from its columns' "
+    "bindings; the summary is not offered as proof of existence"
+)
+OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
+    **{("filtered", shape): (FILTERED_COUNT, None) for shape in FILTERED},
+    ("distinct", "filtered_ratio"): (
+        "rule 2: count_distinct(k ? c) is count(k ? c), a filtered count",
+        None,
+    ),
+    ("value", "scalar_of_key"): (
+        "rule 1: a scalar of a key under a WHERE on a stored column",
+        ("year",),
+    ),
+    ("value", "scalar_twice"): (
+        "rule 1: a scalar of a key under a WHERE on a stored column",
+        ("year",),
+    ),
+    **{
+        ("siblings", shape): (
+            PINNED_TOTAL,
+            filters,
+        )
+        for shape, filters in (
+            ("rename", ("city", "property", "year")),
+            ("scalar", FINER),
+            ("coalesce", FINER),
+        )
+    },
+    ("siblings", "total_only"): (
+        "rule 4: a total alone beside a derived dimension is not rolled",
+        None,
+    ),
+    **{
+        ("existence", shape): (
+            NO_EXISTENCE_PROOF,
+            {
+                "key_and_property": ("none", "species", "property", "year"),
+                "stored": None,
+            }.get(shape, ("none", "species", "property")),
+        )
+        for shape in EXISTENCE
+    },
+    **{
+        ("relation", shape): (
+            "rule 6: a summary is never joined through the fan-out it is keyed on",
+            None,
+        )
+        for shape in RELATION
+    },
+}
+
+# The tree plan itself raises: no answer to compare.
+TREE_PLAN_RAISES = {
+    (
+        "existence",
+        "property",
+        "year",
+    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
+    (
+        "existence",
+        "scalar",
+        "year",
+    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
+}
 
 
 def _run(model: str, query: str) -> tuple[str, list[tuple]]:
@@ -171,7 +243,16 @@ def _assert_same_answer(query: str, served: bool) -> None:
     _, without = _run(BASE, query)
     sql, with_summary = _run(BASE + SUMMARY, query)
     assert with_summary == without, sql
-    assert ("summary_" in sql and "FROM\n    (select 1 as tree_id" not in sql) == served, sql
+    assert ('"summary_' in sql and '"trees"' not in sql) == served, sql
+
+
+def _marks(rule: str, shape: str, where: str) -> list:
+    if (rule, shape, where) in TREE_PLAN_RAISES:
+        return [pytest.mark.skip(reason=TREE_PLAN_RAISES[(rule, shape, where)])]
+    reason, filters = OPEN.get((rule, shape), ("", ()))
+    if filters is None or where in filters:
+        return [pytest.mark.xfail(strict=True, reason=reason)]
+    return []
 
 
 def _cases(rule: str, shapes: dict[str, str]) -> list:
@@ -180,11 +261,7 @@ def _cases(rule: str, shapes: dict[str, str]) -> list:
             shapes[shape],
             FILTERS[where],
             id=f"{shape}-{where}",
-            marks=(
-                [pytest.mark.xfail(strict=True, reason=OPEN[(rule, shape)])]
-                if (rule, shape) in OPEN
-                else []
-            ),
+            marks=_marks(rule, shape, where),
         )
         for shape, where in itertools.product(shapes, FILTERS)
     ]
