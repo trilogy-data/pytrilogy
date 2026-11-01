@@ -260,6 +260,8 @@ def _bound_on(environment: BuildEnvironment) -> dict[str, frozenset[str]]:
     out: dict[str, set[str]] = {}
     for datasource in environment.datasources.values():
         determinants = datasource.row_determinants
+        if not determinants:
+            continue
         for column in datasource.columns:
             if column.concept.address not in determinants:
                 out.setdefault(column.concept.address, set()).update(determinants)

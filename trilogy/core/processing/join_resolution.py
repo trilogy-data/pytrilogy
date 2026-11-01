@@ -1756,6 +1756,22 @@ def _pads_beside(other: SideFacts, key: str, spans: frozenset[str]) -> bool:
     )
 
 
+def _equality_drops_padding(
+    pairs: list[ConceptPair],
+    padded: SideFacts,
+    spans: frozenset[str],
+    canon_node: Callable[[str], str],
+) -> bool:
+    """The join compares with `=` a key those regions also pad: the padded
+    rows are NULL on it and pair with nothing."""
+    return any(
+        not pair.is_nullable
+        and spans
+        <= padded.span_padding.get(canon_node(pair.right.address), frozenset())
+        for pair in pairs
+    )
+
+
 def _padding_guard(
     join: JoinOrderOutput,
     facts: JoinFacts,
@@ -1794,6 +1810,7 @@ def _padding_guard(
                     or key not in padded.value_nullables
                     or key not in other.value_nullables
                     or _pads_beside(other, key, spans)
+                    or _equality_drops_padding(pairs, padded, spans, canon_node)
                 ):
                     continue
                 witnesses = _padding_witness(

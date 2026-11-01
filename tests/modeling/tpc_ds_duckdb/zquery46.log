@@ -1,11 +1,11 @@
 query_id = "46"
-gen_length = 3270
+gen_length = 3260
 preql_size = 1152
 comp_size = 1474
 generated_sql = """
 
 WITH 
-uneven as (
+yummy as (
 SELECT
     \"store_sales_pos_address_customer_address\".\"CA_CITY\" as \"bought_bought_city\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"bought_store_sales_customer_sk\",
@@ -38,20 +38,20 @@ SELECT
     \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
     \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
     \"wakeful\".\"customer_current_address_city\" as \"customer_current_address_city\",
-    \"uneven\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"uneven\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"uneven\".\"bought_amt\" as \"bought_amt\",
-    \"uneven\".\"bought_profit\" as \"bought_profit\"
+    \"yummy\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"yummy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"yummy\".\"bought_amt\" as \"bought_amt\",
+    \"yummy\".\"bought_profit\" as \"bought_profit\"
 FROM
     \"wakeful\"
-    INNER JOIN \"uneven\" on \"wakeful\".\"customer_sk\" = \"uneven\".\"bought_store_sales_customer_sk\"
+    INNER JOIN \"yummy\" on \"wakeful\".\"customer_sk\" = \"yummy\".\"bought_store_sales_customer_sk\"
 WHERE
-    \"wakeful\".\"customer_current_address_city\" != \"uneven\".\"bought_bought_city\"
+    \"wakeful\".\"customer_current_address_city\" != \"yummy\".\"bought_bought_city\"
 
 ORDER BY 
     \"wakeful\".\"customer_last_name\" asc nulls first,
     \"wakeful\".\"customer_first_name\" asc nulls first,
     \"wakeful\".\"customer_current_address_city\" asc nulls first,
-    \"uneven\".\"bought_bought_city\" asc nulls first,
-    \"uneven\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"yummy\".\"bought_bought_city\" asc nulls first,
+    \"yummy\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

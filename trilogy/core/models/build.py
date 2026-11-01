@@ -2292,8 +2292,10 @@ class BuildDatasource:
     def row_determinants(self) -> frozenset[str]:
         """What each row's bindings are a function of, model-wide: the grain,
         plus a bound discriminator, since an arm is unique on its grain only
-        among its own rows (`Stack.unbound_arm_repeats_grain`)."""
-        return frozenset(self.grain.components) | self.bound_discriminators
+        among its own rows (`Stack.unbound_arm_repeats_grain`). A table with
+        no grain identifies no row, so determines nothing."""
+        grain = frozenset(self.grain.components)
+        return grain | self.bound_discriminators if grain else grain
 
     def rollup_column_for(self, concept: BuildConcept) -> BuildColumnAssignment | None:
         """`aggregate_column_for`, restricted to tables this concept could be

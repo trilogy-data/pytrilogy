@@ -5,7 +5,7 @@ comp_size = 1453
 generated_sql = """
 
 WITH 
-yummy as (
+juicy as (
 SELECT
     \"store_sales_pos_address_customer_address\".\"CA_CITY\" as \"bought_bought_city\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"bought_store_sales_customer_sk\",
@@ -53,18 +53,18 @@ SELECT
     \"cheerful\".\"customer_last_name\" as \"customer_last_name\",
     \"cheerful\".\"customer_first_name\" as \"customer_first_name\",
     \"cheerful\".\"customer_current_address_city\" as \"customer_current_address_city\",
-    \"yummy\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"yummy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"yummy\".\"bought_extended_price\" as \"bought_extended_price\",
-    \"yummy\".\"bought_extended_tax\" as \"bought_extended_tax\",
-    \"yummy\".\"bought_list_price\" as \"bought_list_price\"
+    \"juicy\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"juicy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"juicy\".\"bought_extended_price\" as \"bought_extended_price\",
+    \"juicy\".\"bought_extended_tax\" as \"bought_extended_tax\",
+    \"juicy\".\"bought_list_price\" as \"bought_list_price\"
 FROM
-    \"yummy\"
-    INNER JOIN \"cheerful\" on \"yummy\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"bought_store_sales_customer_sk\"
+    \"juicy\"
+    INNER JOIN \"cheerful\" on \"juicy\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"bought_store_sales_customer_sk\"
 WHERE
-    \"cheerful\".\"customer_current_address_city\" != \"yummy\".\"bought_bought_city\"
+    \"cheerful\".\"customer_current_address_city\" != \"juicy\".\"bought_bought_city\"
 
 ORDER BY 
     \"cheerful\".\"customer_last_name\" asc nulls first,
-    \"yummy\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"juicy\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

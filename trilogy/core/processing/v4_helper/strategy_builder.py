@@ -4267,9 +4267,8 @@ def _wrap_for_grain(
             )
         ]
 
-    parent_grain_components = (
-        frozenset(parent_node.grain.components) if parent_node.grain else frozenset()
-    )
+    parent_grain = parent_node.grain or parent_node.resolve().grain
+    parent_grain_components = frozenset(parent_grain.components)
 
     # Each concept's natural grain is the key it functionally depends on
     # (e.g. text_id is a property of customer.id, so its grain is
@@ -4304,7 +4303,11 @@ def _wrap_for_grain(
         axis = (merge_grain_components or parent_grain_components) & parent_outputs
         if not axis:
             axis = frozenset(concept.keys or ()) & parent_outputs
-        if (
+        if concept.address in axis:
+            # A member of the identity the rows are unique on: bucketed alone,
+            # it shares no key with the axis's other members.
+            grain_components = axis
+        elif (
             axis
             and grain_components.isdisjoint(axis)
             # The concept-map FD closure is the authority on "is this

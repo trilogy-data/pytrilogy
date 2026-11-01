@@ -1556,7 +1556,8 @@ def _binding_determinants(
             {
                 ds.row_determinants
                 for ds in datasources
-                if address not in ds.row_determinants
+                if ds.row_determinants
+                and address not in ds.row_determinants
                 and any(c.concept.address == address for c in ds.columns)
             },
             key=sorted,
