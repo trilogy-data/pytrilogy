@@ -769,6 +769,25 @@ names, `test_gcat::test_environment`, the
 `test_declared_join_beside_a_property_of_the_superset_key` join type, and two
 tests that compile nothing in an archive export. 0 of 205 corpus plans moved.
 
+**`_parent_nodes_for` reads planned region reads.** Two decisions read
+`region_reads` off `built[pgid]`. The first is the descendant-cover check: a
+parent is dropped for a descendant or grouping sibling only if that one holds
+the parent's regions. The second is the slice guard: a ROOT that reads a
+region is never re-sourced as a narrower slice. Both now read
+`_group_region_reads` over the planned groups.
+
+Measured over the same suites: 6,591 cover checks and 15,043 slice guards.
+Every cover check agreed. 4 slice guards disagreed, all of them Open item 2:
+in `test_derived_key_domain` the condition-phase aggregates over
+`grp:root:root_d1:∅` see a built `customer_id` read and an empty planned one.
+In each of the 4, the slice path the swap takes back declines to slice (it
+prunes no source), so the parent is the same copy either way. SQL capture
+over the same suites (13,545 statements) against part 20 moved no plan: only
+BigQuery temp table names, `test_gcat::test_environment`, the
+`test_declared_join_beside_a_property_of_the_superset_key` join type, the
+`test_validate_fix` chunked statement, and the `tree_reporting` build tests'
+temp file paths. 0 of 205 corpus plans moved.
+
 **Open.**
 
 1. The fold widen still projects the aggregate's merge after
@@ -776,27 +795,31 @@ tests that compile nothing in an archive export. 0 of 205 corpus plans moved.
    decision reads the built node; asking a ROOT for the derived column
    instead changes source selection.
 2. A ROOT that re-sources a filter argument through a nested plan reads that
-   plan's region domain, which the outer group graph does not hold. The
-   planned region reads cannot see it until the nested plan's domains are
-   stage-2 facts. The FINAL WHERE applier, the FINAL merge's region keys and
-   the aggregate's domain parents read the planned reads; at every probed
-   case the decision or its SQL came out the same.
-3. `_parent_nodes_for` still reads `region_reads` off `built[pgid]` twice:
-   the guard that keeps a ROOT reading a region from being re-sourced as a
-   slice, and the descendant-cover check (`region_reads(node) <=
-   region_reads(other_node)`). Both have `_group_region_reads(pgid)` as a
-   planned twin, but the slice guard is exactly item 2's case (the ROOT that
-   reads a nested plan's domain), so it waits on item 2. Probe both first.
-4. The merge, fold and pairing helpers (`_drop_ancestor_parents`,
-   `_fold_passthrough_parents`, `_fold_covered_contributors`,
-   `_carries_through`, `_pads_a_value_null_group`,
-   `_pair_inside_padding_streams`) read `region_reads` over assembled node
-   lists that include wraps and folds. They are not classified yet as
-   applied decisions or decisions to move.
+   plan's region domain, which the outer group graph does not hold. The built
+   read comes from below the nested plan's aggregate (`avg(customer_id) by
+   *` over the nested `customer_id` extent group), joined into the ROOT's
+   rows. The nested plan is planned inside the ROOT's source planning, so
+   making its domains a stage-2 fact means running the nested plan's stage 2
+   from the outer one. The FINAL WHERE applier, the FINAL merge's region keys,
+   the aggregate's domain parents and `_parent_nodes_for` read the planned
+   reads. At every probed case the decision or its SQL came out the same.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
 planned id, and the ROOT re-source.
+
+The merge, fold and pairing helpers (`_drop_ancestor_parents`,
+`_fold_passthrough_parents`, `_fold_covered_contributors`, `_carries_through`,
+`_pads_a_value_null_group`, `_pair_inside_padding_streams`) apply decisions
+too. They take the node lists a generator or the assembly is about to merge.
+In those lists, a node that no planned group built is routine: a scan source
+planning made inside a generator, or a merge assembled within one build.
+Measured over the same suites, 27,395 `region_reads` calls from these
+helpers: 1,538 (5.6%) were on a node whose `origin_group` is unset through
+every single-parent wrap. 1,159 of those were scans, 178
+merges and 201 GroupNodes. A mapped node can also belong to a
+nested plan's graph. What these helpers compare is the region identity of the
+rows actually being merged, so they read the built stream.
 
 ## 8. Not claimed
 

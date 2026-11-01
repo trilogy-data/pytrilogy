@@ -1326,11 +1326,11 @@ def _parent_nodes_for(
     def parent_for_consumer(pgid: str, node: StrategyNode) -> StrategyNode:
         if attrs[pgid].derivation != Derivation.ROOT or not slices_roots:
             return node.copy()
-        # a region domain is read as built: a re-sourced slice is a fresh scan
+        # a planned region domain is read as built: a re-sourced slice is a fresh scan
         # holding no region, so the aggregate would compute its row-stream
         # arguments over the padded merge (`count(status)` counted the
         # customer with no order once the slice stopped hitting a stale cache)
-        if region_reads(node):
+        if _group_region_reads(group_graph, attrs, pgid):
             return node.copy()
         parent_outputs = {concept.address for concept in node.output_concepts}
         slice_addresses = needed & parent_outputs
@@ -1463,7 +1463,9 @@ def _parent_nodes_for(
             ):
                 continue
             # a region's rows are covered by nothing that does not hold them
-            if not region_reads(node) <= region_reads(other_node):
+            if not _group_region_reads(group_graph, attrs, pgid) <= _group_region_reads(
+                group_graph, attrs, other_pgid
+            ):
                 continue
             if my_provides <= provides(other_pgid, other_node):
                 covered_by_descendant = True
