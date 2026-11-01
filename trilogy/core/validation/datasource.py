@@ -49,6 +49,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.validation.common import (
+    SAMPLE_LIMIT,
     ExpectationType,
     ValidationTest,
     easy_query,
@@ -56,9 +57,6 @@ from trilogy.core.validation.common import (
     non_null_count_address,
 )
 from trilogy.utility import unique
-
-# how many violating rows a failed check reports before it just says "at least N"
-SAMPLE_LIMIT = 10
 
 
 def row_to_dict(row: Any, columns: Sequence[str]) -> dict[str, Any]:

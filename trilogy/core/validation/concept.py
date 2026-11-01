@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import CompiledCTE
 from trilogy.core.validation.common import (
+    SAMPLE_LIMIT,
     ExpectationType,
     ValidationTest,
     easy_query,
@@ -208,6 +209,121 @@ def validate_multi_datasource_concept(
     return results
 
 
+def _bound(datasource: BuildDatasource) -> set[str]:
+    return {column.concept.address for column in datasource.columns}
+
+
+def binding_sources(
+    concept: BuildConcept, build_env: BuildEnvironment
+) -> list[tuple[frozenset[str], list[BuildDatasource]]]:
+    """Each row-determinant set some table binds `concept` beside, with every
+    table binding those determinants and `concept`. Each binding claims the
+    determinants determine the concept model-wide (`Binding.closure_sound`),
+    and one table's grain check proves it for its own rows only."""
+    datasources = list(build_env.datasources.values())
+    claims: dict[frozenset[str], None] = {}
+    for datasource in datasources:
+        determinants = datasource.row_determinants
+        if determinants and concept.address in _bound(datasource) - determinants:
+            claims.setdefault(determinants, None)
+    out = []
+    for determinants in claims:
+        needed = determinants | {concept.address}
+        sources = [ds for ds in datasources if needed <= _bound(ds)]
+        if len(sources) > 1:
+            out.append((determinants, sources))
+    return out
+
+
+def binding_violation_sql(
+    exec: Executor,
+    env: Environment,
+    concept: BuildConcept,
+    determinants: list[BuildConcept],
+    sources: list[BuildDatasource],
+) -> str:
+    """Determinant values the union of `sources` pairs with two values of
+    `concept`, NULL counting as one (`Binding.cross_check_exact`)."""
+    generator = exec.generator
+    concepts = [*determinants, concept]
+    ctes: list[CompiledCTE] = []
+    names: list[str] = []
+    for idx, datasource in enumerate(sources):
+        compiled = generator.generate_ctes(
+            easy_query(
+                concepts=concepts,
+                datasource=datasource,
+                env=env,
+                grain=BuildGrain(components={c.address for c in concepts}),
+                limit=None,
+                name=f"binding_source_{idx}",
+            )
+        )
+        name = f"binding_rows_{idx}"
+        ctes += [
+            *compiled[:-1],
+            CompiledCTE(name=name, statement=compiled[-1].statement),
+        ]
+        names.append(generator.quote(name) if generator.QUOTE_CTE_NAMES else name)
+    keys = ", ".join(generator.quote(c.safe_address) for c in determinants)
+    column = generator.quote(concept.safe_address)
+    held = " UNION ".join(f"SELECT {keys}, {column} FROM {name}" for name in names)
+    full_select = (
+        f"SELECT {keys} FROM ({held}) held GROUP BY {keys} "
+        f"HAVING COUNT(DISTINCT {column}) > 1 "
+        f"OR (COUNT({column}) > 0 AND COUNT(*) > COUNT({column}))"
+    )
+    return generator.render_sql_template(
+        recursive=False, output=None, full_select=full_select, ctes=ctes
+    )
+
+
+def validate_binding_fds(
+    concept: BuildConcept,
+    env: Environment,
+    build_env: BuildEnvironment,
+    exec: Executor | None = None,
+) -> list[ValidationTest]:
+    results: list[ValidationTest] = []
+    for determinants, sources in binding_sources(concept, build_env):
+        expected = f"binding_fd_{concept.safe_address}"
+        if exec is None:
+            results.append(
+                ValidationTest(
+                    check_type=ExpectationType.ROWCOUNT,
+                    expected=expected,
+                    result=None,
+                    ran=False,
+                )
+            )
+            continue
+        keys = [build_env.concepts[a] for a in sorted(determinants)]
+        sql = binding_violation_sql(exec, env, concept, keys, sources)
+        result = exec.execute_raw_sql(sql)
+        columns = list(result.keys())
+        rows = result.fetchmany(SAMPLE_LIMIT)
+        err = None
+        if rows:
+            err = ConceptModelValidationError(
+                f"Concept {concept.address} is bound beside "
+                f"({', '.join(sorted(determinants))}), which each binding claims "
+                f"determines it model-wide, but "
+                f"{', '.join(ds.name for ds in sources)} pair these values with "
+                f"more than one {concept.address}: "
+                f"{[dict(zip(columns, row)) for row in rows]}"
+            )
+        results.append(
+            ValidationTest(
+                generated_query=sql,
+                check_type=ExpectationType.ROWCOUNT,
+                expected=expected,
+                result=err,
+                ran=True,
+            )
+        )
+    return results
+
+
 def validate_datasources(
     concept: BuildConcept, build_env: BuildEnvironment
 ) -> list[ValidationTest]:
@@ -243,4 +359,5 @@ def validate_concept(
     base: list[ValidationTest] = []
     base += validate_datasources(concept, build_env)
     base += validate_multi_datasource_concept(concept, env, build_env, exec)
+    base += validate_binding_fds(concept, env, build_env, exec)
     return base
