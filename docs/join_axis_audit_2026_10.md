@@ -636,7 +636,9 @@ moved.
 path's pairing read the plan.** A non-FINAL consumer's bridge candidates are
 the planned groups (`_FinalCover.groups`, the build context's `planned`)
 decided before it, not the build order minus the groups `ctx.unbuilt` has
-recorded so far. A FINAL no group covers is the first planned group
+recorded so far; an elected bridge that built nothing (a disconnected scan,
+`test_disconnected_comparison_raises_clean_disconnected_error`) raises
+`UnbuiltGroupException` through `_planned_side`, as a FINAL side does. A FINAL no group covers is the first planned group
 (`_uncovered_final_side`), raising `UnbuiltGroupException` if it built
 nothing. The sole-contributor path decides whether to apply the FINAL WHERE
 over the raw contributor off stage-2 facts: the contributor holds what it

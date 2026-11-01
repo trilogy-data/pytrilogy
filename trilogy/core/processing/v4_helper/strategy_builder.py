@@ -3251,7 +3251,7 @@ def _pre_merge_parents(
     if plan is not None and built is not None:
         parents = _join_elected_bridges(
             parents,
-            [(built[gid], plan.keys_for(gid)) for gid in plan.extras],
+            [(_planned_side(built, gid), plan.keys_for(gid)) for gid in plan.extras],
             environment,
         )
     all_outputs = readable_outputs(parents)
@@ -4469,13 +4469,12 @@ def _filter_arg_producers(
 
 
 def _planned_side(built: dict[str, StrategyNode], gid: str) -> StrategyNode:
-    """The node of a side the FINAL plan elected. A FINAL-only group whose
-    outputs another group delivers may build nothing; electing it is a plan
-    that cannot be assembled."""
+    """The node of a side a join plan elected. A planned group may build
+    nothing (a FINAL-only group whose outputs another group delivers, a
+    disconnected scan); electing it is a plan that cannot be assembled."""
     if (node := built.get(gid)) is None:
         raise UnbuiltGroupException(
-            f"[v4] FINAL join plan elected group {gid}, which built nothing. "
-            "This is a planner bug."
+            f"[v4] join plan elected group {gid}, which built nothing."
         )
     return node
 
