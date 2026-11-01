@@ -330,6 +330,21 @@ def test_scalar_of_an_aggregates_grain(select: str, where: str):
             [(3,)],
         ),
         (
+            "auto cb <- count(tree_id) by bucket;"
+            " select bucket, sum(case when bucket = 'Native' then cb end) as n;",
+            [("Introduced", None), ("Native", 4), (None, None)],
+        ),
+        (
+            "auto cbc <- count(tree_id) by bucket, city;"
+            " select city, sum(case when bucket = 'Native' then cbc end) as n;",
+            [("A", 3), ("B", 1)],
+        ),
+        (
+            "auto cb <- count(tree_id) by bucket;"
+            " select avg(case when bucket is null then 0 else cb end) as n;",
+            [(2.0,)],
+        ),
+        (
             "select split(species, ' ')[1] as g where plant_year > 2000;",
             [("Acer",), ("Opuntia",), ("Tilia",)],
         ),

@@ -6713,7 +6713,6 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     if (
         derivation == Derivation.AGGREGATE
         and a.aggregate_input_grain
-        and a.aggregate_input_grain != a.grain_components
         and parents
         and not _aggregate_inputs_are_row_preserving(outputs, primary_addrs, parents)
         and not _parents_already_at_input_grain(
