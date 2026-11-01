@@ -20,8 +20,8 @@ from trilogy.core.models.execute import (
     RecursiveCTE,
     UnionCTE,
 )
+from trilogy.core.optimizations.atom_contract import removable
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
 from trilogy.core.optimizations.utils import (
     ROW_RESHAPING_SOURCE_TYPES,
     append_condition,
@@ -687,10 +687,12 @@ class PredicatePushdown(OptimizationRule):
                 ):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
-                if redundant_not_null(parent_cte, candidate):
+                # the fixpoint contract (atom_contract): never add what a
+                # fact remover drops, or the two undo each other every pass
+                if remover := removable(parent_cte, candidate):
                     self.debug(
                         f"Not pushing {candidate} into {parent_cte.name}: "
-                        "it cannot be NULL there"
+                        f"{remover} would drop it"
                     )
                     return False
                 if parent_cte.condition:

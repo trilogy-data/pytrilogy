@@ -39,6 +39,9 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 # tests. The interpreter's own collections reclaim the same cycles here.
 CONFIG.collect_on_close = False
 
+# Every planned query doubles as a check of the optimizer's fixpoint contract.
+CONFIG.optimizations.enforce_fixpoint_contract = True
+
 #: Ambient terminal state the rich consoles read. `COLUMNS`/`LINES` size them,
 #: `FORCE_COLOR`/`CLICOLOR_FORCE` make them emit ANSI, and
 #: `TRILOGY_OUTPUT_FORMAT` swaps rendering for JSON events.

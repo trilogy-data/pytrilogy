@@ -28,6 +28,8 @@ or FULL join can pad that side back (`ss.customer.sk is not null` beside
 
 from __future__ import annotations
 
+from typing import Any
+
 from trilogy.core.enums import BooleanOperator, Derivation, JoinType, Modifier
 from trilogy.core.models.build import BuildConcept, BuildConditional, BuildDatasource
 from trilogy.core.models.execute import (
@@ -76,13 +78,13 @@ def _nullable_before_own_filter(cte: CTE) -> set[str]:
     return equivalent_addresses(nullable)
 
 
-def _and_atoms(condition: object) -> list:
+def and_atoms(condition: object) -> list:
     """Every AND-ed atom, a bare boolean concept included, which
     ``decompose_condition`` keeps bundled with its siblings."""
     if isinstance(condition, BuildConditional) and (
         condition.operator == BooleanOperator.AND
     ):
-        return _and_atoms(condition.left) + _and_atoms(condition.right)
+        return and_atoms(condition.left) + and_atoms(condition.right)
     return [condition]
 
 
@@ -126,7 +128,7 @@ class _NotNullFacts:
         self.output = equivalent_addresses(cte.output_columns)
         self.rejected = _inner_join_rejected(cte)
 
-    def redundant(self, atom: object) -> str | None:
+    def redundant(self, atom: Any) -> str | None:
         """Why `atom` is a tautological `X IS NOT NULL` in the CTE, if it is."""
         concept = _not_null_concept(atom)
         if concept is None or not is_scalar_condition(atom):
@@ -142,7 +144,7 @@ class _NotNullFacts:
         return None
 
 
-def redundant_not_null(cte: CTE, atom: object) -> bool:
+def redundant_not_null(cte: CTE, atom: Any) -> bool:
     """Whether `atom` would be stripped from `cte`'s WHERE: a rule adding it
     there would only be undone."""
     return _NotNullFacts(cte).redundant(atom) is not None
@@ -156,13 +158,13 @@ class StripRedundantNotNull(OptimizationRule):
             return False, None
         facts = _NotNullFacts(cte)
         survivors: list = []
-        for atom in _and_atoms(cte.condition):
+        for atom in and_atoms(cte.condition):
             reason = facts.redundant(atom)
             if reason is None:
                 survivors.append(atom)
             else:
                 self.log(f"{cte.name}: {reason}")
-        if len(survivors) == len(_and_atoms(cte.condition)):
+        if len(survivors) == len(and_atoms(cte.condition)):
             return False, None
         cte.condition = combine_condition_atoms(survivors)
         return True, None

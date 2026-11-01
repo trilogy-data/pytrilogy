@@ -38,6 +38,7 @@ a design decision or a bug.
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
+| `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
 
 ## What it found
 
@@ -445,6 +446,15 @@ a design decision or a bug.
   re-read species by ecoregion alone, returning NULL species rows (2 cases in
   `tests/engine/test_grain_pin_unnest_merge_filter.py` fail on main). The
   binding FDs themselves have no Lean model yet.
+
+- **Predicate pushdown and the NOT NULL strip undid each other**
+  (`Fixpoint.ungated_cycles`). Pushdown pushed `tree_id is not null` into a
+  scan whose `tree_id` cannot be NULL; `StripRedundantNotNull` dropped it; the
+  next pass pushed it again, so every such query ran the optimizer to its pass
+  cap (issue #830). Pushdown now skips an atom the stripper would drop, judged
+  by the stripper's own predicate (`Fixpoint.push_keeps`); the driver now
+  checks that no phase adds an atom a fact remover drops
+  (`Fixpoint.strip_never_cycles`).
 
 ## Limits
 

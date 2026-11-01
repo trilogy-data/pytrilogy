@@ -83,6 +83,11 @@ class Optimizations:
     join_hoist: bool = True
     union_dim_pushdown: bool = True
     order_inner_joins_first: bool = True
+    # Raise instead of warn when the optimizer driver hits a pass or loop cap
+    # (rules are deterministic, so a cap hit is a cycle between them), and
+    # check each phase keeps the WHERE-atom contract (atom_contract). The test
+    # suite turns this on.
+    enforce_fixpoint_contract: bool = False
 
 
 @dataclass
