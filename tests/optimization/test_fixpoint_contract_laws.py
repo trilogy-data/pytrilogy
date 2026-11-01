@@ -11,7 +11,7 @@ from trilogy.core.exceptions import OptimizationNonConvergence
 from trilogy.core.models import build
 from trilogy.core.optimization import build_optimization_rule_plan
 from trilogy.core.optimizations import predicate_pushdown
-from trilogy.core.optimizations.atom_contract import FACT_REMOVERS
+from trilogy.core.optimizations.atom_contract import FACT_REMOVERS, REMOVERS
 
 # A complete scan and two partial ones, each read in its own CTE: pushdown
 # offers `tree_id is not null` to every scan, and the strip drops it from the
@@ -43,7 +43,8 @@ def _ungate(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_fact_removers_are_driver_phases():
     phases = {phase.name for phase in build_optimization_rule_plan()}
-    assert set(FACT_REMOVERS) <= phases
+    assert set(REMOVERS) <= phases
+    assert FACT_REMOVERS == {"strip_redundant_not_null"}
 
 
 def test_contract_holds():

@@ -18,9 +18,12 @@ issue #830, where every such query ran the optimizer to its pass cap.
 
 Scope: `R` is fixed while the phases run. The remover's facts are outputs,
 joins and nullability; join upgrades run before it and only make more atoms
-removable. A remover judging an atom by *other atoms* (`PredicatePushdownRemove`
-reads its parents' WHERE) is outside this model; the pass cap check
-(`OptimizationNonConvergence`) is what guards those.
+removable. A merge (`CollapseSingleParent`) moves atoms into the CTE that
+absorbs another and is exempt from the check: it removes a CTE, so it happens
+finitely often, and after the last one `strip_never_cycles` covers the rest.
+A remover judging an atom by *other atoms* (`PredicatePushdownRemove` reads its
+parents' WHERE) is outside this model: pushdown gates on it when it pushes, and
+the pass cap check (`OptimizationNonConvergence`) guards it.
 -/
 
 namespace Trilogy.Fixpoint

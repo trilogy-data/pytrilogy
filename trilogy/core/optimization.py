@@ -769,7 +769,10 @@ def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> boo
         )
     if enforce and phase_changed:
         violations = contract_violations(
-            phase.name, atoms_before, [*state.input, state.root_cte]
+            phase.name,
+            atoms_before,
+            [*state.input, state.root_cte],
+            set(phase_merged.values()),
         )
         if violations:
             raise OptimizationNonConvergence("; ".join(violations))

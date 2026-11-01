@@ -30,14 +30,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from trilogy.core.enums import BooleanOperator, Derivation, JoinType, Modifier
-from trilogy.core.models.build import BuildConcept, BuildConditional, BuildDatasource
+from trilogy.core.enums import Derivation, JoinType, Modifier
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.execute import (
     CTE,
     Join,
     UnionCTE,
     pair_matches_nulls,
 )
+from trilogy.core.optimizations.atom_contract import and_atoms, register_remover
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_nodes
 from trilogy.core.processing.condition_utility import (
@@ -76,16 +77,6 @@ def _nullable_before_own_filter(cte: CTE) -> set[str]:
     for node in null_padded_nodes(cte):
         nullable += node.output_columns
     return equivalent_addresses(nullable)
-
-
-def and_atoms(condition: object) -> list:
-    """Every AND-ed atom, a bare boolean concept included, which
-    ``decompose_condition`` keeps bundled with its siblings."""
-    if isinstance(condition, BuildConditional) and (
-        condition.operator == BooleanOperator.AND
-    ):
-        return and_atoms(condition.left) + and_atoms(condition.right)
-    return [condition]
 
 
 def _inner_join_rejected(cte: CTE) -> set[tuple[str, str]]:
@@ -144,6 +135,7 @@ class _NotNullFacts:
         return None
 
 
+@register_remover("strip_redundant_not_null", facts_only=True)
 def redundant_not_null(cte: CTE, atom: Any) -> bool:
     """Whether `atom` would be stripped from `cte`'s WHERE: a rule adding it
     there would only be undone."""

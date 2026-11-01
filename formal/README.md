@@ -455,6 +455,10 @@ a design decision or a bug.
   by the stripper's own predicate (`Fixpoint.push_keeps`); the driver now
   checks that no phase adds an atom a fact remover drops
   (`Fixpoint.strip_never_cycles`).
+  The check found a second pair at once: pushdown pushed a rowset's existence
+  filter into a CTE whose parents already enforced it, and
+  `PredicatePushdownRemove` dropped it every pass. That remover judges atoms by
+  other atoms, so it is outside the model; pushdown now gates on it too.
 
 ## Limits
 
