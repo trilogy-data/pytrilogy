@@ -38,6 +38,7 @@ from trilogy.core.optimizations.utils import (
 from trilogy.core.processing.condition_utility import (
     gather_windows,
 )
+from trilogy.utility import unique
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
@@ -349,6 +350,31 @@ def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     return False
 
 
+def aggregate_inputs(cte: CTE) -> set[str]:
+    """Every address the aggregates `cte` computes itself read, through
+    filters and expressions (`count(species ? n > 0)` reads `n`)."""
+    out: set[str] = set()
+    stack = [
+        arg
+        for column in cte.output_columns
+        if not cte.source_map.get(column.address)
+        and column.lineage is not None
+        and (
+            column.derivation == Derivation.AGGREGATE
+            or isinstance(column.lineage, BuildAggregateWrapper)
+        )
+        for arg in column.lineage.concept_arguments
+    ]
+    while stack:
+        concept = stack.pop()
+        if concept.address in out:
+            continue
+        out.add(concept.address)
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return out
+
+
 def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     for column in cte.output_columns:
         if column not in parent.output_columns:
@@ -391,10 +417,15 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         parent.group_to_grain = True
         parent.grain = cte.grain
         # The child's re-sum of a summary column now runs over the parent's
-        # rows. The parent's own rollups were dormant (it did not group), so a
-        # column it read already at the child's input grain stays a plain
-        # input; re-summing it inside the child's aggregate would nest them.
-        parent.rollup_concepts = list(cte.rollup_concepts)
+        # rows, and so does the parent's, except one an aggregate the child
+        # computes reads: that is the aggregate's input, already at the
+        # child's input grain, and re-summing it there would nest them.
+        aggregated = aggregate_inputs(cte)
+        parent.rollup_concepts = unique(
+            cte.rollup_concepts
+            + [r for r in parent.rollup_concepts if r.address not in aggregated],
+            "address",
+        )
     elif merge_mode == MergeMode.WINDOW:
         # The parent's intermediate columns may still be referenced by window
         # expressions, so extend without pruning.

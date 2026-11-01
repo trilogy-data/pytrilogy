@@ -2512,16 +2512,17 @@ class BuildUnionDatasource:
     def bound_discriminators(self) -> frozenset[str]:
         """The columns the arms' `complete where` clauses read that every arm
         binds. Each base row has one value of each, so the arms partition the
-        rows on them. One every arm pins to the same value (`city = 'A'` on
-        each source of one city) separates no arm from another, so it is no
-        discriminator of the union."""
+        rows on them. One several arms all pin to the same value (`city = 'A'`
+        on each source of one city) separates none of them, so it is no
+        discriminator of the union; a stack of one arm keeps its own."""
         bound = {c.concept.address for c in self.columns}
         pins = [_complete_where_pins(child) for child in self.children]
         return frozenset(
             address
             for child in self.children
             for address in child.bound_discriminators
-            if address in bound and len({p.get(address) for p in pins}) > 1
+            if address in bound
+            and (len(pins) == 1 or len({p.get(address) for p in pins}) > 1)
         )
 
     @property
