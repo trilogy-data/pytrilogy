@@ -404,11 +404,14 @@ def root_carry_demand(
     sibling_keys = frozenset().union(
         *(attrs[other].emitted_grain for other in cover if other != gid)
     )
+    candidates = base & (merge_grain | sibling_keys)
+    members = frozenset(group.members)
     demand = _relevant_carry_keys(
         environment,
         concepts,
-        base & (merge_grain | sibling_keys),
-        frozenset(group.members),
+        candidates,
+        members
+        | _renderable(members, candidates, environment, frozenset({Derivation.BASIC})),
     )
     own = demand & ({c.address for c in concepts} | set(group.output_concepts))
     if own and all(
