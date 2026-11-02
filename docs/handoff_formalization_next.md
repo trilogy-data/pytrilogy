@@ -355,6 +355,14 @@ every dialect, simulated against the engine defaults it pins), numbering
 windows over a table and over a `~`-referenced dimension, `lag`/`lead` over
 rows and over `distinct(...)`, and the set operators to the reference. See
 "What it found" in `formal/README.md`. Leads left:
+- **A rank over a rowset's property still walks the rowset's rows.**
+  `_window_rows_at_grain` groups a window to its own grain only when every
+  column it drops is read by a consumer from another parent, and never drops a
+  rowset output: a widening pass re-adds it to the window through the rowset
+  concept's lineage with no source (TPC-DS q44's `qualifying.item_id`,
+  `tests/test_membership_having_aggregate_dimension_key_groupby.py`). There a
+  tied value is ranked per row. Fixing the widening would let the rowset case
+  rank values too.
 - **Window frames** are not modelled: `sum x order by y` is a running sum
   with SQL's default `RANGE` frame, so tied `y` values share a total. Pin it
   against a reference before anyone relies on it.

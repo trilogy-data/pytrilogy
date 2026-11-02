@@ -676,8 +676,10 @@ a design decision or a bug.
     projection: a NULL `v` ranked 5th beside `id` and 4th in `select v, rank
     v` (`Window.row_stream_rank_differs`). `_window_rows_at_grain` read the
     grain off the window's arguments, which for a property is its key, so it
-    never grouped the rows down to the values the window ranks. It now reads
-    the window's own grain, and the rank is a function of its values
+    never grouped the rows down to the values the window ranks. It now groups
+    to the window's own grain when the rows it drops are read from another
+    parent (a rowset's rows are still walked as is; see the handoff), and the
+    rank is a function of its values
     (`Window.rank_dup_invariant`). The same fix removes a duplicated NULL
     group in `select nm, count(id), rank nm` over a `~`-referenced
     dimension.
