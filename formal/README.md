@@ -580,10 +580,46 @@ a design decision or a bug.
   - `CollapseSingleParent` folded a CTE into a table its consumer had already
     inlined, so one name meant two sources: a binder error here, and a silent
     wrong column where the names overlap.
-  Open: a row-level FINAL filter argument (`where rqty > 1 or sum(amount) by
-  cust_id > 8 select name`) still joins as a bare value set, ON 1=1 (strict
-  xfail in the suite). Not a bug: `query-3`'s narrowed `subset join` over
-  data that breaks the declaration.
+  Not a bug: `query-3`'s narrowed `subset join` over data that breaks the
+  declaration.
+- **Keys a FINAL join never carried, `~` sides joined as if complete, and one
+  partition arm read for the whole family** (`Rewrite.lean`, 0.3.442). The
+  padded/pre-joined harness, swept over 1,200 seeds and a 270-shape family
+  of two customer gates beside a row atom, found five bugs, all on main
+  (28 of 138 suite cases and 125 of the 270 family shapes fail there):
+  - A row-level filter argument beside a gate (`where rqty > 1 or
+    sum(amount) by cust_id > 8 select name`) joined its producer ON 1=1, so
+    any customer's return passed every customer (`cross_arg_leaks`). The
+    argument's row stream now exposes the gate's grain it can carry, as does
+    a dimension peel, and a sole contributor holding that key applies the
+    WHERE before its dedup (`keyed_arg_exact`). The same demand fixes the
+    pre-joined model's keyless-join failures from the last round.
+  - A WHERE proof on the join key narrowed a FULL to INNER through a `~`
+    lookup keyed by it (notes by customer), dropping the order whose customer
+    has no note (`key_proof_keeps_lookup_gap`).
+  - A FULL to a `~` side marked the complete side's key nullable, so a
+    filtered aggregate beside a NULL-accepting row atom (`amount is null`,
+    `not (x != k)`) was not the WHERE's population and every customer came
+    back (`null_accepting_row_keeps_rejected`). A FULL whose `~` right side
+    has a partner for every row is now the LEFT join at plan time
+    (`subset_full_is_left`).
+  - A FINAL or gated filter merge forced INNER toward its feeders even when
+    the node was the bare `~` notes scan: the customer with no note was lost,
+    and a gate hosted on the notes peel kept customers it rejected
+    (`preserving_exact`). The merge now lets join typing decide where a feeder
+    carries the key complete, and drops the node's partial stamp there.
+  - TPC-DS q83 with its heal blocked returned no rows: the per-channel
+    presence counts read the returns family off its CATALOG arm alone. An arm
+    in two minted unions (its family, and a cover mixing sales and returns on
+    `channel`) was mapped to the mixed one, so the prune that prefers the
+    family union never fired.
+  `merge_irrelevant_group_by`, `drop_identity_group`, the value-set upgrade,
+  `fold_existence_into_aggregate` and `push_semi_join_into_aggregate` now have
+  laws (`identity_group_exact`, `merged_group_sum_exact`,
+  `matched_left_is_inner`, `existence_fold_exact`, `semi_join_exact`), each
+  with a counterexample for its guard; the suite ablates each and checks the
+  last four fire. Not a bug: `select reason, rqty` over the `~` returns reads
+  the returns rows only, since no output carries an order's own attributes.
 
 ## Limits
 

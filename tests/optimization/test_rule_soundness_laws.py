@@ -29,10 +29,10 @@ from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.optimizations.existence_having_fold import FoldExistenceIntoAggregate
 from trilogy.core.optimizations.identity_group import DropIdentityGroup
 from trilogy.core.optimizations.semi_join_pushdown import PushSemiJoinIntoAggregate
+from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
 )
-from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
 from trilogy.core.processing.condition_utility import _not_null_concept
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.execute import ProcessedQuery
