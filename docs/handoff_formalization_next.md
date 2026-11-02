@@ -17,7 +17,7 @@ made datasource bindings functional-dependency facts in place of FK-derived
 keys, `Binding.lean`, which models those facts (area 0 below records what
 is left of it), `Unnest.lean`, filtering rows by the elements of an
 unnested list (area 0b), and `Rewrite.lean`, optimizer rules as rewrites
-that keep rows (area 2).
+that keep rows (area 2, two rounds: #843 and the row-argument round).
 
 ## The recipe
 
@@ -97,20 +97,28 @@ that keep rows (area 2).
      rebaselining: two of this round's overruns were a heal the fix had
      stopped making by mistake.
 
+9. **Lessons from the row-argument round (`Rewrite.lean`, 0.3.442).**
+   - Sweep a FAMILY, not only random seeds. 1,200 random seeds found four
+     bugs; enumerating one shape family (two customer gates beside a row
+     atom, 270 queries) found 125 failures on main and, mid-round, 13 new
+     silent wrong answers that the random sweep never reached.
+   - Turning an error into rows is not progress until the rows are checked:
+     a key exposed for a join made 13 shapes that raised on main return wrong
+     rows. Diff the wrong-answer SET against main, not the failure count.
+   - Fix missing keys at demand (`group_graph._group_inputs`), not by late
+     widening: a key added after a dedup or inside a grouped node is lost.
+   - A rule's guard that reads a node's partiality must read the node actually
+     built: a bucket-level "this peel is `~`" test over-approximated (the peel
+     also read orders) and turned correct plans into planning errors.
+   - Count firings with the rule's real return value: `optimize` returns a
+     tuple, and counting its truthiness made every rule "fire" everywhere.
+   - Revert each change against BOTH oracles (the law suite and the family):
+     two changes the law suite needed were redundant, and one the law suite
+     did not need was what the family needed.
+
 ## Candidate areas
 
-**Suggested next: the open row-argument cross join (area 2), then area 1.**
-`tests/optimization/test_rule_soundness_laws.py::test_open_row_arg_cross_join`
-is a strict xfail, wrong on main too: `where (rqty > 1) or (sum(amount) by
-cust_id > 8) select name` (a row-level argument of an atom placed at FINAL,
-beside a dimension peel) joins the argument's producer as a bare value set,
-ON 1=1. `_final_extra_sides` / `_filter_arg_parents` treat a filter-argument
-producer as a cross-join input (right for a global aggregate), and
-`plan_final_join` asks extras to carry no key. A ROOT producer of a
-row-level argument needs re-sourcing with the key its row determines, as
-`_resourced_root_contributor` does for a ROOT contributor. The sole-contributor
-path (`_apply_final_conditions`) is where this query lands. Delta-reduced
-shapes are in the xfail's `OPEN` list.
+**Suggested next: area 1, then the area-2 leads below.**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -242,22 +250,33 @@ planner to a pre-joined twin over table and query addresses, disables each
 rule over the same queries, and checks `redundant_not_null`'s premise
 directly: every column it would strip is never NULL in its CTE before the
 WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
-- **The row-argument cross join** above (suggested next).
-- **Both FLAT-model planning failures in the 800-query sweep** (wrong on
-  main too): `where ((count(order_id) by cust_id = 0) and (reason is not
-  null)) and (sum(amount) by cust_id > 8) select note` over one pre-joined
-  table fails with the keyless-join guard. Two cust-level aggregates beside
-  a row atom, selecting only a cust attribute.
-- **q83 with its heal blocked returned no rows.** A broken intermediate of
-  this round stopped `decide_heal` for query83's returns, and the unhealed
-  plan returned nothing against the reference's rows. The heal is back, so it
-  is unreachable today, but the unhealed path has a wrong answer in it:
-  force `decide_heal` to return `{}` and compare q83 with `query83.sql`.
-- **Not modelled yet:** `merge_irrelevant_group_by` / `identity_group`
-  (GROUP BY a key of the input, `Rows.distinct_eq_group`),
-  `value_set_join_upgrade`, `existence_having_fold`, `semi_join_pushdown`.
-  Disabling them over the corpus changed no rows; a model and a law suite
-  would make that a proof.
+- Done in 0.3.442 (see "What it found" in `formal/README.md`): the
+  row-argument cross join, the FLAT keyless-join failures, q83 unhealed
+  (`test_eighty_three_unhealed`), and laws for the identity GROUP BY, the
+  value-set upgrade, the existence fold and the semi-join pushdown.
+- **`merge_irrelevant_group_by` fires on no shape of the soundness model.**
+  Its law is proved (`merged_group_sum_exact`, `dropped_dedup_double_counts`)
+  and the suite ablates it, but that ablation compares identical plans. Find
+  a shape that fires it (a child aggregate over a pure-DISTINCT parent CTE;
+  rowset bodies did not) and add it to `FIRES`. `fold_existence_into_aggregate`
+  fires only under table addressing.
+- **Two planning errors the sweep keeps hitting, in every model including
+  FLAT:** `where (not (count(order_id) by cust_id > 1)) and ((order_id > 9)
+  or (name is not null)) select name, note, cust_id, count(order_id) by
+  cust_id -> n` and `where (rqty in (4, 4)) or ((amount is not null) or (note
+  is not null)) select note, count(order_id) by cust_id -> n` raise "could
+  only be placed after the aggregates". The first reads the SELECT's own
+  aggregate in the WHERE (likely the documented self-reference refusal); the
+  second does not, and looks like a placement gap.
+- **The mixed partition cover.** `union_sources` mints `web_sales +
+  catalog_returns + store_returns` as a cover of `channel` in TPC-DS
+  `all_sales`, because `return_channel_dim_id` is bound by those three and
+  not by `web_returns`. 0.3.442 stops it shadowing the returns family, but a
+  union of different facts is not a partition of one table; arms of one
+  family should share a fact identity.
+- **A gated `~` peel is hosted at the peel** and is now built preserving the
+  gate side (`condition_injection.completed_by_feeders`). Rewrite.lean models
+  the row-level consequence (`preserving_exact`), not the peel itself.
 - `PredicatePushdownRemove`'s whole-condition path (every parent covers the
   WHERE) does not check `_parent_nullable_in_cte`, which the per-atom path
   does. No shape reaching it was found (it needs a column read only off a

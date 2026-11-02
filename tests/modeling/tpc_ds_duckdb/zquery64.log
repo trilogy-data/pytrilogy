@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 15290
+gen_length = 15101
 preql_size = 4382
 comp_size = 3783
 generated_sql = """
@@ -7,7 +7,7 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    coalesce(\"cs_catalog_returns\".\"CR_ITEM_SK\",\"cs_catalog_sales\".\"CS_ITEM_SK\") as \"cs_ui_cs_ui_item_id\"
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_ui_cs_ui_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
@@ -16,7 +16,7 @@ GROUP BY
 HAVING
     sum(CASE WHEN (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) THEN \"cs_catalog_sales\".\"CS_EXT_LIST_PRICE\" ELSE NULL END) > 2 * sum(CASE WHEN (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) THEN ( coalesce(\"cs_catalog_returns\".\"CR_REFUNDED_CASH\",0) + coalesce(\"cs_catalog_returns\".\"CR_REVERSED_CHARGE\",0) ) + coalesce(\"cs_catalog_returns\".\"CR_STORE_CREDIT\",0) ELSE NULL END)
 ),
-puzzled as (
+waggish as (
 SELECT
     \"ss_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_current_demographics_marital_status\",
     \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"ss_customer_current_address_sk\",
@@ -44,29 +44,29 @@ FROM
 WHERE
     \"ss_sale_date_date\".\"D_YEAR\" = 2000 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 75 AND 84 and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_item_items\".\"I_ITEM_SK\")
 ),
-waggish as (
+rambunctious as (
 SELECT
-    \"puzzled\".\"ss_item_sk\" as \"agg_00_item_sk_00\",
-    \"puzzled\".\"ss_sale_date_year\" as \"agg_00_syear_00\",
-    \"puzzled\".\"ss_store_sk\" as \"agg_00_store_sk_00\",
-    count(\"puzzled\".\"ss_ticket_number\") as \"agg_00_cnt_00\",
-    sum(\"puzzled\".\"ss_coupon_amt\") as \"agg_00_s3_00\",
-    sum(\"puzzled\".\"ss_list_price\") as \"agg_00_s2_00\",
-    sum(\"puzzled\".\"ss_wholesale_cost\") as \"agg_00_s1_00\"
+    \"waggish\".\"ss_item_sk\" as \"agg_00_item_sk_00\",
+    \"waggish\".\"ss_sale_date_year\" as \"agg_00_syear_00\",
+    \"waggish\".\"ss_store_sk\" as \"agg_00_store_sk_00\",
+    count(\"waggish\".\"ss_ticket_number\") as \"agg_00_cnt_00\",
+    sum(\"waggish\".\"ss_coupon_amt\") as \"agg_00_s3_00\",
+    sum(\"waggish\".\"ss_list_price\") as \"agg_00_s2_00\",
+    sum(\"waggish\".\"ss_wholesale_cost\") as \"agg_00_s1_00\"
 FROM
-    \"puzzled\"
+    \"waggish\"
 WHERE
-    \"puzzled\".\"ss_pos_customer_demographic_marital_status\" != \"puzzled\".\"ss_customer_current_demographics_marital_status\"
+    \"waggish\".\"ss_pos_customer_demographic_marital_status\" != \"waggish\".\"ss_customer_current_demographics_marital_status\"
 
 GROUP BY
     1,
     2,
     3,
-    \"puzzled\".\"ss_customer_current_address_sk\",
-    \"puzzled\".\"ss_customer_first_sales_date_year\",
-    \"puzzled\".\"ss_customer_first_shipto_date_year\",
-    \"puzzled\".\"ss_pos_address_sk\"),
-sweltering as (
+    \"waggish\".\"ss_customer_current_address_sk\",
+    \"waggish\".\"ss_customer_first_sales_date_year\",
+    \"waggish\".\"ss_customer_first_shipto_date_year\",
+    \"waggish\".\"ss_pos_address_sk\"),
+late as (
 SELECT
     \"ss_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_current_demographics_marital_status\",
     \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"ss_customer_current_address_sk\",
@@ -94,21 +94,21 @@ FROM
 WHERE
     \"ss_sale_date_date\".\"D_YEAR\" = 1999 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 75 AND 84 and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_item_items\".\"I_ITEM_SK\")
 ),
-late as (
+macho as (
 SELECT
-    \"sweltering\".\"ss_customer_current_address_sk\" as \"agg_99_c_addr_99\",
-    \"sweltering\".\"ss_item_sk\" as \"agg_99_item_sk_99\",
-    \"sweltering\".\"ss_pos_address_sk\" as \"agg_99_b_addr_99\",
-    \"sweltering\".\"ss_sale_date_year\" as \"agg_99_syear_99\",
-    \"sweltering\".\"ss_store_sk\" as \"agg_99_store_sk_99\",
-    count(\"sweltering\".\"ss_ticket_number\") as \"agg_99_cnt_99\",
-    sum(\"sweltering\".\"ss_coupon_amt\") as \"agg_99_s3_99\",
-    sum(\"sweltering\".\"ss_list_price\") as \"agg_99_s2_99\",
-    sum(\"sweltering\".\"ss_wholesale_cost\") as \"agg_99_s1_99\"
+    \"late\".\"ss_customer_current_address_sk\" as \"agg_99_c_addr_99\",
+    \"late\".\"ss_item_sk\" as \"agg_99_item_sk_99\",
+    \"late\".\"ss_pos_address_sk\" as \"agg_99_b_addr_99\",
+    \"late\".\"ss_sale_date_year\" as \"agg_99_syear_99\",
+    \"late\".\"ss_store_sk\" as \"agg_99_store_sk_99\",
+    count(\"late\".\"ss_ticket_number\") as \"agg_99_cnt_99\",
+    sum(\"late\".\"ss_coupon_amt\") as \"agg_99_s3_99\",
+    sum(\"late\".\"ss_list_price\") as \"agg_99_s2_99\",
+    sum(\"late\".\"ss_wholesale_cost\") as \"agg_99_s1_99\"
 FROM
-    \"sweltering\"
+    \"late\"
 WHERE
-    \"sweltering\".\"ss_pos_customer_demographic_marital_status\" != \"sweltering\".\"ss_customer_current_demographics_marital_status\"
+    \"late\".\"ss_pos_customer_demographic_marital_status\" != \"late\".\"ss_customer_current_demographics_marital_status\"
 
 GROUP BY
     1,
@@ -116,15 +116,15 @@ GROUP BY
     3,
     4,
     5,
-    \"sweltering\".\"ss_customer_first_sales_date_year\",
-    \"sweltering\".\"ss_customer_first_shipto_date_year\"),
-protective as (
+    \"late\".\"ss_customer_first_sales_date_year\",
+    \"late\".\"ss_customer_first_shipto_date_year\"),
+premium as (
 SELECT
-    \"late\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"late\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
-    \"late\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
-    \"late\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"late\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
+    \"macho\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"macho\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"macho\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"macho\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"macho\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
     \"ss_customer_current_address_customer_address\".\"CA_CITY\" as \"ss_customer_current_address_city\",
     \"ss_customer_current_address_customer_address\".\"CA_STREET_NAME\" as \"ss_customer_current_address_street_name\",
     \"ss_customer_current_address_customer_address\".\"CA_STREET_NUMBER\" as \"ss_customer_current_address_street_number\",
@@ -136,107 +136,105 @@ SELECT
     \"ss_pos_address_customer_address\".\"CA_ZIP\" as \"ss_pos_address_zip\",
     \"ss_store_store\".\"S_STORE_NAME\" as \"ss_store_name\",
     \"ss_store_store\".\"S_ZIP\" as \"ss_store_zip\",
-    coalesce(\"late\".\"agg_99_b_addr_99\",\"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\") as \"agg_99_b_addr_99\",
-    coalesce(\"late\".\"agg_99_b_addr_99\",\"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\") as \"ss_pos_address_sk\",
-    coalesce(\"late\".\"agg_99_c_addr_99\",\"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\") as \"agg_99_c_addr_99\",
-    coalesce(\"late\".\"agg_99_c_addr_99\",\"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\") as \"ss_customer_current_address_sk\",
-    coalesce(\"late\".\"agg_99_item_sk_99\",\"ss_item_items\".\"I_ITEM_SK\") as \"agg_99_item_sk_99\",
-    coalesce(\"late\".\"agg_99_item_sk_99\",\"ss_item_items\".\"I_ITEM_SK\") as \"ss_item_sk\",
-    coalesce(\"late\".\"agg_99_store_sk_99\",\"ss_store_store\".\"S_STORE_SK\") as \"agg_99_store_sk_99\",
-    coalesce(\"late\".\"agg_99_store_sk_99\",\"ss_store_store\".\"S_STORE_SK\") as \"ss_store_sk\"
+    coalesce(\"macho\".\"agg_99_b_addr_99\",\"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\") as \"agg_99_b_addr_99\",
+    coalesce(\"macho\".\"agg_99_b_addr_99\",\"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\") as \"ss_pos_address_sk\",
+    coalesce(\"macho\".\"agg_99_c_addr_99\",\"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\") as \"agg_99_c_addr_99\",
+    coalesce(\"macho\".\"agg_99_c_addr_99\",\"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\") as \"ss_customer_current_address_sk\",
+    coalesce(\"macho\".\"agg_99_item_sk_99\",\"ss_item_items\".\"I_ITEM_SK\") as \"agg_99_item_sk_99\",
+    coalesce(\"macho\".\"agg_99_item_sk_99\",\"ss_item_items\".\"I_ITEM_SK\") as \"ss_item_sk\",
+    coalesce(\"macho\".\"agg_99_store_sk_99\",\"ss_store_store\".\"S_STORE_SK\") as \"agg_99_store_sk_99\",
+    coalesce(\"macho\".\"agg_99_store_sk_99\",\"ss_store_store\".\"S_STORE_SK\") as \"ss_store_sk\"
 FROM
-    \"late\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"late\".\"agg_99_item_sk_99\" = \"ss_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"late\".\"agg_99_store_sk_99\" = \"ss_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ss_pos_address_customer_address\" on \"late\".\"agg_99_b_addr_99\" = \"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_current_address_customer_address\" on \"late\".\"agg_99_c_addr_99\" = \"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-premium as (
+    \"macho\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"macho\".\"agg_99_item_sk_99\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"macho\".\"agg_99_store_sk_99\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ss_pos_address_customer_address\" on \"macho\".\"agg_99_b_addr_99\" = \"ss_pos_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_current_address_customer_address\" on \"macho\".\"agg_99_c_addr_99\" = \"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
+puzzled as (
 SELECT
-    \"protective\".\"agg_99_b_addr_99\" as \"agg_99_b_addr_99\",
-    \"protective\".\"agg_99_c_addr_99\" as \"agg_99_c_addr_99\",
-    \"protective\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"protective\".\"agg_99_item_sk_99\" as \"agg_99_item_sk_99\",
-    \"protective\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
-    \"protective\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
-    \"protective\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"protective\".\"agg_99_store_sk_99\" as \"agg_99_store_sk_99\",
-    \"protective\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
-    \"protective\".\"ss_customer_current_address_city\" as \"c_city\",
-    \"protective\".\"ss_customer_current_address_sk\" as \"ss_customer_current_address_sk\",
-    \"protective\".\"ss_customer_current_address_street_name\" as \"c_str\",
-    \"protective\".\"ss_customer_current_address_street_number\" as \"c_sn\",
-    \"protective\".\"ss_customer_current_address_zip\" as \"c_zip\",
-    \"protective\".\"ss_item_product_name\" as \"p_name\",
-    \"protective\".\"ss_item_sk\" as \"agg_00_item_sk_00\",
-    \"protective\".\"ss_item_sk\" as \"ss_item_sk\",
-    \"protective\".\"ss_pos_address_city\" as \"b_city\",
-    \"protective\".\"ss_pos_address_sk\" as \"ss_pos_address_sk\",
-    \"protective\".\"ss_pos_address_street_name\" as \"b_str\",
-    \"protective\".\"ss_pos_address_street_number\" as \"b_sn\",
-    \"protective\".\"ss_pos_address_zip\" as \"b_zip\",
-    \"protective\".\"ss_store_name\" as \"s_name\",
-    \"protective\".\"ss_store_sk\" as \"agg_00_store_sk_00\",
-    \"protective\".\"ss_store_sk\" as \"ss_store_sk\",
-    \"protective\".\"ss_store_zip\" as \"s_zip\"
-FROM
-    \"protective\"),
-yellow as (
-SELECT
+    \"premium\".\"agg_99_b_addr_99\" as \"agg_99_b_addr_99\",
+    \"premium\".\"agg_99_c_addr_99\" as \"agg_99_c_addr_99\",
     \"premium\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"premium\".\"agg_99_item_sk_99\" as \"agg_99_item_sk_99\",
     \"premium\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
     \"premium\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
     \"premium\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"premium\".\"agg_99_store_sk_99\" as \"agg_99_store_sk_99\",
     \"premium\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
-    \"premium\".\"b_city\" as \"b_city\",
-    \"premium\".\"b_sn\" as \"b_sn\",
-    \"premium\".\"b_str\" as \"b_str\",
-    \"premium\".\"b_zip\" as \"b_zip\",
-    \"premium\".\"c_city\" as \"c_city\",
-    \"premium\".\"c_sn\" as \"c_sn\",
-    \"premium\".\"c_str\" as \"c_str\",
-    \"premium\".\"c_zip\" as \"c_zip\",
-    \"premium\".\"p_name\" as \"p_name\",
-    \"premium\".\"s_name\" as \"s_name\",
-    \"premium\".\"s_zip\" as \"s_zip\",
+    \"premium\".\"ss_customer_current_address_city\" as \"c_city\",
     \"premium\".\"ss_customer_current_address_sk\" as \"ss_customer_current_address_sk\",
+    \"premium\".\"ss_customer_current_address_street_name\" as \"c_str\",
+    \"premium\".\"ss_customer_current_address_street_number\" as \"c_sn\",
+    \"premium\".\"ss_customer_current_address_zip\" as \"c_zip\",
+    \"premium\".\"ss_item_product_name\" as \"p_name\",
     \"premium\".\"ss_item_sk\" as \"ss_item_sk\",
+    \"premium\".\"ss_pos_address_city\" as \"b_city\",
     \"premium\".\"ss_pos_address_sk\" as \"ss_pos_address_sk\",
+    \"premium\".\"ss_pos_address_street_name\" as \"b_str\",
+    \"premium\".\"ss_pos_address_street_number\" as \"b_sn\",
+    \"premium\".\"ss_pos_address_zip\" as \"b_zip\",
+    \"premium\".\"ss_store_name\" as \"s_name\",
     \"premium\".\"ss_store_sk\" as \"ss_store_sk\",
-    \"waggish\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\",
-    \"waggish\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
-    \"waggish\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
-    \"waggish\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
-    \"waggish\".\"agg_00_syear_00\" as \"agg_00_syear_00\"
+    \"premium\".\"ss_store_zip\" as \"s_zip\"
 FROM
-    \"premium\"
-    INNER JOIN \"waggish\" on \"premium\".\"ss_item_sk\" = \"waggish\".\"agg_00_item_sk_00\" AND \"premium\".\"ss_store_sk\" = \"waggish\".\"agg_00_store_sk_00\"
+    \"premium\"),
+resonant as (
+SELECT
+    \"puzzled\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"puzzled\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"puzzled\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"puzzled\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"puzzled\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
+    \"puzzled\".\"b_city\" as \"b_city\",
+    \"puzzled\".\"b_sn\" as \"b_sn\",
+    \"puzzled\".\"b_str\" as \"b_str\",
+    \"puzzled\".\"b_zip\" as \"b_zip\",
+    \"puzzled\".\"c_city\" as \"c_city\",
+    \"puzzled\".\"c_sn\" as \"c_sn\",
+    \"puzzled\".\"c_str\" as \"c_str\",
+    \"puzzled\".\"c_zip\" as \"c_zip\",
+    \"puzzled\".\"p_name\" as \"p_name\",
+    \"puzzled\".\"s_name\" as \"s_name\",
+    \"puzzled\".\"s_zip\" as \"s_zip\",
+    \"puzzled\".\"ss_customer_current_address_sk\" as \"ss_customer_current_address_sk\",
+    \"puzzled\".\"ss_item_sk\" as \"ss_item_sk\",
+    \"puzzled\".\"ss_pos_address_sk\" as \"ss_pos_address_sk\",
+    \"puzzled\".\"ss_store_sk\" as \"ss_store_sk\",
+    \"rambunctious\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\",
+    \"rambunctious\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
+    \"rambunctious\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
+    \"rambunctious\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
+    \"rambunctious\".\"agg_00_syear_00\" as \"agg_00_syear_00\"
+FROM
+    \"puzzled\"
+    INNER JOIN \"rambunctious\" on \"puzzled\".\"ss_item_sk\" = \"rambunctious\".\"agg_00_item_sk_00\" AND \"puzzled\".\"ss_store_sk\" = \"rambunctious\".\"agg_00_store_sk_00\"
 WHERE
-    \"waggish\".\"agg_00_cnt_00\" <= \"premium\".\"agg_99_cnt_99\"
+    \"rambunctious\".\"agg_00_cnt_00\" <= \"puzzled\".\"agg_99_cnt_99\"
 )
 SELECT
-    \"yellow\".\"p_name\" as \"p_name\",
-    \"yellow\".\"s_name\" as \"s_name\",
-    \"yellow\".\"s_zip\" as \"s_zip\",
-    \"yellow\".\"b_sn\" as \"b_sn\",
-    \"yellow\".\"b_str\" as \"b_str\",
-    \"yellow\".\"b_city\" as \"b_city\",
-    \"yellow\".\"b_zip\" as \"b_zip\",
-    \"yellow\".\"c_sn\" as \"c_sn\",
-    \"yellow\".\"c_str\" as \"c_str\",
-    \"yellow\".\"c_city\" as \"c_city\",
-    \"yellow\".\"c_zip\" as \"c_zip\",
-    \"yellow\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
-    \"yellow\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
-    \"yellow\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
-    \"yellow\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
-    \"yellow\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
-    \"yellow\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
-    \"yellow\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
-    \"yellow\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
-    \"yellow\".\"agg_00_syear_00\" as \"agg_00_syear_00\",
-    \"yellow\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\"
+    \"resonant\".\"p_name\" as \"p_name\",
+    \"resonant\".\"s_name\" as \"s_name\",
+    \"resonant\".\"s_zip\" as \"s_zip\",
+    \"resonant\".\"b_sn\" as \"b_sn\",
+    \"resonant\".\"b_str\" as \"b_str\",
+    \"resonant\".\"b_city\" as \"b_city\",
+    \"resonant\".\"b_zip\" as \"b_zip\",
+    \"resonant\".\"c_sn\" as \"c_sn\",
+    \"resonant\".\"c_str\" as \"c_str\",
+    \"resonant\".\"c_city\" as \"c_city\",
+    \"resonant\".\"c_zip\" as \"c_zip\",
+    \"resonant\".\"agg_99_syear_99\" as \"agg_99_syear_99\",
+    \"resonant\".\"agg_99_cnt_99\" as \"agg_99_cnt_99\",
+    \"resonant\".\"agg_99_s1_99\" as \"agg_99_s1_99\",
+    \"resonant\".\"agg_99_s2_99\" as \"agg_99_s2_99\",
+    \"resonant\".\"agg_99_s3_99\" as \"agg_99_s3_99\",
+    \"resonant\".\"agg_00_s1_00\" as \"agg_00_s1_00\",
+    \"resonant\".\"agg_00_s2_00\" as \"agg_00_s2_00\",
+    \"resonant\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
+    \"resonant\".\"agg_00_syear_00\" as \"agg_00_syear_00\",
+    \"resonant\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\"
 FROM
-    \"yellow\"
+    \"resonant\"
 GROUP BY
     1,
     2,
@@ -259,13 +257,13 @@ GROUP BY
     19,
     20,
     21,
-    \"yellow\".\"ss_customer_current_address_sk\",
-    \"yellow\".\"ss_item_sk\",
-    \"yellow\".\"ss_pos_address_sk\",
-    \"yellow\".\"ss_store_sk\"
+    \"resonant\".\"ss_customer_current_address_sk\",
+    \"resonant\".\"ss_item_sk\",
+    \"resonant\".\"ss_pos_address_sk\",
+    \"resonant\".\"ss_store_sk\"
 ORDER BY 
-    \"yellow\".\"p_name\" asc nulls first,
-    \"yellow\".\"s_name\" asc nulls first,
-    \"yellow\".\"agg_00_cnt_00\" asc nulls first,
-    \"yellow\".\"agg_99_s1_99\" asc nulls first,
-    \"yellow\".\"agg_00_s1_00\" asc nulls first"""
+    \"resonant\".\"p_name\" asc nulls first,
+    \"resonant\".\"s_name\" asc nulls first,
+    \"resonant\".\"agg_00_cnt_00\" asc nulls first,
+    \"resonant\".\"agg_99_s1_99\" asc nulls first,
+    \"resonant\".\"agg_00_s1_00\" asc nulls first"""

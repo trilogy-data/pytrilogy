@@ -7,6 +7,7 @@ from tests.modeling._query_size import query_size
 from tests.modeling._row_compare import rows_match
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing import statement_scope
 
 working_path = Path(__file__).parent
 
@@ -707,6 +708,18 @@ def test_eighty_three(engine):
     query = run_query(engine, 83)
     assert len(query) < 6500, query
     assert query.count(' as "item_id"') == 1, query
+
+
+def test_eighty_three_unhealed(engine, monkeypatch):
+    """Without the `~` heal the per-channel presence counts read the returns
+    family: one arm alone lost the other channels' return dates."""
+    monkeypatch.setattr(statement_scope, "decide_heal", lambda *args, **kwargs: {})
+    engine.environment = Environment(working_path=working_path)
+    text = (working_path / "query83.preql").read_text()
+    rows = engine.execute_text(text)[-1].fetchall()
+    expected = engine.execute_raw_sql("PRAGMA tpcds(83);").fetchall()
+    assert len(rows) == len(expected) > 0
+    assert all(rows_match(e, r) for e, r in zip(expected, rows))
 
 
 def test_eighty_four(engine):

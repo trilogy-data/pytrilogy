@@ -172,9 +172,8 @@ def test_refusal_names_the_dialect_limitation():
     assert issubclass(UnsupportedFullJoinError, UnresolvableQueryException)
 
 
-# A `~partial` binding plans a nested FULL, whose coalesced key reads as
-# nullable on that one side; the spine pairs the slot null-safely and the
-# NULL-key rows re-expand against that side alone, the native count.
+# A `~partial` binding's FULL pads only the `~` side (`Rewrite.subset_full_is_left`),
+# so its key is never NULL and the spine pairs it with plain `=`.
 PARTIAL_MODEL = """
 key cid int;
 property cid.cname string;
@@ -207,10 +206,19 @@ auto customer_label <- coalesce(name, 'unknown');
 """
 
 
+def test_partial_side_lowers_with_plain_equality():
+    executor = _executor(PARTIAL_MODEL)
+    native_sql, lowered_sql = _both_sql(executor, PARTIAL_QUERY)
+
+    assert "FULL JOIN" in native_sql.upper(), native_sql
+    assert "FULL JOIN" not in lowered_sql.upper(), lowered_sql
+    assert "IS NOT DISTINCT FROM" not in lowered_sql.upper(), lowered_sql
+    assert _rows(executor, native_sql) == _rows(executor, lowered_sql)
+
+
 @pytest.mark.parametrize(
     "model, query",
     [
-        (PARTIAL_MODEL, PARTIAL_QUERY),
         (NULLABLE_FK_MODEL, "select order_id, customer_id, name;"),
         (NULLABLE_FK_MODEL, "select customer_id, big;"),
         (NULLABLE_FK_MODEL, "select customer_id, name, count(order_id) as n;"),
