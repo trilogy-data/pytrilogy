@@ -30,10 +30,14 @@ grain (tree_id) file `https://example.com/heights.parquet`;
 """
 QUERY = "select tree_id, height_m, genus where tree_id is not null;"
 
+# A NULL key on the heights side keeps its join FULL, so the WHERE reads the
+# coalesced tree_id and survives at the final CTE for pushdown to re-offer.
+NULL_KEYED_SCANS = PARTIAL_SCANS.replace("tree_id: ~tree_id", "tree_id: ~?tree_id")
 
-def _sql() -> str:
+
+def _sql(model: str = PARTIAL_SCANS) -> str:
     env = Environment()
-    env.parse(PARTIAL_SCANS)
+    env.parse(model)
     return Dialects.DUCK_DB.default_executor(environment=env).generate_sql(QUERY)[-1]
 
 
@@ -69,7 +73,7 @@ def test_ungated_pushdown_cycles(
     _ungate(monkeypatch)
     monkeypatch.setattr(CONFIG.optimizations, "enforce_fixpoint_contract", False)
     with caplog.at_level(logging.WARNING):
-        _sql()
+        _sql(NULL_KEYED_SCANS)
     assert "MAX_OPTIMIZATION_PASSES" in caplog.text
 
 

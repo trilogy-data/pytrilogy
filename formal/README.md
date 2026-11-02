@@ -39,7 +39,7 @@ a design decision or a bug.
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
-| `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
+| `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal, an identity GROUP BY, a matched outer join, an existence fold, a semi-join into an aggregate; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a FULL join beside a `~` subset; a row-level filter argument beside a gate; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`, `identity_group_exact`, `merged_group_sum_exact`, `matched_left_is_inner`, `existence_fold_exact`, `semi_join_exact`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not; a FULL to a `~` side whose rows all match is the LEFT join (`subset_full_is_left`), and a proof on the key forces no `~` lookup (`key_proof_keeps_lookup_gap`); a row-level argument joins on the key its row determines (`keyed_arg_exact`) (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 | `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
@@ -580,10 +580,46 @@ a design decision or a bug.
   - `CollapseSingleParent` folded a CTE into a table its consumer had already
     inlined, so one name meant two sources: a binder error here, and a silent
     wrong column where the names overlap.
-  Open: a row-level FINAL filter argument (`where rqty > 1 or sum(amount) by
-  cust_id > 8 select name`) still joins as a bare value set, ON 1=1 (strict
-  xfail in the suite). Not a bug: `query-3`'s narrowed `subset join` over
-  data that breaks the declaration.
+  Not a bug: `query-3`'s narrowed `subset join` over data that breaks the
+  declaration.
+- **Keys a FINAL join never carried, `~` sides joined as if complete, and one
+  partition arm read for the whole family** (`Rewrite.lean`, 0.3.442). The
+  padded/pre-joined harness, swept over 1,200 seeds and a 270-shape family
+  of two customer gates beside a row atom, found five bugs, all on main
+  (28 of 138 suite cases and 125 of the 270 family shapes fail there):
+  - A row-level filter argument beside a gate (`where rqty > 1 or
+    sum(amount) by cust_id > 8 select name`) joined its producer ON 1=1, so
+    any customer's return passed every customer (`cross_arg_leaks`). The
+    argument's row stream now exposes the gate's grain it can carry, as does
+    a dimension peel, and a sole contributor holding that key applies the
+    WHERE before its dedup (`keyed_arg_exact`). The same demand fixes the
+    pre-joined model's keyless-join failures from the last round.
+  - A WHERE proof on the join key narrowed a FULL to INNER through a `~`
+    lookup keyed by it (notes by customer), dropping the order whose customer
+    has no note (`key_proof_keeps_lookup_gap`).
+  - A FULL to a `~` side marked the complete side's key nullable, so a
+    filtered aggregate beside a NULL-accepting row atom (`amount is null`,
+    `not (x != k)`) was not the WHERE's population and every customer came
+    back (`null_accepting_row_keeps_rejected`). A FULL whose `~` right side
+    has a partner for every row is now the LEFT join at plan time
+    (`subset_full_is_left`).
+  - A FINAL or gated filter merge forced INNER toward its feeders even when
+    the node was the bare `~` notes scan: the customer with no note was lost,
+    and a gate hosted on the notes peel kept customers it rejected
+    (`preserving_exact`). The merge now lets join typing decide where a feeder
+    carries the key complete, and drops the node's partial stamp there.
+  - TPC-DS q83 with its heal blocked returned no rows: the per-channel
+    presence counts read the returns family off its CATALOG arm alone. An arm
+    in two minted unions (its family, and a cover mixing sales and returns on
+    `channel`) was mapped to the mixed one, so the prune that prefers the
+    family union never fired.
+  `merge_irrelevant_group_by`, `drop_identity_group`, the value-set upgrade,
+  `fold_existence_into_aggregate` and `push_semi_join_into_aggregate` now have
+  laws (`identity_group_exact`, `merged_group_sum_exact`,
+  `matched_left_is_inner`, `existence_fold_exact`, `semi_join_exact`), each
+  with a counterexample for its guard; the suite ablates each and checks the
+  last four fire. Not a bug: `select reason, rqty` over the `~` returns reads
+  the returns rows only, since no output carries an order's own attributes.
 
 ## Limits
 

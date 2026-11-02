@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 2157
+gen_length = 2108
 preql_size = 633
 comp_size = 821
 generated_sql = """
@@ -26,7 +26,7 @@ HAVING
 ),
 cheerful as (
 SELECT
-    coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"returned_orders\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"

@@ -374,7 +374,12 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
     predicate has already narrowed the request to that arm's own rows, so the
     union is strictly worse there: it re-reads the partitions the filter
     removes. Matching on identifiers, not identity, because the union's children
-    are the environment's datasources while the candidates are the graph's."""
+    are the environment's datasources while the candidates are the graph's.
+
+    An arm in two unions (its own family, and a cover mixing families on the
+    discriminator) maps to the one sharing most of its columns: the prune
+    fires only where that union is on offer, and the mixed cover never offers
+    the family's own columns (TPC-DS q83's return date)."""
     by_identifier: dict[str, str] = {}
     for node, candidate in candidates.items():
         if isinstance(candidate.datasource, BuildDatasource):
@@ -386,9 +391,20 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
             continue
         for child in datasource.children:
             arm = by_identifier.get(child.identifier)
-            if arm is not None and not candidates[arm].condition.partial_is_full:
+            if arm is None or candidates[arm].condition.partial_is_full:
+                continue
+            prior = out.get(arm)
+            if prior is None or _shared_bindings(
+                candidates, arm, node
+            ) > _shared_bindings(candidates, arm, prior):
                 out[arm] = node
     return out
+
+
+def _shared_bindings(
+    candidates: dict[str, SourceCandidate], arm: str, union: str
+) -> int:
+    return len(candidates[arm].bindings.keys() & candidates[union].bindings.keys())
 
 
 def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:

@@ -499,6 +499,188 @@ theorem fk_anchor_keeps_padded :
       (keepB ws (innerJ (eqOn 0 0) [order 2 7] [order 1 0])).length = 0 := by
   decide
 
+/-! ## Narrowing a FULL by a proof on its key -/
+
+/-- A `~` right side whose every row has a left partner (the left holds the
+key's whole domain, `complete_key_domain`) adds no right-only row: the FULL
+is the LEFT join, so the left's columns are never padded
+(`grain_utility.narrow_subset_full_join`). -/
+theorem subset_full_is_left (on : Row → Row → Bool) (L R : List Row)
+    (h : ∀ r ∈ R, L.any (fun l => on l r) = true) : fullJ on L R = leftJ on L R := by
+  have hr : rightOnly on L R = [] := by
+    simp only [rightOnly, List.map_eq_nil_iff, List.filter_eq_nil_iff]
+    intro r hrR
+    simp [h r hrR]
+  simp [fullJ, hr]
+
+/-- A WHERE proving the key non-null forces a side only where every key value
+has a match there. A `~` lookup keyed by the key (notes by customer) lacks
+members the other side holds: `cust_id != 8` passes the order of a customer
+with no note, and the INNER join drops it (`grain_utility._partial_lookup_keys`). -/
+theorem key_proof_keeps_lookup_gap :
+    let key := fun (v : Row) => decide ((v 0).or (v 1) ≠ some 8)
+    (keepB key (fullJ (eqOn 0 0) [one] [two])).length = 2 ∧
+      (keepB key (innerJ (eqOn 0 0) [one] [two])).length = 0 := by
+  decide
+
+/-! ## A row-level filter argument beside a gate -/
+
+/-- Orders as `(customer, value)`: customer `c` has a row passing `p`. -/
+def keyedArg (p : Int → Bool) (orders : List (Nat × Int)) (c : Nat) : Bool :=
+  orders.any fun o => o.1 == c && p o.2
+
+/-- The argument joined as a bare value set, ON 1=1. -/
+def crossArg (p : Int → Bool) (orders : List (Nat × Int)) (_ : Nat) : Bool :=
+  orders.any fun o => p o.2
+
+/-- Joined on the customer each order row determines, the argument keeps
+exactly the customers the pre-joined rows keep. -/
+theorem keyed_arg_exact (p : Int → Bool) (orders : List (Nat × Int)) (c : Nat) :
+    keyedArg p orders c = true ↔ c ∈ (orders.filter (p ·.2)).map (·.1) := by
+  simp only [keyedArg, List.any_eq_true, Bool.and_eq_true, beq_iff_eq, List.mem_map,
+    List.mem_filter]
+  constructor
+  · rintro ⟨o, ho, hc, hp⟩
+    exact ⟨o, ⟨ho, hp⟩, hc⟩
+  · rintro ⟨o, ⟨ho, hp⟩, hc⟩
+    exact ⟨o, ho, hc, hp⟩
+
+/-- `where rqty > 1 or sum(amount) by cust_id > 8 select name`: cross-joined,
+customer 2's return passes customer 1 (`group_graph._group_inputs` exposes
+the gate's grain on the argument's row stream). -/
+theorem cross_arg_leaks :
+    crossArg (· > 1) [(2, 2)] 1 = true ∧ keyedArg (· > 1) [(2, 2)] 1 = false := by
+  decide
+
+/-- A row atom over the orders, the customer kept by a join preserving it
+against the orders the atom kept, its padded row read as all-NULL. -/
+def keptPreserving (P : Val → Bool) (orders : List (Nat × Val)) (c : Nat) : Bool :=
+  if (orders.filter fun o => o.1 == c && P o.2).isEmpty then P none else true
+
+def keptByRows (P : Val → Bool) (orders : List (Nat × Val)) (c : Nat) : Bool :=
+  orders.any fun o => o.1 == c && P o.2
+
+/-- An atom false on the all-NULL row is decided by the orders it kept, given
+the customer has an order (a complete binding claims it does). -/
+theorem preserving_exact (P : Val → Bool) (orders : List (Nat × Val)) (c : Nat)
+    (h0 : P none = false) : keptPreserving P orders c = keptByRows P orders c := by
+  unfold keptPreserving keptByRows
+  split
+  · rename_i h
+    rw [h0]
+    symm
+    simp only [List.isEmpty_iff, List.filter_eq_nil_iff, Bool.and_eq_true, beq_iff_eq,
+      not_and] at h
+    simp only [List.any_eq_false, Bool.and_eq_true, beq_iff_eq, not_and]
+    exact fun o ho hc => by simpa using h o ho hc
+  · rename_i h
+    symm
+    cases ha : orders.any (fun o => o.1 == c && P o.2)
+    · exfalso
+      apply h
+      simp only [List.isEmpty_iff, List.filter_eq_nil_iff]
+      intro o ho hp
+      have := List.any_eq_false.mp ha o ho
+      simp_all
+    · rfl
+
+/-- `where amount is null` true on the padded row: the customer whose one
+order has an amount is kept. A FULL to the `~` notes padded the dims' key,
+which kept the join preserving (`subset_full_is_left`). -/
+theorem null_accepting_row_keeps_rejected :
+    keptPreserving (·.isNone) [(1, some 5)] 1 = true ∧
+      keptByRows (·.isNone) [(1, some 5)] 1 = false := by
+  decide
+
+/-! ## A GROUP BY that removes nothing (`DropIdentityGroup`, `MergeIrrelevantGroupBy`) -/
+
+/-- A pure DISTINCT over rows already unique at its keys is the identity
+(`identity_group.rows_unique_at_group`). -/
+theorem identity_group_exact {α : Type} [DecidableEq α] (rows : List α) (h : rows.Nodup) :
+    dedup rows = rows :=
+  dedup_of_nodup rows h
+
+/-- An INNER join to a side holding a key twice repeats the left row, so the
+DISTINCT it was guarding against does remove a row. -/
+theorem fanout_breaks_identity :
+    let joined := (innerJ (eqOn 0 0) [one] [one, one]).map fun j => j.view 0
+    joined.length = 2 ∧ (dedup joined).length = 1 := by
+  decide
+
+/-- An aggregate read through a parent's DISTINCT equals one read through
+its rows when they are unique, so the DISTINCT folds away. -/
+theorem merged_group_sum_exact (rows : List Int) (h : rows.Nodup) :
+    (dedup rows).sum = rows.sum := by
+  rw [dedup_of_nodup rows h]
+
+/-- A parent DISTINCT keyed on the measure it deduplicates: dropping it
+counts the repeated value twice (`merge_irrelevant_group_by._drops_dedup_measure`). -/
+theorem dropped_dedup_double_counts : (dedup [5, 5]).sum ≠ ([5, 5] : List Int).sum := by
+  decide
+
+/-! ## An outer join whose preserved side always matches (`UpgradeOuterFromKeySetEquivalence`) -/
+
+/-- Every left row has a partner, so the LEFT join pads nothing and is the
+INNER join: the subset proof the rule reads off the domain graph. -/
+theorem matched_left_is_inner (on : Row → Row → Bool) (L R : List Row)
+    (h : ∀ l ∈ L, (R.filter (on l)).isEmpty = false) : leftJ on L R = innerJ on L R := by
+  induction L with
+  | nil => rfl
+  | cons l ls ih =>
+    simp only [leftJ, innerJ, List.flatMap_cons] at ih ⊢
+    have hl := h l (by simp)
+    rw [ih (fun l' hl' => h l' (by simp [hl']))]
+    simp [leftRows, hl]
+
+/-- A FILTER on the superset side breaks the proof: the key it removed pads
+(the rule's veto on a FILTER anywhere in a side's chain). -/
+theorem filtered_superset_pads :
+    (leftJ (eqOn 0 0) [one, two] ([one, two].filter fun r => r 0 == some 1)).length = 2 ∧
+      (innerJ (eqOn 0 0) [one, two] ([one, two].filter fun r => r 0 == some 1)).length = 1 := by
+  decide
+
+/-! ## An existence scan folded into an aggregate's HAVING (`FoldExistenceIntoAggregate`) -/
+
+/-- Rows as `(key, passes W)`: `count(CASE WHEN W THEN 1 END) > 0` over the
+key's group decides whether the key has a row passing `W`. -/
+theorem existence_fold_exact (rows : List (Nat × Bool)) (k : Nat) :
+    (rows.any fun r => r.1 == k && r.2) =
+      decide (0 < (rows.filter fun r => r.1 == k && r.2).length) := by
+  induction rows with
+  | nil => rfl
+  | cons r rs ih =>
+    simp only [List.any_cons, List.filter_cons]
+    split <;> simp_all
+
+/-- The aggregate's own WHERE (`v`) is not one `W` restates: the fold reads
+the aggregate's filtered rows and misses the key whose only `W` row it
+dropped (the rule's "`A` reads every row `R` would"). -/
+theorem existence_fold_under_filter_misses :
+    let rows : List (Nat × Bool × Bool) := [(1, true, false)]
+    (rows.any fun r => r.1 == 1 && r.2.1) = true ∧
+      ((rows.filter (·.2.2)).any fun r => r.1 == 1 && r.2.1) = false := by
+  decide
+
+/-! ## Restricting an aggregate's groups to a feeder's keys (`PushSemiJoinIntoAggregate`) -/
+
+/-- Keeping only the groups whose key a feeder holds leaves each kept group's
+sum unchanged: `push_group_key` with the membership test. -/
+theorem semi_join_exact {α : Type} (key : α → Nat) (v : α → Int) (feeder : List Nat)
+    (rows : List α) (k : Nat) :
+    sumBy v (slice key k (rows.filter fun r => feeder.contains (key r))) =
+      if feeder.contains k then sumBy v (slice key k rows) else 0 :=
+  push_group_key key v (fun k => feeder.contains k) rows k
+
+/-- A nullable feeder key: the null-safe join the rule mirrors pairs a NULL
+group with a NULL feeder key, `k in (select k ...)` drops it (the rule's
+non-nullable feeder guard). -/
+theorem semi_join_nullable_feeder_drops :
+    let groups : List (Option Nat) := [none]
+    let feeder : List (Option Nat) := [none]
+    (groups.filter fun g => feeder.any (· == g)).length = 1 ∧
+      (groups.filter fun g => g.isSome && feeder.contains g).length = 0 := by
+  decide
+
 /-! ## A filtered value grouped at its keys' grain -/
 
 /-- `store_sales <- customer_item ? in_year`, computed per sale row and grouped
