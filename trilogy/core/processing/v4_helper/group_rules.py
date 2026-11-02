@@ -1093,6 +1093,60 @@ def _can_merge_nested_signatures(
     return not smaller & root_gids
 
 
+def _lineage_between(
+    source: str, target: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
+) -> set[str]:
+    """The concepts on a lineage path from `source` to `target`, ends excluded."""
+    reach: set[str] = set()
+    stack = [source]
+    while stack:
+        for succ in lineage_successors(concept_graph, concept_edges, stack.pop()):
+            if succ not in reach:
+                reach.add(succ)
+                stack.append(succ)
+    if target not in reach:
+        return set()
+    back: set[str] = set()
+    stack = [target]
+    while stack:
+        for pred in lineage_predecessors(concept_graph, concept_edges, stack.pop()):
+            if pred not in back:
+                back.add(pred)
+                stack.append(pred)
+    return (reach & back) - {source, target}
+
+
+def _drop_bypassed_nests(
+    merged: list[tuple[int, int]],
+    nodes: list[str],
+    sigs: list[frozenset[str]],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+) -> list[tuple[int, int]]:
+    """Decline a nested-signature merge whose producer reaches its consumer
+    through a concept the merged bucket leaves out: the bucket would feed and
+    read that concept's group (`b_all` by `*` beside `b_all * x`, with a
+    `case ... b_all` at a coarser grain between them). Repeated to fixpoint,
+    since a declined merge can shrink a component."""
+    while True:
+        components = {
+            i: frozenset(c) for c in _components(len(nodes), merged) for i in c
+        }
+        bypassed = [
+            (i, j)
+            for i, j in merged
+            if sigs[i] != sigs[j]
+            and any(
+                _lineage_between(nodes[a], nodes[b], concept_graph, concept_edges)
+                - {nodes[k] for k in components[i]}
+                for a, b in ((i, j), (j, i))
+            )
+        ]
+        if not bypassed:
+            return merged
+        merged = [pair for pair in merged if pair not in bypassed]
+
+
 def _partition_by_signature_and_grain(
     items: list[NodeItem],
     own_derivation: Derivation,
@@ -1201,6 +1255,13 @@ def _partition_by_signature_and_grain(
                     or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
                 ):
                     merged.append((i, j))
+        merged = _drop_bypassed_nests(
+            merged,
+            [node for node, _ in sub_items],
+            sigs,
+            concept_graph,
+            concept_edges,
+        )
 
         for member_indices in _components(n, merged):
             merged_grain: frozenset[str] = frozenset().union(

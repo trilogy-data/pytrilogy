@@ -942,6 +942,43 @@ def _rowset_relation_keys(
     return frozenset(keys)
 
 
+def _grouped_row_grain(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    seen: frozenset[str] = frozenset(),
+) -> frozenset[str] | None:
+    """The grain a row parent computed off aggregates is one row per, which a
+    row-grain sibling must carry to pair with it; None when no aggregate
+    feeds it. Off aggregates alone it is theirs (`ay / ax` over two
+    aggregates by `cls` is one row per `cls`, whatever grain the BASIC group
+    was labelled at); a row parent whose outputs a grouped parent also
+    supplies (`cls` beside `avg(y) by cls`) is read off that one. Off other
+    rows too it is the group's own (a `case` over `cls` rows and `avg(y) by
+    cls`, at `species`)."""
+    if attrs[gid].derivation in GROUPING_DERIVATIONS:
+        return attrs[gid].grain_components
+    if attrs[gid].derivation != Derivation.BASIC or gid in seen:
+        return None
+    parents = [p for p in row_parents(group_graph, group_edges, gid) if p in attrs]
+    grains = {
+        p: _grouped_row_grain(group_graph, group_edges, attrs, p, seen | {gid})
+        for p in parents
+    }
+    grouped = {p: g for p, g in grains.items() if g is not None}
+    if not grouped:
+        return None
+    supplied = frozenset().union(*(attrs[p].output_concepts for p in grouped))
+    if any(
+        not supplied.issuperset(attrs[p].output_concepts)
+        for p in parents
+        if p not in grouped
+    ):
+        return attrs[gid].grain_components
+    return frozenset().union(*grouped.values())
+
+
 def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -978,8 +1015,8 @@ def _refresh_input_contracts(
         grouping_parent_grain: set[str] = set()
         if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(rows) >= 2:
             for pred in rows:
-                if attrs[pred].derivation in GROUPING_DERIVATIONS:
-                    grouping_parent_grain |= set(attrs[pred].grain_components)
+                grain = _grouped_row_grain(group_graph, group_edges, attrs, pred)
+                grouping_parent_grain |= grain or frozenset()
         # a region domain among the parents joins the rest on its spans: the
         # axis every side keeps, whatever the consumer's grain
         domain_spans: frozenset[str] = frozenset().union(

@@ -2790,10 +2790,16 @@ def _key_lookup(
     key: BuildConcept, outputs: set[str], producers: Sequence[StrategyNode]
 ) -> StrategyNode | None:
     """A producer of `key` whose grain the parent's outputs hold, so joining
-    it on that grain looks one value up per parent row."""
+    it on that grain looks one value up per parent row. The producer must
+    project that grain too: joined on less, its rows repeat per value."""
     for producer in producers:
         grain = set(producer.resolve().grain.components)
-        if key.address in producer.output_lcl and grain and grain <= outputs:
+        if (
+            key.address in producer.output_lcl
+            and grain
+            and grain <= outputs
+            and all(address in producer.output_lcl for address in grain)
+        ):
             return producer
     return None
 

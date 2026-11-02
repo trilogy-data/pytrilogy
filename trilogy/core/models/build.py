@@ -1475,9 +1475,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                 continue
             seen.add(item.address)
             output.append(item)
-            if item.lineage and not isinstance(
-                item.lineage, BuildMultiSelectLineage
-            ):
+            if item.lineage and not isinstance(item.lineage, BuildMultiSelectLineage):
                 stack.extend(reversed(item.lineage.concept_arguments))
         return output
 
