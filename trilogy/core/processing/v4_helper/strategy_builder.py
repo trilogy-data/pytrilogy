@@ -4044,6 +4044,11 @@ def _fold_descendant_contributors(
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
+        # a window keeps one row per tuple of its grain, so it carries only
+        # what that grain determines (`rank(name)` holds no `item_id`)
+        grain = attrs[b_gid].grain_components - {ALL_ROWS_ADDRESS}
+        if attrs[b_gid].derivation == Derivation.WINDOW and grain:
+            reads = reads & build_fd_closure(environment, grain)
         for s_gid in nx.ancestors(group_graph, b_gid):
             if s_gid not in per_group:
                 continue
