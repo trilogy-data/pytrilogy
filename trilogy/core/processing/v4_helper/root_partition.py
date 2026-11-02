@@ -509,23 +509,27 @@ def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
 def _filter_args(
     conditions: list[BuildWhereClause],
 ) -> tuple[frozenset[str], frozenset[str]]:
-    """Row-arg addresses of the pre-aggregate and the post-aggregate WHERE
-    atoms (those with no aggregate term, and those with one).
+    """Row-arg addresses of the pre-aggregate WHERE atoms (no aggregate term)
+    and of the clauses holding an aggregate term.
 
     A pre-aggregate filter narrows the rows feeding an aggregate, so its args
     stay on the fact scan, expanded through their lineage closure so the host
     can render a derived arg; peeled to a dim join it would apply after the
     aggregate (wrong sums). A post-aggregate (HAVING-style) arg filters the
     OUTPUT, so peeling it to a dim scan semijoined on the entity key is
-    faithful; a filter-only one peels only beside an output of its cluster."""
+    faithful; a filter-only one peels only beside an output of its cluster.
+    An arg can be both: its atom's peel is then judged per atom."""
     pre: set[str] = set()
-    post: set[str] = set()
     for atom in _atoms(conditions):
-        if _post_aggregate(atom):
-            post |= {arg.address for arg in atom.row_arguments}
-        else:
+        if not _post_aggregate(atom):
             for arg in atom.row_arguments:
                 pre |= _row_arg_lineage_closure(arg)
+    post = {
+        arg.address
+        for clause in conditions
+        if _post_aggregate(clause)
+        for arg in clause.row_arguments
+    }
     return frozenset(pre), frozenset(post)
 
 
@@ -539,7 +543,9 @@ def _atoms(
     ]
 
 
-def _post_aggregate(atom: BuildSubselectComparison | BoolExpr) -> bool:
+def _post_aggregate(
+    atom: BuildSubselectComparison | BoolExpr | BuildWhereClause,
+) -> bool:
     return any(arg.derivation == Derivation.AGGREGATE for arg in atom.concept_arguments)
 
 
@@ -820,12 +826,10 @@ def _preaggregate_filter_allows_dimension_member(
     unfiltered rows."""
     if any(b.derivation == Derivation.WINDOW for b in grouping_buckets):
         return False
-    concept = environment.concepts[address]
     return (
         key is not None
         and all(key in b.grain_components for b in grouping_buckets)
-        and concept.grain is not None
-        and set(concept.grain.components) == {key}
+        and build_fd_determines(environment, {key}, address, include_empty_grain=False)
     )
 
 
