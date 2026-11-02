@@ -2676,8 +2676,8 @@ def _carry_planned_keys(
     environment: BuildEnvironment,
 ) -> None:
     """Widen each FINAL parent with the keys its own side of its planned
-    pairings holds, then with the expression relation members two parents
-    reach and none projects."""
+    pairings holds. An expression relation member two parents pair on is a
+    planned key, so it is carried with them."""
     if len(parents) <= 1:
         return
     for parent in parents:
@@ -2704,11 +2704,6 @@ def _carry_planned_keys(
                 and not parent.force_group
             ):
                 _widen_scan_chain(parent, concept)
-    mates = _unprojected_expression_mates(parents, environment)
-    if mates:
-        _carry_join_keys(
-            parents, _join_key_concepts(parents, environment, mates), environment
-        )
 
 
 def _project_planned_keys(
