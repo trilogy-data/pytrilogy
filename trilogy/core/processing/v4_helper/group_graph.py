@@ -947,7 +947,7 @@ def _grouped_row_grain(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
-    seen: frozenset[str] = frozenset(),
+    memo: dict[str, frozenset[str] | None],
 ) -> frozenset[str] | None:
     """The grain a row parent computed off aggregates is one row per, which a
     row-grain sibling must carry to pair with it; None when no aggregate
@@ -956,15 +956,29 @@ def _grouped_row_grain(
     was labelled at); a row parent whose outputs a grouped parent also
     supplies (`cls` beside `avg(y) by cls`) is read off that one. Off other
     rows too it is the group's own (a `case` over `cls` rows and `avg(y) by
-    cls`, at `species`)."""
+    cls`, at `species`). `memo` is shared across one contract pass; a group
+    still being walked (a malformed cycle) reads as None."""
+    if gid in memo:
+        return memo[gid]
+    memo[gid] = None
+    memo[gid] = _walk_grouped_row_grain(group_graph, group_edges, attrs, gid, memo)
+    return memo[gid]
+
+
+def _walk_grouped_row_grain(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    memo: dict[str, frozenset[str] | None],
+) -> frozenset[str] | None:
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
         return attrs[gid].grain_components
-    if attrs[gid].derivation != Derivation.BASIC or gid in seen:
+    if attrs[gid].derivation != Derivation.BASIC:
         return None
     parents = [p for p in row_parents(group_graph, group_edges, gid) if p in attrs]
     grains = {
-        p: _grouped_row_grain(group_graph, group_edges, attrs, p, seen | {gid})
-        for p in parents
+        p: _grouped_row_grain(group_graph, group_edges, attrs, p, memo) for p in parents
     }
     grouped = {p: g for p, g in grains.items() if g is not None}
     if not grouped:
@@ -997,6 +1011,7 @@ def _refresh_input_contracts(
         if is_join_key_group(a.address, environment)
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
+    grouped_grains: dict[str, frozenset[str] | None] = {}
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
@@ -1015,7 +1030,9 @@ def _refresh_input_contracts(
         grouping_parent_grain: set[str] = set()
         if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(rows) >= 2:
             for pred in rows:
-                grain = _grouped_row_grain(group_graph, group_edges, attrs, pred)
+                grain = _grouped_row_grain(
+                    group_graph, group_edges, attrs, pred, grouped_grains
+                )
                 grouping_parent_grain |= grain or frozenset()
         # a region domain among the parents joins the rest on its spans: the
         # axis every side keeps, whatever the consumer's grain

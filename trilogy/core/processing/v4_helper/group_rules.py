@@ -1093,27 +1093,20 @@ def _can_merge_nested_signatures(
     return not smaller & root_gids
 
 
-def _lineage_between(
-    source: str, target: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
-) -> set[str]:
-    """The concepts on a lineage path from `source` to `target`, ends excluded."""
+def _lineage_reach(
+    node: str,
+    step: Callable[[nx.DiGraph, EdgeMap, str], Iterable[str]],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+) -> frozenset[str]:
     reach: set[str] = set()
-    stack = [source]
+    stack = [node]
     while stack:
-        for succ in lineage_successors(concept_graph, concept_edges, stack.pop()):
-            if succ not in reach:
-                reach.add(succ)
-                stack.append(succ)
-    if target not in reach:
-        return set()
-    back: set[str] = set()
-    stack = [target]
-    while stack:
-        for pred in lineage_predecessors(concept_graph, concept_edges, stack.pop()):
-            if pred not in back:
-                back.add(pred)
-                stack.append(pred)
-    return (reach & back) - {source, target}
+        for nxt in step(concept_graph, concept_edges, stack.pop()):
+            if nxt not in reach:
+                reach.add(nxt)
+                stack.append(nxt)
+    return frozenset(reach)
 
 
 def _drop_bypassed_nests(
@@ -1128,6 +1121,17 @@ def _drop_bypassed_nests(
     read that concept's group (`b_all` by `*` beside `b_all * x`, with a
     `case ... b_all` at a coarser grain between them). Repeated to fixpoint,
     since a declined merge can shrink a component."""
+    nested = {k for i, j in merged if sigs[i] != sigs[j] for k in (i, j)}
+    if not nested:
+        return merged
+    down = {
+        k: _lineage_reach(nodes[k], lineage_successors, concept_graph, concept_edges)
+        for k in nested
+    }
+    up = {
+        k: _lineage_reach(nodes[k], lineage_predecessors, concept_graph, concept_edges)
+        for k in nested
+    }
     while True:
         components = {
             i: frozenset(c) for c in _components(len(nodes), merged) for i in c
@@ -1137,8 +1141,8 @@ def _drop_bypassed_nests(
             for i, j in merged
             if sigs[i] != sigs[j]
             and any(
-                _lineage_between(nodes[a], nodes[b], concept_graph, concept_edges)
-                - {nodes[k] for k in components[i]}
+                nodes[b] in down[a]
+                and (down[a] & up[b]) - {nodes[k] for k in components[i]}
                 for a, b in ((i, j), (j, i))
             )
         ]
