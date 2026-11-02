@@ -2330,7 +2330,14 @@ def _window_rows_at_grain(
     for concept in outputs:
         if concept.lineage is not None:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
+    # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
+    # (a property of `id`) sits at `id`
     grain = {
+        component
+        for concept in outputs
+        if concept.derivation == Derivation.WINDOW and not concept.grain.abstract
+        for component in concept.grain.components
+    } or {
         component
         for concept in needed.values()
         if not concept.grain.abstract

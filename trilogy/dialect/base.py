@@ -44,6 +44,7 @@ from trilogy.core.enums import (
     GroupMode,
     JoinType,
     Modifier,
+    NullSort,
     Ordering,
     PersistMode,
     ShowCategory,
@@ -1012,6 +1013,10 @@ class BaseDialect:
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
+    # where an ORDER BY naming no placement sorts NULLs, and whether
+    # NULLS FIRST/LAST parses
+    NULL_SORT: ClassVar[NullSort] = NullSort.LAST
+    NULLS_ORDER_SYNTAX: ClassVar[bool] = True
     # Case-insensitive regexes matched against driver error text. Keep them
     # permissive: driver wording shifts between versions, and a missed match
     # turns a recoverable "source is missing" into a hard failure.
@@ -1290,9 +1295,23 @@ class BaseDialect:
         return f"BIT_XOR(hash({hash_expr}))"
 
     def render_ordering(self, rendered: str, order: Ordering) -> str:
-        """An ORDER BY term (statement, window, or subselect). Dialects without
-        NULLS FIRST/LAST syntax override this to emulate the placement."""
-        return f"{rendered} {order.value}"
+        """An ORDER BY term (statement, window, or subselect). Every dialect
+        places NULLs as asked; a plain direction places them last. A dialect
+        without NULLS FIRST/LAST leads with a NULL flag term."""
+        direction = order.direction
+        default = self.NULL_SORT.nulls_first(order.descending)
+        wanted = order.nulls_first
+        if wanted is None or (wanted == default and order.value == direction):
+            return f"{rendered} {direction}"
+        if self.NULLS_ORDER_SYNTAX:
+            return f"{rendered} {direction} nulls {'first' if wanted else 'last'}"
+        if wanted == default:
+            return f"{rendered} {direction}"
+        flag_direction = "desc" if wanted else "asc"
+        return f"{self.render_null_flag(rendered)} {flag_direction}, {rendered} {direction}"
+
+    def render_null_flag(self, rendered: str) -> str:
+        return f"CASE WHEN {rendered} IS NULL THEN 1 ELSE 0 END"
 
     def render_order_item(
         self,

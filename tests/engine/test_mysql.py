@@ -11,7 +11,6 @@ from trilogy.dialect.mysql import (
     MySQLDialect,
     date_diff,
     date_truncate,
-    render_ordering,
 )
 
 
@@ -66,16 +65,15 @@ def test_mysql_query_uses_limit_and_backtick_quoting():
 
 
 def test_mysql_ordering_avoids_nulls_syntax():
-    assert render_ordering("`x`", Ordering.ASCENDING) == "`x` asc"
-    assert render_ordering("`x`", Ordering.ASC_NULLS_FIRST) == "`x` asc"
-    assert render_ordering("`x`", Ordering.DESC_NULLS_LAST) == "`x` desc"
-    assert render_ordering("`x`", Ordering.DESC_NULLS_AUTO) == "`x` desc"
-    assert render_ordering("`x`", Ordering.ASC_NULLS_LAST) == (
-        "(`x`) IS NULL asc, `x` asc"
-    )
-    assert render_ordering("`x`", Ordering.DESC_NULLS_FIRST) == (
-        "(`x`) IS NULL desc, `x` desc"
-    )
+    render = MySQLDialect().render_ordering
+    assert render("`x`", Ordering.ASCENDING) == "(`x`) IS NULL asc, `x` asc"
+    assert render("`x`", Ordering.DESCENDING) == "`x` desc"
+    assert render("`x`", Ordering.ASC_NULLS_FIRST) == "`x` asc"
+    assert render("`x`", Ordering.DESC_NULLS_LAST) == "`x` desc"
+    assert render("`x`", Ordering.ASC_NULLS_AUTO) == "`x` asc"
+    assert render("`x`", Ordering.DESC_NULLS_AUTO) == "`x` desc"
+    assert render("`x`", Ordering.ASC_NULLS_LAST) == "(`x`) IS NULL asc, `x` asc"
+    assert render("`x`", Ordering.DESC_NULLS_FIRST) == ("(`x`) IS NULL desc, `x` desc")
 
 
 def test_mysql_query_order_by_has_no_nulls_clause():
