@@ -376,4 +376,4 @@ auto cluster_cell <- coalesce(anchor, cell);
 """)
     build = env.materialize_for_select()
     assert set(build.concepts["local.cluster_id"].grain.components) == {"local.id"}
-    assert set(build.concepts["local.cluster_cell"].grain.components) == {"local.id"}
+    assert set(build.concepts["local.cluster_cell"].grain.components) == {"local.cell"}

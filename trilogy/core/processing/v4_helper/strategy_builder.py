@@ -97,6 +97,7 @@ from trilogy.core.processing.nodes.base_node import (
 from trilogy.utility import unique
 
 from .concept_graph import (
+    _function_of,
     _relation_mates,
     _statement_scoped_relation_members,
     renamed_coalescing_relation,
@@ -4399,6 +4400,27 @@ def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> N
                 _add_needed_concept(needed, row_input)
 
 
+def _reads_inner_aggregate_rows(
+    outputs: list[BuildConcept], primary_addrs: set[str], grain: frozenset[str]
+) -> bool:
+    """Every aggregate here reads only inner aggregates at `grain` and scalars of
+    its keys, so its input rows are one per key: a finer parent fans them out."""
+    args = [
+        arg
+        for c in outputs
+        if c.address in primary_addrs and isinstance(c.lineage, BuildAggregateWrapper)
+        for arg in _parent_supplied_args(c, primary_addrs)
+    ]
+    return any(a.derivation == Derivation.AGGREGATE for a in args) and all(
+        (
+            set(a.grain.components) <= grain
+            if a.derivation == Derivation.AGGREGATE
+            else _function_of(a, set(grain))
+        )
+        for a in args
+    )
+
+
 def _parent_supplied_args(
     concept: BuildConcept, primary_addrs: set[str]
 ) -> list[BuildConcept]:
@@ -6733,7 +6755,12 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     if (
         derivation == Derivation.AGGREGATE
         and a.aggregate_input_grain
-        and a.aggregate_input_grain != a.grain_components
+        and (
+            a.aggregate_input_grain != a.grain_components
+            or _reads_inner_aggregate_rows(
+                outputs, primary_addrs, a.aggregate_input_grain
+            )
+        )
         and parents
         and not _aggregate_inputs_are_row_preserving(outputs, primary_addrs, parents)
         and not _parents_already_at_input_grain(

@@ -186,8 +186,16 @@ def _walk_aggregate_grain_inputs(
             return _walk_aggregate_grain_inputs(content, environment, seen)
         return []
     collected: list[BuildConcept] = []
+    # a scalar of an inner aggregate's grain keys is read on its rows
+    inner_grain = _inner_aggregate_grain(concept.lineage)
     for arg in concept.lineage.concept_arguments:
-        if isinstance(arg, BuildConcept):
+        if _function_of(arg, inner_grain):
+            collected.extend(
+                environment.concepts[g]
+                for g in sorted(inner_grain)
+                if g in environment.concepts
+            )
+        else:
             collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
     return collected
 
@@ -1363,6 +1371,13 @@ def _aggregate_input_grain(
                     or c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
                 )
             ]
+            # A scalar of an inner aggregate's own grain keys is evaluated on
+            # that aggregate's rows; its own (finer) grain would fan them out.
+            inner_grain = _inner_aggregate_grain(arg)
+            on_inner = [c for c in sub_args if _function_of(c, inner_grain)]
+            if on_inner:
+                input_grain.update(inner_grain)
+                sub_args = [c for c in sub_args if c not in on_inner]
         else:
             continue
         for sub in sub_args:
@@ -1395,6 +1410,23 @@ def _aggregate_input_grain(
             frozenset(input_grain), environment
         )
     return minimize_build_grain(environment, input_grain)
+
+
+def _inner_aggregate_grain(arg: BuildConceptArgs) -> set[str]:
+    return {
+        key
+        for c in arg.concept_arguments
+        if c.derivation == Derivation.AGGREGATE
+        for key in c.grain.components
+    }
+
+
+def _function_of(concept: BuildConcept, keys: set[str]) -> bool:
+    if concept.address in keys or concept.canonical_address in keys:
+        return True
+    if concept.derivation != Derivation.BASIC or not keys:
+        return False
+    return all(_function_of(c, keys) for c in concept.concept_arguments)
 
 
 def _counted_key(concept: BuildConcept) -> BuildConcept | None:
@@ -2404,6 +2436,31 @@ def _add_rowset_handle_relations(
                     add_edge(graph, edges, mate_nid, handle_nid, EdgeKind.RELATION)
 
 
+def _joins_no_key(condition: ConceptAttrs, scalar: ConceptAttrs) -> bool:
+    return not (
+        condition.grain_pin_anchors
+        or scalar.address in condition.grain_components
+        or condition.grain_components <= scalar.grain_components
+    )
+
+
+def _scalar_row_sources(
+    graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
+) -> list[str]:
+    """The nodes a BASIC scalar's rows are read from: through BASIC lineage
+    parents down to the first non-BASIC one."""
+    if attrs[nid].derivation != Derivation.BASIC:
+        return [nid]
+    parents = [
+        p
+        for p in graph.predecessors(nid)
+        if edge_kind(edges, p, nid) == EdgeKind.LINEAGE
+    ]
+    return [
+        s for p in parents for s in _scalar_row_sources(graph, edges, attrs, p)
+    ] or [nid]
+
+
 def _constrain_aggregates_by_root_conditions(
     graph: nx.DiGraph,
     edges: EdgeMap,
@@ -2908,8 +2965,20 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        for dst in mandatory_blank_ids:
-            if dst not in graph.nodes or graph.has_edge(src, dst):
+        # a scalar output whose grain lacks a condition's key has nothing to
+        # join it on, so the condition filters the scans its inputs come from
+        targets = dict.fromkeys(
+            row_source
+            for dst in mandatory_blank_ids
+            if dst in graph.nodes
+            for row_source in (
+                _scalar_row_sources(graph, edges, attrs, dst)
+                if _joins_no_key(attrs[src], attrs[dst])
+                else [dst]
+            )
+        )
+        for dst in targets:
+            if graph.has_edge(src, dst):
                 continue
             if _constraint_crosses_rowset(attrs, src, dst):
                 continue

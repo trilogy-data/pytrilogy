@@ -1412,6 +1412,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
+                    # a scalar of the `by` keys is read on the aggregate's rows
+                    if _function_of_addresses(x, set(by_refs), environment):
+                        continue
                     if x.derivation == Derivation.UNNEST:
                         pkeys.add(x.address)
                         continue
@@ -2577,6 +2580,21 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
             expr.left, environment
         ) + _non_aggregate_row_refs(expr.right, environment)
     return []
+
+
+def _function_of_addresses(
+    concept: Concept, addresses: set[str], environment: Environment
+) -> bool:
+    if concept.address in addresses:
+        return True
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    return all(
+        _function_of_addresses(
+            environment.concepts[ref.address], addresses, environment
+        )
+        for ref in concept.lineage.concept_arguments
+    )
 
 
 def _pin_anchors(expr: Any) -> set[str]:

@@ -31,6 +31,11 @@ below is a function of the summary key `k`, so each reduces to
    predicate. Joining the summary to relation PAIRS and re-summing counts a
    group once per pair, so the joined pairs must be distinct per `(k, t)`
    (`collapsed_fanout_double_counts`).
+7. **A scalar over an aggregate's own grain** (`case_on_aggregate_rows`).
+   `sum(case when bucket = 'Native' then count(x) by bucket end)` reads
+   `bucket` on the aggregate's rows; reading it from the finer table it is a
+   property of fans each group out (`finer_grain_read_fans_out`). This one is
+   the tree plan's rule, summary or not.
 
 What each rule needs of the summary is the same: the counted key is the
 summary's own aggregate argument (`Rollup.stored_column_answers_its_own_argument`),
@@ -245,6 +250,31 @@ theorem collapsed_fanout_double_counts :
     ((pairs.filter (fun p => biome p.2 = 0)).map (fun p => n p.1)).sum = 4 ∧
       ((([1] : List Nat).filter (fun k => pairs.any (fun p => p.1 = k && biome p.2 = 0))).map
         n).sum = 2 := by
+  decide
+
+/-! ## 7. A scalar over an aggregate's own grain -/
+
+/-- **A scalar of the grain is read on the aggregate's rows.** An aggregate
+`count(x) by k` is a summary at `k`, so `sum(case when c(k) then count(x) by k
+end)` is `case_count_exact` over its own groups, whatever table `k` is a
+property of. -/
+theorem case_on_aggregate_rows (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (c : κ → Bool) :
+    coalesce0 (sqlSum (storedCase g ks rows (countAgg v) (fun _ => true) c)) =
+      sqlCount ((keep g (fun _ => true) rows).map (filtered v (fun r => c (g r)))) :=
+  case_count_exact g ks hnd rows hcov v _ c
+
+/-- Reading the grain column from a finer table joined back on it counts each
+group once per finer row. `bucket` is a property of `species`: the per-bucket
+count `[(N, 4)]` joined to `[(s1, N), (s2, N)]` sums to 8; on its own rows,
+to 4. -/
+theorem finer_grain_read_fans_out :
+    let agg : List (Nat × Int) := [(0, 4)]
+    let finer : List (Nat × Nat) := [(1, 0), (2, 0)]
+    let joined := agg.flatMap (fun a => (finer.filter (·.2 = a.1)).map (fun _ => a))
+    ((joined.filter (·.1 = 0)).map (·.2)).sum = 8 ∧
+      ((agg.filter (·.1 = 0)).map (·.2)).sum = 4 := by
   decide
 
 end Cover
