@@ -120,9 +120,11 @@ FIRES = {
     ),
     PushSemiJoinIntoAggregate: (
         SPLIT,
-        "with rs as where (rqty > 11) and ((reason is not null) or "
-        "(count(order_id) by cust_id = 2)) select cust_id, order_id, reason;\n"
-        "select rs.cust_id, count(rs.order_id) -> n;",
+        (
+            "with rs as where (rqty > 11) and ((reason is not null) or "
+            "(count(order_id) by cust_id = 2)) select cust_id, order_id, reason;\n"
+            "select rs.cust_id, count(rs.order_id) -> n;"
+        ),
     ),
     UpgradeOuterFromKeySetEquivalence: (
         SPLIT,
