@@ -86,6 +86,19 @@ def rejects_absent_feeders(
     return True
 
 
+def completed_by_feeders(node: StrategyNode, feeders: list[StrategyNode]) -> set[str]:
+    """The keys `node` binds `~` that some feeder carries complete."""
+    partial = {c.address for c in node.partial_concepts}
+    return set().union(
+        *(
+            partial
+            & {o.address for o in f.output_concepts}
+            - {c.address for c in f.partial_concepts}
+            for f in feeders
+        )
+    )
+
+
 def pairs_on_outer_relation(
     node: StrategyNode, feeders: list[StrategyNode], environment: BuildEnvironment
 ) -> bool:
@@ -124,6 +137,7 @@ def inject_condition_at_node(
         holds_region = bool(region_reads(node)) and any(
             not region_reads(parent) for parent in sources.row_parents
         )
+        completed = completed_by_feeders(node, sources.row_parents)
         return MergeNode(
             input_concepts=unique(
                 list(
@@ -146,10 +160,12 @@ def inject_condition_at_node(
             # already infers INNER, paired null-safely by `get_modifiers`. A
             # WHERE true where a feeder has no match (`sum(amount) by status >
             # 15 or status is null` on a padded row) keeps the row: join
-            # typing decides.
+            # typing decides. So does a `~` node (notes) beside a feeder keyed
+            # complete: the members it lacks are rows of the statement.
             force_join_type=(
                 JoinType.INNER
                 if not holds_region
+                and not completed
                 and not pairs_on_outer_relation(node, sources.row_parents, environment)
                 and rejects_absent_feeders(
                     condition.conditional, node, sources.row_parents
@@ -159,7 +175,7 @@ def inject_condition_at_node(
             partial_concepts=(
                 partial_concepts
                 if partial_concepts is not None
-                else list(node.partial_concepts)
+                else [c for c in node.partial_concepts if c.address not in completed]
             ),
             grain=grain,
             conditions=combined,

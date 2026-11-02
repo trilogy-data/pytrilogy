@@ -5488,8 +5488,18 @@ def _assemble_sole_contributor(
     # strip. A feeder pairs on what its rows hold or can be widened to.
     relation_paired_feeders = False
     region_paired_feeders = False
+    gate_paired_feeders = False
     if final_conditions is not None and not final_already_applied:
         sole_avail = cover.holds(gid)
+        # a gate's producer pairs on its grain, which the dedup would strip
+        missing = [
+            c
+            for addr in filter_only_addrs - sole_avail
+            if (c := _concept_at(environment, addr)) is not None
+        ]
+        gate_paired_feeders = bool(
+            _gate_grain_keys(missing) & {o.address for o in sole_node.output_concepts}
+        )
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)
             for feeder in _filter_arg_producers(
@@ -5502,7 +5512,12 @@ def _assemble_sole_contributor(
         region_paired_feeders = bool(spans) and any(
             outs & (spans | sole_avail) - mandatory_addresses for outs in feeder_outs
         )
-    if final_probe_args or relation_paired_feeders or region_paired_feeders:
+    if (
+        final_probe_args
+        or relation_paired_feeders
+        or region_paired_feeders
+        or gate_paired_feeders
+    ):
         conditioned = apply_final_conditions(sole_node, gid, cover.holds(gid))
         # The feeder join reads the probe at ITS OWN row grain (the fact
         # side of the relation), fanning the contributor out; the merge's

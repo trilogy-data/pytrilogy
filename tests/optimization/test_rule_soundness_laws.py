@@ -25,6 +25,13 @@ from trilogy import Dialects, Environment
 from trilogy.constants import CONFIG
 from trilogy.core.models.execute import CTE
 from trilogy.core.optimizations.atom_contract import and_atoms
+from trilogy.core.optimizations.base_optimization import OptimizationRule
+from trilogy.core.optimizations.existence_having_fold import FoldExistenceIntoAggregate
+from trilogy.core.optimizations.identity_group import DropIdentityGroup
+from trilogy.core.optimizations.semi_join_pushdown import PushSemiJoinIntoAggregate
+from trilogy.core.optimizations.value_set_join_upgrade import (
+    UpgradeOuterFromKeySetEquivalence,
+)
 from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
 from trilogy.core.processing.condition_utility import _not_null_concept
 from trilogy.core.query_processor import process_query
@@ -93,7 +100,35 @@ RULES = [
     "predicate_pushdown",
     "datasource_inlining",
     "merge_aggregate",
+    "drop_identity_group",
+    "fold_existence_into_aggregate",
+    "push_semi_join_into_aggregate",
+    "merge_irrelevant_group_by",
 ]
+
+# A shape each rule fires on, with the addressing it fires under, so its
+# ablation compares a plan it changed (`Rewrite.identity_group_exact`,
+# `existence_fold_exact`, `semi_join_exact`, `matched_left_is_inner`).
+FIRES = {
+    DropIdentityGroup: (
+        SPLIT,
+        "where (amount > 3) or (name is null) select rqty, note, order_id;",
+    ),
+    FoldExistenceIntoAggregate: (
+        SPLIT,
+        "where (amount > 0) and (sum(amount) by cust_id > 4) select name;",
+    ),
+    PushSemiJoinIntoAggregate: (
+        SPLIT,
+        "with rs as where (rqty > 11) and ((reason is not null) or "
+        "(count(order_id) by cust_id = 2)) select cust_id, order_id, reason;\n"
+        "select rs.cust_id, count(rs.order_id) -> n;",
+    ),
+    UpgradeOuterFromKeySetEquivalence: (
+        SPLIT,
+        "where region is null select reason, rqty, note;",
+    ),
+}
 
 
 def _atom(rng: random.Random) -> str:
@@ -212,20 +247,32 @@ REGRESSIONS = [
     "where (name is not null) and ((bucket = 'big') or (sum(amount) by cust_id > 4)) select cust_id, note, order_id;",
     # an inlined table and a CTE collapsed into it no longer share one name
     "where returned = false select rqty, region, count(order_id) by cust_id -> n;",
-]
-
-# Wrong on main and on this branch: a row-level FINAL filter argument (`rqty`)
-# is joined as a bare value set, ON 1=1 (docs/handoff_formalization_next.md).
-OPEN = [
+    # a row-level argument beside a gate pairs on the gate's grain, not ON 1=1
     "where (rqty > 1) or (sum(amount) by cust_id > 8) select name;",
     "where (rqty > 1) or (count(order_id) by cust_id > 1) select region;",
+    "where (reason = 'dmg') or (sum(amount) by cust_id > 8) select region;",
+    "where (rqty > 1) or (sum(amount) by cust_id > 8) select name, note;",
+    "where (reason = 'dmg') or (count(order_id) by cust_id > 1) select region, note, name;",
+    # a proof on the key forces no match on a `~` lookup keyed by it
+    "where (order_id > 8) and (cust_id != 8) select name, order_id, note;",
+    # a FULL to the `~` notes pads only notes, so the filtered aggregate is the
+    # population even under an atom true on the all-NULL row
+    "where not (order_id != 10) select note, region, count(order_id) by cust_id -> n;",
+    "where amount is null select note, name, sum(amount) by cust_id -> n;",
+    # `note is null` runs after the notes padding it accepts, beside another
+    # `~` table's span
+    "where note is null and rqty is null select note, order_id, count(order_id) by cust_id -> n;",
+    "where note is null and small = true select note, cust_id, count(order_id) by cust_id -> n;",
+    # two gates on the customer beside a row atom: the pre-joined model plans
+    # (no keyless join), and a gate hosted on the `~` notes peel keeps the
+    # customer with no note
+    "where ((count(order_id) by cust_id = 0) and (reason is not null)) and (sum(amount) by cust_id > 8) select note;",
+    "where ((count(order_id) by cust_id > 1) or (rqty > 1)) and (sum(amount) by cust_id > 8) select note;",
+    "where ((sum(amount) by cust_id > 8) or (reason is null)) and (sum(amount) by cust_id > 4) select region;",
+    "where (amount > 0) and (sum(amount) by cust_id > 4) select note;",
+    # a filter fed into the bare `~` notes scan keeps the customer it lacks
+    "where (returned = true) or (sum(amount) by cust_id > 4) select note;",
 ]
-
-
-@pytest.mark.xfail(strict=True, reason="row-level FINAL filter arg cross-joined")
-@pytest.mark.parametrize("text", OPEN)
-def test_open_row_arg_cross_join(text: str) -> None:
-    assert _rows(SPLIT, text) == _rows(FLAT, text), text
 
 
 @pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
@@ -247,6 +294,24 @@ def test_rule_keeps_rows(rule: str, text: str) -> None:
     expected = _rows(SPLIT_QUERY, text)
     with _disabled(rule):
         assert _rows(SPLIT_QUERY, text) == expected, (rule, text)
+
+
+@pytest.mark.parametrize("rule", list(FIRES), ids=lambda r: r.__name__)
+def test_rule_fires_and_keeps_rows(
+    rule: type[OptimizationRule], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, text = FIRES[rule]
+    fired: list[bool] = []
+    optimize = rule.optimize
+
+    def counted(self, cte, inverse_map):  # type: ignore[no-untyped-def]
+        result = optimize(self, cte, inverse_map)
+        fired.append(result[0])
+        return result
+
+    monkeypatch.setattr(rule, "optimize", counted)
+    assert _rows(model, text) == _rows(FLAT, text), text
+    assert any(fired), text
 
 
 @pytest.mark.parametrize("seed", range(30))

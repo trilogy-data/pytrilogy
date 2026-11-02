@@ -44,9 +44,11 @@ from trilogy.core.processing.condition_utility import (
     opaque_binding_addresses,
 )
 from trilogy.core.processing.join_resolution import (
+    complete_key_domain,
     deep_extent_free_carried,
     deep_extent_free_spans,
     held_region_spans,
+    preserved_sources,
 )
 from trilogy.core.processing.utility import join_left_sources, left_deep_joins
 
@@ -362,6 +364,19 @@ def _left_join_addresses(
     }
 
 
+def _partial_lookup_keys(sources: list[GrainSource], keys: set[str]) -> set[str]:
+    """The `~` keys of a side that is a lookup keyed by them (notes by
+    customer): the members it lacks are the other side's own rows, not
+    extension rows, so a non-null key proves no match there."""
+    out: set[str] = set()
+    for source in sources:
+        grain = set(source.grain.components)
+        partial = keys & {c.address for c in source.partial_concepts}
+        if partial and grain and grain <= keys:
+            out |= partial
+    return out
+
+
 def _unprovable_addresses(sources: list[GrainSource]) -> set[str]:
     """Addresses a non-null proof cannot force a side through: partial
     bindings (the value may genuinely be absent from this side) and opaque
@@ -553,7 +568,8 @@ def downgrade_join_for_proofs(
     a value the region domain carries is partial on the solid stream, and a
     WHERE over it keeps the domain's rows. The key tuple still forces a
     side through a `~` key: a span the plan does not extend has no
-    extension row to keep."""
+    extension row to keep. A `~` lookup keyed by the span is not forced:
+    the rows it lacks are the other side's (`Rewrite.key_proof_keeps_lookup_gap`)."""
     if not isinstance(join, Join):
         return
     if join.join_type != JoinType.FULL or not proofs:
@@ -561,12 +577,19 @@ def downgrade_join_for_proofs(
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
     right_all = _datasource_addresses(join.right)
-    left_only = (left_all - right_all) - _unprovable_addresses(
-        _left_join_sources(join, final_datasets)
-    )
+    left_sources = _left_join_sources(join, final_datasets)
+    left_only = (left_all - right_all) - _unprovable_addresses(left_sources)
     right_only = (right_all - left_all) - _unprovable_addresses([join.right])
-    left_forced = _side_forced(proofs, [], left_only, left_keys, set())
-    right_forced = _side_forced(proofs, [], right_only, right_keys, set())
+    left_forced = _side_forced(
+        proofs, [], left_only, left_keys, _partial_lookup_keys(left_sources, left_keys)
+    )
+    right_forced = _side_forced(
+        proofs,
+        [],
+        right_only,
+        right_keys,
+        _partial_lookup_keys([join.right], right_keys),
+    )
     if left_forced and right_forced:
         join.join_type = JoinType.INNER
     elif left_forced:
@@ -722,6 +745,31 @@ def tighten_join_for_filtered_branch(
         join.join_type = JoinType.INNER
 
 
+def narrow_subset_full_join(
+    join: SourceJoin | UnnestJoin,
+    alive: set[str],
+    coalescing_keys: set[str],
+) -> None:
+    """A FULL whose right side is `~` on every key, each paired with a left
+    source still holding the key's whole domain, pads only the right: every
+    right row has its partner (`complete_key_domain`). A NULL key (`~?`) has
+    none, and an authored union/full relation is row intent: both stay FULL."""
+    if not isinstance(join, Join) or join.join_type != JoinType.FULL:
+        return
+    if not join.pairs or _joins_a_coalescing_relation(join, coalescing_keys):
+        return
+    partial = {c.address for c in join.right.partial_concepts}
+    nullable = _nullable_addresses(join.right)
+    if all(
+        pair.right.address in partial
+        and pair.right.address not in nullable
+        and pair.node.identifier in alive
+        and complete_key_domain(pair.node, pair.left.address)
+        for pair in join.pairs
+    ):
+        join.join_type = JoinType.LEFT_OUTER
+
+
 def narrow_join_types(
     joins: list[SourceJoin | UnnestJoin],
     proofs: JoinProofs,
@@ -732,7 +780,12 @@ def narrow_join_types(
     row is already proven to match the preserved side."""
     by_id = {source.identifier: source for source in final_datasets}
     streams = {id(join): left for join, left in left_deep_joins(joins)}
-    for join in joins:
+    for index, join in enumerate(joins):
+        narrow_subset_full_join(
+            join,
+            preserved_sources(list(final_datasets), joins[:index]),
+            proofs.coalescing_keys,
+        )
         downgrade_join_for_proofs(join, proofs.proofs, final_datasets)
         downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
         tighten_join_for_filtered_branch(

@@ -1536,7 +1536,12 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             outs |= final_args_here
             outs |= cap_gid & region_join_keys
             outs |= cap_gid & _final_pin_anchors(ctx)
-            if gid in domain_gids:
+            # a row-level argument or a dimension peel beside a gate pairs on
+            # the gate's grain (`rqty > 1 or sum(amount) by cust_id > 8`)
+            if gid in domain_gids or (
+                (final_args_here or attrs[gid].dim_keys)
+                and fact.derivation not in GROUPING_DERIVATIONS
+            ):
                 outs |= cap_gid & final_gate_grains
             # a dim peel beside a region domain joins the region's rows
             # back on its keys (the fact's FK cluster is the bridge)
