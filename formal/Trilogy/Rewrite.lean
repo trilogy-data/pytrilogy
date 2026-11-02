@@ -395,6 +395,16 @@ theorem push_group_nonkey_changes_sum :
       sumBy Prod.snd (slice Prod.fst 0 rows) := by
   decide
 
+/-- An atom is a key atom only when every column it reads is: `amount = 5 or
+note is not null` reads the customer's `note`, yet still filters orders inside
+a customer, so its `note` cannot move to the customer's own scan. -/
+theorem push_group_mixed_atom_changes_sum :
+    let rows : List (Nat × Int) := [(0, 1), (0, 5)]
+    let note : Nat → Bool := fun _ => false
+    sumBy Prod.snd (slice Prod.fst 0 (rows.filter fun r => r.2 == 5 || note r.1)) ≠
+      sumBy Prod.snd (slice Prod.fst 0 rows) := by
+  decide
+
 /-- Past a window: an atom on the partition keeps each kept row's partition,
 so its window value. -/
 theorem push_window_partition {α κ : Type} [DecidableEq κ] (key : α → κ)

@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
+    _is_rollable_aggregate,
     arm_rollup_concepts,
     get_rollup_concepts,
     holds_every_kept_row,
@@ -394,6 +395,23 @@ def create_datasource_node(
         )
     else:
         rollup_concepts = []
+    # A spelling of a stored aggregate at a grain coarser than the table's,
+    # read at the table's grain (a membership key widened the scan), is a
+    # partial of itself: each row holds one finer group's share.
+    rollup_concepts = unique(
+        rollup_concepts
+        + [
+            c
+            for c in all_concepts
+            if c.is_aggregate
+            and _is_rollable_aggregate(c)
+            and datasource_grain.issubset(target_grain)
+            and not datasource_grain.issubset(c.grain)
+            and datasource.aggregate_column_for(c) is not None
+            and holds_every_kept_row(datasource, conditions)
+        ],
+        "address",
+    )
     rollup_addresses = {c.address for c in rollup_concepts}
     datasource_output_addresses = {c.address for c in datasource.output_concepts}
 

@@ -141,6 +141,13 @@ NESTED = {
         " where tree_form is not null order by city;"
     ),
     "max_beside_avg": "select city, max(height) as v, avg(height) as a order by city;",
+    "nested_beside_total_gate": (
+        "select sum(sum(height) by city, species) as v where sum(height) by * > 10;"
+    ),
+    "nested_beside_failed_gate": (
+        "select city, sum(sum(height) by city, species) as v"
+        " where count(tree_id) by * > 100 order by city;"
+    ),
 }
 
 
@@ -183,10 +190,8 @@ def test_summary_serves_every_satisfiable_query(grain: str, where: str, aggregat
 
 
 # The same aggregates read into an expression: the summary rows the scan keeps
-# for a derived grain's inputs are re-summed before the expression reads them.
-# At the summary's own grain an expression's aggregate is still computed from
-# the base rows.
-EXACT_GRAIN = {"city_species"}
+# for a derived grain's inputs are re-summed before the expression reads them,
+# and at the summary's own grain the expression reads its stored column.
 EXPRESSIONS = {
     "count": "count(tree_id) + 1 as v",
     "sum": "sum(height) * 2 as v",
@@ -203,8 +208,7 @@ EXPRESSIONS = {
 )
 def test_expression_over_rolled_up_aggregate(grain: str, where: str, aggregate: str):
     _assert_same_answer(
-        _select(GRAINS[grain], EXPRESSIONS[aggregate], FILTERS[where]),
-        served=grain not in EXACT_GRAIN,
+        _select(GRAINS[grain], EXPRESSIONS[aggregate], FILTERS[where]), served=True
     )
 
 
@@ -229,6 +233,90 @@ def test_nested_aggregate_rolls_up(name: str):
 @pytest.mark.parametrize("name", sorted(UNSERVABLE))
 def test_unservable_query_reads_base_rows(name: str):
     _assert_same_answer(UNSERVABLE[name], served=False)
+
+
+# `Rollup.group_value_filter_exact`: a WHERE over the aggregate the summary
+# stores at its own grain filters the summary rows, then they are re-summed.
+# Dropped (`Rollup.dropped_group_filter_overcounts`) or re-summed at a grain
+# that does not determine it (`Rollup.resummed_condition_misfilters`), the
+# answer was wrong. Only a scan of the summary applies such a filter, so a
+# grain the summary does not bind (`tree_form`) reads the base rows, as does
+# a grand total under the OR that joins `tree_form`.
+GROUP_VALUE_GRAINS = {"total", "city", "species", "city_species"}
+GROUP_VALUE_FILTERS = {
+    "sum": "sum(height) by city, species > 3",
+    "count": "count(tree_id) by city, species = 1",
+    "max_and_city": "max(height) by city, species >= 5 and city = 'A'",
+    "min_null": "min(height) by city, species is null",
+    "or_form": "sum(height) by city, species > 3 or tree_form = 'linden'",
+}
+
+
+@pytest.mark.parametrize(
+    "grain,where,aggregate",
+    list(itertools.product(GRAINS, GROUP_VALUE_FILTERS, ["count", "sum", "max"])),
+)
+def test_group_value_filter_applies_before_rollup(
+    grain: str, where: str, aggregate: str
+):
+    _assert_same_answer(
+        _select(GRAINS[grain], AGGREGATES[aggregate], GROUP_VALUE_FILTERS[where]),
+        served=grain in GROUP_VALUE_GRAINS and (grain, where) != ("total", "or_form"),
+    )
+
+
+# A membership whose key the summary's grain holds widens the scan to that key;
+# the partial each summary row holds is still re-summed before the expression
+# reads it (`Rollup.unsummed_partial_splits_a_group`).
+MEMBERSHIPS = {
+    "subquery": ("", "species in (select species where tag = 'x')"),
+    "rowset": (
+        "rowset xs <- select species, count(tree_id) as k where tag = 'x';\n",
+        "species in xs.species",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "grain,membership,aggregate",
+    list(itertools.product(GRAINS, MEMBERSHIPS, EXPRESSIONS)),
+)
+def test_membership_beside_rolled_up_expression(
+    grain: str, membership: str, aggregate: str
+):
+    preamble, where = MEMBERSHIPS[membership]
+    _assert_same_answer(
+        preamble + _select(GRAINS[grain], EXPRESSIONS[aggregate], where), served=True
+    )
+
+
+# `Rollup.count_distinct_grain_column_exact`: the distinct values of a column
+# of the summary's grain are the ones its rows list. A filter over `tree_form`
+# is correct but reads the base rows (the joined dimension makes the row table
+# the cheaper plan), and a total of `species` alone, or filtered on itself,
+# is read from its dimension.
+DISTINCT_GRAIN_COLUMNS = {
+    "species": ["total", "city"],
+    "city": ["total", "species"],
+}
+
+
+@pytest.mark.parametrize(
+    "column,grain,where",
+    [
+        (column, grain, where)
+        for column, grains in DISTINCT_GRAIN_COLUMNS.items()
+        for grain in grains
+        for where in FILTERS
+    ],
+)
+def test_count_distinct_of_grain_column(column: str, grain: str, where: str):
+    _assert_same_answer(
+        _select(GRAINS[grain], f"count_distinct({column}) as v", FILTERS[where]),
+        served="form" not in where
+        and (column, grain, where)
+        not in {("species", "total", "none"), ("species", "total", "species")},
+    )
 
 
 # `Rollup.stored_column_answers_its_own_argument`: a stored `sum(height)` holds
@@ -321,7 +409,7 @@ AVG_UNSERVABLE = {
 def test_summary_serves_avg_from_sum_and_count(grain: str, where: str):
     _assert_same_answer(
         _select(GRAINS[grain], "avg(height) as v", FILTERS[where]),
-        served=grain not in EXACT_GRAIN,
+        served=True,
         summary=AVG_SUMMARY,
     )
 

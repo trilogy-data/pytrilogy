@@ -511,6 +511,17 @@ def merge_rollup_concepts(
     if fans_out_rollup(parents, rollable, concepts_by_address):
         return []
     target_components = {c.address for c in all_concepts if not c.is_aggregate}
+    # Grouped at the target, an aggregate the target does not determine (a
+    # sum by `(city, species)` beside `tree_form`) is no partial of itself.
+    if not all(
+        _grain_reaches(
+            _grain_identity(c.grain, concepts_by_address),
+            target_components,
+            concepts_by_address,
+        )
+        for c in rollable
+    ):
+        return []
     # A grain component must actually be summed AWAY. When every one of them
     # survives into the output the merge already sits at the target's row
     # identity, and the outputs beyond it are attributes the join carried in at

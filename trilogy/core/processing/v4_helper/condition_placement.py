@@ -561,15 +561,22 @@ def _uncovered_exposing_output_contributor(
         # derived from an aggregate), the join fans the surviving groups back
         # out to every row, so re-apply at FINAL, which can read the inputs
         # off its other contributors. A dimension projection whose outputs
-        # the host grain determines is pinned by that join and needs none.
+        # the host grain determines is pinned by that join and needs none,
+        # unless the atom holds on a group the host never formed: the join
+        # then keeps the rows it rejected, padded like a key with no rows.
         own_outputs = (members & mandatory_addrs) - covered_members
         if (
             collapsing_hosts
             and len(collapsing_hosts) == len(chosen_groups)
             and own_outputs
-            and not any(
-                build_fd_determines_all(environment, host.grain_components, own_outputs)
-                for host in collapsing_hosts
+            and (
+                accepts_absent
+                or not any(
+                    build_fd_determines_all(
+                        environment, host.grain_components, own_outputs
+                    )
+                    for host in collapsing_hosts
+                )
             )
             and (
                 accepts_absent

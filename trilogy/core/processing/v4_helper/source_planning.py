@@ -38,6 +38,7 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     and_optional,
     condition_implies,
+    is_scalar_condition,
 )
 from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
@@ -1604,8 +1605,9 @@ def _finer_filter_rollup_source(
     stacked family qualifies when every arm does: each arm filters and rolls
     its own disjoint rows (`Stack.stacked_summary_sum_exact`).
 
-    The flag is True when the WHERE also reads a dimension joined onto the
-    summary's grain, so the scan cannot apply it alone."""
+    The flag is True when the scan cannot apply the WHERE alone: it reads a
+    dimension joined onto the summary's grain, or a stored aggregate, which
+    a scan never filters on (`datasource_conditions`)."""
     conditions = request.conditions
     if conditions is None:
         return None
@@ -1654,7 +1656,9 @@ def _finer_filter_rollup_source(
             continue
         if not _rolls_every_aggregate(ds, request, target_grain, aggregates):
             continue
-        joined = not condition_canonicals <= canonicals
+        joined = not condition_canonicals <= canonicals or not is_scalar_condition(
+            conditions.conditional
+        )
         # an arm-by-arm rollup has no joined-dimension plan
         if joined and isinstance(ds, BuildUnionDatasource):
             continue
@@ -1845,49 +1849,64 @@ def _plan_joined_filter_rollup(
     outputs = list(request.outputs)
     grain = set(ds.grain.components)
     grain_keys = [environment.concepts[a] for a in sorted(grain)]
+    bound = {c.canonical_address for c in ds.output_concepts}
+    row_args = [
+        c
+        for c in condition_row_args(request.conditions)
+        if c.granularity != Granularity.SINGLE_ROW
+    ]
+    joined = [c for c in row_args if c.canonical_address not in bound]
     scan = create_select_node(
         f"ds~{ds.name}",
-        unique(outputs + grain_keys, "address"),
+        unique(
+            outputs + grain_keys + [c for c in row_args if c not in joined], "address"
+        ),
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,
     )
-    bound = {c.canonical_address for c in ds.output_concepts}
-    joined = [
-        c
-        for c in condition_row_args(request.conditions)
-        if c.canonical_address not in bound and c.granularity != Granularity.SINGLE_ROW
-    ]
-    join_keys = {
-        key
-        for c in joined
-        for key in set(c.keys or ()) | set(c.grain.components)
-        if key in grain
-    }
-    dims = plan_source(
-        SourceRequest(
-            outputs=unique(
-                joined + [k for k in grain_keys if k.address in join_keys], "address"
-            ),
-            environment=environment,
-            graph=request.graph,
-            history=request.history,
-            conditions=None,
-            deferred_conditions=_deferred_conditions(request),
-            depth=request.depth + 1,
+    parents: list[StrategyNode] = [scan]
+    if joined:
+        join_keys = {
+            key
+            for c in joined
+            for key in set(c.keys or ()) | set(c.grain.components)
+            if key in grain
+        }
+        dims = plan_source(
+            SourceRequest(
+                outputs=unique(
+                    joined + [k for k in grain_keys if k.address in join_keys],
+                    "address",
+                ),
+                environment=environment,
+                graph=request.graph,
+                history=request.history,
+                conditions=None,
+                deferred_conditions=_deferred_conditions(request),
+                depth=request.depth + 1,
+            )
         )
-    )
-    if dims is None:
-        return None
-    return MergeNode(
-        input_concepts=unique(
-            [c for parent in (scan, dims) for c in parent.usable_outputs], "address"
-        ),
-        output_concepts=outputs,
+        if dims is None:
+            return None
+        parents.append(dims)
+    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
+    # filtered at the summary's grain, so an atom over a stored aggregate reads
+    # each summary row's value, not a re-sum of it
+    filtered = MergeNode(
+        input_concepts=rows,
+        output_concepts=rows,
         environment=environment,
-        parents=[scan, dims],
+        parents=parents,
         depth=request.depth,
         conditions=request.conditions.conditional,
+    )
+    return GroupNode(
+        input_concepts=rows,
+        output_concepts=outputs,
+        environment=environment,
+        parents=[filtered],
+        depth=request.depth,
         force_group=True,
         rollup_concepts=[c for c in outputs if c.is_aggregate],
     )

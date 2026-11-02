@@ -56,6 +56,7 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
     condition_implies,
+    is_scalar_condition,
 )
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
@@ -489,30 +490,11 @@ def materialized_root_addresses(
             continue
         is_aggregate = concept.derivation == Derivation.AGGREGATE
         # EXACT: a datasource at the target grain materializes the concept.
-        exact = False
-        if concept.canonical_address in environment.materialized_canonical_concepts:
-            derivations = _lineage_derivations(concept, environment)
-            for ds in datasources:
-                if not _scan_rows_at_grain(ds, target_grain, environment):
-                    continue
-                if not _conditions_cannot_move(
-                    concept, derivations, ds, where, environment
-                ):
-                    continue
-                if _datasource_materializes(concept, ds, where, environment):
-                    out.add(concept.address)
-                    exact = True
-                    break
-            if not exact and any(
-                _scan_rows_at_grain(union, target_grain, environment)
-                and _conditions_cannot_move(
-                    concept, derivations, union, where, environment
-                )
-                and _union_materializes(concept, union, where, environment)
-                for union in unions
-            ):
-                out.add(concept.address)
-                exact = True
+        exact = _exactly_materialized(
+            concept, target_grain, where, environment, datasources, unions
+        )
+        if exact:
+            out.add(concept.address)
         # A rolled root joins the target-grain scan, so an aggregate at another
         # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
@@ -552,9 +534,10 @@ def materialized_root_addresses(
         if sources:
             rolled_roots.add(concept.address)
             rollup_sources.extend(sources)
-    nested = _nested_rollup_roots(
+    nested_exact, nested = _nested_rollup_roots(
         mandatory_list, out | rolled_roots, where, environment, datasources, unions
     )
+    out |= nested_exact
     rolled_roots |= nested.keys()
     rollup_sources.extend(ds for sources in nested.values() for ds in sources)
     if rolled_roots and not _finer_filter_reaches_rollup(
@@ -568,6 +551,32 @@ def materialized_root_addresses(
             mandatory_list + list(condition_args_by_address.values()),
             rollup_sources,
         )
+    )
+
+
+def _exactly_materialized(
+    concept: BuildConcept,
+    grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
+) -> bool:
+    """A table or stacked family with one row per `grain` tuple stores
+    `concept`, and the conditions leave the stored value unchanged."""
+    if concept.canonical_address not in environment.materialized_canonical_concepts:
+        return False
+    derivations = _lineage_derivations(concept, environment)
+    sources: list[BuildDatasource | BuildUnionDatasource] = [*datasources, *unions]
+    return any(
+        _scan_rows_at_grain(source, grain, environment)
+        and _conditions_cannot_move(concept, derivations, source, where, environment)
+        and (
+            _datasource_materializes(concept, source, where, environment)
+            if isinstance(source, BuildDatasource)
+            else _union_materializes(concept, source, where, environment)
+        )
+        for source in sources
     )
 
 
@@ -719,10 +728,12 @@ def _nested_rollup_roots(
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
     unions: Sequence[BuildUnionDatasource] = (),
-) -> dict[str, list[BuildDatasource]]:
-    """rollable aggregates inside a demand (`count(x) by k` under a window)
-    that a summary serves at their own grain, under the same WHERE."""
+) -> tuple[set[str], dict[str, list[BuildDatasource]]]:
+    """rollable aggregates inside a demand (`count(x) by k` under a window,
+    `sum(x) * 2`) that a summary stores at their own grain, under the same
+    WHERE, and those a finer summary rolls up to it (with its sources)."""
     mandatory = {c.address for c in mandatory_list}
+    exact: set[str] = set()
     out: dict[str, list[BuildDatasource]] = {}
     rows = _nested_row_grains(mandatory_list, roots, environment)
     for concept in walk_lineage(
@@ -738,12 +749,17 @@ def _nested_rollup_roots(
             )
         ):
             continue
+        if _exactly_materialized(
+            concept, concept.grain, where, environment, datasources, unions
+        ):
+            exact.add(concept.address)
+            continue
         sources = _rollup_sources(
             concept, [concept], concept.grain, where, environment, datasources, unions
         )
         if sources:
             out[concept.address] = sources
-    return out
+    return exact, out
 
 
 def _nested_row_grains(
@@ -801,6 +817,16 @@ def _finer_filter_reaches_rollup(
     carry, or a column below its grain, needs the fact rows instead."""
     if not filter_finer_row_args(where, target_grain, environment.concepts):
         return True
+    demands = [c for c in mandatory_list if c.address not in rolled_roots]
+    assert where is not None
+    # an atom over a stored aggregate filters only the pinned scan's own rows,
+    # so every other demand must be a column of that scan
+    if not is_scalar_condition(where.conditional):
+        return any(
+            {c.canonical_address for c in demands}
+            <= {c.canonical_address for c in ds.output_concepts}
+            for ds in rollup_sources
+        )
     reached = walk_lineage(
         [c for c in mandatory_list if c.address not in rolled_roots],
         descend=lambda c: c.address not in rolled_roots,
@@ -819,7 +845,6 @@ def _finer_filter_reaches_rollup(
         for c in reached
     ):
         return False
-    demands = [c for c in mandatory_list if c.address not in rolled_roots]
     return any(
         _concepts_reachable(
             ds, _summary_leaves(demands, rolled_roots, ds), environment.concepts
