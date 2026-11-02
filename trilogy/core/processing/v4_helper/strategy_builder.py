@@ -4045,10 +4045,10 @@ def _fold_descendant_contributors(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
         # a window keeps one row per tuple of its grain, so it carries only
-        # what that grain determines (`rank(name)` holds no `item_id`)
+        # what that grain computes (`rank(name)` holds no `item_id`)
         grain = attrs[b_gid].grain_components - {ALL_ROWS_ADDRESS}
         closure = (
-            build_fd_closure(environment, grain)
+            set(build_fd_closure(environment, grain))
             if attrs[b_gid].derivation == Derivation.WINDOW and grain
             else None
         )
