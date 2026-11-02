@@ -235,6 +235,8 @@ class BigqueryDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = "`"
+    # NULLs sort smallest: first under ASC.
+    NULLS_FIRST_BY_DEFAULT = (True, False)
     NULL_WRAPPER = staticmethod(null_wrapper)
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST

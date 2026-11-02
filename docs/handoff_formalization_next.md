@@ -19,7 +19,9 @@ is left of it), `Unnest.lean`, filtering rows by the elements of an
 unnested list (area 0b), `Rewrite.lean`, optimizer rules as rewrites
 that keep rows (area 2, two rounds: #843 and the row-argument round), and
 the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
-under a membership, per-atom peels; area 1).
+under a membership, per-atom peels; area 1), and `Window.lean` / `SetOps.lean`
+(0.3.444: NULL placement per dialect, numbering windows over their
+argument's values, set operators; area 4).
 
 ## The recipe
 
@@ -133,10 +135,25 @@ under a membership, per-atom peels; area 1).
       node built can be wrong; check the built node and fall back
       (`_push_row_condition_before_group`).
 
+11. **Lessons from `Window.lean` (0.3.444).**
+    - Probe the doc's own invariants, not just dialect pairs: "a concept has
+      one value whatever else is projected" found the rank fan-out
+      (`select id, v, rank v` vs `select v, rank v`), which DuckDB and SQLite
+      agreed on.
+    - Before calling a padded or dropped row a bug, check the data honours
+      every binding claim. `facts (sid: sid)` claims every `sid` has a fact;
+      random dimensions without facts made a correct regraft look wrong, and
+      a guard written against it was dropped once `~sid` made the data
+      honest (0 of 384 failures with or without it).
+    - A dialect's "default" is a semantic choice. Pin the engines' documented
+      defaults in the suite (`ENGINE_DEFAULTS`) and simulate each rendering
+      against them, so dialects with no engine in CI (Postgres, Snowflake,
+      SQL Server, BigQuery) are still held to the law.
+
 ## Candidate areas
 
-**Suggested next: the area-1 and area-2 leads below, or a fresh area (3,
-4).**
+**Suggested next: the area-1, area-2 and area-4 leads below, or a fresh
+area (3, 4b).**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -331,11 +348,26 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 `tests/core/test_function_laws.py` and `formal/Trilogy/Functions.lean` are the
 place to extend for these.
 
-### 4. Other untouched areas
+### 4. Windows and set operators (done in `Window.lean`, `SetOps.lean`; leads left)
 
-- **Windows:** `lag`/`lead`/`rank` over ties and NULL ordering per dialect.
-  Ordering of NULLs is not modelled anywhere.
-- **`union`/`except`/`intersect` TVFs:** duplicate handling and NULL equality,
-  where set operations treat NULLs as equal and `=` does not.
+`tests/window/test_window_laws.py` holds NULL placement (every ordering on
+every dialect, simulated against the engine defaults it pins), numbering
+windows over a table and over a `~`-referenced dimension, `lag`/`lead` over
+rows and over `distinct(...)`, and the set operators to the reference. See
+"What it found" in `formal/README.md`. Leads left:
+- **Window frames** are not modelled: `sum x order by y` is a running sum
+  with SQL's default `RANGE` frame, so tied `y` values share a total. Pin it
+  against a reference before anyone relies on it.
+- **`row_number` over tied values** is non-deterministic in SQL and in
+  Trilogy; the suite only checks it where the order is total.
+- **A rank inside a rowset or a `where` beside a partitioned window** is not
+  in the suite; WHERE filters a selected window's stream, as it does a
+  selected aggregate's inputs.
+- **Source pushdown** (`trilogy/dialect/source_pushdown.py`) still sends only
+  bare `asc`/`desc`. Under the new semantics `nulls last` is the same order
+  and could travel too.
+
+### 4b. Other untouched areas
+
 - **`coalesce`/`case` type merging:** whether a merged type stores every arm's
   value, the same materialization law as #802.

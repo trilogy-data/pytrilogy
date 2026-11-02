@@ -253,7 +253,8 @@ class TestBuild:
         )
         _assert_sorted_and_pruneable(target)
 
-    def test_a_csv_target_is_sorted(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("direction", ["desc", "desc nulls auto"])
+    def test_a_csv_target_is_sorted(self, tmp_path: Path, direction: str) -> None:
         target = tmp_path / "points.csv"
         executor = Dialects.DUCK_DB.default_executor(
             environment=Environment(working_path=tmp_path)
@@ -263,7 +264,7 @@ class TestBuild:
             HEADER
             + "root datasource raw (id: id, lat: lat, lon: lon) grain (id) address raw;\n"
             + "datasource points (id: id, lat: lat) grain (id)"
-            + f" file `{target.as_posix()}` order by lat desc;"
+            + f" file `{target.as_posix()}` order by lat {direction};"
         )
         executor.update_datasource(executor.environment.datasources["points"])
         lats = [

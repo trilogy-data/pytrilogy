@@ -136,3 +136,12 @@ def test_aggregate_smoke(
     expected: Any,
 ):
     run_agg_case(chdb_executor, case_id, body, select_name, expected)
+
+
+@pytest.mark.parametrize("direction", ["ASC", "DESC"])
+def test_bare_order_sorts_nulls_last(chdb_executor: Executor, direction: str):
+    """`ClickhouseDialect.NULLS_FIRST_BY_DEFAULT` (`formal/Trilogy/Window.lean`)."""
+    rows = chdb_executor.execute_raw_sql(
+        "SELECT x FROM (SELECT arrayJoin([1, NULL, 0]) AS x) " f"ORDER BY x {direction}"
+    ).fetchall()
+    assert [r[0] for r in rows][-1] is None

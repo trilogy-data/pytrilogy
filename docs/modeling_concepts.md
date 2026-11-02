@@ -70,3 +70,19 @@ auto prev_species <- lag(distinct(species), 1) over (order by dominance_rank asc
 
 `order by` a property of `tree_id` (say `planted`) would still bring
 `tree_id` back in, because one species has many planted years.
+
+`rank`, `dense_rank` and `row_number` rank their argument's distinct values
+(with the partition and order fields), not the rows it lives on:
+`rank(species) over (order by count(tree_id) by species desc)` ranks species,
+and a select of `tree_id` beside it reads each tree's species' rank. The rank
+is the same whatever else the select projects (`formal/Trilogy/Window.lean`).
+
+## NULLs sort last
+
+A bare `asc` or `desc` places NULLs last in both directions, on every
+dialect; `nulls first` moves them to the front, and `nulls last` and
+`nulls auto` mean the bare form. Engines disagree on the bare form (SQLite,
+MySQL, SQL Server and BigQuery put NULLs first under `asc`, Postgres and
+Snowflake under `desc`), so those dialects render the placement explicitly.
+This matters beyond display order: a rank over a nullable column numbers the
+NULL group by where it sorts.

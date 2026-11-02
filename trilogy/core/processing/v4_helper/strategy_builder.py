@@ -2321,18 +2321,23 @@ def _window_rows_at_grain(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
-    """A window ranks the distinct rows at the grain of what it reads. A
-    parent finer than that (fact rows brought in only to compute a coarser
-    aggregate the window orders by) repeats each row once per fact row, so it
-    is grouped first. The group keeps every parent column at or above that
+    """A window ranks the distinct rows at its own grain. A parent finer than
+    that (fact rows brought in only to compute a coarser aggregate the window
+    orders by, or the key rows a ranked property lives on) repeats each row,
+    so it is grouped first. The group keeps every parent column at or above that
     grain, which a later pass may carry through the window."""
     needed = {c.address: c for c in outputs}
     for concept in outputs:
         if concept.lineage is not None:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
+    # A numbering window ranks its argument's values, so a property argument's
+    # own keys are not part of the window's grain.
+    grain_sources = [
+        c for c in outputs if c.derivation == Derivation.WINDOW and not c.grain.abstract
+    ] or list(needed.values())
     grain = {
         component
-        for concept in needed.values()
+        for concept in grain_sources
         if not concept.grain.abstract
         for component in concept.grain.components
     }

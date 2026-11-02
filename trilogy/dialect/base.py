@@ -960,6 +960,10 @@ class BaseDialect:
     # Empty where WITH takes no RECURSIVE marker (SQL Server).
     RECURSIVE_KEYWORD = "RECURSIVE"
     QUOTE_CTE_NAMES = False
+    # Whether the engine sorts NULLs first under a bare ASC / DESC, indexed by
+    # descending. Trilogy's order is NULLs last both ways (DuckDB's).
+    NULLS_FIRST_BY_DEFAULT: ClassVar[tuple[bool, bool]] = (False, False)
+    NULLS_PLACEMENT_SYNTAX = True
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
         COMPLEX_DATATYPE_MAP
@@ -1290,9 +1294,27 @@ class BaseDialect:
         return f"BIT_XOR(hash({hash_expr}))"
 
     def render_ordering(self, rendered: str, order: Ordering) -> str:
-        """An ORDER BY term (statement, window, or subselect). Dialects without
-        NULLS FIRST/LAST syntax override this to emulate the placement."""
-        return f"{rendered} {order.value}"
+        """An ORDER BY term (statement, window, or subselect). A bare direction
+        keeps the engine's NULL placement only where it is Trilogy's."""
+        direction = "desc" if order.descending else "asc"
+        if order.nulls_first == self.NULLS_FIRST_BY_DEFAULT[order.descending]:
+            return (
+                f"{rendered} {order.value}"
+                if order.explicit_nulls and self.NULLS_PLACEMENT_SYNTAX
+                else f"{rendered} {direction}"
+            )
+        if self.NULLS_PLACEMENT_SYNTAX:
+            placement = "first" if order.nulls_first else "last"
+            return f"{rendered} {direction} nulls {placement}"
+        # A leading null flag sorts the NULL group first when descending.
+        flag_direction = "desc" if order.nulls_first else "asc"
+        return (
+            f"{self.render_null_flag(rendered)} {flag_direction}, "
+            f"{rendered} {direction}"
+        )
+
+    def render_null_flag(self, rendered: str) -> str:
+        return f"CASE WHEN {rendered} IS NULL THEN 1 ELSE 0 END"
 
     def render_order_item(
         self,

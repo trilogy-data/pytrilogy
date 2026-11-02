@@ -64,6 +64,9 @@ class SqlServerDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = '"'
+    # NULLs sort smallest and there is no NULLS FIRST/LAST syntax.
+    NULLS_FIRST_BY_DEFAULT = (True, False)
+    NULLS_PLACEMENT_SYNTAX = False
     LIMIT_STYLE = "TOP"
     RECURSIVE_KEYWORD = ""
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

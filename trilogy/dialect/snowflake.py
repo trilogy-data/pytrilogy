@@ -75,6 +75,8 @@ class SnowflakeDialect(BaseDialect):
         DataType.TIMESTAMP: "TIMESTAMP_TZ",
     }
     QUOTE_CHARACTER = '"'
+    # NULLs sort largest: first under DESC.
+    NULLS_FIRST_BY_DEFAULT = (False, True)
     QUOTE_CTE_NAMES = True
     UNNEST_MODE = UnnestMode.SNOWFLAKE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

@@ -93,6 +93,8 @@ class PostgresDialect(BaseDialect):
         DataType.DATETIME: "timestamp",
     }
     QUOTE_CHARACTER = '"'
+    # NULLs sort largest: first under DESC.
+    NULLS_FIRST_BY_DEFAULT = (False, True)
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     # `relation "orders" does not exist` / `schema "analytics" does not exist`.
     # Anchored on the object kind: bare `does not exist` also covers a missing

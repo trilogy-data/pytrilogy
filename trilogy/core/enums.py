@@ -202,6 +202,19 @@ class Ordering(Enum):
     DESC_NULLS_LAST = "desc nulls last"
     DESC_NULLS_AUTO = "desc nulls auto"
 
+    @property
+    def descending(self) -> bool:
+        return self.value.startswith("desc")
+
+    @property
+    def nulls_first(self) -> bool:
+        """Trilogy sorts NULLs last in both directions unless told otherwise."""
+        return self.value.endswith("nulls first")
+
+    @property
+    def explicit_nulls(self) -> bool:
+        return self.value.endswith(("nulls first", "nulls last"))
+
 
 class WindowType(Enum):
     ROW_NUMBER = "row_number"

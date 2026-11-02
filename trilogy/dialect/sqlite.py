@@ -216,6 +216,8 @@ class SQLiteDialect(BaseDialect):
         **DATATYPE_MAP,
     }
     QUOTE_CHARACTER = '"'
+    # NULLs sort smallest: first under ASC.
+    NULLS_FIRST_BY_DEFAULT = (True, False)
     LIMIT_PARENTHESIZED = True
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE
     SUPPORTS_ARRAYS = False

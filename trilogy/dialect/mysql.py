@@ -7,7 +7,6 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Modifier,
-    Ordering,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import CreateTableInfo
@@ -79,17 +78,6 @@ def render_cast(args: list[str]) -> str:
     # boundary where MySQL requires CHAR instead.
     target = "CHAR" if args[1].upper() == "TEXT" else args[1]
     return f"CAST({args[0]} AS {target})"
-
-
-def render_ordering(rendered: str, order: Ordering) -> str:
-    # MySQL has no NULLS FIRST/LAST; NULLs always sort first ascending and last
-    # descending. The other two placements are emulated with a leading
-    # `<expr> IS NULL` term, which sorts in the same direction either way
-    # (asc puts the null group last, desc puts it first).
-    direction = "desc" if order.value.startswith("desc") else "asc"
-    if order in (Ordering.ASC_NULLS_LAST, Ordering.DESC_NULLS_FIRST):
-        return f"({rendered}) IS NULL {direction}, {rendered} {direction}"
-    return f"{rendered} {direction}"
 
 
 def null_safe_join_key(
@@ -175,6 +163,9 @@ class MySQLDialect(BaseDialect):
     SUPPORTS_FULL_JOIN = False
     SUPPORTS_ARRAYS = False
     NULL_WRAPPER = staticmethod(null_safe_join_key)
+    # NULLs sort smallest and there is no NULLS FIRST/LAST syntax.
+    NULLS_FIRST_BY_DEFAULT = (True, False)
+    NULLS_PLACEMENT_SYNTAX = False
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
     # DDL causes an implicit commit.
@@ -216,8 +207,8 @@ class MySQLDialect(BaseDialect):
         matches = self.partition_key_match(target, staged, partition_by)
         return f"DELETE {target} FROM {target} JOIN {staged} ON {matches}"
 
-    def render_ordering(self, rendered: str, order: Ordering) -> str:
-        return render_ordering(rendered, order)
+    def render_null_flag(self, rendered: str) -> str:
+        return f"({rendered}) IS NULL"
 
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
