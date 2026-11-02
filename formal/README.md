@@ -674,7 +674,10 @@ a design decision or a bug.
   and joined back on `g` (`Windows.row_stream_rank_counts_repeats`,
   `Windows.stream_join_fans_out`). The window's input dedup took its grain
   from its arguments' grains, and a property argument sits at its key; it
-  now takes the window's own grain. `count(x) over ()` was read as `count(x)`
+  now takes the window's own grain, and the FINAL reads an ancestor's
+  columns through a window only where that grain determines them (TPC-DS
+  q44's `rank(product_name)` beside `item_id` joins back instead).
+  `count(x) over ()` was read as `count(x)`
   at the select's grain, one row's `x`; an empty `over ()` is now `by *`
   (`Windows.empty_over_is_total`). A plain `asc` rendered the direction
   alone, so SQLite, MySQL, SQL Server and BigQuery put NULLs first and
