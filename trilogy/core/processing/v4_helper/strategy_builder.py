@@ -4047,13 +4047,20 @@ def _fold_descendant_contributors(
         # a window keeps one row per tuple of its grain, so it carries only
         # what that grain determines (`rank(name)` holds no `item_id`)
         grain = attrs[b_gid].grain_components - {ALL_ROWS_ADDRESS}
-        if attrs[b_gid].derivation == Derivation.WINDOW and grain:
-            reads = reads & build_fd_closure(environment, grain)
+        closure = (
+            build_fd_closure(environment, grain)
+            if attrs[b_gid].derivation == Derivation.WINDOW and grain
+            else None
+        )
         for s_gid in nx.ancestors(group_graph, b_gid):
             if s_gid not in per_group:
                 continue
             s_concepts = per_group[s_gid]
             if not all(c.address in reads for c in s_concepts):
+                continue
+            if closure is not None and not all(
+                concept_satisfiable(c, closure) for c in s_concepts
+            ):
                 continue
             per_group[b_gid].extend(s_concepts)
             passthroughs.setdefault(b_gid, []).extend(s_concepts)
