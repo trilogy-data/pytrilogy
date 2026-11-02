@@ -43,6 +43,7 @@ a design decision or a bug.
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 | `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
+| `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, and the rendering places NULLs as asked on every engine (checked by `tests/windows/test_window_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
 
 ## What it found
 
@@ -665,6 +666,26 @@ a design decision or a bug.
   base rows, and `count_distinct` of a summary grain column reads the
   summary.
 
+- **A window ranked the rows of a finer key, and NULLs sorted per engine.**
+  `Windows.lean` evaluates a window over the rows of its own grain. On main,
+  355 of 1,120 cases in `tests/windows/test_window_laws.py` fail.
+  `select id, rank(g) over (order by g)` returned 25 rows for 7 ids and
+  ranked `b` 5, not 2: the window read the `(id, g)` scan it shared with `id`
+  and joined back on `g` (`Windows.row_stream_rank_counts_repeats`,
+  `Windows.stream_join_fans_out`). The window's input dedup took its grain
+  from its arguments' grains, and a property argument sits at its key; it
+  now takes the window's own grain. `count(x) over ()` was read as `count(x)`
+  at the select's grain, one row's `x`; an empty `over ()` is now `by *`
+  (`Windows.empty_over_is_total`). A plain `asc` rendered the direction
+  alone, so SQLite, MySQL, SQL Server and BigQuery put NULLs first and
+  DuckDB put them last; a rank, a `lead` or a running `sum` ordered on a
+  nullable column then differed per engine
+  (`Windows.bare_direction_misplaces`). A plain direction now places NULLs
+  last on every engine, `nulls auto` keeps the engine's placement instead of
+  rendering invalid `asc nulls auto`, and SQL Server, which has no NULLS
+  FIRST/LAST, leads with a NULL flag term as MySQL did
+  (`Windows.render_places`).
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
@@ -676,5 +697,6 @@ invisible to the verdict and the refresh alike
 property of `MAX`-based watermarks, not a bug the model can fix. Nullability follows DuckDB: `x / 0` is
 inf there, so `/` is total, though MySQL and SQLite return NULL. The cell checker is proved
 exact over integers; the Python twin applies the same cells to dense domains
-without a successor step. Windows, ROLLUP subtotal rows
-and unions are modelled at the level the laws need.
+without a successor step. Window frames other than the default
+(`rows between ...`), ROLLUP subtotal rows and unions are modelled at the
+level the laws need.

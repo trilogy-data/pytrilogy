@@ -19,7 +19,8 @@ is left of it), `Unnest.lean`, filtering rows by the elements of an
 unnested list (area 0b), `Rewrite.lean`, optimizer rules as rewrites
 that keep rows (area 2, two rounds: #843 and the row-argument round), and
 the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
-under a membership, per-atom peels; area 1).
+under a membership, per-atom peels; area 1), and `Windows.lean` (0.3.444:
+what a window ranks, `over ()`, NULL placement per engine; area 4).
 
 ## The recipe
 
@@ -135,8 +136,7 @@ under a membership, per-atom peels; area 1).
 
 ## Candidate areas
 
-**Suggested next: the area-1 and area-2 leads below, or a fresh area (3,
-4).**
+**Suggested next: the area-1, area-2 and area-4 leads below, or area 3.**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -331,11 +331,33 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 `tests/core/test_function_laws.py` and `formal/Trilogy/Functions.lean` are the
 place to extend for these.
 
-### 4. Other untouched areas
+### 4. Windows and ORDER BY (done in `Windows.lean`; leads left)
 
-- **Windows:** `lag`/`lead`/`rank` over ties and NULL ordering per dialect.
-  Ordering of NULLs is not modelled anywhere.
-- **`union`/`except`/`intersect` TVFs:** duplicate handling and NULL equality,
-  where set operations treat NULLs as equal and `=` does not.
+`tests/windows/test_window_laws.py` holds numbering windows, value windows
+(`lag`/`lead`, aggregate windows with and without an order) and ORDER BY NULL
+placement to a reference over random rows with NULLs and ties, on DuckDB and
+SQLite. `tests/dialect/test_null_order_renderings.py` pins every dialect's
+rendering. A plain direction places NULLs last everywhere (DuckDB's
+placement); `nulls auto` is the engine's own. Leads left:
+- **A select of an aggregate at a finer grain repeats tuples.** `select g,
+  sum(x) by id as s` declares grain `{s, g}` but returns one row per `id`, so
+  `(c, NULL)` comes back three times. The FINAL dedup skips a GroupNode
+  contributor ("aggregates sit at their own grain"). Decide whether the
+  select is the distinct tuples, as `select g, x` is.
+- **A value window's keys are its operand.** `lag(x)` gets keys `{x}`, though
+  two rows with the same `x` lag differently; the statement grain of `select
+  lag(x) over (order by id)` is then `{x}` while the rows are per `id`. The
+  law suite compares value windows as sets for this reason. The window's
+  grain (`{id}`) is right; its keys are not.
+- **SQL Server orders by a select alias inside the NULL flag.** T-SQL
+  resolves an alias only as a bare ORDER BY term, so `CASE WHEN "alias" IS
+  NULL ...` fails where the FINAL orders by a column derived in it. No
+  engine runs in CI; render through the expression there or keep the alias
+  bare and wrap the select.
+- **Frames.** `rows between ...` and `row_number` over ties are not modelled;
+  the suite only orders `row_number`-like navigation on a total order.
+- **`union`/`except`/`intersect` TVFs.** A DuckDB/SQLite probe of NULL rows
+  agreed (`except` and `intersect` match NULL to NULL, `union` keeps the
+  bag); `tests/engine/test_duckdb_setops.py` covers them. Not modelled.
 - **`coalesce`/`case` type merging:** whether a merged type stores every arm's
   value, the same materialization law as #802.
