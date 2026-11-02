@@ -788,21 +788,59 @@ BigQuery temp table names, `test_gcat::test_environment`, the
 `test_validate_fix` chunked statement, and the `tree_reporting` build tests'
 temp file paths. 0 of 205 corpus plans moved.
 
-**Open.**
+**The fold widen and the FINAL's expression mates.** The aggregate build's
+normalize loop widens an aggregate argument its input never materialized (a
+filter virtual) onto the input that renders it, and otherwise keeps the
+virtual's row columns in the dedup. Measured over the same suites, 56
+arguments reached it. Each time the aggregate had exactly one input: the
+stream `_pre_merge_parents` had already assembled. So there is no parent to
+pick, only whether that one stream's projection can compute the virtual
+below the dedup. A planned fact gave the built answer in 54 of the 56. The 2
+disagreements (`test_partition_family_strict_grain_dedup`, both tests) show
+why the stage-2 fact is the wrong question. There the planned basic group's
+rows hold `tree_id` and `src_label`, so the plan says yes. But its node is a
+projection over the ROOT scan, and the scan has no `source_label`. Widening
+it would compute the virtual above the projection it has to sit below, so
+the fallback is right. The widen is an applied decision: it projects the
+merge the plan assembled.
 
-1. The fold widen still projects the aggregate's merge after
-   `_pre_merge_parents` assembles it, inside the aggregate's build. No
-   decision reads the built node; asking a ROOT for the derived column
-   instead changes source selection.
-2. A ROOT that re-sources a filter argument through a nested plan reads that
-   plan's region domain, which the outer group graph does not hold. The built
-   read comes from below the nested plan's aggregate (`avg(customer_id) by
-   *` over the nested `customer_id` extent group), joined into the ROOT's
-   rows. The nested plan is planned inside the ROOT's source planning, so
-   making its domains a stage-2 fact means running the nested plan's stage 2
-   from the outer one. The FINAL WHERE applier, the FINAL merge's region keys,
-   the aggregate's domain parents and `_parent_nodes_for` read the planned
-   reads. At every probed case the decision or its SQL came out the same.
+The other `renderable_addresses` reads apply decisions too:
+
+- `_project_basic_aggregate_inputs` gates on the planned renders and reads
+  the built stream only to say which BASIC mates the widen computes.
+- `_widen_scan_chain` and `_carry_join_keys` widen planned or contracted
+  keys down a built projection chain.
+
+The one built read that decided something was the FINAL pass of
+`_unprojected_expression_mates` after `_carry_planned_keys`. It picks the
+expression relation members two parents reach and none projects. Measured
+over the same suites, it fired 11 times, all in
+`test_scoped_derived_rowset_join_matrix`. 10 were per-group or gate merges
+(`_widen_merge_join_keys`), whose keys the merge discovers. The 1 FINAL hit's
+mate was already a key `keys_for` gave both sides, so the pass re-ran the
+same carry. The FINAL now carries only the planned keys.
+
+**Nested-plan region domains (closed).** A ROOT that re-sources a filter
+argument through a nested plan reads, as built, that plan's region domain.
+The planned read is empty. The planned answer is the right one at the outer
+plan's level. The nested plan places, pads and joins the region under its
+own stage 2: in the `CUSTOMERS_DERIVED` repro (`select customer_id, status
+where customer_id >= avg(customer_id) by * and status is null`), every
+nested group's built read equals its planned read. What the outer ROOT
+returns is the already-united row stream, and nothing in the outer plan pads
+or pairs on that region. The built read is the nested node tree's
+`region_spans` showing through the plan boundary. Parts 20 and 21 measured
+the effect of every outer decision that reads it:
+
+- the FINAL WHERE applier;
+- the FINAL merge's region keys;
+- the aggregate's domain parents;
+- the `_parent_nodes_for` checks.
+
+At every probed case the decision or its SQL came out the same. The rows are
+pinned by `test_derived_key_domain`.
+
+SQL capture over the same suites (13,760 statements) against part 21 moved no plan: only the `grain_check` hash-seed column order (41), BigQuery temp table names, `test_gcat::test_environment`, the `test_declared_join_beside_a_property_of_the_superset_key` join type, and the `tree_reporting` build tests' temp file paths. 0 of 209 corpus plans moved.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
@@ -820,6 +858,9 @@ every single-parent wrap. 1,159 of those were scans, 178
 merges and 201 GroupNodes. A mapped node can also belong to a
 nested plan's graph. What these helpers compare is the region identity of the
 rows actually being merged, so they read the built stream.
+
+**Open.** Nothing. Every decision stage 3 makes off a built node now
+reads a stage-2 fact or is classified above as applying one.
 
 ## 8. Not claimed
 
