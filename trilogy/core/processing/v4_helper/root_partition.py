@@ -28,10 +28,17 @@ from dataclasses import dataclass
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
+from trilogy.core.models.build import (
+    BoolExpr,
+    BuildConcept,
+    BuildDatasource,
+    BuildSubselectComparison,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.utility import walk_lineage
 
 from .concept_graph import condition_stage_of_label
@@ -503,7 +510,7 @@ def _filter_args(
     conditions: list[BuildWhereClause],
 ) -> tuple[frozenset[str], frozenset[str]]:
     """Row-arg addresses of the pre-aggregate and the post-aggregate WHERE
-    clauses (those with no aggregate term, and those with one).
+    atoms (those with no aggregate term, and those with one).
 
     A pre-aggregate filter narrows the rows feeding an aggregate, so its args
     stay on the fact scan, expanded through their lineage closure so the host
@@ -513,15 +520,43 @@ def _filter_args(
     faithful; a filter-only one peels only beside an output of its cluster."""
     pre: set[str] = set()
     post: set[str] = set()
-    for clause in conditions:
-        if any(
-            arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
-        ):
-            post |= {arg.address for arg in clause.row_arguments}
+    for atom in _atoms(conditions):
+        if _post_aggregate(atom):
+            post |= {arg.address for arg in atom.row_arguments}
         else:
-            for arg in clause.row_arguments:
+            for arg in atom.row_arguments:
                 pre |= _row_arg_lineage_closure(arg)
     return frozenset(pre), frozenset(post)
+
+
+def _atoms(
+    conditions: list[BuildWhereClause],
+) -> list[BuildSubselectComparison | BoolExpr]:
+    return [
+        atom
+        for clause in conditions
+        for atom in decompose_condition(clause.conditional)
+    ]
+
+
+def _post_aggregate(atom: BuildSubselectComparison | BoolExpr) -> bool:
+    return any(arg.derivation == Derivation.AGGREGATE for arg in atom.concept_arguments)
+
+
+def _pre_aggregate_atom_mates(
+    conditions: list[BuildWhereClause],
+) -> dict[str, frozenset[str]]:
+    """Each pre-aggregate filter arg -> every arg of the atoms reading it: an
+    atom drops whole groups only when all of its args do (`note is not null
+    or amount = 4` keeps orders, not customers)."""
+    mates: dict[str, set[str]] = defaultdict(set)
+    for atom in _atoms(conditions):
+        if _post_aggregate(atom):
+            continue
+        args = {arg.address for arg in atom.row_arguments}
+        for address in args:
+            mates[address] |= args
+    return {address: frozenset(args) for address, args in mates.items()}
 
 
 def _post_aggregate_basic_args(
@@ -889,6 +924,7 @@ def _split_root_dimension_clusters(
     environment: BuildEnvironment,
     output_addresses: frozenset[str],
     pre_aggregate_filter_args: frozenset[str],
+    pre_aggregate_atom_mates: dict[str, frozenset[str]],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
     domains: list[RegionDomain],
@@ -1009,11 +1045,11 @@ def _split_root_dimension_clusters(
             # fact rows feeding the aggregate, but a peeled column carries its
             # filter to a post-aggregate dim join.
             finest = _entity_key(addr, frozenset(candidates), environment)
-            if (
-                addr in pre_aggregate_filter_args
-                and not _preaggregate_filter_allows_dimension_member(
-                    addr, finest, d0_grouping_buckets, environment
+            if addr in pre_aggregate_filter_args and not all(
+                _preaggregate_filter_allows_dimension_member(
+                    mate, finest, d0_grouping_buckets, environment
                 )
+                for mate in pre_aggregate_atom_mates.get(addr, {addr})
             ):
                 continue
             if finest is not None:
@@ -1176,6 +1212,7 @@ def partition_root_demand(
         environment,
         output_addresses | projected_scalar_root_args,
         pre_aggregate_args,
+        _pre_aggregate_atom_mates(conditions),
         post_aggregate_args | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
         domains,

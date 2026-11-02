@@ -603,6 +603,73 @@ theorem Rollup.unsummed_partial_splits_a_group :
         (fun k => decide (coarse k = 0))) = some 9 := by
   decide
 
+/-! ## Filters on a stored group value
+
+A WHERE over an aggregate at the summary's own grain (`sum(x) by city,
+species > 3` beside a `(city, species)` summary) is a predicate on each
+group's stored value, so it is a predicate on the summary key, and
+`Rollup.sum_exact` applies: filter the summary rows, then re-sum. -/
+
+/-- **A filter on a stored group value rolls up.** -/
+theorem Rollup.group_value_filter_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v : α → Option Int) (agg : List α → Option Int) (p : Option Int → Bool)
+    (q : κ → Bool) :
+    let gate : κ → Bool := fun k => p (agg (slice g k rows)) && q k
+    sqlSum (stored g ks rows (sumAgg v) gate) = sumAgg v (keep g gate rows) :=
+  Rollup.sum_exact g ks hnd rows hcov v _
+
+/-- A rolled-up plan that drops the group-value filter re-sums every group:
+`sum(x) by k > 3` over groups summing to 3 and 5 answers 8, not 5. -/
+theorem Rollup.dropped_group_filter_overcounts :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    let gate : Nat → Bool := fun k =>
+      (sumAgg v (slice (·.1) k rows)).any (· > 3)
+    sqlSum (stored (·.1) [1, 2] rows (sumAgg v) (fun _ => true)) = some 8 ∧
+      sumAgg v (keep (·.1) gate rows) = some 5 := by
+  decide
+
+/-- The filter's aggregate is read at its own grain, never re-summed first at
+a grain that does not determine it: summed over both groups (one `tree_form`
+holding two species), `sum(x) by k > 3` holds for the pair and keeps the
+group summing to 3. -/
+theorem Rollup.resummed_condition_misfilters :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    let resummed : Bool := (sumAgg v rows).any (· > 3)
+    let gate : Nat → Bool := fun k =>
+      (sumAgg v (slice (·.1) k rows)).any (· > 3)
+    (if resummed then sumAgg v rows else none) = some 8 ∧
+      sumAgg v (keep (·.1) gate rows) = some 5 := by
+  decide
+
+/-! ## COUNT DISTINCT of a grain column
+
+`count_distinct` does not re-aggregate (`Rollup.count_distinct_not_additive`),
+but a column of the summary's grain needs no re-aggregation. Each summary row
+is a group the base rows hold, so the values the kept summary rows list are
+the values the kept base rows list, and so is their distinct count. -/
+
+/-- **The distinct values of a grain column are the summary's.** -/
+theorem Rollup.count_distinct_grain_column_exact {β : Type} (g : α → κ)
+    (ks : List κ) (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (h : κ → β) (q : κ → Bool) (x : β) :
+    x ∈ (keep g q rows).map (fun r => h (g r)) ↔
+      x ∈ ((groups g ks rows).filter q).map h := by
+  simp only [List.mem_map, keep, List.mem_filter]
+  constructor
+  · rintro ⟨r, ⟨hr, hq⟩, rfl⟩
+    exact ⟨g r, ⟨mem_groups g ks rows hcov r hr, hq⟩, rfl⟩
+  · rintro ⟨k, ⟨hk, hq⟩, rfl⟩
+    obtain ⟨_, hne⟩ := List.mem_filter.mp hk
+    cases hs : slice g k rows with
+    | nil => rw [hs] at hne; cases hne
+    | cons r _ =>
+      have hr : r ∈ slice g k rows := by rw [hs]; exact List.mem_cons_self ..
+      have hgr : g r = k := by simpa using (List.mem_filter.mp hr).2
+      exact ⟨r, ⟨slice_sub g k rows hr, hgr ▸ hq⟩, by rw [hgr]⟩
+
 /-! ## AVG from a stored SUM and COUNT
 
 `avg` does not re-aggregate itself (`Rollup.avg_not_rollable`), but it is the

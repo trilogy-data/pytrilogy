@@ -16,8 +16,10 @@ family: value-set arms, arms the grain does not determine), #821, which
 made datasource bindings functional-dependency facts in place of FK-derived
 keys, `Binding.lean`, which models those facts (area 0 below records what
 is left of it), `Unnest.lean`, filtering rows by the elements of an
-unnested list (area 0b), and `Rewrite.lean`, optimizer rules as rewrites
-that keep rows (area 2, two rounds: #843 and the row-argument round).
+unnested list (area 0b), `Rewrite.lean`, optimizer rules as rewrites
+that keep rows (area 2, two rounds: #843 and the row-argument round), and
+the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
+under a membership, per-atom peels; area 1).
 
 ## The recipe
 
@@ -116,9 +118,25 @@ that keep rows (area 2, two rounds: #843 and the row-argument round).
      two changes the law suite needed were redundant, and one the law suite
      did not need was what the family needed.
 
+10. **Lessons from the rollup follow-on round (0.3.443).**
+    - Hunting for a plan that WRONGLY reads a summary found none, but the
+      hunt's own shapes found four other bugs. Put the hunt's queries in
+      unusual positions (a membership, a rowset, an aggregate filter at
+      another grain, an OR with a joined dimension), not just the expected
+      ones: every bug this round came from a position, not a filter.
+    - A family whose ORACLE raises is a family worth reading. The pre-joined
+      FLAT model raised on 296 of 360 mixed-atom shapes on main; once it
+      planned, 8 padded shapes that also raised on main came back WRONG
+      (a gate true on an empty group). The fix that unblocks a shape owes
+      the rows it returns: check them by hand.
+    - A guard that reads the group graph's claim (`carries`) instead of the
+      node built can be wrong; check the built node and fall back
+      (`_push_row_condition_before_group`).
+
 ## Candidate areas
 
-**Suggested next: area 1, then the area-2 leads below.**
+**Suggested next: the area-1 and area-2 leads below, or a fresh area (3,
+4).**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -198,20 +216,32 @@ cannot. `avg` from a stored `sum` and `count` is done
 (`Rollup.avg_of_parts_exact`; the Factory builds `avg(x)` as the guarded
 quotient when a datasource stores both parts, see `trilogy/core/average_parts.py`).
 That round also fixed `rollup_signature` (it matched `sum(x * 2)` to a stored
-`sum(x)`) and a partial read into an expression without its re-sum. Open
-questions:
-- **An expression over an aggregate at a summary's exact grain** (`select city,
-  species, sum(height) * 2` over a `(city, species)` summary) reads the base
-  rows. The bare aggregate is matched by the statement-level datasource search;
-  the nested one goes through the aggregate-derivation path, which never looks
-  for an exact-grain materialized column. Answers are correct, so this is a
-  missed serve. `EXACT_GRAIN` in the harness marks it.
+`sum(x)`) and a partial read into an expression without its re-sum.
+
+Done in 0.3.443 (see "What it found" in `formal/README.md`): an expression
+over an exact-grain aggregate reads the stored column; `count_distinct` of a
+grain column is proved and served (`Rollup.count_distinct_grain_column_exact`);
+a WHERE over a stored group value filters the summary rows before the re-sum
+(`Rollup.group_value_filter_exact`); a membership on a grain key re-sums the
+partial. The finer-filter hunt (about 1,800 shapes) found no summary read under
+a filter its grain does not determine. Open questions:
+- `count_distinct` of a grain column under a filter or grain over `tree_form`
+  reads `trees ⋈ enrichment`, not `tree_summary ⋈ enrichment`: a cost choice
+  (area 1b's dominance is by component subset), correct either way.
+  `DISTINCT_GRAIN_COLUMNS` in the harness marks it.
 - `max(avg(x) by species)` and `avg(x)` beside `avg(x) by *` decline to the base
   rows, as the `sum` versions of those shapes do (`MIXED_GRAINS`).
-- `count_distinct` from a summary keyed by the distinct column itself. This is
-  exact when the column is in the summary's grain.
-- A filter on a column the summary's grain does *not* determine must decline.
-  Hunt for a planner path that accepts it anyway.
+- `select tree_form, sum(sum(height) by city, species) where sum(height) by *
+  > 100` reads the base rows; the same shape without `tree_form` is served.
+- A WHERE over a stored group value declines to the base rows at a grain
+  the summary does not bind (`tree_form`, a CASE over it), and for a grand
+  total under an OR that joins `tree_form` (`GROUP_VALUE_GRAINS` in the
+  harness). Serving them needs `_plan_joined_filter_rollup` to also group by
+  a joined dimension's column.
+- A WHERE over a stored aggregate at a grain COARSER than the summary's
+  (`sum(height) by city > 6` beside a `(city, species)` summary) reads the
+  base rows. Filtering the summary needs the condition's value joined back on
+  `city`; `_plan_joined_filter_rollup` could source it.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
@@ -254,20 +284,21 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
   row-argument cross join, the FLAT keyless-join failures, q83 unhealed
   (`test_eighty_three_unhealed`), and laws for the identity GROUP BY, the
   value-set upgrade, the existence fold and the semi-join pushdown.
+- Done in 0.3.443: both "could only be placed after the aggregates" errors
+  (a pre-aggregate column peeled per column, not per atom), and a `by *` gate
+  beside a nested aggregate. `MIXED_ATOMS` in the suite is the family.
 - **`merge_irrelevant_group_by` fires on no shape of the soundness model.**
+  0.3.443 counted its real firings over the regressions and 300 random
+  queries in all three addressings, plus rowset bodies over a DISTINCT: zero.
+  Its preconditions (a grouped child with no joins and no WHERE over one
+  grouped parent it alone reads) seem pre-empted by `collapse_single_parent`,
+  which runs first. Count its firings over the TPC-DS corpus before writing
+  more shapes; if it never fires, it may be dead.
   Its law is proved (`merged_group_sum_exact`, `dropped_dedup_double_counts`)
   and the suite ablates it, but that ablation compares identical plans. Find
   a shape that fires it (a child aggregate over a pure-DISTINCT parent CTE;
   rowset bodies did not) and add it to `FIRES`. `fold_existence_into_aggregate`
   fires only under table addressing.
-- **Two planning errors the sweep keeps hitting, in every model including
-  FLAT:** `where (not (count(order_id) by cust_id > 1)) and ((order_id > 9)
-  or (name is not null)) select name, note, cust_id, count(order_id) by
-  cust_id -> n` and `where (rqty in (4, 4)) or ((amount is not null) or (note
-  is not null)) select note, count(order_id) by cust_id -> n` raise "could
-  only be placed after the aggregates". The first reads the SELECT's own
-  aggregate in the WHERE (likely the documented self-reference refusal); the
-  second does not, and looks like a placement gap.
 - **The mixed partition cover.** `union_sources` mints `web_sales +
   catalog_returns + store_returns` as a cover of `channel` in TPC-DS
   `all_sales`, because `return_channel_dim_id` is bound by those three and

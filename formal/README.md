@@ -29,7 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
-| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument, a filter on a stored group value is a filter on the summary key (`group_value_filter_exact`), and a grain column's distinct values are the summary's (`count_distinct_grain_column_exact`) (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect (checked by `tests/core/test_function_laws.py` on DuckDB and SQLite) |
 | `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order, a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
@@ -620,6 +620,50 @@ a design decision or a bug.
   with a counterexample for its guard; the suite ablates each and checks the
   last four fire. Not a bug: `select reason, rqty` over the `~` returns reads
   the returns rows only, since no output carries an order's own attributes.
+- **Summaries read past a WHERE on their own values, partials read as
+  values, and atoms that mix grains placed by column** (`Rollup.lean`,
+  `Rewrite.lean`, 0.3.443). Extending the rollup harness with families of
+  filters the summary's grain does not determine (1,100 shapes in six
+  positions, 700 in exotic ones: memberships, rowsets, windows, aggregates at
+  other grains) found no plan that read a summary under a finer filter, but
+  four bugs elsewhere, all on main:
+  - A WHERE over the aggregate a summary stores at its own grain (`select
+    city, sum(height) where sum(height) by city, species > 3`) was dropped:
+    the scan routes only scalar atoms, yet the rollup pinned it as if it
+    applied them (`Rollup.dropped_group_filter_overcounts`). Beside a joined
+    dimension (`... > 3 or tree_form = 'linden'`) the merge re-summed the
+    condition's aggregate to a grain that does not determine it and tested
+    the sum (`Rollup.resummed_condition_misfilters`): a binder error, or
+    wrong rows at `tree_form`. At a grain derived from a joined dimension
+    (`case when tree_form = ...`) the atom ran as a semijoin on the output
+    grain and kept the group it rejects. The summary rows are now filtered
+    at their own grain, then re-summed (`Rollup.group_value_filter_exact`);
+    a grain the summary does not bind reads the base rows.
+  - A membership on a summary grain key (`species in (select ...)`) widened
+    the scan to that key, and `sum(height) * 2` read each row's partial as
+    the value (`Rollup.unsummed_partial_splits_a_group`): one row per
+    species. A stored aggregate read below its own grain is now a partial.
+  - A pre-aggregate column was peeled onto its dimension when a filter on it
+    alone drops whole groups, judged per column. Inside an OR with an order
+    column (`amount = 4 or note is not null`), or in a clause beside an
+    aggregate conjunct, it then could not be placed (the pre-joined model
+    raised on 296 of a 360-shape family), or it filtered nothing:
+    `count(order_id) by region` beside `name is null or name = 'ann'`
+    counted every order in the region
+    (`Rewrite.push_group_mixed_atom_changes_sum`). The
+    peel is now judged per atom. Keeping such a column on the row stream
+    exposed a gate that holds on an empty group (`not (sum(amount) by
+    cust_id > 6)`) hosted on the aggregate alone while the row stream padded
+    the customer back with a count of 0; it is now re-applied at FINAL
+    (`Rewrite.absent_accepting_keeps_rejected`).
+  - A `by *` gate beside a nested aggregate (`select sum(sum(x) by city)
+    where count(id) by * > 1`) failed to plan: the FINAL WHERE was pushed
+    below the aggregate on what the group graph said its rows carry, not on
+    the node built.
+  An expression over an aggregate at a summary's exact grain (`sum(height) *
+  2` beside `(city, species)`) now reads the stored column instead of the
+  base rows, and `count_distinct` of a summary grain column reads the
+  summary.
 
 ## Limits
 

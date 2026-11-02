@@ -274,12 +274,42 @@ REGRESSIONS = [
     "where (amount > 0) and (sum(amount) by cust_id > 4) select note;",
     # a filter fed into the bare `~` notes scan keeps the customer it lacks
     "where (returned = true) or (sum(amount) by cust_id > 4) select note;",
+    # a selected customer column an order-level atom also reads stays on the
+    # order rows the atom filters
+    "where (amount = 4) or (note is not null) select note, count(order_id) by cust_id -> n;",
+    "where (rqty in (4, 4)) or ((amount is not null) or (note is not null)) select note, count(order_id) by cust_id -> n;",
+    "where (not (count(order_id) by cust_id > 1)) and ((order_id > 9) or (name is not null)) select name, note, cust_id, count(order_id) by cust_id -> n;",
+    "where (name is null or name = 'ann') and (not (sum(amount) by cust_id > 6)) select name, region, count(order_id) by region -> r;",
+    # a gate true on a customer with no rows is re-applied beside the order
+    # rows that carry the customer's columns
+    "where ((rqty > 1) or (name is null)) and (not (sum(amount) by cust_id > 6)) select name, cust_id, count(order_id) -> n;",
+    "where ((reason is null) or (region = 'n')) and (not (sum(amount) by cust_id > 6)) select region, sum(amount) by cust_id -> n;",
+]
+
+# An atom over an order column and a customer column, beside selected customer
+# columns, a per-customer aggregate and optionally a gate.
+MIXED_ATOMS = [
+    f"where (({order}) {join} ({customer})){gate} select {columns};"
+    for order in ["amount = 4", "reason is null"]
+    for customer in ["note is not null", "name is null", "region = 'n'"]
+    for join in ["or", "and"]
+    for gate in ["", " and (not (sum(amount) by cust_id > 6))"]
+    for columns in [
+        "name, note, count(order_id) by cust_id -> n",
+        "region, sum(amount) by cust_id -> n",
+    ]
 ]
 
 
 @pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
 @pytest.mark.parametrize("text", REGRESSIONS)
 def test_padded_model_matches_prejoined(model: str, text: str) -> None:
+    assert _rows(model, text) == _rows(FLAT, text), text
+
+
+@pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
+@pytest.mark.parametrize("text", MIXED_ATOMS)
+def test_mixed_atom_matches_prejoined(model: str, text: str) -> None:
     assert _rows(model, text) == _rows(FLAT, text), text
 
 
