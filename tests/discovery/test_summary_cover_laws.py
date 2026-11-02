@@ -141,6 +141,26 @@ RELATION = {
     "member_property": "biome, count(tree_id) as n",
 }
 
+# `Cover.case_on_aggregate_rows`, `Cover.finer_grain_read_fans_out`: a scalar
+# of an aggregate's grain is read on its rows, not from a finer table.
+OVER_AGGREGATE = {
+    "case": "sum(case when bucket = 'Native' then count(tree_id) by bucket end) as n",
+    "case_else": (
+        "sum(case when bucket = 'Native' then count(tree_id) by bucket else 0 end) as n"
+    ),
+    "max": "max(case when bucket = 'Native' then count(tree_id) by bucket end) as n",
+    "scalar": (
+        "sum(case when upper(bucket) = 'NATIVE' then count(tree_id) by bucket end) as n"
+    ),
+    "key": (
+        "sum(case when species = 'Acer rubrum' then count(tree_id) by species end) as n"
+    ),
+    "key_property": (
+        "sum(case when common_names[1] = 'red maple' then count(tree_id) by species end) as n"
+    ),
+    "bare": "sum(count(tree_id) by bucket) as n",
+}
+
 # Shapes no rule covers: a condition, target or count finer than the key.
 UNSERVABLE = {
     "finer_condition": "species, count(tree_id ? dbh > 10) as n",
@@ -198,11 +218,16 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
             NO_EXISTENCE_PROOF,
             {
                 "key_and_property": ("none", "species", "property", "year"),
+                "property": ("none", "species", "property", "year"),
                 "stored": None,
             }.get(shape, ("none", "species", "property")),
         )
         for shape in EXISTENCE
     },
+    ("over_aggregate", "key_property"): (
+        "rule 7: a species property inside the CASE is not read beside the summary",
+        None,
+    ),
     **{
         ("relation", shape): (
             "rule 6: a summary is never joined through the fan-out it is keyed on",
@@ -210,20 +235,6 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
         )
         for shape in RELATION
     },
-}
-
-# The tree plan itself raises: no answer to compare.
-TREE_PLAN_RAISES = {
-    (
-        "existence",
-        "property",
-        "year",
-    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
-    (
-        "existence",
-        "scalar",
-        "year",
-    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
 }
 
 
@@ -247,8 +258,6 @@ def _assert_same_answer(query: str, served: bool) -> None:
 
 
 def _marks(rule: str, shape: str, where: str) -> list:
-    if (rule, shape, where) in TREE_PLAN_RAISES:
-        return [pytest.mark.skip(reason=TREE_PLAN_RAISES[(rule, shape, where)])]
     reason, filters = OPEN.get((rule, shape), ("", ()))
     if filters is None or where in filters:
         return [pytest.mark.xfail(strict=True, reason=reason)]
@@ -295,6 +304,71 @@ def test_existence_reads_the_summary(select: str, where: str):
 @pytest.mark.parametrize("select,where", _cases("relation", RELATION))
 def test_relation_keyed_on_the_grain(select: str, where: str):
     _assert_same_answer(_query(select, where), served=True)
+
+
+@pytest.mark.parametrize("select,where", _cases("over_aggregate", OVER_AGGREGATE))
+def test_scalar_of_an_aggregates_grain(select: str, where: str):
+    _assert_same_answer(_query(select, where), served=True)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            (
+                "auto c <- case when bucket = 'Native' then count(tree_id) by bucket end;"
+                " select sum(c) as n;"
+            ),
+            [(4,)],
+        ),
+        (
+            (
+                "auto ub <- upper(bucket);"
+                " auto c <- case when ub = 'NATIVE' then count(tree_id) by bucket end;"
+                " select sum(c) as n;"
+            ),
+            [(4,)],
+        ),
+        (
+            (
+                "select sum(case when bucket = 'Native' then count(tree_id) by bucket end)"
+                " as n where city = 'A';"
+            ),
+            [(3,)],
+        ),
+        (
+            (
+                "auto cb <- count(tree_id) by bucket;"
+                " select bucket, sum(case when bucket = 'Native' then cb end) as n;"
+            ),
+            [("Introduced", None), ("Native", 4), (None, None)],
+        ),
+        (
+            (
+                "auto cbc <- count(tree_id) by bucket, city;"
+                " select city, sum(case when bucket = 'Native' then cbc end) as n;"
+            ),
+            [("A", 3), ("B", 1)],
+        ),
+        (
+            (
+                "auto cb <- count(tree_id) by bucket;"
+                " select avg(case when bucket is null then 0 else cb end) as n;"
+            ),
+            [(2.0,)],
+        ),
+        (
+            "select split(species, ' ')[1] as g where plant_year > 2000;",
+            [("Acer",), ("Opuntia",), ("Tilia",)],
+        ),
+        (
+            "select common_names[1] as c where plant_year > 2000;",
+            [("linden",), ("red maple",), (None,)],
+        ),
+    ],
+)
+def test_tree_plan_answer(query: str, expected: list[tuple]):
+    assert _run(BASE, query)[1] == expected
 
 
 @pytest.mark.parametrize("select,where", _cases("unservable", UNSERVABLE))

@@ -1308,7 +1308,41 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         )
 
     def get_select_grain_and_keys(
-        self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
+        self,
+        grain: Grain,
+        environment: Environment,
+        pin_bare_aggregates: bool = True,
+        _memo: dict[tuple[str, bool], Any] | None = None,
+    ) -> tuple[
+        Function
+        | WindowItem
+        | FilterItem
+        | AggregateWrapper
+        | RowsetItem
+        | SubselectItem
+        | MultiSelectLineage
+        | Comparison
+        | None,
+        Grain,
+        set[str] | None,
+    ]:
+        # One walk shares its parents' answers: the grain does not change
+        # down the recursion, and a lineage that reuses a parent along several
+        # paths (`b <- a + a`) would otherwise be expanded as a tree, 2**depth.
+        memo: dict[tuple[str, bool], Any] = {} if _memo is None else _memo
+        memo_key = (self.address, pin_bare_aggregates)
+        if memo_key not in memo:
+            memo[memo_key] = self._get_select_grain_and_keys(
+                grain, environment, pin_bare_aggregates, memo
+            )
+        return memo[memo_key]
+
+    def _get_select_grain_and_keys(
+        self,
+        grain: Grain,
+        environment: Environment,
+        pin_bare_aggregates: bool,
+        memo: dict[tuple[str, bool], Any],
     ) -> tuple[
         Function
         | WindowItem
@@ -1412,10 +1446,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
+                    # a scalar of the `by` keys is read on the aggregate's rows
+                    if _function_of_addresses(x, set(by_refs), environment):
+                        continue
                     if x.derivation == Derivation.UNNEST:
                         pkeys.add(x.address)
                         continue
-                    _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                    _, _, parent_keys = x.get_select_grain_and_keys(
+                        grain, environment, _memo=memo
+                    )
                     if parent_keys:
                         pkeys.update(parent_keys)
                     elif x.purpose == Purpose.KEY:
@@ -1439,7 +1478,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     if x.derivation == Derivation.UNNEST:
                         pkeys.add(x.address)
                         continue
-                    _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                    _, _, parent_keys = x.get_select_grain_and_keys(
+                        grain, environment, _memo=memo
+                    )
                     if parent_keys:
                         pkeys.update(parent_keys)
                     elif x.purpose == Purpose.KEY and _is_alias(new_lineage):
@@ -2577,6 +2618,21 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
             expr.left, environment
         ) + _non_aggregate_row_refs(expr.right, environment)
     return []
+
+
+def _function_of_addresses(
+    concept: Concept, addresses: set[str], environment: Environment
+) -> bool:
+    if concept.address in addresses:
+        return True
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    return all(
+        _function_of_addresses(
+            environment.concepts[ref.address], addresses, environment
+        )
+        for ref in concept.lineage.concept_arguments
+    )
 
 
 def _pin_anchors(expr: Any) -> set[str]:

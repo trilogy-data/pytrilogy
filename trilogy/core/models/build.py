@@ -1454,35 +1454,30 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
 
     @property
     def sources(self) -> list[BuildConcept]:
-        if self.lineage:
-            output: list[BuildConcept] = []
+        """Every concept in this one's lineage, each once, in depth-first order.
 
-            def get_sources(
-                expr: (
-                    BuildFunction
-                    | BuildWindowItem
-                    | BuildFilterItem
-                    | BuildAggregateWrapper
-                    | BuildRowsetItem
-                    | BuildSubselectItem
-                    | BuildMultiSelectLineage
-                ),
-                output: list[BuildConcept],
-            ):
-                if isinstance(expr, BuildMultiSelectLineage):
-                    return
-                for item in expr.concept_arguments:
-                    if isinstance(item, BuildConcept):
-                        if item.address == self.address:
-                            raise SyntaxError(
-                                f"BuildConcept {self.address} references itself"
-                            )
-                        output.append(item)
-                        output += item.sources
-
-            get_sources(self.lineage, output)
-            return output
-        return []
+        Walked with a visited set: a lineage that reuses a parent along
+        several paths (`b <- a + a`, a regression's shared moments) is a DAG,
+        and expanding it as a tree costs 2**depth.
+        """
+        if not self.lineage or isinstance(self.lineage, BuildMultiSelectLineage):
+            return []
+        output: list[BuildConcept] = []
+        seen: set[str] = set()
+        stack = list(reversed(self.lineage.concept_arguments))
+        while stack:
+            item = stack.pop()
+            if not isinstance(item, BuildConcept):
+                continue
+            if item.address == self.address:
+                raise SyntaxError(f"BuildConcept {self.address} references itself")
+            if item.address in seen:
+                continue
+            seen.add(item.address)
+            output.append(item)
+            if item.lineage and not isinstance(item.lineage, BuildMultiSelectLineage):
+                stack.extend(reversed(item.lineage.concept_arguments))
+        return output
 
     @property
     def concept_arguments(self) -> list[BuildConcept]:
