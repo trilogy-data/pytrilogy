@@ -19,8 +19,9 @@ is left of it), `Unnest.lean`, filtering rows by the elements of an
 unnested list (area 0b), `Rewrite.lean`, optimizer rules as rewrites
 that keep rows (area 2, two rounds: #843 and the row-argument round), and
 the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
-under a membership, per-atom peels; area 1), and `Windows.lean` (0.3.444:
-what a window ranks, `over ()`, NULL placement per engine; area 4).
+under a membership, per-atom peels; area 1), and `Windows.lean` /
+`SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
+placement per engine, set operators; area 4).
 
 ## The recipe
 
@@ -133,6 +134,28 @@ what a window ranks, `over ()`, NULL placement per engine; area 4).
     - A guard that reads the group graph's claim (`carries`) instead of the
       node built can be wrong; check the built node and fall back
       (`_push_row_condition_before_group`).
+
+11. **Lessons from `Windows.lean` / `SetOps.lean` (0.3.444, 0.3.445).** Two runs
+    took this area in parallel (#854 and #856) and found the same two bugs
+    with the same designs; what follows is what the second run added.
+    - Probe the doc's own invariants, not just dialect pairs: "a concept has
+      one value whatever else is projected" found the rank fan-out
+      (`select id, v, rank v` vs `select v, rank v`), which DuckDB and SQLite
+      agreed on.
+    - Before calling a padded or dropped row a bug, check the data honours
+      every binding claim. `facts (sid: sid)` claims every `sid` has a fact;
+      random dimensions without facts made a correct regraft look wrong, and
+      a guard written against it was dropped once `~sid` made the data
+      honest (0 of 384 failures with or without it).
+    - A dialect's "default" is a semantic choice. Pin the engines' documented
+      defaults (`NULL_SORT`, `tests/dialect/test_null_order_renderings.py`)
+      and simulate each rendering against them, so dialects with no engine
+      in CI (Postgres, Snowflake, SQL Server, BigQuery) are still held to
+      the law; an engine that is in CI gets a raw-SQL check of the default
+      (`tests/engine/test_clickhouse_chdb.py`).
+    - Every path that renders an ordering must go through the dialect. The
+      file-target `order by` (`trilogy/execution/write_order.py`) wrote the
+      ordering's text and sent `desc nulls auto` to DuckDB.
 
 ## Candidate areas
 
@@ -331,7 +354,7 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 `tests/core/test_function_laws.py` and `formal/Trilogy/Functions.lean` are the
 place to extend for these.
 
-### 4. Windows and ORDER BY (done in `Windows.lean`; leads left)
+### 4. Windows, ORDER BY and set operators (done in `Windows.lean`, `SetOps.lean`; leads left)
 
 `tests/windows/test_window_laws.py` holds numbering windows, value windows
 (`lag`/`lead`, aggregate windows with and without an order) and ORDER BY NULL
@@ -356,8 +379,9 @@ placement); `nulls auto` is the engine's own. Leads left:
   bare and wrap the select.
 - **Frames.** `rows between ...` and `row_number` over ties are not modelled;
   the suite only orders `row_number`-like navigation on a total order.
-- **`union`/`except`/`intersect` TVFs.** A DuckDB/SQLite probe of NULL rows
-  agreed (`except` and `intersect` match NULL to NULL, `union` keeps the
-  bag); `tests/engine/test_duckdb_setops.py` covers them. Not modelled.
+- **`union`/`except`/`intersect` TVFs** are modelled in `SetOps.lean` and
+  held by `tests/setops/test_setops_laws.py` (2,304 random queries with
+  NULLs and duplicates, no wrong answers); `tests/engine/test_duckdb_setops.py`
+  pins the SQL. `union` keeps the bag and is not in the Lean model.
 - **`coalesce`/`case` type merging:** whether a merged type stores every arm's
   value, the same materialization law as #802.

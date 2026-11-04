@@ -29,7 +29,7 @@ def sorted_rows_sql(executor: Executor, datasource: Datasource, sql: str) -> str
     renderer = Renderer()
     quote = executor.generator.QUOTE_CHARACTER
     keys = [
-        (f"{SORT_KEY_PREFIX}{i}", item.order.value)
+        (f"{SORT_KEY_PREFIX}{i}", item.order)
         for i, item in enumerate(datasource.order_by.items)
     ]
     columns = {
@@ -53,6 +53,7 @@ def sorted_rows_sql(executor: Executor, datasource: Datasource, sql: str) -> str
         if col.address in columns
     )
     order = ", ".join(
-        f"{quote}{named[name]}{quote} {direction}" for name, direction in keys
+        executor.generator.render_ordering(f"{quote}{named[name]}{quote}", direction)
+        for name, direction in keys
     )
     return f"SELECT {projected} FROM ({inner}) AS _trilogy_sorted ORDER BY {order}"
