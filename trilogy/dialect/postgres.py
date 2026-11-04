@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from trilogy.core.enums import DatePart, FunctionType
+from trilogy.core.enums import DatePart, FunctionType, NullSort
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect, render_true_divide, render_unsupported
 
@@ -84,6 +84,7 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class PostgresDialect(BaseDialect):
+    NULL_SORT = NullSort.LARGEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,

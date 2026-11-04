@@ -7,7 +7,7 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Modifier,
-    Ordering,
+    NullSort,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import CreateTableInfo
@@ -81,17 +81,6 @@ def render_cast(args: list[str]) -> str:
     return f"CAST({args[0]} AS {target})"
 
 
-def render_ordering(rendered: str, order: Ordering) -> str:
-    # MySQL has no NULLS FIRST/LAST; NULLs always sort first ascending and last
-    # descending. The other two placements are emulated with a leading
-    # `<expr> IS NULL` term, which sorts in the same direction either way
-    # (asc puts the null group last, desc puts it first).
-    direction = "desc" if order.value.startswith("desc") else "asc"
-    if order in (Ordering.ASC_NULLS_LAST, Ordering.DESC_NULLS_FIRST):
-        return f"({rendered}) IS NULL {direction}, {rendered} {direction}"
-    return f"{rendered} {direction}"
-
-
 def null_safe_join_key(
     lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
 ) -> str:
@@ -155,6 +144,8 @@ DATATYPE_MAP = {
 
 
 class MySQLDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
+    NULLS_ORDER_SYNTAX = False
     ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
@@ -216,8 +207,8 @@ class MySQLDialect(BaseDialect):
         matches = self.partition_key_match(target, staged, partition_by)
         return f"DELETE {target} FROM {target} JOIN {staged} ON {matches}"
 
-    def render_ordering(self, rendered: str, order: Ordering) -> str:
-        return render_ordering(rendered, order)
+    def render_null_flag(self, rendered: str) -> str:
+        return f"({rendered}) IS NULL"
 
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"

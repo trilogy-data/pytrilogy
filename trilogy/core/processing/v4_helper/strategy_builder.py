@@ -2330,7 +2330,14 @@ def _window_rows_at_grain(
     for concept in outputs:
         if concept.lineage is not None:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
+    # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
+    # (a property of `id`) sits at `id`
     grain = {
+        component
+        for concept in outputs
+        if concept.derivation == Derivation.WINDOW and not concept.grain.abstract
+        for component in concept.grain.components
+    } or {
         component
         for concept in needed.values()
         if not concept.grain.abstract
@@ -4037,11 +4044,23 @@ def _fold_descendant_contributors(
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
+        # a window keeps one row per tuple of its grain, so it carries only
+        # what that grain computes (`rank(name)` holds no `item_id`)
+        grain = attrs[b_gid].grain_components - {ALL_ROWS_ADDRESS}
+        closure = (
+            set(build_fd_closure(environment, grain))
+            if attrs[b_gid].derivation == Derivation.WINDOW and grain
+            else None
+        )
         for s_gid in nx.ancestors(group_graph, b_gid):
             if s_gid not in per_group:
                 continue
             s_concepts = per_group[s_gid]
             if not all(c.address in reads for c in s_concepts):
+                continue
+            if closure is not None and not all(
+                concept_satisfiable(c, closure) for c in s_concepts
+            ):
                 continue
             per_group[b_gid].extend(s_concepts)
             passthroughs.setdefault(b_gid, []).extend(s_concepts)

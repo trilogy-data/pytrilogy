@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from trilogy.core.enums import FunctionType
+from trilogy.core.enums import FunctionType, NullSort
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
@@ -59,6 +59,8 @@ MAX_IDENTIFIER_LENGTH = 128
 
 
 class SqlServerDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
+    NULLS_ORDER_SYNTAX = False
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,

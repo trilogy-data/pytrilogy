@@ -202,6 +202,35 @@ class Ordering(Enum):
     DESC_NULLS_LAST = "desc nulls last"
     DESC_NULLS_AUTO = "desc nulls auto"
 
+    @property
+    def descending(self) -> bool:
+        return self.value.startswith("desc")
+
+    @property
+    def direction(self) -> str:
+        return "desc" if self.descending else "asc"
+
+    @property
+    def nulls_first(self) -> bool | None:
+        """The placement asked for; None leaves it to the dialect (`auto`).
+        A plain direction means NULLs last, DuckDB's placement."""
+        if self.value.endswith("auto"):
+            return None
+        return self.value.endswith("first")
+
+
+class NullSort(Enum):
+    """Where a dialect sorts NULLs when ORDER BY names no placement."""
+
+    LAST = "last"
+    SMALLEST = "smallest"
+    LARGEST = "largest"
+
+    def nulls_first(self, descending: bool) -> bool:
+        if self is NullSort.LAST:
+            return False
+        return descending == (self is NullSort.LARGEST)
+
 
 class WindowType(Enum):
     ROW_NUMBER = "row_number"

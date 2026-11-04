@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Modifier,
+    NullSort,
     UnnestMode,
 )
 from trilogy.core.models.core import (
@@ -230,6 +231,7 @@ def parse_bigquery_table_name(
 
 
 class BigqueryDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
