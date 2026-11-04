@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace as dc_replace
 from typing import Any
 
-from trilogy.constants import NULL_VALUE
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, FunctionType
 from trilogy.core.models.author import (
     Between,
@@ -13,7 +12,6 @@ from trilogy.core.models.author import (
     Parenthetical,
     WhereClause,
 )
-from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -57,20 +55,7 @@ def negate_two_valued(operand: Any, context: RuleContext) -> Comparison | Condit
 
 def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
     if not isinstance(root, (Comparison, Conditional, Between)):
-        if arg_to_datatype(root) == DataType.BOOL:
-            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
-        elif arg_to_datatype(root) == DataType.INTEGER:
-            root = Comparison(
-                left=context.function_factory.create_function(
-                    [root], FunctionType.BOOL
-                ),
-                right=True,
-                operator=ComparisonOperator.EQ,
-            )
-        else:
-            root = Comparison(
-                left=root, right=NULL_VALUE, operator=ComparisonOperator.IS_NOT
-            )
+        return context.function_factory.bare_condition(root)
     return root
 
 
@@ -149,16 +134,7 @@ def having_clause(
     args = hydrated_children(node, hydrate)
     root = args[0]
     if not isinstance(root, (Comparison, Conditional, Parenthetical, Between)):
-        from trilogy.constants import MagicConstants
-
-        if arg_to_datatype(root) == DataType.BOOL:
-            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
-        else:
-            root = Comparison(
-                left=root,
-                right=MagicConstants.NULL,
-                operator=ComparisonOperator.IS_NOT,
-            )
+        root = context.function_factory.bare_condition(root)
     return HavingClause(conditional=root)
 
 

@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.constants import (
     ALL_ROWS_ADDRESS,
     GRAIN_NULL_SENTINEL,
@@ -186,22 +186,7 @@ def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
 
         if isinstance(root, (Conditional, Between)):
             return root
-        dt = arg_to_datatype(root)
-        if dt == DataType.BOOL:
-            return Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
-        if dt == DataType.INTEGER:
-            return Comparison(
-                left=context.function_factory.create_function(
-                    [root], FunctionType.BOOL
-                ),
-                right=True,
-                operator=ComparisonOperator.EQ,
-            )
-        return Comparison(
-            left=root,
-            right=MagicConstants.NULL,
-            operator=ComparisonOperator.IS_NOT,
-        )
+        return context.function_factory.bare_condition(root)
     return root
 
 
