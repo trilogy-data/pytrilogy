@@ -6,8 +6,8 @@ use crate::graph::GraphCore;
 use crate::network_search::{enumerate_covers, CandidateSpec, LimitKind, NetworkSpec};
 use crate::resolver::ImportResolver;
 use crate::trilogy_parser::{
-    parse_trilogy_syntax, parse_trilogy_syntax_count, parse_trilogy_syntax_tuple,
-    PestNode, PestToken,
+    parse_trilogy_syntax, parse_trilogy_syntax_calls, parse_trilogy_syntax_count,
+    parse_trilogy_syntax_tuple, PestNode, PestToken,
 };
 
 /// Python module for PreQL import resolution
@@ -20,6 +20,7 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_tuple, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_count, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_trilogy_syntax_calls, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_network_covers, m)?)?;
     Ok(())
 }

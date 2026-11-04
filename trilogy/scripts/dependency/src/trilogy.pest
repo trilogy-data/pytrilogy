@@ -27,10 +27,9 @@ _TERMINATOR = _{ ";" }
 statement = _{
       function
     | type_declaration
-    | multi_select_statement
     | tvf_select_statement
     | natural_select_statement
-    | select_statement
+    | select_chain
     | persist_statement
     | rowset_derivation_statement
     | selective_import_statement
@@ -210,9 +209,15 @@ join_clause = { JOIN_TYPE ~ ^"join" ~ join_group ~ (^"and" ~ join_group)* }
 // mint a terminal that breaks comparisons); the hydrator enforces `=`.
 join_group  = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)+ }
 
-multi_select_statement = {
-    select_statement
-    ~ (^"merge" ~ select_statement)+
+// A select is parsed once at a statement position: a `merge` tail makes it a
+// multi_select_statement. The adapter unwraps a chain with no tail to its
+// select_statement and names one with a tail `multi_select_statement`, so the
+// hydrator's tree is unchanged. (A `multi_select_statement | select_statement`
+// alternation parsed every plain select twice, once to fail at the missing
+// `merge`.)
+select_chain = { select_statement ~ _multi_select_tail? }
+_multi_select_tail = _{
+    (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
     ~ select_grouping? ~ having? ~ order_by? ~ limit?
@@ -246,7 +251,7 @@ validate_statement = {
 }
 
 // natural-language select: an agent answers the question with a generated query.
-// Must precede select_statement in the statement alternation: PEG commits to a
+// Must precede select_chain in the statement alternation: PEG commits to a
 // successful alternative, and select_statement would consume `select natural`
 // as a one-item select list and strand the question string.
 natural_select_statement = { ^"select" ~ ^"natural" ~ string_lit }
@@ -314,8 +319,8 @@ type_declaration = { ^"type" ~ IDENTIFIER ~ (validated_type | data_type) ~ ("|" 
 // ROWSET
 // =============================================================================
 rowset_derivation_statement = {
-      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (_tvf_invocation | multi_select_statement | select_statement))
-    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (_tvf_invocation | multi_select_statement | select_statement))
+      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (_tvf_invocation | select_chain))
+    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (_tvf_invocation | select_chain))
 }
 
 // =============================================================================
@@ -419,13 +424,18 @@ CONDITION_NOT = @{ ^"not" ~ KW_END }
 // EXPRESSIONS
 // =============================================================================
 // Lark: ?expr: comparison_root | between_root
-expr = _{ between_comparison | comparison }
-
-// ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
-comparison = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)? }
-
-// ?between_root: sum_chain "between" sum_chain "and" sum_chain
-between_comparison = { sum_operator ~ ^"between" ~ sum_operator ~ ^"and" ~ sum_operator }
+//   ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
+//   ?between_root: sum_chain "between" sum_chain "and" sum_chain -> between_comparison
+// Left-factored: the head sum_operator is parsed once and the tail decides
+// the shape. The adapter names the node from its children -- `comparison`
+// for [head] or [head, COMPARISON_OPERATOR, rhs], `between_comparison` for
+// [head, low, high] -- so the hydrator's tree is unchanged. Written as an
+// alternation (`between_comparison | comparison`) pest parsed the head twice
+// at every expression level, and function arguments nest expressions, so the
+// parse cost doubled per level of nesting.
+expr = { sum_operator ~ (_between_tail | _comparison_tail)? }
+_comparison_tail = _{ COMPARISON_OPERATOR ~ sum_operator }
+_between_tail    = _{ ^"between" ~ sum_operator ~ ^"and" ~ sum_operator }
 
 // ?sum_chain: UNARY_MINUS? product_chain (PLUS_OR_MINUS product_chain)*
 // A leading UNARY_MINUS is prefix negation on the first product_chain
@@ -439,16 +449,28 @@ UNARY_MINUS = @{ "-" ~ !(ASCII_DIGIT | "." | ">") }
 // ?product_chain: atom (MULTIPLY_DIVIDE_PERCENT atom)*
 product_operator = { access_chain ~ (MULTIPLY_DIVIDE_PERCENT ~ access_chain)* }
 
-// Access expressions are a post-atom wrapping. Parsed as a single chain so
-// _atom is parsed exactly once per position (avoids exponential backtracking).
+// Access expressions and the `?` filter are post-atom wrappings. Parsed as a
+// single chain so an atom is parsed exactly once per position: an alternation
+// that re-reads the atom (the old `filter_item` head, tried first in `_atom`
+// and failing at the missing `?`) doubles the cost at every nesting level.
 // The adapter rewrites the access_chain node name based on the suffix shape:
 //   no tails → unwrap to atom
+//   `? conditional` → filter_item(atom, conditional); a parenthetical head
+//     is unwrapped to its expr and a concept_lit head to its IDENTIFIER, the
+//     shapes lark's `_filter_alt` emits
 //   1 dot_tail → attr_access
 //   1 bracket_tail with int_lit → index_access
 //   1 bracket_tail with string_lit → map_key_access
 //   1 dcolon_tail → fcast
 //   multiple tails → chained_access (with a trailing fcast wrapping if needed)
-access_chain = { _atom ~ _access_tail* }
+// A keyword filter (`filter x where ...`), a scalar subquery and getattr()
+// take no `?` tail, as in lark; they are ordered first and are disjoint from
+// every filterable atom.
+access_chain = {
+      (_unfilterable_atom ~ _access_tail*)
+    | (_atom ~ (("?" ~ conditional) | _access_tail*))
+}
+_unfilterable_atom = _{ filter_item | scalar_subquery | attr_access_paren }
 _access_tail = _{ dot_tail | bracket_tail | dcolon_tail }
 dot_tail      = { "." ~ (string_lit | ATTR_NAME) }
 bracket_tail  = { "[" ~ (int_lit | string_lit) ~ "]" }
@@ -460,16 +482,11 @@ dcolon_tail   = { "::" ~ (data_type | IDENTIFIER) }
 // getattr(atom, "name") — still available as a distinct atom-level form.
 attr_access_paren = { ^"getattr" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
 
-// _atom covers lark's ?atom alternatives (minus access). Order-sensitive in PEG.
-// filter_item must be first so the `X ? cond` short form is tried before
-// alternatives like literal/parenthetical that would otherwise consume X alone.
+// _atom covers lark's ?atom alternatives (minus access and the three
+// unfilterable heads above). Order-sensitive in PEG.
 _atom = _{
-      filter_item
-    | scalar_subquery
-    | parenthetical
-    | expr_tuple
+      paren_group
     | literal
-    | attr_access_paren
     | custom_function
     | _constant_functions
     | _static_functions
@@ -490,13 +507,16 @@ _atom = _{
 // in the adapter to "attr_access".
 ATTR_NAME = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
-parenthetical = { "(" ~ expr ~ ")" }
-expr_tuple    = { "(" ~ expr ~ ("," ~ expr)+ ~ ","? ~ ")" | "(" ~ expr ~ "," ~ ")" }
+// `(expr)`, `(expr, expr, ...)` and the one-tuple `(expr,)` share a head, so
+// they are one rule: the adapter names a group holding a single expr and no
+// comma `parenthetical` and every other `expr_tuple`, lark's two rules. (As
+// `parenthetical | expr_tuple`, pest parsed a tuple's first element twice.)
+paren_group = { "(" ~ expr ~ ("," ~ expr)* ~ ","? ~ ")" }
 
 // An inline `(select …)` scalar/membership subquery. Desugared at hydration
 // into an anonymous rowset whose single output is referenced here. Ordered
-// before `parenthetical` in _atom: `expr` can never start with select/where/
-// from, so a non-select paren cleanly backtracks to `parenthetical`.
+// before `paren_group` in _atom: `expr` can never start with select/where/
+// from, so a non-select paren cleanly backtracks to `paren_group`.
 scalar_subquery = { "(" ~ select_statement ~ ")" }
 
 COMPARISON_OPERATOR = @{
@@ -596,8 +616,16 @@ bool_and       = { ^"bool_and" ~ "(" ~ expr ~ ")" }
 bool_or        = { ^"bool_or" ~ "(" ~ expr ~ ")" }
 any            = { ^"any" ~ "(" ~ expr ~ ")" }
 
+// A trailing `over (...)` makes the call an aggregate-as-window; the adapter
+// re-emits that shape as window_item(window_item_sql_aggregate(
+// aggregate_functions, window_sql_over)), lark's tree. Spelled as its own
+// `window_item_sql_aggregate = aggregate_functions ~ window_sql_over`
+// alternative, tried before `aggregate_functions`, every aggregate was parsed
+// twice. (That alternative also happened to accept `sum (x) over (...)` with
+// a space, which lark rejects: `sum ` is the legacy window keyword in both
+// grammars, and a legacy window takes no SQL `over (...)`.)
 aggregate_functions = {
-    (count_distinct | count | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
+    (count_distinct | count | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over? ~ window_sql_over?
 }
 
 fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
@@ -607,11 +635,9 @@ fdistinct = { ^"distinct" ~ "(" ~ expr ~ ")" }
 // =============================================================================
 // FILTER
 // =============================================================================
-// PEG ordered-choice: longer prefixes first. `IDENTIFIER` would otherwise
-// match `upper` alone, commit, and fail at `?` before `_static_functions`
-// gets a chance to match `upper(...)`. Mirrors the lark `_filter_alt` LHS:
-// every non-left-recursive atom alternative, plus parenthesized `expr` for
-// arbitrary sub-trees.
+// The keyword form only. The `X ? cond` short form (lark's `_filter_alt`) is
+// the `? conditional` tail of `access_chain`, so X is parsed once; the
+// adapter emits it under this same name.
 // The `filter` keyword needs a word-boundary guard: without it, an unaliased
 // select item like `filtered_even_orders` reads as `filter` + `ed_even_orders`
 // (pest is scannerless and inter-element whitespace is optional). FILTER_KW is
@@ -619,10 +645,7 @@ fdistinct = { ^"distinct" ~ "(" ~ expr ~ ")" }
 // identical; the "." exclusion keeps a `filter.x` concept reference out of the
 // keyword path too. (Mirrors the WINDOW_LEGACY_KW lookahead pattern.)
 FILTER_KW = @{ ^"filter" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
-filter_item = {
-      (&FILTER_KW ~ ^"filter" ~ IDENTIFIER ~ where)
-    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | window_item | aggregate_functions | aggregate_by | custom_function | unnest | union | subselect | fgroup | fdistinct | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
-}
+filter_item = { &FILTER_KW ~ ^"filter" ~ IDENTIFIER ~ where }
 
 // =============================================================================
 // WINDOW FUNCTIONS
@@ -674,12 +697,9 @@ window_item_legacy = {
 window_item_sql_numbering  = { WINDOW_TYPE_SQL_NUMBERING ~ (expr ~ ("," ~ expr)*)? ~ ")" ~ window_sql_over? }
 // SQL-like navigation: lag(field) or lag(field, 2) over (...).
 window_item_sql_navigation = { WINDOW_TYPE_SQL_NAVIGATION ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
-// SQL-like aggregate-as-window: sum(x) over (partition by y order by z).
-// Match before plain aggregate_functions in the expr atom list so the
-// trailing over clause binds here instead of leaving the parser stuck
-// after the aggregate call.
-window_item_sql_aggregate  = { aggregate_functions ~ window_sql_over }
-window_item                = { window_item_sql_aggregate | window_item_sql_numbering | window_item_sql_navigation | window_item_legacy }
+// SQL-like aggregate-as-window (sum(x) over (partition by y order by z)) is
+// the `window_sql_over` tail of `aggregate_functions`; see there.
+window_item                = { window_item_sql_numbering | window_item_sql_navigation | window_item_legacy }
 
 // Allow newlines/CR between the comma and the identifier so multi-line
 // `over a, b,\n   c` and `by a, b,\n   c` lists parse the same as the lark
