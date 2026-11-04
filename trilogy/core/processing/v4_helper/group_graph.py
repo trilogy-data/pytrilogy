@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.author import UnionSelectLineage
 from trilogy.core.models.build import (
@@ -942,12 +943,15 @@ def _rowset_relation_keys(
     return frozenset(keys)
 
 
+GroupedRowMemo = dict[str, tuple[frozenset[str], bool] | None]
+
+
 def _grouped_row_grain(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
-    memo: dict[str, frozenset[str] | None],
+    memo: GroupedRowMemo,
 ) -> frozenset[str] | None:
     """The grain a row parent computed off aggregates is one row per, which a
     row-grain sibling must carry to pair with it; None when no aggregate
@@ -956,41 +960,69 @@ def _grouped_row_grain(
     was labelled at); a row parent whose outputs a grouped parent also
     supplies (`cls` beside `avg(y) by cls`) is read off that one. Off other
     rows too it is the group's own (a `case` over `cls` rows and `avg(y) by
-    cls`, at `species`). `memo` is shared across one contract pass; a group
-    still being walked (a malformed cycle) reads as None."""
-    if gid in memo:
-        return memo[gid]
-    memo[gid] = None
-    memo[gid] = _walk_grouped_row_grain(group_graph, group_edges, attrs, gid, memo)
-    return memo[gid]
+    cls`, at `species`). `memo` is shared across one pass; a group still
+    being walked (a malformed cycle) reads as None."""
+    found = _grouped_rows(group_graph, group_edges, attrs, gid, memo)
+    return found[0] if found else None
 
 
-def _walk_grouped_row_grain(
+def reads_grouped_rows_only(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
-    memo: dict[str, frozenset[str] | None],
-) -> frozenset[str] | None:
+    memo: GroupedRowMemo,
+) -> bool:
+    """`gid` is built off aggregates alone, so its rows are one per their
+    grain and carry no row parent's columns (`_grouped_row_grain`)."""
+    found = _grouped_rows(group_graph, group_edges, attrs, gid, memo)
+    return found is not None and found[1]
+
+
+def _grouped_rows(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    memo: GroupedRowMemo,
+) -> tuple[frozenset[str], bool] | None:
+    if gid in memo:
+        return memo[gid]
+    memo[gid] = None
+    memo[gid] = _walk_grouped_rows(group_graph, group_edges, attrs, gid, memo)
+    return memo[gid]
+
+
+def _walk_grouped_rows(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    memo: GroupedRowMemo,
+) -> tuple[frozenset[str], bool] | None:
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
-        return attrs[gid].grain_components
+        return attrs[gid].grain_components, True
     if attrs[gid].derivation != Derivation.BASIC:
         return None
     parents = [p for p in row_parents(group_graph, group_edges, gid) if p in attrs]
-    grains = {
-        p: _grouped_row_grain(group_graph, group_edges, attrs, p, memo) for p in parents
+    found = {
+        p: _grouped_rows(group_graph, group_edges, attrs, p, memo) for p in parents
     }
-    grouped = {p: g for p, g in grains.items() if g is not None}
+    grouped = {p: f for p, f in found.items() if f is not None}
     if not grouped:
         return None
     supplied = frozenset().union(*(attrs[p].output_concepts for p in grouped))
+    reads = set(attrs[gid].input_concepts)
     if any(
-        not supplied.issuperset(attrs[p].output_concepts)
+        not supplied.issuperset(reads.intersection(attrs[p].output_concepts))
         for p in parents
         if p not in grouped
     ):
-        return attrs[gid].grain_components
-    return frozenset().union(*grouped.values())
+        return attrs[gid].grain_components, False
+    return (
+        frozenset().union(*(grain for grain, _ in grouped.values())),
+        all(pure for _, pure in grouped.values()),
+    )
 
 
 def _refresh_input_contracts(
@@ -1011,7 +1043,7 @@ def _refresh_input_contracts(
         if is_join_key_group(a.address, environment)
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
-    grouped_grains: dict[str, frozenset[str] | None] = {}
+    grouped_grains: GroupedRowMemo = {}
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
@@ -1165,6 +1197,9 @@ def _grouping_output_contributors(
     ]
 
 
+_GLOBAL_GRAIN = frozenset({ALL_ROWS_ADDRESS})
+
+
 def _extend_grouping_output_rides(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1191,10 +1226,13 @@ def _extend_grouping_output_rides(
             group_graph, group_edges, rides, gid
         )
         grains = {rides[pred] for pred in contributors}
+        # a global aggregate is one row that broadcasts onto any grain
+        if len(grains) > 1:
+            grains -= {_GLOBAL_GRAIN}
         if len(grains) != 1:
             continue
         grouping_grain = next(iter(grains))
-        covered = set(grouping_grain)
+        covered = set(grouping_grain) | _GLOBAL_GRAIN
         for pred in contributors:
             covered |= facts[pred].primary
         if not leaves <= covered:

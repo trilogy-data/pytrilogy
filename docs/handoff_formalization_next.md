@@ -19,9 +19,9 @@ is left of it), `Unnest.lean`, filtering rows by the elements of an
 unnested list (area 0b), `Rewrite.lean`, optimizer rules as rewrites
 that keep rows (area 2, two rounds: #843 and the row-argument round), and
 the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
-under a membership, per-atom peels; area 1), and `Window.lean` / `SetOps.lean`
-(0.3.444: NULL placement per dialect, numbering windows over their
-argument's values, set operators; area 4).
+under a membership, per-atom peels; area 1), and `Windows.lean` /
+`SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
+placement per engine, set operators; area 4).
 
 ## The recipe
 
@@ -135,7 +135,9 @@ argument's values, set operators; area 4).
       node built can be wrong; check the built node and fall back
       (`_push_row_condition_before_group`).
 
-11. **Lessons from `Window.lean` (0.3.444).**
+11. **Lessons from `Windows.lean` / `SetOps.lean` (0.3.444, 0.3.445).** Two runs
+    took this area in parallel (#854 and #856) and found the same two bugs
+    with the same designs; what follows is what the second run added.
     - Probe the doc's own invariants, not just dialect pairs: "a concept has
       one value whatever else is projected" found the rank fan-out
       (`select id, v, rank v` vs `select v, rank v`), which DuckDB and SQLite
@@ -146,14 +148,18 @@ argument's values, set operators; area 4).
       a guard written against it was dropped once `~sid` made the data
       honest (0 of 384 failures with or without it).
     - A dialect's "default" is a semantic choice. Pin the engines' documented
-      defaults in the suite (`ENGINE_DEFAULTS`) and simulate each rendering
-      against them, so dialects with no engine in CI (Postgres, Snowflake,
-      SQL Server, BigQuery) are still held to the law.
+      defaults (`NULL_SORT`, `tests/dialect/test_null_order_renderings.py`)
+      and simulate each rendering against them, so dialects with no engine
+      in CI (Postgres, Snowflake, SQL Server, BigQuery) are still held to
+      the law; an engine that is in CI gets a raw-SQL check of the default
+      (`tests/engine/test_clickhouse_chdb.py`).
+    - Every path that renders an ordering must go through the dialect. The
+      file-target `order by` (`trilogy/execution/write_order.py`) wrote the
+      ordering's text and sent `desc nulls auto` to DuckDB.
 
 ## Candidate areas
 
-**Suggested next: the area-1, area-2 and area-4 leads below, or a fresh
-area (3, 4b).**
+**Suggested next: the area-1, area-2 and area-4 leads below, or area 3.**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -348,34 +354,34 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 `tests/core/test_function_laws.py` and `formal/Trilogy/Functions.lean` are the
 place to extend for these.
 
-### 4. Windows and set operators (done in `Window.lean`, `SetOps.lean`; leads left)
+### 4. Windows, ORDER BY and set operators (done in `Windows.lean`, `SetOps.lean`; leads left)
 
-`tests/window/test_window_laws.py` holds NULL placement (every ordering on
-every dialect, simulated against the engine defaults it pins), numbering
-windows over a table and over a `~`-referenced dimension, `lag`/`lead` over
-rows and over `distinct(...)`, and the set operators to the reference. See
-"What it found" in `formal/README.md`. Leads left:
-- **A rank over a rowset's property still walks the rowset's rows.**
-  `_window_rows_at_grain` groups a window to its own grain only when every
-  column it drops is read by a consumer from another parent, and never drops a
-  rowset output: a widening pass re-adds it to the window through the rowset
-  concept's lineage with no source (TPC-DS q44's `qualifying.item_id`,
-  `tests/test_membership_having_aggregate_dimension_key_groupby.py`). There a
-  tied value is ranked per row. Fixing the widening would let the rowset case
-  rank values too.
-- **Window frames** are not modelled: `sum x order by y` is a running sum
-  with SQL's default `RANGE` frame, so tied `y` values share a total. Pin it
-  against a reference before anyone relies on it.
-- **`row_number` over tied values** is non-deterministic in SQL and in
-  Trilogy; the suite only checks it where the order is total.
-- **A rank inside a rowset or a `where` beside a partitioned window** is not
-  in the suite; WHERE filters a selected window's stream, as it does a
-  selected aggregate's inputs.
-- **Source pushdown** (`trilogy/dialect/source_pushdown.py`) still sends only
-  bare `asc`/`desc`. Under the new semantics `nulls last` is the same order
-  and could travel too.
-
-### 4b. Other untouched areas
-
+`tests/windows/test_window_laws.py` holds numbering windows, value windows
+(`lag`/`lead`, aggregate windows with and without an order) and ORDER BY NULL
+placement to a reference over random rows with NULLs and ties, on DuckDB and
+SQLite. `tests/dialect/test_null_order_renderings.py` pins every dialect's
+rendering. A plain direction places NULLs last everywhere (DuckDB's
+placement); `nulls auto` is the engine's own. Leads left:
+- **A select of an aggregate at a finer grain repeats tuples.** `select g,
+  sum(x) by id as s` declares grain `{s, g}` but returns one row per `id`, so
+  `(c, NULL)` comes back three times. The FINAL dedup skips a GroupNode
+  contributor ("aggregates sit at their own grain"). Decide whether the
+  select is the distinct tuples, as `select g, x` is.
+- **A value window's keys are its operand.** `lag(x)` gets keys `{x}`, though
+  two rows with the same `x` lag differently; the statement grain of `select
+  lag(x) over (order by id)` is then `{x}` while the rows are per `id`. The
+  law suite compares value windows as sets for this reason. The window's
+  grain (`{id}`) is right; its keys are not.
+- **SQL Server orders by a select alias inside the NULL flag.** T-SQL
+  resolves an alias only as a bare ORDER BY term, so `CASE WHEN "alias" IS
+  NULL ...` fails where the FINAL orders by a column derived in it. No
+  engine runs in CI; render through the expression there or keep the alias
+  bare and wrap the select.
+- **Frames.** `rows between ...` and `row_number` over ties are not modelled;
+  the suite only orders `row_number`-like navigation on a total order.
+- **`union`/`except`/`intersect` TVFs** are modelled in `SetOps.lean` and
+  held by `tests/setops/test_setops_laws.py` (2,304 random queries with
+  NULLs and duplicates, no wrong answers); `tests/engine/test_duckdb_setops.py`
+  pins the SQL. `union` keeps the bag and is not in the Lean model.
 - **`coalesce`/`case` type merging:** whether a merged type stores every arm's
   value, the same materialization law as #802.

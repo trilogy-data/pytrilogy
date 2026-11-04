@@ -18,5 +18,5 @@ import Trilogy.Binding
 import Trilogy.Unnest
 import Trilogy.Cover
 import Trilogy.Rewrite
-import Trilogy.Window
+import Trilogy.Windows
 import Trilogy.SetOps

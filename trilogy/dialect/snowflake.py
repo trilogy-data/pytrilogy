@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from trilogy.core.enums import FunctionType, UnnestMode
+from trilogy.core.enums import FunctionType, NullSort, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.dialect.common import (
@@ -65,6 +65,7 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class SnowflakeDialect(BaseDialect):
+    NULL_SORT = NullSort.LARGEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
@@ -75,8 +76,6 @@ class SnowflakeDialect(BaseDialect):
         DataType.TIMESTAMP: "TIMESTAMP_TZ",
     }
     QUOTE_CHARACTER = '"'
-    # NULLs sort largest: first under DESC.
-    NULLS_FIRST_BY_DEFAULT = (False, True)
     QUOTE_CTE_NAMES = True
     UNNEST_MODE = UnnestMode.SNOWFLAKE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

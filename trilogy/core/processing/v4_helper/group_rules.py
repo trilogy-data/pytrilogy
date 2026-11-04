@@ -1116,39 +1116,49 @@ def _drop_bypassed_nests(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
 ) -> list[tuple[int, int]]:
-    """Decline a nested-signature merge whose producer reaches its consumer
-    through a concept the merged bucket leaves out: the bucket would feed and
-    read that concept's group (`b_all` by `*` beside `b_all * x`, with a
-    `case ... b_all` at a coarser grain between them). Repeated to fixpoint,
-    since a declined merge can shrink a component."""
-    nested = {k for i, j in merged if sigs[i] != sigs[j] for k in (i, j)}
-    if not nested:
+    """Split a bucket whose producer reaches another member through a concept
+    the bucket leaves out: the bucket would feed and read that concept's group
+    (`b_all` by `*` beside `b_all * x`, with a `case ... b_all` at a coarser
+    grain between them). The producer's nested-signature merges go first, its
+    equal-signature ones only if those leave the bypass in place. Repeated to
+    fixpoint, since a split can strand another member's path."""
+    if not any(sigs[i] != sigs[j] for i, j in merged):
         return merged
+    paired = {k for pair in merged for k in pair}
     down = {
         k: _lineage_reach(nodes[k], lineage_successors, concept_graph, concept_edges)
-        for k in nested
+        for k in paired
     }
     up = {
         k: _lineage_reach(nodes[k], lineage_predecessors, concept_graph, concept_edges)
-        for k in nested
+        for k in paired
     }
     while True:
-        components = {
-            i: frozenset(c) for c in _components(len(nodes), merged) for i in c
-        }
-        bypassed = [
-            (i, j)
-            for i, j in merged
-            if sigs[i] != sigs[j]
-            and any(
-                nodes[b] in down[a]
-                and (down[a] & up[b]) - {nodes[k] for k in components[i]}
-                for a, b in ((i, j), (j, i))
-            )
-        ]
-        if not bypassed:
+        producers = _bypassing_producers(merged, nodes, down, up)
+        if not producers:
             return merged
-        merged = [pair for pair in merged if pair not in bypassed]
+        incident = [pair for pair in merged if set(pair) & producers]
+        nested = [pair for pair in incident if sigs[pair[0]] != sigs[pair[1]]]
+        dropped = set(nested or incident)
+        merged = [pair for pair in merged if pair not in dropped]
+
+
+def _bypassing_producers(
+    merged: list[tuple[int, int]],
+    nodes: list[str],
+    down: dict[int, frozenset[str]],
+    up: dict[int, frozenset[str]],
+) -> set[int]:
+    out: set[int] = set()
+    for component in _components(len(nodes), merged):
+        if len(component) < 2:
+            continue
+        names = {nodes[k] for k in component}
+        for a in component:
+            for b in component:
+                if a != b and nodes[b] in down[a] and (down[a] & up[b]) - names:
+                    out.add(a)
+    return out
 
 
 def _partition_by_signature_and_grain(

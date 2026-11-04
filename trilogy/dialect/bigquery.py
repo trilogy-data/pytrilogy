@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Modifier,
+    NullSort,
     UnnestMode,
 )
 from trilogy.core.models.core import (
@@ -230,13 +231,12 @@ def parse_bigquery_table_name(
 
 
 class BigqueryDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = "`"
-    # NULLs sort smallest: first under ASC.
-    NULLS_FIRST_BY_DEFAULT = (True, False)
     NULL_WRAPPER = staticmethod(null_wrapper)
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST

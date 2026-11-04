@@ -133,7 +133,13 @@ from .functional_dependency import (
     build_fd_determines,
     build_fd_determines_all,
 )
-from .group_graph import read_row_parents, row_parents, trace_group_graph
+from .group_graph import (
+    GroupedRowMemo,
+    read_row_parents,
+    reads_grouped_rows_only,
+    row_parents,
+    trace_group_graph,
+)
 from .history import V4History
 from .join_plan import JoinPlan, carries, elect_bridges, plan_final_join
 from .models import (
@@ -2316,10 +2322,34 @@ def _subtree_pinned_addresses(
     return pinned
 
 
-def _kept_at(
-    parents: list[StrategyNode], needed: dict[str, BuildConcept], grain: set[str]
-) -> list[BuildConcept]:
-    return unique(
+def _window_rows_at_grain(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """A window ranks the distinct rows at the grain of what it reads. A
+    parent finer than that (fact rows brought in only to compute a coarser
+    aggregate the window orders by) repeats each row once per fact row, so it
+    is grouped first. The group keeps every parent column at or above that
+    grain, which a later pass may carry through the window."""
+    needed = {c.address: c for c in outputs}
+    for concept in outputs:
+        if concept.lineage is not None:
+            needed |= {a.address: a for a in concept.lineage.concept_arguments}
+    # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
+    # (a property of `id`) sits at `id`
+    grain = {
+        component
+        for concept in outputs
+        if concept.derivation == Derivation.WINDOW and not concept.grain.abstract
+        for component in concept.grain.components
+    } or {
+        component
+        for concept in needed.values()
+        if not concept.grain.abstract
+        for component in concept.grain.components
+    }
+    kept = unique(
         [
             concept
             for parent in parents
@@ -2330,61 +2360,6 @@ def _kept_at(
         ],
         "address",
     )
-
-
-def _window_rows_at_grain(
-    outputs: list[BuildConcept],
-    parents: list[StrategyNode],
-    environment: BuildEnvironment,
-    sourced_elsewhere: Collection[str] = (),
-) -> list[StrategyNode]:
-    """A window ranks the distinct rows at the grain of what it reads. A
-    parent finer than that (fact rows brought in only to compute a coarser
-    aggregate the window orders by) repeats each row once per fact row, so it
-    is grouped first. The group keeps every parent column at or above that
-    grain, which a later pass may carry through the window.
-
-    A numbering window over a property ranks the property's values, coarser
-    than the key rows it lives on, so it walks those values; joined back on
-    them, each row meets its one rank. That needs every column it drops to be
-    `sourced_elsewhere` (read by a consumer from another parent); otherwise
-    the window carries the rows and walks them, as it does a rowset's."""
-    needed = {c.address: c for c in outputs}
-    for concept in outputs:
-        if concept.lineage is not None:
-            needed |= {a.address: a for a in concept.lineage.concept_arguments}
-    kept = _kept_at(
-        parents,
-        needed,
-        {
-            component
-            for concept in needed.values()
-            if not concept.grain.abstract
-            for component in concept.grain.components
-        },
-    )
-    own = {
-        component
-        for concept in outputs
-        if concept.derivation == Derivation.WINDOW and not concept.grain.abstract
-        for component in concept.grain.components
-    }
-    if own:
-        at_own = _kept_at(parents, needed, own)
-        at_own_addresses = {c.address for c in at_own}
-        dropped = [
-            o
-            for parent in parents
-            for o in parent.output_concepts
-            if o.address not in at_own_addresses
-        ]
-        # A rowset output dropped here is widened back onto the window through
-        # its lineage with no source, so a rowset's rows are walked as is.
-        if all(
-            o.address in sourced_elsewhere and o.derivation != Derivation.ROWSET
-            for o in dropped
-        ):
-            kept = at_own
     addresses = {concept.address for concept in kept}
     if all(
         build_fd_determines_all(
@@ -2799,11 +2774,13 @@ def _project_planned_keys(
                 for c in owed
                 if c not in rendered and any(c.address in p.output_lcl for p in lookups)
             ]
+            # nodes carry no `identifier`: dedupe the producers by identity
+            producers_used = list({id(p): p for p in lookups}.values())
             node = MergeNode(
-                input_concepts=readable_outputs([parent, *lookups]),
+                input_concepts=readable_outputs([parent, *producers_used]),
                 output_concepts=[*parent.output_concepts, *looked_up],
                 environment=environment,
-                parents=[parent, *unique(lookups, "identifier")],
+                parents=[parent, *producers_used],
             )
         if rendered:
             node = SelectNode(
@@ -4065,21 +4042,39 @@ def _fold_descendant_contributors(
     (`inherited`); an output that isn't an input is re-derived in B's own CTE
     (which would recompute S's aggregates from their source columns). Whether
     B's parents carry S's columns is read off what they render
-    (`renders.parents_render`)."""
+    (`renders.parents_render`). A basic built off aggregates alone holds one
+    row per their grain, not S's rows, so it passes nothing through."""
+    grouped: GroupedRowMemo = {}
     for b_gid in list(per_group.keys()):
         if b_gid not in per_group or attrs[b_gid].derivation not in (
             Derivation.BASIC,
             Derivation.WINDOW,
         ):
             continue
+        if attrs[b_gid].derivation == Derivation.BASIC and reads_grouped_rows_only(
+            group_graph, group_edges, attrs, b_gid, grouped
+        ):
+            continue
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
+        )
+        # a window keeps one row per tuple of its grain, so it carries only
+        # what that grain computes (`rank(name)` holds no `item_id`)
+        grain = attrs[b_gid].grain_components - {ALL_ROWS_ADDRESS}
+        closure = (
+            set(build_fd_closure(environment, grain))
+            if attrs[b_gid].derivation == Derivation.WINDOW and grain
+            else None
         )
         for s_gid in nx.ancestors(group_graph, b_gid):
             if s_gid not in per_group:
                 continue
             s_concepts = per_group[s_gid]
             if not all(c.address in reads for c in s_concepts):
+                continue
+            if closure is not None and not all(
+                concept_satisfiable(c, closure) for c in s_concepts
+            ):
                 continue
             per_group[b_gid].extend(s_concepts)
             passthroughs.setdefault(b_gid, []).extend(s_concepts)
@@ -6897,16 +6892,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 )
             ]
     if derivation == Derivation.WINDOW and parents:
-        sourced_elsewhere = {
-            address
-            for consumer in group_graph.successors(gid)
-            for other in group_graph.predecessors(consumer)
-            if other != gid
-            for address in attrs[other].output_concepts
-        }
-        parents = _window_rows_at_grain(
-            outputs, parents, environment, sourced_elsewhere
-        )
+        parents = _window_rows_at_grain(outputs, parents, environment)
     if derivation == Derivation.AGGREGATE and a.aggregate_first_row_grains:
         outputs, parents = _read_first_rows(
             outputs, a.aggregate_first_row_grains, parents, environment

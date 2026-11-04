@@ -44,6 +44,7 @@ from trilogy.core.enums import (
     GroupMode,
     JoinType,
     Modifier,
+    NullSort,
     Ordering,
     PersistMode,
     ShowCategory,
@@ -960,10 +961,6 @@ class BaseDialect:
     # Empty where WITH takes no RECURSIVE marker (SQL Server).
     RECURSIVE_KEYWORD = "RECURSIVE"
     QUOTE_CTE_NAMES = False
-    # Whether the engine sorts NULLs first under a bare ASC / DESC, indexed by
-    # descending. Trilogy's order is NULLs last both ways (DuckDB's).
-    NULLS_FIRST_BY_DEFAULT: ClassVar[tuple[bool, bool]] = (False, False)
-    NULLS_PLACEMENT_SYNTAX = True
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
         COMPLEX_DATATYPE_MAP
@@ -1016,6 +1013,10 @@ class BaseDialect:
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
+    # where an ORDER BY naming no placement sorts NULLs, and whether
+    # NULLS FIRST/LAST parses
+    NULL_SORT: ClassVar[NullSort] = NullSort.LAST
+    NULLS_ORDER_SYNTAX: ClassVar[bool] = True
     # Case-insensitive regexes matched against driver error text. Keep them
     # permissive: driver wording shifts between versions, and a missed match
     # turns a recoverable "source is missing" into a hard failure.
@@ -1294,24 +1295,20 @@ class BaseDialect:
         return f"BIT_XOR(hash({hash_expr}))"
 
     def render_ordering(self, rendered: str, order: Ordering) -> str:
-        """An ORDER BY term (statement, window, or subselect). A bare direction
-        keeps the engine's NULL placement only where it is Trilogy's."""
-        direction = "desc" if order.descending else "asc"
-        if order.nulls_first == self.NULLS_FIRST_BY_DEFAULT[order.descending]:
-            return (
-                f"{rendered} {order.value}"
-                if order.explicit_nulls and self.NULLS_PLACEMENT_SYNTAX
-                else f"{rendered} {direction}"
-            )
-        if self.NULLS_PLACEMENT_SYNTAX:
-            placement = "first" if order.nulls_first else "last"
-            return f"{rendered} {direction} nulls {placement}"
-        # A leading null flag sorts the NULL group first when descending.
-        flag_direction = "desc" if order.nulls_first else "asc"
-        return (
-            f"{self.render_null_flag(rendered)} {flag_direction}, "
-            f"{rendered} {direction}"
-        )
+        """An ORDER BY term (statement, window, or subselect). Every dialect
+        places NULLs as asked; a plain direction places them last. A dialect
+        without NULLS FIRST/LAST leads with a NULL flag term."""
+        direction = order.direction
+        default = self.NULL_SORT.nulls_first(order.descending)
+        wanted = order.nulls_first
+        if wanted is None or (wanted == default and order.value == direction):
+            return f"{rendered} {direction}"
+        if self.NULLS_ORDER_SYNTAX:
+            return f"{rendered} {direction} nulls {'first' if wanted else 'last'}"
+        if wanted == default:
+            return f"{rendered} {direction}"
+        flag_direction = "desc" if wanted else "asc"
+        return f"{self.render_null_flag(rendered)} {flag_direction}, {rendered} {direction}"
 
     def render_null_flag(self, rendered: str) -> str:
         return f"CASE WHEN {rendered} IS NULL THEN 1 ELSE 0 END"

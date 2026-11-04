@@ -7,6 +7,7 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Modifier,
+    NullSort,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import CreateTableInfo
@@ -143,6 +144,8 @@ DATATYPE_MAP = {
 
 
 class MySQLDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
+    NULLS_ORDER_SYNTAX = False
     ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
@@ -163,9 +166,6 @@ class MySQLDialect(BaseDialect):
     SUPPORTS_FULL_JOIN = False
     SUPPORTS_ARRAYS = False
     NULL_WRAPPER = staticmethod(null_safe_join_key)
-    # NULLs sort smallest and there is no NULLS FIRST/LAST syntax.
-    NULLS_FIRST_BY_DEFAULT = (True, False)
-    NULLS_PLACEMENT_SYNTAX = False
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
     # DDL causes an implicit commit.

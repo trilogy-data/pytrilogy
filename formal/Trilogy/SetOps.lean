@@ -13,7 +13,7 @@ UNKNOWN and the row is dropped.
 - `not_in_drops_null`: `x not in B` drops a NULL `x` that `except` keeps, and
   a NULL in `B` drops every `x` (`not_in_null_member_drops_all`).
 
-Checked by `tests/window/test_window_laws.py` on DuckDB and SQLite.
+Checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite.
 -/
 
 namespace Trilogy

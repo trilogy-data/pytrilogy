@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType
+from trilogy.core.enums import FunctionType, NullSort
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import (
     BaseDialect,
@@ -207,6 +207,7 @@ DATATYPE_MAP: dict[DataType, str] = {
 
 
 class SQLiteDialect(BaseDialect):
+    NULL_SORT = NullSort.SMALLEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
@@ -216,8 +217,6 @@ class SQLiteDialect(BaseDialect):
         **DATATYPE_MAP,
     }
     QUOTE_CHARACTER = '"'
-    # NULLs sort smallest: first under ASC.
-    NULLS_FIRST_BY_DEFAULT = (True, False)
     LIMIT_PARENTHESIZED = True
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE
     SUPPORTS_ARRAYS = False

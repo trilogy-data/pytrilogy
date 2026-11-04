@@ -858,7 +858,11 @@ def window_item(
         func = context.function_factory.create_function(
             [item.content], WINDOW_TO_AGGREGATE_MAP[item.type]
         )
-        return AggregateWrapper(function=func, by=list(item.over))
+        # an empty `over ()` spans every row: `by *`, not the select's grain
+        by = list(item.over) or [
+            ConceptRef(address=ALL_ROWS_ADDRESS, datatype=DataType.INTEGER)
+        ]
+        return AggregateWrapper(function=func, by=by)
     return item
 
 

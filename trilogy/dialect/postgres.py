@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from trilogy.core.enums import DatePart, FunctionType
+from trilogy.core.enums import DatePart, FunctionType, NullSort
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect, render_true_divide, render_unsupported
 
@@ -84,6 +84,7 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class PostgresDialect(BaseDialect):
+    NULL_SORT = NullSort.LARGEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
@@ -93,8 +94,6 @@ class PostgresDialect(BaseDialect):
         DataType.DATETIME: "timestamp",
     }
     QUOTE_CHARACTER = '"'
-    # NULLs sort largest: first under DESC.
-    NULLS_FIRST_BY_DEFAULT = (False, True)
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     # `relation "orders" does not exist` / `schema "analytics" does not exist`.
     # Anchored on the object kind: bare `does not exist` also covers a missing

@@ -43,8 +43,8 @@ a design decision or a bug.
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 | `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
-| `Window.lean` | NULL placement in an ORDER BY as each dialect renders it; numbering windows (`rank`, `dense_rank`, `row_number`) over their argument's values | NULLs sort last both ways unless `nulls first` says otherwise, and every engine's rendering orders any two values that way, through a bare direction where the engine's default agrees, an explicit placement, or a leading null flag where there is no syntax (`render_exact`); a rank is a function of the distinct values it ranks, so repeating a stream value changes no rank (`rank_dup_invariant`) and a table of one rank per value joins back without fan-out (`join_unique_keeps_count`) (checked by `tests/window/test_window_laws.py` on DuckDB and SQLite, and against every dialect's documented default) |
-| `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/window/test_window_laws.py`) |
+| `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, and the rendering places NULLs as asked on every engine (checked by `tests/windows/test_window_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
+| `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
 
 ## What it found
 
@@ -667,38 +667,32 @@ a design decision or a bug.
   base rows, and `count_distinct` of a summary grain column reads the
   summary.
 
-- **A rank of a property fanned out its rows, and a bare `asc` ranked NULLs
-  differently per dialect.** `Window.lean`.
-  - `select id, v, rank v order by v` returned 15 rows for 7 ids. The window
-    walked one row per `id` but kept only `v` and the rank, and the FINAL
-    merge joined it back on `v`, so each row met every row sharing its value
-    (`Window.row_output_join_fans_out`). The rank also changed with the
-    projection: a NULL `v` ranked 5th beside `id` and 4th in `select v, rank
-    v` (`Window.row_stream_rank_differs`). `_window_rows_at_grain` read the
-    grain off the window's arguments, which for a property is its key, so it
-    never grouped the rows down to the values the window ranks. It now groups
-    to the window's own grain when the rows it drops are read from another
-    parent (a rowset's rows are still walked as is; see the handoff), and the
-    rank is a function of its values
-    (`Window.rank_dup_invariant`). The same fix removes a duplicated NULL
-    group in `select nm, count(id), rank nm` over a `~`-referenced
-    dimension.
-  - A bare `asc` put NULLs last on DuckDB and first on SQLite, MySQL, SQL
-    Server and BigQuery; a bare `desc` put them first on Postgres and
-    Snowflake. So `rank v order by v asc` gave the NULL group a different
-    rank per dialect (`Window.bare_asc_differs`, `Window.bare_desc_differs`).
-    Trilogy now defines NULLs last in both directions (DuckDB's order, and
-    the order `trilogy/io` already sorts by), and each dialect renders a bare
-    direction only where its engine agrees (`Window.render_exact`).
-  - `nulls auto` parsed and rendered `asc nulls auto`, which no engine
-    accepts. It now means the bare direction.
-  - SQL Server rendered `NULLS FIRST` / `LAST`, which T-SQL lacks. It now
-    emulates the placement with a leading null flag, as MySQL does (the
-    value term still follows it: `Window.flag_alone_ties`).
-  - A datasource `order by` for a file target rendered its ordering's text
-    directly, bypassing the dialect, so `nulls auto` reached DuckDB.
-  The set operators held: 2,304 random `except` / `intersect` / `union`
-  queries with NULLs and duplicates matched `SetOps.lean` on both engines.
+- **A window ranked the rows of a finer key, and NULLs sorted per engine.**
+  `Windows.lean` evaluates a window over the rows of its own grain. On main,
+  355 of 1,120 cases in `tests/windows/test_window_laws.py` fail.
+  `select id, rank(g) over (order by g)` returned 25 rows for 7 ids and
+  ranked `b` 5, not 2: the window read the `(id, g)` scan it shared with `id`
+  and joined back on `g` (`Windows.row_stream_rank_counts_repeats`,
+  `Windows.stream_join_fans_out`). The window's input dedup took its grain
+  from its arguments' grains, and a property argument sits at its key; it
+  now takes the window's own grain, and the FINAL reads an ancestor's
+  columns through a window only where that grain determines them (TPC-DS
+  q44's `rank(product_name)` beside `item_id` joins back instead).
+  `count(x) over ()` was read as `count(x)`
+  at the select's grain, one row's `x`; an empty `over ()` is now `by *`
+  (`Windows.empty_over_is_total`). A plain `asc` rendered the direction
+  alone, so SQLite, MySQL, SQL Server and BigQuery put NULLs first and
+  DuckDB put them last; a rank, a `lead` or a running `sum` ordered on a
+  nullable column then differed per engine
+  (`Windows.bare_direction_misplaces`). A plain direction now places NULLs
+  last on every engine, `nulls auto` keeps the engine's placement instead of
+  rendering invalid `asc nulls auto`, and SQL Server, which has no NULLS
+  FIRST/LAST, leads with a NULL flag term as MySQL did
+  (`Windows.render_places`). A datasource `order by` for a file target
+  rendered the ordering's text directly, bypassing the dialect, so `desc
+  nulls auto` reached DuckDB as written and the write failed. The set
+  operators held: 2,304 random `except` / `intersect` / `union` queries with
+  NULLs and duplicates matched `SetOps.lean` on both engines.
 
 ## Limits
 
@@ -711,5 +705,6 @@ invisible to the verdict and the refresh alike
 property of `MAX`-based watermarks, not a bug the model can fix. Nullability follows DuckDB: `x / 0` is
 inf there, so `/` is total, though MySQL and SQLite return NULL. The cell checker is proved
 exact over integers; the Python twin applies the same cells to dense domains
-without a successor step. Windows, ROLLUP subtotal rows
-and unions are modelled at the level the laws need.
+without a successor step. Window frames other than the default
+(`rows between ...`), ROLLUP subtotal rows and unions are modelled at the
+level the laws need.

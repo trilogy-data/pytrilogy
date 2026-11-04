@@ -140,7 +140,7 @@ def test_aggregate_smoke(
 
 @pytest.mark.parametrize("direction", ["ASC", "DESC"])
 def test_bare_order_sorts_nulls_last(chdb_executor: Executor, direction: str):
-    """`ClickhouseDialect.NULLS_FIRST_BY_DEFAULT` (`formal/Trilogy/Window.lean`)."""
+    """`ClickhouseDialect.NULL_SORT` is `NullSort.LAST` (`formal/Trilogy/Windows.lean`)."""
     rows = chdb_executor.execute_raw_sql(
         "SELECT x FROM (SELECT arrayJoin([1, NULL, 0]) AS x) " f"ORDER BY x {direction}"
     ).fetchall()
