@@ -133,7 +133,13 @@ from .functional_dependency import (
     build_fd_determines,
     build_fd_determines_all,
 )
-from .group_graph import read_row_parents, row_parents, trace_group_graph
+from .group_graph import (
+    GroupedRowMemo,
+    read_row_parents,
+    reads_grouped_rows_only,
+    row_parents,
+    trace_group_graph,
+)
 from .history import V4History
 from .join_plan import JoinPlan, carries, elect_bridges, plan_final_join
 from .models import (
@@ -2768,11 +2774,13 @@ def _project_planned_keys(
                 for c in owed
                 if c not in rendered and any(c.address in p.output_lcl for p in lookups)
             ]
+            # nodes carry no `identifier`: dedupe the producers by identity
+            producers_used = list({id(p): p for p in lookups}.values())
             node = MergeNode(
-                input_concepts=readable_outputs([parent, *lookups]),
+                input_concepts=readable_outputs([parent, *producers_used]),
                 output_concepts=[*parent.output_concepts, *looked_up],
                 environment=environment,
-                parents=[parent, *unique(lookups, "identifier")],
+                parents=[parent, *producers_used],
             )
         if rendered:
             node = SelectNode(
@@ -4034,11 +4042,17 @@ def _fold_descendant_contributors(
     (`inherited`); an output that isn't an input is re-derived in B's own CTE
     (which would recompute S's aggregates from their source columns). Whether
     B's parents carry S's columns is read off what they render
-    (`renders.parents_render`)."""
+    (`renders.parents_render`). A basic built off aggregates alone holds one
+    row per their grain, not S's rows, so it passes nothing through."""
+    grouped: GroupedRowMemo = {}
     for b_gid in list(per_group.keys()):
         if b_gid not in per_group or attrs[b_gid].derivation not in (
             Derivation.BASIC,
             Derivation.WINDOW,
+        ):
+            continue
+        if attrs[b_gid].derivation == Derivation.BASIC and reads_grouped_rows_only(
+            group_graph, group_edges, attrs, b_gid, grouped
         ):
             continue
         reads = parents_render(
