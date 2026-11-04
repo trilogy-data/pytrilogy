@@ -895,6 +895,15 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
 
 
 @dataclass
+class BareCondition(Comparison):
+    """A bare value in a condition position (`where active`, `when passes
+    then`), spelled against its type: `= true` for a boolean, `bool(x) = true`
+    for an integer, `is not null` for anything else. A `def` body meets its
+    parameters untyped, so the spelling is re-derived once the call binds
+    them (`FunctionFactory.retype_expression`)."""
+
+
+@dataclass
 class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     left: (
         int

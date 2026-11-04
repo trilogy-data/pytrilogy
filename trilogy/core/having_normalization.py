@@ -385,9 +385,12 @@ def _child_exprs(node: Any) -> Iterator[Any]:
     elif isinstance(node, Function):
         yield from node.arguments
     elif isinstance(node, FunctionCallWrapper):
-        # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
+        # `def` macro expansion (`@rollup_agg(x)`): the body in `content`
+        # already has the call's arguments substituted, so it is the only
+        # child. Yielding the raw args too would read an argument the body
+        # only aggregates over (`max(value ? taxon = c) by *`) as a row
+        # input, and a select would pin the expression to that key.
         yield node.content
-        yield from node.args
     elif isinstance(node, (FilterItem, NavigationWindowItem)):
         yield node.content
     elif isinstance(node, NumberingWindowItem):

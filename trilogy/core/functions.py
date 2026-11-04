@@ -9,6 +9,7 @@ from trilogy.constants import MagicConstants
 if TYPE_CHECKING:
     from trilogy.parsing.helpers import Meta
 from trilogy.core.enums import (
+    ComparisonOperator,
     DatePart,
     Derivation,
     FunctionClass,
@@ -20,6 +21,7 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
+    BareCondition,
     Between,
     CaseElse,
     CaseSimpleWhen,
@@ -1596,6 +1598,36 @@ class FunctionFactory:
         func.validate_arguments()
         return func
 
+    def bare_condition(self, operand: Any) -> BareCondition:
+        """`operand` as a condition (see `BareCondition`)."""
+        datatype = arg_to_datatype(operand)
+        if datatype == DataType.BOOL:
+            return BareCondition(
+                left=operand, right=True, operator=ComparisonOperator.EQ
+            )
+        if datatype == DataType.INTEGER:
+            return BareCondition(
+                left=self.create_function([operand], FunctionType.BOOL),
+                right=True,
+                operator=ComparisonOperator.EQ,
+            )
+        return BareCondition(
+            left=operand, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+        )
+
+    def _retype_bare_condition(self, node: BareCondition) -> None:
+        """Re-spell a bare condition now that its operand is typed. A
+        parameter was UNKNOWN at declaration and spelled `is not null`; bound
+        to a boolean it is `= true`. The integer spelling wraps the operand in
+        `bool()`, which types as BOOL and so is kept."""
+        self.retype_expression(node.left)
+        spelled = self.bare_condition(node.left)
+        node.left, node.right, node.operator = (
+            spelled.left,
+            spelled.right,
+            spelled.operator,
+        )
+
     def retype_expression(self, node: Any) -> None:
         """Re-derive types bottom-up over an expanded `def` body.
 
@@ -1624,6 +1656,8 @@ class FunctionFactory:
                 self._retype_function(node)
             case Parenthetical(content=content) | FunctionCallWrapper(content=content):
                 self.retype_expression(content)
+            case BareCondition():
+                self._retype_bare_condition(node)
             case Comparison(left=left, right=right) | Conditional(
                 left=left, right=right
             ):
