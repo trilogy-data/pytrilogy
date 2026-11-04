@@ -13,6 +13,13 @@ The parser separates syntax parsing from semantic enrichment. The parser should 
    - Pest is the default. Lark is imported lazily by `lark_backend.py` only
      when `CONFIG.parser_backend == ParserBackend.LARK`, so the pest path
      pays no Lark startup cost.
+   - The pest grammar reads each position once. pest has no memoization, so
+     an alternation whose later branch re-reads an expression doubles the
+     parse cost at every level of nesting; such constructs are left-factored
+     rules the Rust adapter renames into lark's shapes (the table in
+     `trilogy/scripts/dependency/README.md`). `tests/parsing/test_parse_cost.py`
+     gates it on pest rule calls, a deterministic count, so a grammar change
+     that reintroduces a re-read fails CI.
 
 2. `syntax.py`
    - Defines `SyntaxDocument`, `SyntaxNode`, `SyntaxToken`, `SyntaxMeta`, and

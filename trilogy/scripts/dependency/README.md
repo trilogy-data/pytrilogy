@@ -194,3 +194,23 @@ The higher-level helpers (`parse_file`, `parse_imports`, `ImportResolver`) walk
 only the dependency-relevant constructs of that tree: imports, datasource
 declarations, and persist statements. Everything else in a file is parsed and
 skipped. For anything beyond dependency analysis, drive the grammar directly.
+
+### Tree shape
+
+pest has no memoization, so the grammar never spells two alternatives that read
+the same text: a construct that lark names by alternation is one left-factored
+rule here, and the Python adapter (`trilogy_parser.rs`) restores lark's names
+from the shape. A consumer of the raw tree sees the factored rules:
+
+| pest rule | lark rules it stands for |
+| --- | --- |
+| `expr` | `comparison` (one child, or head + operator + rhs) and `between_comparison` (three children) |
+| `access_chain` | the atom alone, `attr_access` / `index_access` / `map_key_access` / `fcast` / `chained_access`, and the `X ? cond` form of `filter_item` |
+| `paren_group` | `parenthetical` (one expr, no comma) and `expr_tuple` |
+| `aggregate_functions` with a `window_sql_over` child | `window_item(window_item_sql_aggregate(...))` |
+| `select_chain` | `select_statement`, or `multi_select_statement` when a `merge` tail follows |
+
+`rule_calls(text, max_calls)` reports how many rule calls a parse makes; it is
+the deterministic measure `tests/parse_cost.rs` gates nesting cost on, so a new
+alternation that re-reads an expression fails `cargo test` rather than shipping
+as a parse that is exponential in nesting depth.
