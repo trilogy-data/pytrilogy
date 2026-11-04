@@ -2632,16 +2632,31 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
 def _function_of_addresses(
     concept: Concept, addresses: set[str], environment: Environment
 ) -> bool:
+    """Whether `concept` is a row scalar of `addresses` alone."""
+    return _is_function_of(concept, addresses, environment, {})
+
+
+def _is_function_of(
+    concept: Concept,
+    addresses: set[str],
+    environment: Environment,
+    memo: dict[str, bool],
+) -> bool:
+    # memoized per address down one walk: a lineage that reuses a parent along
+    # several paths (`b <- a + a`) is a DAG, and a tree expansion costs 2**depth
     if concept.address in addresses:
         return True
     if concept.derivation != Derivation.BASIC or concept.lineage is None:
         return False
-    return all(
-        _function_of_addresses(
-            environment.concepts[ref.address], addresses, environment
+    known = memo.get(concept.address)
+    if known is None:
+        known = memo[concept.address] = all(
+            _is_function_of(
+                environment.concepts[ref.address], addresses, environment, memo
+            )
+            for ref in concept.lineage.concept_arguments
         )
-        for ref in concept.lineage.concept_arguments
-    )
+    return known
 
 
 def _pin_anchors(expr: Any) -> set[str]:
