@@ -2,6 +2,7 @@ import pytest
 from pytest import raises
 
 from trilogy import Dialects
+from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.models.author import Function
 from trilogy.core.query_processor import get_query_datasources, process_query
 from trilogy.core.statements.author import SelectStatement, WindowItem
@@ -557,3 +558,43 @@ auto count <- count(id);
 select count as number_of_flights;
 """).fetchall()
     assert rows == [(3,)]
+
+
+SPACED_CALL_FIXTURE = """
+key id int;
+property id.x int;
+property id.g string;
+datasource t (id:id, x:x, g:g) grain (id)
+query '''select 1 id, 10 x, 'a' g union all select 2, 20, 'a' union all select 3, 5, 'b' ''';
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "expr, expected",
+    [
+        ("sum (x)", [("a", 30), ("b", 5)]),
+        ("sum\n(x)", [("a", 30), ("b", 5)]),
+        ("avg (x)", [("a", 15.0), ("b", 5.0)]),
+        ("max (x)", [("a", 20), ("b", 5)]),
+        ("min\t(x)", [("a", 10), ("b", 5)]),
+        ("count (id)", [("a", 2), ("b", 1)]),
+        ("count (distinct x)", [("a", 2), ("b", 1)]),
+        ("sum (x) by g", [("a", 30), ("b", 5)]),
+        ("sum (x) over (partition by g)", [("a", 30), ("b", 5)]),
+        ("sum x over g", [("a", 30), ("b", 5)]),
+    ],
+)
+def test_space_before_paren_is_a_call(
+    backend: ParserBackend, expr: str, expected: list
+) -> None:
+    prior = CONFIG.parser_backend
+    CONFIG.parser_backend = backend
+    try:
+        exec = Dialects.DUCK_DB.default_executor()
+        rows = exec.execute_text(
+            f"{SPACED_CALL_FIXTURE}select g, {expr} as s order by g asc;"
+        )[-1].fetchall()
+    finally:
+        CONFIG.parser_backend = prior
+    assert [tuple(r) for r in rows] == expected
