@@ -5717,34 +5717,21 @@ def _apply_final_conditions(
         if ex_groups
         else []
     )
-    # A feeder that participates in a scoped relation must join back on
-    # the relation axis, not cross-join: widen the contributor (and the
-    # feeder) with the authored members each side can render: a leaf
-    # scan picks up the mate it binds, the boundary its member handle.
-    # Feeders with no relation stay hidden cross-join inputs.
     if arg_nodes:
-        # A gate keyed by a column the contributor never projects
-        # (`sum(amount) by status > 35 or ...` over `select oid`) pairs on
-        # that key; carried hidden, or the merge has nothing to join on.
-        gate_keys = _gate_grain_keys(arg_concepts) - avail
-        if gate_keys:
-            _widen_merge_join_keys([node, *arg_nodes], environment, gate_keys)
-        # A row-level atom over the facts (`undelivered`) beside a node
-        # holding a region joins it on the span: cross-joined, any fact
-        # row's value would pass for every member of the region.
-        if spans:
-            _widen_merge_join_keys([node, *arg_nodes], environment, spans)
-    if arg_nodes and environment.scoped_join_key_groups:
-        relation_keys: set[str] = set()
-        for feeder in set(producers.values()):
-            feeder_outs = carries(attrs[feeder], frozenset(), frozenset(), environment)
-            for relation in environment.scoped_join_relations():
-                if feeder_outs & relation:
-                    relation_keys |= relation
-        if relation_keys:
-            _widen_merge_join_keys(
-                [node, *arg_nodes], environment, frozenset(relation_keys)
-            )
+        feeders = list(dict.fromkeys(producers.values()))
+        _carry_asked_keys(
+            [node, *arg_nodes],
+            {id(built[f]): f for f in feeders} | {id(node): gid},
+            {gid: keep},
+            feeders,
+            _condition_join_asks(
+                attrs, producers, arg_concepts, avail, spans, environment
+            ),
+            keep,
+            group_graph,
+            attrs,
+            environment,
+        )
     sources = ConditionSources(
         row_concepts=row_concepts + arg_concepts,
         row_parents=arg_nodes,
@@ -5769,6 +5756,59 @@ def _apply_final_conditions(
         condition_on_merge=bool(arg_nodes),
         combine_existing=False,
     )
+
+
+def _condition_join_asks(
+    attrs: dict[str, GroupAttrs],
+    producers: dict[str, str],
+    arg_concepts: list[BuildConcept],
+    avail: set[str],
+    spans: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The keys a FINAL condition's feeders join its contributor on: a gate's
+    grain the contributor never projects (`sum(amount) by status > 35` over
+    `select oid`), the spans of a region it holds (cross-joined, any fact
+    row's value would pass for every member), and the scoped relations a
+    feeder takes part in."""
+    asks = (_gate_grain_keys(arg_concepts) - avail) | spans
+    for feeder in set(producers.values()):
+        feeder_outs = carries(attrs[feeder], frozenset(), frozenset(), environment)
+        for relation in environment.scoped_join_relations():
+            if feeder_outs & relation:
+                asks |= relation
+    return asks
+
+
+def _carry_asked_keys(
+    nodes: list[StrategyNode],
+    origin: dict[int, str],
+    cover: dict[str, list[BuildConcept]],
+    extras: Sequence[str],
+    asks: frozenset[str],
+    mandatory: Sequence[BuildConcept],
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+) -> None:
+    """Widen `nodes` to the `asks` their join plan (`cover` beside `extras`)
+    finds each side can hold. Only the asks, not the pairing keys: a FINAL
+    side is deduped to the output grain, and its plan carries name the row
+    columns beneath that dedup (`order_id` under `select customer_id,
+    label`)."""
+    if not asks:
+        return
+    plan = plan_final_join(
+        group_graph,
+        attrs,
+        cover,
+        mandatory,
+        environment,
+        _required_final_contract(attrs).authored_axes,
+        contracted={side: asks for side in (*cover, *extras)},
+        extras=extras,
+    )
+    _carry_planned_keys(nodes, origin, dc_replace(plan, pairings=()), environment)
 
 
 def _gate_key_row_stream(
@@ -6167,7 +6207,17 @@ def _assemble_final_node(
     # genus derived from a scanned column) pairs on that key, as in
     # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
     if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
-        _widen_merge_join_keys([*parents, *arg_nodes], environment, gate_keys)
+        _carry_asked_keys(
+            [*parents, *arg_nodes],
+            origin,
+            per_group,
+            [*bridges, *extras.groups],
+            gate_keys,
+            mandatory_list,
+            group_graph,
+            attrs,
+            environment,
+        )
         parents = _join_gate_hosts(parents, gate_keys, extras, built)
     parents = parents + arg_nodes
     sides = side_groups(parents, origin)
