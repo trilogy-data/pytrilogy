@@ -863,15 +863,24 @@ rows actually being merged, so they read the built stream.
 with a plan (`_pre_merge_parents`) used to run `_widen_merge_join_keys`, which
 widened every side to the consumer's preserve keys and to the expression
 mates the sides reach, then projected the planned keys. It now does what the
-FINAL does: each side carries its planned keys and the plan's
-`carry_demands` (the contract keys it was asked to carry, `JoinPlan.owed_by`).
-A key the side already holds under another name of the same value class is
-not carried again: a side holding `game_tall_team_id` already pairs on
-`team_id` (ncaa adhoc05). The FINAL carry uses the same rule, so query29's
-FINAL parents stop projecting `catalog_customer_item_cat_*` beside the
-`store_sales_*` columns of the same value. `_widen_merge_join_keys` now runs
-only where there is no plan: a merge assembled below the consumer, and the
-gate merges. Corpus: 1 of 209 plans moved (query29, smaller). Fuzzer 522/522.
+FINAL does: each side carries `JoinPlan.owed_by`, its pairing keys plus the
+plan's `carry_demands` (the contract keys it was asked to carry). Two plan
+facts had to grow for that:
+
+- a contract key a side renders off what it holds is a carry demand
+  (`y = coalesce(s_year, s_year)` onto the fact side under a `merge`), not
+  only one its FD closure reaches; without it the `merge` cells of
+  `test_shared_attribute_aggregate_matrix` re-derived `y` from the date
+  dimension and joined it back INNER, dropping the NULL-date rows;
+- a planned key that is an `alias` of a column the side holds is not carried
+  again (`team_id` beside `game_tall_team_id`, ncaa adhoc05). Only a rename:
+  a value-class mate under `merge` or `subset join` differs in rows or NULLs
+  (`test_subset_join_rowset_onto_root`, `test_rowset_declared_join_pairing`).
+
+The contract demands matter on their own too: carrying only the pairing keys
+lost the contract's `hour` on hackernews adhoc05. `_widen_merge_join_keys` now
+runs only where there is no plan: a merge assembled below the consumer, and
+the gate merges. Corpus: 0 of 209 plans moved. Fuzzer 522/522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:

@@ -2685,12 +2685,21 @@ def _widen_merge_join_keys(
 def _owed_keys(
     parent: StrategyNode, keys: frozenset[str], environment: BuildEnvironment
 ) -> frozenset[str]:
-    """The planned keys `parent` holds no name of: a side holding
-    `game_tall_team_id` already pairs on its alias `team_id`."""
+    """The planned keys `parent` must be widened to: an alias of a column it
+    holds is the same column (`team_id` beside `game_tall_team_id`). Only a
+    rename: a merged or related name can differ in rows or NULLs."""
     held = {o.address for o in parent.output_concepts}
-    roots = environment.address_roots()
-    held_values = {roots.get(a, a) for a in held}
-    return frozenset(k for k in keys if k in held or roots.get(k, k) not in held_values)
+    return frozenset(
+        k
+        for k in keys
+        if k in held
+        or not (
+            (c := environment.concepts.get(k)) is not None
+            and isinstance(c.lineage, BuildFunction)
+            and c.lineage.operator == FunctionType.ALIAS
+            and {a.address for a in c.lineage.concept_arguments} <= held
+        )
+    )
 
 
 def _carry_planned_keys(
@@ -2699,8 +2708,8 @@ def _carry_planned_keys(
     plan: JoinPlan,
     environment: BuildEnvironment,
 ) -> None:
-    """Widen each FINAL parent with the keys its own side of its planned
-    pairings holds. An expression relation member two parents pair on is a
+    """Widen each parent with the keys its own side of its planned pairings
+    holds and its consumer's contract asks it to carry. An expression relation member two parents pair on is a
     planned key, so it is carried with them."""
     if len(parents) <= 1:
         return
