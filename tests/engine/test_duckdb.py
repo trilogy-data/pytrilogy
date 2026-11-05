@@ -1330,12 +1330,9 @@ def test_concept_derivation():
         select date_trunc(local.test, {truncation}) -> test_{truncation}_start;
         """
         results = duckdb_engine.execute_text(test_query)[0].fetchall()
-        assert results[0][0] == test_datetime.replace(
+        assert results[0][0] == test_datetime.date().replace(
             day=1,
             month=1 if truncation == "year" else test_datetime.month,
-            hour=0,
-            minute=0,
-            second=0,
         )
 
 
@@ -3031,14 +3028,13 @@ def test_datetime_functions():
     assert row.order_quarter == row.order_quarter_part
     assert row.order_year == row.order_year_part
 
-    # date_trunc in DuckDB returns date type, so check date components only
     assert row.order_second_trunc.microsecond == 0
     assert (
         row.order_minute_trunc.second == 0 and row.order_minute_trunc.microsecond == 0
     )
     assert row.order_hour_trunc.minute == 0 and row.order_hour_trunc.second == 0
-    assert row.order_day_trunc.hour == 0 and row.order_day_trunc.minute == 0
-    assert row.order_month_trunc.day == 1 and row.order_month_trunc.hour == 0
+    assert row.order_day_trunc == row.order_hour_trunc.date()
+    assert row.order_month_trunc.day == 1
     assert row.order_year_trunc.month == 1 and row.order_year_trunc.day == 1
     assert (
         row.order_quarter_trunc.month in (1, 4, 7, 10)

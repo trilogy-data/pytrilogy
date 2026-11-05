@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 4338
+gen_length = 4304
 preql_size = 1867
 comp_size = 3006
 generated_sql = """
@@ -41,10 +41,10 @@ GROUP BY
 HAVING
     sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_sale_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
-	ELSE cast(0.0 as numeric)
+	ELSE 0.0
 	END ) > ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
-	ELSE cast(0.0 as numeric)
+	ELSE 0.0
 	END )
 )
 SELECT

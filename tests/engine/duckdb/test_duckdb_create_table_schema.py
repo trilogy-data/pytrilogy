@@ -38,7 +38,7 @@ def test_create_datasource_schema_matches_declaration():
     assert _columns(executor, "facts_tbl") == [
         ("id", "INTEGER"),
         ("created_at", "DATE"),
-        ("amount", "FLOAT"),
+        ("amount", "DOUBLE"),
         ("label", "VARCHAR"),
     ]
     executor.close()

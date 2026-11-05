@@ -57,6 +57,7 @@ from trilogy.core.models.core import (
     arg_to_datatype,
     is_compatible_datatype,
     literal_element_datatype,
+    merge_computed_types,
     merge_datatypes,
 )
 from trilogy.core.models.environment import Environment
@@ -108,7 +109,7 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
                 f"All arguments to coalesce must be of compatible types, have "
                 f"{ {arg_to_datatype(x) for x in args} } for {args!s}"
             )
-    return merge_datatypes(reps)
+    return merge_computed_types(reps)
 
 
 def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -140,7 +141,7 @@ def get_multiply_output_type(args: list[Any]) -> CONCRETE_TYPES:
     if not any(isinstance(x, NumericType) for x in bases) or not all(
         isinstance(x, NumericType) or x in INTEGER_PRECISION for x in bases
     ):
-        return merge_datatypes(types)
+        return merge_computed_types(types)
     precision = sum(_decimal_digits(x)[0] for x in bases)
     scale = sum(_decimal_digits(x)[1] for x in bases)
     return NumericType(
@@ -149,8 +150,8 @@ def get_multiply_output_type(args: list[Any]) -> CONCRETE_TYPES:
     )
 
 
-def get_merged_output_type(args: list[Any]) -> CONCRETE_TYPES:
-    return merge_datatypes([arg_to_datatype(x) for x in args])
+def get_computed_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    return merge_computed_types([arg_to_datatype(x) for x in args])
 
 
 def get_divide_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -161,7 +162,7 @@ def get_divide_output_type(args: list[Any]) -> CONCRETE_TYPES:
     bases = {x.type if isinstance(x, TraitDataType) else x for x in types}
     if bases <= {DataType.INTEGER, DataType.BIGINT}:
         return DataType.DOUBLE
-    merged = merge_datatypes(types)
+    merged = merge_computed_types(types)
     # a decimal quotient has unbounded scale (DuckDB returns a double); the
     # dividend's scale would round it
     if merged.data_type == DataType.NUMERIC:
@@ -1088,11 +1089,13 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ADD: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_computed_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_computed_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
@@ -1152,7 +1155,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         # the remainder has the dividend's fraction: `2.5 % 2` is 0.5
-        output_type_function=get_merged_output_type,
+        output_type_function=get_computed_output_type,
         arg_count=2,
     ),
     FunctionType.SQRT: FunctionConfig(

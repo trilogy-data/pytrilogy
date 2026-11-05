@@ -554,18 +554,6 @@ def merge_datatypes(
         return _prefer_trait(DataType.DOUBLE)
     if base_set == {DataType.INTEGER, DataType.NUMERIC}:
         return _prefer_trait(DataType.NUMERIC)
-    # a decimal beside a float is computed as a double on every engine; a
-    # decimal type would round it
-    if (
-        base_set & {DataType.FLOAT, DataType.DOUBLE}
-        and DataType.NUMERIC in {x.data_type for x in base_types}
-        and all(
-            x.data_type in (DataType.INTEGER, DataType.BIGINT, *FRACTIONAL_FAMILY)
-            for x in base_types
-        )
-    ):
-        winner = DataType.DOUBLE if DataType.DOUBLE in base_set else DataType.FLOAT
-        return _prefer_trait(winner)
     if any(isinstance(x, NumericType) for x in inputs) and all(
         isinstance(x, NumericType)
         or _base(x)
@@ -575,6 +563,25 @@ def merge_datatypes(
         candidate = next(x for x in inputs if isinstance(x, NumericType))
         return candidate
     return inputs[0]
+
+
+def merge_computed_types(inputs: list[CONCRETE_TYPES]) -> CONCRETE_TYPES:
+    """The type of a value an engine computes from the inputs, as arithmetic,
+    `coalesce` and `greatest` do: a decimal beside a float is a double there,
+    which a decimal type would round. `merge_datatypes` keeps the decimal,
+    because a union casts its float arm to it."""
+    bases = {getattr(x, "data_type", x) for x in inputs}
+    if (
+        DataType.NUMERIC in bases
+        and bases & {DataType.FLOAT, DataType.DOUBLE}
+        and bases <= {DataType.INTEGER, DataType.BIGINT, *FRACTIONAL_FAMILY}
+    ):
+        winner = DataType.DOUBLE if DataType.DOUBLE in bases else DataType.FLOAT
+        for inp in inputs:
+            if isinstance(inp, TraitDataType) and inp.type == winner:
+                return inp
+        return winner
+    return merge_datatypes(inputs)
 
 
 def is_compatible_datatype(left, right):
