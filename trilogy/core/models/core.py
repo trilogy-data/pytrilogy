@@ -516,6 +516,9 @@ def dict_to_map_wrapper(arg):
     return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
 
 
+FRACTIONAL_FAMILY = (DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC)
+
+
 def merge_datatypes(
     inputs: list[CONCRETE_TYPES],
 ) -> CONCRETE_TYPES:
@@ -560,6 +563,25 @@ def merge_datatypes(
         candidate = next(x for x in inputs if isinstance(x, NumericType))
         return candidate
     return inputs[0]
+
+
+def merge_computed_types(inputs: list[CONCRETE_TYPES]) -> CONCRETE_TYPES:
+    """The type of a value an engine computes from the inputs, as arithmetic,
+    `coalesce` and `greatest` do: a decimal beside a float is a double there,
+    which a decimal type would round. `merge_datatypes` keeps the decimal,
+    because a union casts its float arm to it."""
+    bases = {getattr(x, "data_type", x) for x in inputs}
+    if (
+        DataType.NUMERIC in bases
+        and bases & {DataType.FLOAT, DataType.DOUBLE}
+        and bases <= {DataType.INTEGER, DataType.BIGINT, *FRACTIONAL_FAMILY}
+    ):
+        winner = DataType.DOUBLE if DataType.DOUBLE in bases else DataType.FLOAT
+        for inp in inputs:
+            if isinstance(inp, TraitDataType) and inp.type == winner:
+                return inp
+        return winner
+    return merge_datatypes(inputs)
 
 
 def is_compatible_datatype(left, right):

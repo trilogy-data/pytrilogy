@@ -57,6 +57,7 @@ from trilogy.core.models.core import (
     arg_to_datatype,
     is_compatible_datatype,
     literal_element_datatype,
+    merge_computed_types,
     merge_datatypes,
 )
 from trilogy.core.models.environment import Environment
@@ -108,7 +109,7 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
                 f"All arguments to coalesce must be of compatible types, have "
                 f"{ {arg_to_datatype(x) for x in args} } for {args!s}"
             )
-    return merge_datatypes(reps)
+    return merge_computed_types(reps)
 
 
 def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -122,15 +123,51 @@ def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
     return base
 
 
+INTEGER_PRECISION = {DataType.INTEGER: 10, DataType.BIGINT: 19}
+MAX_DECIMAL_PRECISION = 38
+
+
+def _decimal_digits(datatype: Any) -> tuple[int, int]:
+    if isinstance(datatype, NumericType):
+        return datatype.precision, datatype.scale
+    return INTEGER_PRECISION[datatype], 0
+
+
+def get_multiply_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    """A product of decimals carries the sum of their scales (and precisions),
+    as every engine computes it; the merged type would round the product."""
+    types = [arg_to_datatype(x) for x in args]
+    bases = [x.type if isinstance(x, TraitDataType) else x for x in types]
+    if not any(isinstance(x, NumericType) for x in bases) or not all(
+        isinstance(x, NumericType) or x in INTEGER_PRECISION for x in bases
+    ):
+        return merge_computed_types(types)
+    precision = sum(_decimal_digits(x)[0] for x in bases)
+    scale = sum(_decimal_digits(x)[1] for x in bases)
+    return NumericType(
+        precision=min(precision, MAX_DECIMAL_PRECISION),
+        scale=min(scale, MAX_DECIMAL_PRECISION),
+    )
+
+
+def get_computed_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    return merge_computed_types([arg_to_datatype(x) for x in args])
+
+
 def get_divide_output_type(args: list[Any]) -> CONCRETE_TYPES:
-    """`/` is true division, so a quotient of integers is the DOUBLE engines
-    compute; engines that truncate cast an operand
+    """`/` is true division, so a quotient of integers or decimals is the
+    DOUBLE engines compute; engines that truncate cast an operand
     (`BaseDialect.INTEGER_DIVISION_TRUNCATES`)."""
     types = [arg_to_datatype(x) for x in args]
     bases = {x.type if isinstance(x, TraitDataType) else x for x in types}
     if bases <= {DataType.INTEGER, DataType.BIGINT}:
         return DataType.DOUBLE
-    return merge_datatypes(types)
+    merged = merge_computed_types(types)
+    # a decimal quotient has unbounded scale (DuckDB returns a double); the
+    # dividend's scale would round it
+    if merged.data_type == DataType.NUMERIC:
+        return DataType.DOUBLE
+    return merged
 
 
 # Functions whose result can leave the input's declared value domain: the sum
@@ -672,7 +709,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
-        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        output_type_function=get_coalesce_output_type,
     ),
     FunctionType.LEAST: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES
@@ -680,7 +717,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
-        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        output_type_function=get_coalesce_output_type,
     ),
     FunctionType.CURRENT_DATE: FunctionConfig(
         output_purpose=Purpose.CONSTANT,
@@ -1052,21 +1089,26 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ADD: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_computed_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_computed_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_multiply_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.POWER: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        # engines raise to a power in double precision: `2 ** -1` is 0.5
+        output_type=DataType.FLOAT,
         arg_count=2,
     ),
     FunctionType.DIVIDE: FunctionConfig(
@@ -1112,6 +1154,8 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
+        # the remainder has the dividend's fraction: `2.5 % 2` is 0.5
+        output_type_function=get_computed_output_type,
         arg_count=2,
     ),
     FunctionType.SQRT: FunctionConfig(
@@ -1119,7 +1163,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=DataType.FLOAT,
         arg_count=1,
     ),
     FunctionType.LOG: FunctionConfig(

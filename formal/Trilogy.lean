@@ -21,3 +21,4 @@ import Trilogy.Rewrite
 import Trilogy.Windows
 import Trilogy.SetOps
 import Trilogy.Scalars
+import Trilogy.Types

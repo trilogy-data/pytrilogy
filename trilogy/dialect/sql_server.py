@@ -40,6 +40,8 @@ DAY_OF_WEEK = "((DATEPART(weekday, {expr}) + @@DATEFIRST - 2) % 7 + 1) % 7 + 1"
 
 
 FUNCTION_MAP = {
+    # POWER returns its first argument's type: POWER(2, -1) is 0
+    FunctionType.POWER: lambda x, types: f"POWER(CAST({x[0]} AS FLOAT), {x[1]})",
     # T-SQL has no `ln`; its two-argument LOG takes the base second
     FunctionType.LOG: lambda x, types: (
         f"LOG10({x[0]})" if x[1] in ("10", "10.0") else f"LOG({x[0]}, {x[1]})"

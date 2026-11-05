@@ -69,6 +69,13 @@ def date_diff(first: str, second: str, part: str) -> str:
     raise ValueError(f"Unsupported date diff part for sqlite: {part}")
 
 
+TEMPORAL_CASTS = {
+    DataType.DATE: "date",
+    DataType.DATETIME: "datetime",
+    DataType.TIMESTAMP: "datetime",
+}
+
+
 def render_cast(args: list[str], types: list) -> str:
     # SQLite truncates a fraction cast to an integer; other engines round it
     if (
@@ -77,6 +84,9 @@ def render_cast(args: list[str], types: list) -> str:
         and types[1].data_type in INTEGER_TYPES
     ):
         return f"cast(round({args[0]}) as {args[1]})"
+    # dates are text here, so a cast to TEXT keeps the time a date drops
+    if len(types) == 2 and types[1].data_type in TEMPORAL_CASTS:
+        return f"{TEMPORAL_CASTS[types[1].data_type]}({args[0]})"
     return f"cast({args[0]} as {args[1]})"
 
 
@@ -199,6 +209,13 @@ FUNCTION_MAP = {
     FunctionType.GREATEST: render_present_extreme("max"),
     FunctionType.LEAST: render_present_extreme("min"),
     FunctionType.STRPOS: lambda x, types: f"instr({x[0]}, {x[1]})",
+    # SQLAlchemy registers a Python `floor` here, which raises on NULL
+    FunctionType.FLOOR: lambda x, types: (
+        f"(CAST({x[0]} AS INTEGER) - ({x[0]} < CAST({x[0]} AS INTEGER)))"
+    ),
+    FunctionType.CEIL: lambda x, types: (
+        f"(CAST({x[0]} AS INTEGER) + ({x[0]} > CAST({x[0]} AS INTEGER)))"
+    ),
 }
 
 SQLITE_CREATE_TABLE_SQL_TEMPLATE = Template("""

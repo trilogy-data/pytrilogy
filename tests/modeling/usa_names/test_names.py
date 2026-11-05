@@ -83,7 +83,7 @@ _HAVING_FILTER = r"""
 .*?
 SELECT
 \s*"[^"]+"\."state"\s+as\s+"state",
-\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
+\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+double\)\s+as\s+"percent_of_total"
 """
 
 

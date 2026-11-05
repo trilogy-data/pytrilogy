@@ -61,6 +61,8 @@ class PrestoDialect(BaseDialect):
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
         DataType.NUMERIC: "DECIMAL",
+        # there is no `float`; REAL is 4 bytes
+        DataType.FLOAT: "double",
         DataType.STRING: "VARCHAR",
         DataType.DATETIME: "timestamp",
         DataType.TIMESTAMP: "timestamp with time zone",

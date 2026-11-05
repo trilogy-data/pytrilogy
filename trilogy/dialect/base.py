@@ -812,7 +812,8 @@ FUNCTION_MAP = {
     FunctionType.FLOOR: lambda x, types: f"floor({x[0]})",
     FunctionType.CEIL: lambda x, types: f"ceil({x[0]})",
     FunctionType.MOD: lambda x, types: f"{x[0]} % {x[1]}",
-    FunctionType.POWER: lambda x, types: f"{x[0]} ** {x[1]}",
+    # `**` is DuckDB's alone; SQLite, Postgres and SQL Server reject it
+    FunctionType.POWER: lambda x, types: f"power({x[0]}, {x[1]})",
     FunctionType.SQRT: lambda x, types: f"sqrt({x[0]})",
     FunctionType.RANDOM: lambda x, types: "random()",
     FunctionType.LOG: render_log,
