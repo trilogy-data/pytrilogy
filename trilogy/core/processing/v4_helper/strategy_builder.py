@@ -2682,20 +2682,42 @@ def _widen_merge_join_keys(
         )
 
 
+def _owed_keys(
+    parent: StrategyNode, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The planned keys `parent` must be widened to: an alias of a column it
+    holds is the same column (`team_id` beside `game_tall_team_id`). Only a
+    rename: a merged or related name can differ in rows or NULLs."""
+    held = {o.address for o in parent.output_concepts}
+    return frozenset(
+        k
+        for k in keys
+        if k in held
+        or not (
+            (c := environment.concepts.get(k)) is not None
+            and isinstance(c.lineage, BuildFunction)
+            and c.lineage.operator == FunctionType.ALIAS
+            and {a.address for a in c.lineage.concept_arguments} <= held
+        )
+    )
+
+
 def _carry_planned_keys(
     parents: list[StrategyNode],
     origin: dict[int, str],
     plan: JoinPlan,
     environment: BuildEnvironment,
 ) -> None:
-    """Widen each FINAL parent with the keys its own side of its planned
-    pairings holds. An expression relation member two parents pair on is a
+    """Widen each parent with the keys its own side of its planned pairings
+    holds and its consumer's contract asks it to carry. An expression relation member two parents pair on is a
     planned key, so it is carried with them."""
     if len(parents) <= 1:
         return
     for parent in parents:
         gid = _origin_group(parent, origin)
-        if gid is None or not (keys := plan.keys_for(gid)):
+        if gid is None or not (
+            keys := _owed_keys(parent, plan.owed_by(gid), environment)
+        ):
             continue
         concepts = _join_key_concepts(parents, environment, set(keys))
         # a gate that hid the key it was joined on still holds the column
@@ -3444,8 +3466,8 @@ def _pre_merge_parents(
         join_key_addresses,
         environment,
     )
-    _widen_merge_join_keys(parents, environment, join_key_addresses)
     if plan is not None and origin is not None:
+        _carry_planned_keys(parents, origin, plan, environment)
         parents = _project_planned_keys(
             parents,
             origin,
@@ -3453,6 +3475,8 @@ def _pre_merge_parents(
             environment,
             [built[gid] for gid in candidates if built and gid in built],
         )
+    else:
+        _widen_merge_join_keys(parents, environment, join_key_addresses)
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if plan is not None and built is not None:
