@@ -126,6 +126,12 @@ INTEGER_PRECISION = {DataType.INTEGER: 10, DataType.BIGINT: 19}
 MAX_DECIMAL_PRECISION = 38
 
 
+def _decimal_digits(datatype: Any) -> tuple[int, int]:
+    if isinstance(datatype, NumericType):
+        return datatype.precision, datatype.scale
+    return INTEGER_PRECISION[datatype], 0
+
+
 def get_multiply_output_type(args: list[Any]) -> CONCRETE_TYPES:
     """A product of decimals carries the sum of their scales (and precisions),
     as every engine computes it; the merged type would round the product."""
@@ -135,11 +141,8 @@ def get_multiply_output_type(args: list[Any]) -> CONCRETE_TYPES:
         isinstance(x, NumericType) or x in INTEGER_PRECISION for x in bases
     ):
         return merge_datatypes(types)
-    precision = sum(
-        x.precision if isinstance(x, NumericType) else INTEGER_PRECISION[x]
-        for x in bases
-    )
-    scale = sum(x.scale for x in bases if isinstance(x, NumericType))
+    precision = sum(_decimal_digits(x)[0] for x in bases)
+    scale = sum(_decimal_digits(x)[1] for x in bases)
     return NumericType(
         precision=min(precision, MAX_DECIMAL_PRECISION),
         scale=min(scale, MAX_DECIMAL_PRECISION),
