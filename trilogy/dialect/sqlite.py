@@ -8,6 +8,8 @@ from trilogy.core.models.core import DataType
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
+    offset_keeps_date,
+    render_present_extreme,
     render_true_divide,
     render_unsupported,
 )
@@ -78,28 +80,37 @@ def render_cast(args: list[str], types: list) -> str:
     return f"cast({args[0]} as {args[1]})"
 
 
-def date_modifier(unit: str, amount: str, subtract: bool = False) -> str:
-    multiplier = "-" if subtract else ""
-    normalized = unit.lower()
-    mapping = {
-        "day": "day",
-        "week": "day",
-        "month": "month",
-        "quarter": "month",
-        "year": "year",
-        "hour": "hour",
-        "minute": "minute",
-        "second": "second",
-    }
-    if normalized not in mapping:
-        raise ValueError(f"Unsupported date unit for sqlite: {unit}")
-    factor = "7" if normalized == "week" else "3" if normalized == "quarter" else "1"
-    final_amount = (
-        f"(({multiplier}({amount}))*{factor})"
-        if factor != "1"
-        else f"{multiplier}({amount})"
-    )
-    return f"({final_amount}) || ' {mapping[normalized]}'"
+MONTH_FACTOR = {"month": 1, "quarter": 3, "year": 12}
+OFFSET_UNIT = {
+    "day": ("day", 1),
+    "week": ("day", 7),
+    "hour": ("hour", 1),
+    "minute": ("minute", 1),
+    "second": ("second", 1),
+}
+
+
+def month_offset(expr: str, months: str) -> str:
+    """The same day `months` later, clamped to the month's last day as every
+    other engine does; the `months` modifier overflows (Jan 31 + 1 is Mar 2)."""
+    first = f"date({expr}, 'start of month', ({months}) || ' months')"
+    last_day = f"CAST(strftime('%d', {first}, '+1 month', '-1 day') AS INTEGER)"
+    day = f"min(CAST(strftime('%d', {expr}) AS INTEGER), {last_day})"
+    return f"date({first}, ({day} - 1) || ' days')"
+
+
+def date_offset(args: list[str], types: list, subtract: bool = False) -> str:
+    expr, unit, amount = args[0], args[1].lower(), args[2]
+    sign = "-" if subtract else ""
+    keep_date = offset_keeps_date(args, types)
+    if unit in MONTH_FACTOR:
+        shifted = month_offset(expr, f"{sign}({amount}) * {MONTH_FACTOR[unit]}")
+        return shifted if keep_date else f"datetime({shifted} || ' ' || time({expr}))"
+    if unit not in OFFSET_UNIT:
+        raise ValueError(f"Unsupported date unit for sqlite: {args[1]}")
+    name, factor = OFFSET_UNIT[unit]
+    modifier = f"({sign}({amount}) * {factor}) || ' {name}'"
+    return f"{'date' if keep_date else 'datetime'}({expr}, {modifier})"
 
 
 def date_part(expr: str, part: str) -> str:
@@ -122,13 +133,14 @@ def date_part(expr: str, part: str) -> str:
 
 
 def date_truncate(expr: str, part: str) -> str:
+    # day and coarser are typed DATE (`get_date_trunc_output`), so render a date
     part_lower = part.lower()
     if part_lower == "day":
-        return f"datetime(date({expr}))"
+        return f"date({expr})"
     if part_lower == "month":
-        return f"datetime(strftime('%Y-%m-01 00:00:00', {expr}))"
+        return f"date({expr}, 'start of month')"
     if part_lower == "year":
-        return f"datetime(strftime('%Y-01-01 00:00:00', {expr}))"
+        return f"date({expr}, 'start of year')"
     if part_lower == "hour":
         return f"datetime(strftime('%Y-%m-%d %H:00:00', {expr}))"
     if part_lower == "minute":
@@ -136,10 +148,10 @@ def date_truncate(expr: str, part: str) -> str:
     if part_lower == "second":
         return f"datetime(strftime('%Y-%m-%d %H:%M:%S', {expr}))"
     if part_lower == "week":
-        return f"datetime(date({expr}, '-' || ((CAST(strftime('%w', {expr}) AS INTEGER)+6) % 7) || ' days'))"
+        return f"date({expr}, '-' || ((CAST(strftime('%w', {expr}) AS INTEGER)+6) % 7) || ' days')"
     if part_lower == "quarter":
         return (
-            "datetime(printf('%04d-%02d-01 00:00:00', "
+            "date(printf('%04d-%02d-01', "
             f"CAST(strftime('%Y', {expr}) AS INTEGER), "
             f"(((CAST(strftime('%m', {expr}) AS INTEGER)-1)/3)*3)+1))"
         )
@@ -164,8 +176,8 @@ FUNCTION_MAP = {
     FunctionType.TIMESTAMP: lambda x, types: f"datetime({x[0]})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date('{x}')",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime('{x}')",
-    FunctionType.DATE_ADD: lambda x, types: f"datetime({x[0]}, {date_modifier(x[1], x[2])})",
-    FunctionType.DATE_SUB: lambda x, types: f"datetime({x[0]}, {date_modifier(x[1], x[2], subtract=True)})",
+    FunctionType.DATE_ADD: lambda x, types: date_offset(x, types),
+    FunctionType.DATE_SUB: lambda x, types: date_offset(x, types, subtract=True),
     FunctionType.DATE_PART: lambda x, types: date_part(x[0], x[1]),
     FunctionType.DATE_TRUNCATE: lambda x, types: date_truncate(x[0], x[1]),
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
@@ -183,6 +195,10 @@ FUNCTION_MAP = {
     FunctionType.FORMAT_TIME: lambda x, types: f"strftime({x[1]}, {x[0]})",
     FunctionType.PARSE_TIME: lambda x, types: f"datetime({x[0]})",
     FunctionType.RANDOM: lambda x, types: f"(abs(random()) % {x[0]})",
+    # the multi-argument max/min are greatest/least, NULL if any argument is
+    FunctionType.GREATEST: render_present_extreme("max"),
+    FunctionType.LEAST: render_present_extreme("min"),
+    FunctionType.STRPOS: lambda x, types: f"instr({x[0]}, {x[1]})",
 }
 
 SQLITE_CREATE_TABLE_SQL_TEMPLATE = Template("""

@@ -21,7 +21,9 @@ that keep rows (area 2, two rounds: #843 and the row-argument round), and
 the `Rollup.lean` follow-on round (0.3.443: group-value filters, partials
 under a membership, per-atom peels; area 1), and `Windows.lean` /
 `SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
-placement per engine, set operators; area 4).
+placement per engine, set operators; area 4), and `Scalars.lean`
+(0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
+`log`; area 3).
 
 ## The recipe
 
@@ -157,9 +159,27 @@ placement per engine, set operators; area 4).
       file-target `order by` (`trilogy/execution/write_order.py`) wrote the
       ordering's text and sent `desc nulls auto` to DuckDB.
 
+12. **Lessons from `Scalars.lean` (0.3.447).**
+    - Probe a long list of literal expressions on two engines at once
+      (`select f(...) as x` per function). One 45-line probe found all four
+      bugs this round; most were one-liners in a dialect map.
+    - Check the declared type against what each engine returns, not only the
+      value. `date_add(d, day, 1)` printed the right day everywhere, but
+      SQLite returned `'2020-02-01 00:00:00'` for a DATE, which no stored
+      date equals as text: a WHERE matched no rows.
+    - A dialect default can be a whole semantics: `greatest` skips NULLs on
+      DuckDB, Postgres, SQL Server and current ClickHouse, and propagates
+      them on BigQuery, Snowflake, MySQL, Presto and SQLite. Choose the
+      reference once, and render the fallback where the engine differs; SQLite's
+      `max` is strict too, so it runs the fallback in CI for every strict dialect.
+    - The Lean toolchain could not be installed in this session either, so
+      every proof is `decide` over a bounded domain, or `show` to the unfolded
+      term plus `omega`.
+
 ## Candidate areas
 
-**Suggested next: the area-1, area-2 and area-4 leads below, or area 3.**
+**Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
+leads left.**
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -342,11 +362,17 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 
 ### 3. Leftover function leads (verified on main after #802)
 
+Done in `Scalars.lean` (0.3.447): the month-end clamp, `date_add`'s declared
+type (a whole-day offset of a date is a date; a datetime keeps its type),
+`greatest`/`least` over the present arguments, `log`'s base order, SQLite
+`strpos`. Leads left:
+
 | Lead | DuckDB | SQLite | Notes |
 |---|---|---|---|
-| `date_add('2020-01-31'::date, month, 1)` | `2020-02-29` (clamps) | `2020-03-02` (overflows) | a month-end law: `date_diff(d, date_add(d, month, n), month) = n` |
 | `7 / 0` | `inf` | `NULL` | BigQuery `COALESCE(SAFE_DIVIDE(..),0)` and Snowflake `DIV0` give `0`. `NullReject` treats `/` as total, which holds on DuckDB only. Decide one semantics. |
-| `date_add` on a `date` | returns a timestamp | returns text | check the declared output type |
+| `date_trunc(t, month)` of a datetime | a timestamp, typed DATE | a date (0.3.447) | DuckDB casts the truncation of a DATETIME back to datetime; comparisons coerce there, so no wrong answer was found, but the value is not its declared type |
+| `null::int` on ClickHouse | | | renders `CAST(NULL, 'Int64')`, which ClickHouse refuses; a NULL literal needs `Nullable(...)` |
+| `split`, `hash(.., md5)` on SQLite | | not functions | raise rather than answer; no portable rendering yet |
 | Presto `date_part` | base `date_part(x, part)` | | not a Presto function; renders invalid SQL |
 | SQL Server `date_trunc`, `date_part` | | | the base renderings are likely invalid T-SQL |
 | `decimal / decimal` | DOUBLE on DuckDB | | the declared type is the merged NUMERIC; check materialization as in #802 |

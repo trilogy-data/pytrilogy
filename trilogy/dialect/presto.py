@@ -4,7 +4,11 @@ from typing import ClassVar
 from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.statements.execute import CreateTableInfo
-from trilogy.dialect.base import BaseDialect, render_true_divide
+from trilogy.dialect.base import (
+    BaseDialect,
+    render_present_extreme,
+    render_true_divide,
+)
 from trilogy.dialect.common import (
     CONCAT_COALESCE_LOWER,
     SQL_STANDARD_EXTRACT,
@@ -12,6 +16,8 @@ from trilogy.dialect.common import (
 )
 
 FUNCTION_MAP = {
+    FunctionType.GREATEST: render_present_extreme("greatest"),
+    FunctionType.LEAST: render_present_extreme("least"),
     FunctionType.BIT_AND: lambda x, types: f"bitwise_and({x[0]}, {x[1]})",
     FunctionType.BIT_OR: lambda x, types: f"bitwise_or({x[0]}, {x[1]})",
     FunctionType.BIT_XOR: lambda x, types: f"bitwise_xor({x[0]}, {x[1]})",

@@ -3,12 +3,26 @@ from typing import ClassVar
 
 from trilogy.core.enums import DatePart, FunctionType, NullSort
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect, render_true_divide, render_unsupported
+from trilogy.dialect.base import (
+    BaseDialect,
+    offset_keeps_date,
+    render_true_divide,
+    render_unsupported,
+)
 
 
 def day_of_week(expr: str) -> str:
     # dow is 0 on Sunday; Trilogy's day_of_week is 1 on Sunday, as on DuckDB
     return f"(date_part('dow', {expr}) + 1)"
+
+
+def date_offset(args: list[str], types: list, sign: str) -> str:
+    # the offset may be an expression, which an interval string cannot hold;
+    # a DATE plus an interval is a TIMESTAMP here
+    rendered = f"({args[0]} {sign} ({args[2]}) * INTERVAL '1 {args[1]}')"
+    if offset_keeps_date(args, types):
+        return f"CAST({rendered} AS DATE)"
+    return rendered
 
 
 EPOCH_WIDTH = {DatePart.HOUR: 3600, DatePart.MINUTE: 60, DatePart.SECOND: 1}
@@ -60,8 +74,8 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
     # the offset may be an expression, which an interval string cannot hold
-    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + ({x[2]}) * INTERVAL '1 {x[1]}')",
-    FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - ({x[2]}) * INTERVAL '1 {x[1]}')",
+    FunctionType.DATE_ADD: lambda x, types: date_offset(x, types, "+"),
+    FunctionType.DATE_SUB: lambda x, types: date_offset(x, types, "-"),
     FunctionType.DATE_PART: lambda x, types: (
         day_of_week(x[0]) if x[1] == "day_of_week" else f"date_part('{x[1]}', {x[0]})"
     ),

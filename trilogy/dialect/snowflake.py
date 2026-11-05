@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from trilogy.core.enums import FunctionType, NullSort, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn, render_present_extreme
 from trilogy.dialect.common import (
     CONCAT_COALESCE_UPPER,
     SQL_STANDARD_EXTRACT,
@@ -25,6 +25,10 @@ def date_part(expr: str, part: str) -> str:
 
 
 FUNCTION_MAP = {
+    # LOG takes the base first; there is no LOG10
+    FunctionType.LOG: lambda x, types: f"LOG({x[1]}, {x[0]})",
+    FunctionType.GREATEST: render_present_extreme("GREATEST"),
+    FunctionType.LEAST: render_present_extreme("LEAST"),
     FunctionType.BIT_AND: lambda x, types: f"BITAND({x[0]}, {x[1]})",
     FunctionType.BIT_OR: lambda x, types: f"BITOR({x[0]}, {x[1]})",
     FunctionType.BIT_XOR: lambda x, types: f"BITXOR({x[0]}, {x[1]})",

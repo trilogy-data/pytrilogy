@@ -371,6 +371,19 @@ def get_date_trunc_output(
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
 
 
+SUB_DAY_PARTS = (DatePart.HOUR, DatePart.MINUTE, DatePart.SECOND)
+
+
+def get_date_offset_output(args: list[Any]) -> DataType:
+    """A datetime keeps its type; a date stays a date under a whole-day offset."""
+    base = arg_to_datatype(args[0]).data_type
+    if base in (DataType.DATETIME, DataType.TIMESTAMP):
+        return base
+    if args[1] in SUB_DAY_PARTS:
+        return DataType.DATETIME
+    return DataType.DATE
+
+
 def get_map_key_type(arg):
     arg_datatype = arg_to_datatype(arg)
     if isinstance(arg_datatype, MapType):
@@ -833,6 +846,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.DATE,
+        output_type_function=get_date_offset_output,
         arg_count=3,
     ),
     FunctionType.DATE_SUB: FunctionConfig(
@@ -848,6 +862,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.DATE,
+        output_type_function=get_date_offset_output,
         arg_count=3,
     ),
     FunctionType.DATE_DIFF: FunctionConfig(
@@ -1110,7 +1125,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.LOG: FunctionConfig(
         valid_inputs=[
             NUMERIC_INPUT_TYPES,
-            {DataType.INTEGER},
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.FLOAT,

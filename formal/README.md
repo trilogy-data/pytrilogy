@@ -45,6 +45,7 @@ a design decision or a bug.
 | `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
 | `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, and the rendering places NULLs as asked on every engine (checked by `tests/windows/test_window_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
 | `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
+| `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB and SQLite, `tests/dialect/test_scalar_law_renderings.py`, and chdb) |
 
 ## What it found
 
@@ -693,6 +694,26 @@ a design decision or a bug.
   nulls auto` reached DuckDB as written and the write failed. The set
   operators held: 2,304 random `except` / `intersect` / `union` queries with
   NULLs and duplicates matched `SetOps.lean` on both engines.
+- **Four scalar functions answered differently per engine** (`Scalars.lean`).
+  The base `log(x, b)` rendered `log(x, b)`, which SQLite, Postgres,
+  Snowflake and MySQL read base first, so `log(100)` was `0.5` there
+  (`Scalars.base_first_misreads`), and DuckDB raised on a base that was not a
+  literal. It now renders the change of base (`LOG(b, x)` on Snowflake,
+  `LOG(x, b)` on SQL Server), and the base may be any number, not only
+  an integer. SQLite's `+n months` let the day overflow, so
+  Jan 31 plus a month was Mar 2, two months on by `date_diff`
+  (`Scalars.overflow_breaks_diff`); it now builds the first of the target
+  month plus the clamped day (`Scalars.first_plus_clamped_day_exact`). Every
+  `date_add` was typed DATE while DuckDB and Postgres returned a timestamp and
+  SQLite a datetime string, so on SQLite `date_add(d, day, 1) = e` was false
+  for every row (`Scalars.stamp_text_misses_date`); a whole-day offset or
+  truncation of a date now renders a date, an offset of a datetime is typed
+  as its input, and a sub-day offset of a date is a DATETIME. `greatest` /
+  `least` had no SQLite rendering and returned NULL on BigQuery, Snowflake,
+  MySQL and Presto when any argument was NULL, unlike DuckDB and Postgres
+  (`Scalars.strict_drops_present`); those now render each argument falling
+  back to the others (`Scalars.fallback_greatest_exact`). SQLite also gained
+  `strpos`. 55 of the 97 law cases fail on main.
 
 ## Limits
 

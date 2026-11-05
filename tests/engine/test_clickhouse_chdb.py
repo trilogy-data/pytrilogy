@@ -145,3 +145,28 @@ def test_bare_order_sorts_nulls_last(chdb_executor: Executor, direction: str):
         "SELECT x FROM (SELECT arrayJoin([1, NULL, 0]) AS x) " f"ORDER BY x {direction}"
     ).fetchall()
     assert [r[0] for r in rows][-1] is None
+
+
+@pytest.mark.parametrize(
+    "expr, expected",
+    [
+        ("date_add('2020-01-31'::date, month, 1)", "2020-02-29"),
+        ("date_sub('2020-03-31'::date, quarter, 1)", "2019-12-31"),
+        ("date_add('2020-02-29'::date, year, 1)", "2021-02-28"),
+        ("log(100)", 2.0),
+        ("log(8, 2)", 3.0),
+    ],
+)
+def test_scalar_laws(chdb_executor: Executor, expr: str, expected: Any):
+    """The laws of `formal/Trilogy/Scalars.lean` on ClickHouse."""
+    (value,) = chdb_executor.execute_text(f"select {expr} as v;")[-1].fetchone()
+    assert (str(value)[:10] if isinstance(expected, str) else value) == expected
+
+
+def test_native_extremes_skip_nulls(chdb_executor: Executor):
+    """`ClickhouseDialect` renders `greatest`/`least` natively: ClickHouse's
+    skip NULLs as the reference does (`Scalars.fallback_greatest_exact`)."""
+    row = chdb_executor.execute_raw_sql(
+        "SELECT greatest(1, NULL, 3), least(NULL, 2), greatest(NULL, NULL)"
+    ).fetchone()
+    assert tuple(row) == (3, 2, None)

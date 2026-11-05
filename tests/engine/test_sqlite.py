@@ -45,8 +45,7 @@ def test_date_diff_rendering():
     executor = Dialects.SQLITE.default_executor(environment=environment)
     sql = executor.generate_sql(queries[-1])[0]
 
-    assert "datetime(" in sql
-    assert "day" in sql
+    assert "date(date('now'), ((-30) * 1) || ' day')" in sql
 
 
 def test_string_functions():
