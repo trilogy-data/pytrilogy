@@ -16,6 +16,7 @@ from trilogy.dialect.postgres import PostgresDialect
 from trilogy.dialect.presto import PrestoDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.dialect.sqlite import SQLiteDialect
 
 F = FunctionType
 
@@ -102,3 +103,8 @@ def test_log_accepts_a_fractional_base() -> None:
     env.parse("key x float; auto l <- log(x, 2.5); auto t <- log(x, 10.0);")
     assert env.concepts["l"].datatype == DataType.FLOAT
     assert render(BaseDialect, F.LOG, ["x", "10.0"], []) == "log10(x)"
+
+
+def test_sqlite_offset_rejects_a_non_calendar_unit() -> None:
+    with pytest.raises(ValueError, match="day_of_week"):
+        render(SQLiteDialect, F.DATE_ADD, ["d", "day_of_week", "1"], [])
