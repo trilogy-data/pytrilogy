@@ -44,7 +44,12 @@ from trilogy.core.models.execute import (
     QueryDatasource,
     UnionCTE,
 )
-from trilogy.dialect.base import BaseDialect, is_array_arg, offset_keeps_date
+from trilogy.dialect.base import (
+    CALENDAR_PARTS,
+    BaseDialect,
+    is_array_arg,
+    offset_keeps_date,
+)
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.utility import safe_open
 
@@ -94,10 +99,13 @@ def map_date_part_specifier(specifier: str) -> str:
 
 
 def date_trunc(args, types):
+    rendered = f"date_trunc('{args[1]}', {args[0]})"
+    # day and coarser are typed DATE (`get_date_trunc_output`)
+    if args[1].lower() in CALENDAR_PARTS:
+        return f"cast({rendered} as date)"
     if len(types) > 0 and types[0] == DataType.DATETIME:
-        return f"cast(date_trunc('{args[1]}', {args[0]}) as datetime)"
-    else:
-        return f"date_trunc('{args[1]}', {args[0]})"
+        return f"cast({rendered} as datetime)"
+    return rendered
 
 
 def handle_cast(args, types):
@@ -212,7 +220,9 @@ FUNCTION_MAP = {
     FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
 }
 
-DATATYPE_MAP: dict[DataType, str] = {}
+# Trilogy's float is a double; DuckDB's FLOAT is 4 bytes and rounds a stored
+# value (`1234567.891` reads back `1234567.875`)
+DATATYPE_MAP: dict[DataType, str] = {DataType.FLOAT: "double"}
 
 
 # Identifies the disabled-form `uv_run` guard in an existing macro body, so a

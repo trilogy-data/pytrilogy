@@ -140,7 +140,8 @@ DATATYPE_MAP = {
     DataType.BYTES: "BLOB",
     DataType.INTEGER: "INTEGER",
     DataType.BIGINT: "BIGINT",
-    DataType.FLOAT: "FLOAT",
+    # FLOAT is 4 bytes here; Trilogy's float is a double
+    DataType.FLOAT: "DOUBLE",
     DataType.DOUBLE: "DOUBLE",
     DataType.BOOL: "BOOLEAN",
     DataType.NUMERIC: "DECIMAL",

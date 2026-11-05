@@ -516,6 +516,9 @@ def dict_to_map_wrapper(arg):
     return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
 
 
+FRACTIONAL_FAMILY = (DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC)
+
+
 def merge_datatypes(
     inputs: list[CONCRETE_TYPES],
 ) -> CONCRETE_TYPES:
@@ -551,6 +554,18 @@ def merge_datatypes(
         return _prefer_trait(DataType.DOUBLE)
     if base_set == {DataType.INTEGER, DataType.NUMERIC}:
         return _prefer_trait(DataType.NUMERIC)
+    # a decimal beside a float is computed as a double on every engine; a
+    # decimal type would round it
+    if (
+        base_set & {DataType.FLOAT, DataType.DOUBLE}
+        and DataType.NUMERIC in {x.data_type for x in base_types}
+        and all(
+            x.data_type in (DataType.INTEGER, DataType.BIGINT, *FRACTIONAL_FAMILY)
+            for x in base_types
+        )
+    ):
+        winner = DataType.DOUBLE if DataType.DOUBLE in base_set else DataType.FLOAT
+        return _prefer_trait(winner)
     if any(isinstance(x, NumericType) for x in inputs) and all(
         isinstance(x, NumericType)
         or _base(x)

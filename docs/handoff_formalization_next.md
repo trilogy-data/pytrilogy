@@ -23,7 +23,8 @@ under a membership, per-atom peels; area 1), and `Windows.lean` /
 `SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
 placement per engine, set operators; area 4), and `Scalars.lean`
 (0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
-`log`; area 3).
+`log`; area 3), and `Types.lean` (0.3.448: a declared type holds every
+value a persisted copy stores; area 3b).
 
 ## The recipe
 
@@ -175,6 +176,20 @@ placement per engine, set operators; area 4), and `Scalars.lean`
     - The Lean toolchain could not be installed in this session either, so
       every proof is `decide` over a bounded domain, or `show` to the unfolded
       term plus `omega`.
+
+13. **Lessons from `Types.lean` (0.3.448).**
+    - Persist every expression in a sweep and read the table back raw. The
+      planner preferred the base table in every probe, so a query never read
+      the copy and no answer looked wrong; the column types of the copy were
+      already wrong.
+    - Compare a concept's declared type with the engine's `typeof` over a long
+      list of expressions at once: one sweep found `sqrt`, `%`, `**`,
+      `greatest`, and the decimal merges, all in `trilogy/core/functions.py`.
+    - Check a dialect's type names, not only its functions: `float` is 8 bytes
+      on Postgres, SQL Server and Snowflake and 4 on DuckDB and MySQL, and is
+      not a type on Presto.
+    - A SQLite error from "user-defined function raised exception" is
+      SQLAlchemy's Python `floor`, not SQLite's.
 
 ## Candidate areas
 
@@ -373,6 +388,22 @@ type (a whole-day offset of a date is a date; a datetime keeps its type),
 | `date_trunc(t, month)` of a datetime | a timestamp, typed DATE | a date (0.3.447) | DuckDB casts the truncation of a DATETIME back to datetime; comparisons coerce there, so no wrong answer was found, but the value is not its declared type |
 | `null::int` on ClickHouse | | | renders `CAST(NULL, 'Int64')`, which ClickHouse refuses; a NULL literal needs `Nullable(...)` |
 | `split`, `hash(.., md5)` on SQLite | | not functions | raise rather than answer; no portable rendering yet |
+
+Done in `Types.lean` (0.3.448): `date_trunc` on DuckDB is now a date, and the
+declared types of `sqrt`, `**`, `%`, `greatest` / `least`, decimal products,
+decimal quotients and a decimal beside a float hold their values. Leads left:
+
+- **Decimal precision.** A sum keeps its operands' precision
+  (`numeric(12,4) + numeric(12,4)` is `numeric(12,4)`), so a persisted sum can
+  overflow; that raises rather than rounds, so it is loud, but `sum` of a
+  decimal column over many rows is the likeliest real case.
+- **`random(n)`** is typed FLOAT and renders `random()` on DuckDB (a fraction)
+  but `abs(random()) % n` on SQLite (an integer below `n`). Decide what it means.
+- **CASE arms of differing column types** (`case when b then i else f end`)
+  are rejected on purpose while `coalesce(i, f)` merges; a literal arm is
+  widened. If that strictness is relaxed, the arms merge by `Types.join`.
+- **Chained casts** (`t::date::datetime`) parse the second type as a trait of
+  the first and raise.
 | Presto `date_part` | base `date_part(x, part)` | | not a Presto function; renders invalid SQL |
 | SQL Server `date_trunc`, `date_part` | | | the base renderings are likely invalid T-SQL |
 | `decimal / decimal` | DOUBLE on DuckDB | | the declared type is the merged NUMERIC; check materialization as in #802 |

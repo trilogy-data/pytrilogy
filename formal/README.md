@@ -46,6 +46,7 @@ a design decision or a bug.
 | `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, and the rendering places NULLs as asked on every engine (checked by `tests/windows/test_window_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
 | `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
 | `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB and SQLite, `tests/dialect/test_scalar_law_renderings.py`, and chdb) |
+| `Types.lean` | the declared type of an expression as the column a persisted copy is stored in | a sum holds in the join of its operands' types and a product in the sum of their scales (`add_preserved`, `mul_preserved`), a remainder in its dividend's type (`rem_preserved`), `greatest` / `least` in the join of all arguments (`pick_preserved`); no decimal scale holds a quotient (`third_has_no_scale`), and a 4-byte float does not hold a double (`single_misses_double`) (checked by `tests/core/test_type_materialization_laws.py` on DuckDB and SQLite, and `tests/dialect/test_type_law_renderings.py`) |
 
 ## What it found
 
@@ -714,6 +715,29 @@ a design decision or a bug.
   (`Scalars.strict_drops_present`); those now render each argument falling
   back to the others (`Scalars.fallback_greatest_exact`). SQLite also gained
   `strpos`. 55 of the 97 law cases fail on main.
+- **A persisted copy rounded what the live query computed** (`Types.lean`).
+  The planner answers from a datasource it built (`persist`), whose columns
+  take each concept's declared type, so a declared type narrower than the
+  engine's value is a silent wrong answer once the copy is read. `sqrt` and
+  `**` were typed INTEGER (`sqrt(2.33)` stored `2`, and `2 ** -1` an
+  integer); every `%` was INTEGER (`2.3333 % 2` stored `0`,
+  `Types.fractional_rem_is_not_int`); `greatest` / `least` took their first
+  argument's type (`greatest(-7, -0.6667)` stored `-1`,
+  `Types.first_argument_type_drops`); a decimal beside a float merged to the
+  decimal (`Types.decimal_beside_float_rounds`), a product kept its operands'
+  scale (`Types.product_scale_rounds`), and a decimal quotient its dividend's
+  (`Types.third_has_no_scale`). DuckDB's and MySQL's `FLOAT` are 4 bytes, so a
+  persisted float kept 24 bits: `1234567.891` read back `1234567.875`
+  (`Types.single_misses_double`); a float now persists as a double on every
+  dialect (Presto had no `float` type at all). SQLite's casts to a date or
+  datetime rendered `cast(x as TEXT)`, which kept the time, so `t::date = d`
+  was false; they now render `date(x)` / `datetime(x)`. SQLite's `floor` and
+  `ceil` ran SQLAlchemy's Python `floor`, which raised on NULL, and the base
+  `**` was valid SQL only on DuckDB (`power(x, y)` now; SQL Server casts the
+  base to a float, since its `POWER` keeps the first argument's type).
+  DuckDB's `date_trunc` to a day or coarser returned a timestamp for a
+  DATE-typed concept and now returns a date. 49 of the 141 law cases fail on
+  main.
 
 ## Limits
 
