@@ -7,6 +7,7 @@ import pytest
 
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.core import DataType
+from trilogy.core.models.environment import Environment
 from trilogy.dialect.base import BaseDialect, render_present_extreme
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
@@ -94,3 +95,10 @@ def test_day_offset_of_a_date_casts_back(dialect, plain: str) -> None:
     assert render(dialect, F.DATE_ADD, ["d", "hour", "1"], types) == plain.replace(
         "day", "hour"
     )
+
+
+def test_log_accepts_a_fractional_base() -> None:
+    env = Environment()
+    env.parse("key x float; auto l <- log(x, 2.5); auto t <- log(x, 10.0);")
+    assert env.concepts["l"].datatype == DataType.FLOAT
+    assert render(BaseDialect, F.LOG, ["x", "10.0"], []) == "log10(x)"

@@ -689,7 +689,7 @@ def render_log(args: list[str], types: list) -> str:
     """`log(x, b)` is the log of `x` to base `b`. A two-argument `log` takes
     the base first on SQLite, Postgres, Snowflake and MySQL and second
     elsewhere, so only the change of base is portable."""
-    if args[1] == "10":
+    if args[1] in ("10", "10.0"):
         return f"log10({args[0]})"
     return f"(ln({args[0]}) / ln({args[1]}))"
 

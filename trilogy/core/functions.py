@@ -1125,7 +1125,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.LOG: FunctionConfig(
         valid_inputs=[
             NUMERIC_INPUT_TYPES,
-            {DataType.INTEGER},
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.FLOAT,

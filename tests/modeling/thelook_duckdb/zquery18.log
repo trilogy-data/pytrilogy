@@ -1,5 +1,5 @@
 query_id = "18"
-gen_length = 519
+gen_length = 451
 preql_size = 92
 comp_size = 175
 generated_sql = """
@@ -14,11 +14,11 @@ FROM
 GROUP BY
     1)
 SELECT
-    coalesce(\"highfalutin\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    \"user_users\".\"id\" as \"user_id\",
     \"user_users\".\"state\" as \"user_state\",
     \"highfalutin\".\"revenue\" as \"revenue\"
 FROM
     \"users\" as \"user_users\"
     LEFT OUTER JOIN \"highfalutin\" on \"user_users\".\"id\" = \"highfalutin\".\"user_id\"
 ORDER BY 
-    coalesce(\"highfalutin\".\"user_id\",\"user_users\".\"id\") asc"""
+    \"user_users\".\"id\" asc"""

@@ -699,7 +699,8 @@ a design decision or a bug.
   Snowflake and MySQL read base first, so `log(100)` was `0.5` there
   (`Scalars.base_first_misreads`), and DuckDB raised on a base that was not a
   literal. It now renders the change of base (`LOG(b, x)` on Snowflake,
-  `LOG(x, b)` on SQL Server). SQLite's `+n months` let the day overflow, so
+  `LOG(x, b)` on SQL Server), and the base may be any number, not only
+  an integer. SQLite's `+n months` let the day overflow, so
   Jan 31 plus a month was Mar 2, two months on by `date_diff`
   (`Scalars.overflow_breaks_diff`); it now builds the first of the target
   month plus the clamped day (`Scalars.first_plus_clamped_day_exact`). Every

@@ -230,13 +230,16 @@ def test_log_takes_the_base_second(dialect: Dialects, seed: int) -> None:
     executor = _executor(dialect, rows)
     out = _select(
         executor,
-        """select id, log(x) as ten, log(x, 2) as two, log(x, n + 32) as var,
+        """select id, log(x) as ten, log(x, 2) as two, log(x, n + 32) as var, log(x, x / 1000 + 1.5) as frac,
         log(100) as hundred order by id asc;""",
     )
-    for (_, _, _, n, _, _, _, _, x, *_), (_, ten, two, var, hundred) in zip(rows, out):
+    for (_, _, _, n, _, _, _, _, x, *_), (_, ten, two, var, frac, hundred) in zip(
+        rows, out
+    ):
         assert ten == pytest.approx(math.log10(x)), x
         assert two == pytest.approx(math.log2(x)), x
         assert var == pytest.approx(math.log(x, n + 32)), (x, n)
+        assert frac == pytest.approx(math.log(x, x / 1000 + 1.5)), x
         assert hundred == pytest.approx(2.0)
 
 
