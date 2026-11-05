@@ -40,6 +40,10 @@ DAY_OF_WEEK = "((DATEPART(weekday, {expr}) + @@DATEFIRST - 2) % 7 + 1) % 7 + 1"
 
 
 FUNCTION_MAP = {
+    # T-SQL has no `ln`; its two-argument LOG takes the base second
+    FunctionType.LOG: lambda x, types: (
+        f"LOG10({x[0]})" if x[1] == "10" else f"LOG({x[0]}, {x[1]})"
+    ),
     FunctionType.CAST: lambda x, types: render_cast(x, types),
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.DAY_OF_WEEK: lambda x, types: f"({DAY_OF_WEEK.format(expr=x[0])})",

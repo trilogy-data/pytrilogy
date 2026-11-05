@@ -685,6 +685,45 @@ def render_true_divide(float_type: str, args: list[str], types: list) -> str:
     return " / ".join(args)
 
 
+def render_log(args: list[str], types: list) -> str:
+    """`log(x, b)` is the log of `x` to base `b`. A two-argument `log` takes
+    the base first on SQLite, Postgres, Snowflake and MySQL and second
+    elsewhere, so only the change of base is portable."""
+    if args[1] == "10":
+        return f"log10({args[0]})"
+    return f"(ln({args[0]}) / ln({args[1]}))"
+
+
+def render_present_extreme(name: str) -> Callable[..., str]:
+    """`greatest`/`least` of the present arguments, as DuckDB and Postgres
+    compute them, on an engine whose own is NULL when any argument is: each
+    argument falls back to the others, so the result is NULL only when every
+    argument is."""
+
+    def render(args: list[str], types: list) -> str:
+        if len(args) == 1:
+            return args[0]
+        fallbacks = [
+            f"coalesce({', '.join([a, *args[:i], *args[i + 1 :]])})"
+            for i, a in enumerate(args)
+        ]
+        return f"{name}({', '.join(fallbacks)})"
+
+    return render
+
+
+CALENDAR_PARTS = frozenset({"day", "week", "month", "quarter", "year"})
+
+
+def offset_keeps_date(args: list[str], types: list) -> bool:
+    """A whole-day offset of a DATE is a DATE (`date_add`'s declared type)."""
+    return (
+        bool(types)
+        and getattr(types[0], "data_type", None) == DataType.DATE
+        and args[1].lower() in CALENDAR_PARTS
+    )
+
+
 def render_unsupported(name: str) -> Callable[..., str]:
     def render(args: list[str], types: list) -> str:
         raise NotImplementedError(f"`{name}` is not supported by this dialect")
@@ -776,9 +815,7 @@ FUNCTION_MAP = {
     FunctionType.POWER: lambda x, types: f"{x[0]} ** {x[1]}",
     FunctionType.SQRT: lambda x, types: f"sqrt({x[0]})",
     FunctionType.RANDOM: lambda x, types: "random()",
-    FunctionType.LOG: lambda x, types: (
-        f"log({x[0]})" if x[1] == 10 else f"log({x[0]}, {x[1]})"
-    ),
+    FunctionType.LOG: render_log,
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x, types: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",

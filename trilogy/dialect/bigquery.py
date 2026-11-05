@@ -25,6 +25,7 @@ from trilogy.dialect.base import (
     TableColumn,
     array_element_type,
     is_array_arg,
+    render_present_extreme,
     render_unsupported,
     safe_quote,
 )
@@ -127,6 +128,8 @@ def null_wrapper(
 
 
 FUNCTION_MAP = {
+    FunctionType.GREATEST: render_present_extreme("GREATEST"),
+    FunctionType.LEAST: render_present_extreme("LEAST"),
     # no fold over an array
     FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
