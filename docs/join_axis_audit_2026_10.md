@@ -882,11 +882,32 @@ lost the contract's `hour` on hackernews adhoc05. `_widen_merge_join_keys` now
 runs only where there is no plan: a merge assembled below the consumer, and
 the gate merges. Corpus: 0 of 209 plans moved. Fuzzer 522/522.
 
+**Gate and condition merges read a plan (part 24).** The merges that host a
+FINAL-deferred WHERE used to widen with no plan: `_apply_final_conditions`
+widened the contributor and its filter-argument producers to the gate's
+grain keys, the region spans and every scoped relation a producer touches,
+and the FINAL merge widened every side to a gate key no side held. Both now
+state those keys as asks (`_condition_join_asks`) and carry each side only
+the asks the side's join plan finds it can hold (`_carry_asked_keys`: the
+plan's `carry_demands`, the contracted keys a side's outputs or rows hold or
+render). Pairing keys are not carried there. A FINAL side is deduped to the
+output grain, and its plan carries name the row columns beneath that dedup.
+Carrying them pairs `select customer_id, label where sum(amount) by status
+> 25 or status is null` with its row feeder on `order_id` and widens the
+deduped side to a column it cannot render (`test_null_accepting_atom_keeps_the_padded_row`).
+Over the part of the suite the probe reached, these widenings ran 9 times.
+Only the relation-key ask ever added a column (7 times: `cat_avg.category`,
+`tree_eco_region` under `test_merge_bridge_filter_only_axis`), and the plan
+carries the same columns. Corpus: 0 of 209 plans moved, and 0 of 133 tpc
+plans. `_widen_merge_join_keys` now runs only where a per-group merge has no
+plan.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
-1. The gate and condition merges (`_apply_final_conditions`, the FINAL
-   gate keys) still widen to gate keys, spans and relation keys with no plan.
+1. The gate and condition merges carry planned asks, but not their
+   pairings: the MergeNode a condition is hosted on still discovers its keys
+   at resolve.
 2. A merge with a side no group stands behind returns no plan, so resolve
    still finds its keys.
 3. The MergeNode is given `permitted_keys`, not `node_joins` built from the
