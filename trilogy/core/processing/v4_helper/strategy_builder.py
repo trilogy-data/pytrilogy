@@ -2682,6 +2682,19 @@ def _widen_merge_join_keys(
         )
 
 
+def _owed_keys(
+    parent: StrategyNode, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The planned keys `parent` holds no name of: a side holding
+    `game_tall_team_id` already pairs on its alias `team_id`."""
+    held = {o.address for o in parent.output_concepts}
+    roots = environment.address_roots()
+    held_values = {roots.get(a, a) for a in held}
+    return frozenset(
+        k for k in keys if k in held or roots.get(k, k) not in held_values
+    )
+
+
 def _carry_planned_keys(
     parents: list[StrategyNode],
     origin: dict[int, str],
@@ -2695,7 +2708,10 @@ def _carry_planned_keys(
         return
     for parent in parents:
         gid = _origin_group(parent, origin)
-        if gid is None or not (keys := plan.keys_for(gid)):
+        if gid is None:
+            continue
+        keys = _owed_keys(parent, plan.owed_by(gid), environment)
+        if not keys:
             continue
         concepts = _join_key_concepts(parents, environment, set(keys))
         # a gate that hid the key it was joined on still holds the column
