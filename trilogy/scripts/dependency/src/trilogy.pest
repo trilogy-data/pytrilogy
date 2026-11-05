@@ -621,9 +621,7 @@ any            = { ^"any" ~ "(" ~ expr ~ ")" }
 // aggregate_functions, window_sql_over)), lark's tree. Spelled as its own
 // `window_item_sql_aggregate = aggregate_functions ~ window_sql_over`
 // alternative, tried before `aggregate_functions`, every aggregate was parsed
-// twice. (That alternative also happened to accept `sum (x) over (...)` with
-// a space, which lark rejects: `sum ` is the legacy window keyword in both
-// grammars, and a legacy window takes no SQL `over (...)`.)
+// twice.
 aggregate_functions = {
     (count_distinct | count | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over? ~ window_sql_over?
 }
@@ -650,9 +648,12 @@ filter_item = { &FILTER_KW ~ ^"filter" ~ IDENTIFIER ~ where }
 // =============================================================================
 // WINDOW FUNCTIONS
 // =============================================================================
+// A `(` after the keyword makes it a call, not a legacy window: `sum (x)` is
+// `sum(x)` (it used to silently become a grand total). Mirrors trilogy.lark.
 WINDOW_TYPE_LEGACY = @{
     (^"row_number" | ^"rank" | ^"dense_rank" | ^"lag" | ^"lead" | ^"sum" | ^"avg" | ^"max" | ^"min" | ^"count")
     ~ (" " | "\t")+
+    ~ !"("
 }
 
 WINDOW_TYPE_SQL_NUMBERING = @{

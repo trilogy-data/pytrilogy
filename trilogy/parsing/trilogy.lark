@@ -317,12 +317,14 @@
     // SQL-like: row_number(field) over (partition by field2 order by field3)
     // The trailing lookahead keeps a concept that shares a legacy window name
     // usable as a plain reference: refuse the token when what follows can't
-    // start a window operand (`as` alias keyword, `->`, `;`, `,`, `)`). The
+    // start a window operand (`as` alias keyword, `->`, `;`, `,`, `)`), or
+    // when a `(` follows: `sum (x)` is the call `sum(x)`, never a legacy window
+    // (which used to silently turn it into a grand total). The
     // guard must live in the terminal — the LALR lexer commits before any
     // rule could backtrack. Leading `\s` in the lookahead stops the regex
     // engine from shedding whitespace to dodge it. Mirrors the pest
     // WINDOW_LEGACY_KW `as` exclusion.
-    WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"dense_rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+(?!\s|as(?![\w.])|->|[;,)])/i
+    WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"dense_rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+(?!\s|as(?![\w.])|->|[;,()])/i
     // Numbering window functions (rank/dense_rank/row_number) take no SQL input —
     // their args are all equal-status grain keys.
     WINDOW_TYPE_SQL_NUMBERING.2: /row_number\s*\(/i | /rank\s*\(/i | /dense_rank\s*\(/i
@@ -673,7 +675,7 @@
     aggregate_by: /(group)\s+([a-zA-Z\_][a-zA-Z0-9\_\.]*)/i "BY"i (IDENTIFIER ",")* IDENTIFIER
 
     //aggregates
-    _COUNT.1: "count("i
+    _COUNT.1: /count\s*\(/i
     count:   _COUNT  expr ")"
     
     // `_COUNT "distinct" ...` accepts the SQL-habit `count(distinct x)` as an
@@ -684,18 +686,19 @@
     grouping: "grouping"i "(" expr ")"
     grouping_id: "grouping_id"i "(" (expr ",")* expr ")"
     
-    // avoid conflicts with the window
-    _SUM.1: "sum("i
+    // count/sum/avg/max/min allow a space before `(` (the legacy window
+    // keyword refuses one), so `sum (x)` is the same call as `sum(x)`
+    _SUM.1: /sum\s*\(/i
     sum: _SUM expr ")"
-    _AVG.1: "avg("i
+    _AVG.1: /avg\s*\(/i
     avg: _AVG expr ")"
     _STDDEV.1: "stddev("i
     stddev: _STDDEV expr ")"
     _VARIANCE.1: "variance("i
     variance: _VARIANCE expr ")"
-    _MAX.1: "max("i
+    _MAX.1: /max\s*\(/i
     max: _MAX expr ")"
-    _MIN.1: "min("i
+    _MIN.1: /min\s*\(/i
     min: _MIN expr ")"
     _ARRAY_AGG.1: "array_agg("i
     array_agg: _ARRAY_AGG expr ")"
