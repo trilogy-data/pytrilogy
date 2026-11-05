@@ -859,8 +859,62 @@ merges and 201 GroupNodes. A mapped node can also belong to a
 nested plan's graph. What these helpers compare is the region identity of the
 rows actually being merged, so they read the built stream.
 
-**Open.** Nothing. Every decision stage 3 makes off a built node now
-reads a stage-2 fact or is classified above as applying one.
+**Per-group merges carry only planned keys (part 23).** A per-group merge
+with a plan (`_pre_merge_parents`) used to run `_widen_merge_join_keys`, which
+widened every side to the consumer's preserve keys and to the expression
+mates the sides reach, then projected the planned keys. It now does what the
+FINAL does: each side carries `JoinPlan.owed_by`, its pairing keys plus the
+plan's `carry_demands` (the contract keys it was asked to carry). Two plan
+facts had to grow for that:
+
+- a contract key a side renders off what it holds is a carry demand
+  (`y = coalesce(s_year, s_year)` onto the fact side under a `merge`), not
+  only one its FD closure reaches; without it the `merge` cells of
+  `test_shared_attribute_aggregate_matrix` re-derived `y` from the date
+  dimension and joined it back INNER, dropping the NULL-date rows;
+- a planned key that is an `alias` of a column the side holds is not carried
+  again (`team_id` beside `game_tall_team_id`, ncaa adhoc05). Only a rename:
+  a value-class mate under `merge` or `subset join` differs in rows or NULLs
+  (`test_subset_join_rowset_onto_root`, `test_rowset_declared_join_pairing`).
+
+The contract demands matter on their own too: carrying only the pairing keys
+lost the contract's `hour` on hackernews adhoc05. `_widen_merge_join_keys` now
+runs only where there is no plan: a merge assembled below the consumer, and
+the gate merges. Corpus: 0 of 209 plans moved. Fuzzer 522/522.
+
+**Gate and condition merges read a plan (part 24).** The merges that host a
+FINAL-deferred WHERE used to widen with no plan: `_apply_final_conditions`
+widened the contributor and its filter-argument producers to the gate's
+grain keys, the region spans and every scoped relation a producer touches,
+and the FINAL merge widened every side to a gate key no side held. Both now
+state those keys as asks (`_condition_join_asks`) and carry each side only
+the asks the side's join plan finds it can hold (`_carry_asked_keys`: the
+plan's `carry_demands`, the contracted keys a side's outputs or rows hold or
+render). Pairing keys are not carried there. A FINAL side is deduped to the
+output grain, and its plan carries name the row columns beneath that dedup.
+Carrying them pairs `select customer_id, label where sum(amount) by status
+> 25 or status is null` with its row feeder on `order_id` and widens the
+deduped side to a column it cannot render (`test_null_accepting_atom_keeps_the_padded_row`).
+Over the part of the suite the probe reached, these widenings ran 9 times.
+Only the relation-key ask ever added a column (7 times: `cat_avg.category`,
+`tree_eco_region` under `test_merge_bridge_filter_only_axis`), and the plan
+carries the same columns. Corpus: 0 of 209 plans moved, and 0 of 133 tpc
+plans. `_widen_merge_join_keys` now runs only where a per-group merge has no
+plan.
+
+**Open.** No stage-3 decision reads a built node. What §6 designs and is
+not built yet:
+
+1. The gate and condition merges carry planned asks, but not their
+   pairings: the MergeNode a condition is hosted on still discovers its keys
+   at resolve.
+2. A merge with a side no group stands behind returns no plan, so resolve
+   still finds its keys.
+3. The MergeNode is given `permitted_keys`, not `node_joins` built from the
+   pairings.
+4. `GroupInputContract.preserve_keys` is still the union of five sets.
+5. The regraft functions still rewrite the group graph instead of picking a
+   provider.
 
 ## 8. Not claimed
 

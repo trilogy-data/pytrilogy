@@ -129,6 +129,11 @@ class JoinPlan:
             *(p.keys & held for p in self.pairings if gid in (p.left, p.right))
         )
 
+    def owed_by(self, gid: str) -> frozenset[str]:
+        """What `gid`'s side is widened to: its pairing keys and the keys
+        the consumer's contract asks it to carry."""
+        return self.keys_for(gid) | self.carry_demands.get(gid, frozenset())
+
     def islands(self) -> list[set[str]]:
         """Contributors grouped by what pairs them, single-row ones aside."""
         islands: list[set[str]] = [
@@ -811,8 +816,9 @@ def plan_final_join(
         if attrs[gid].derivation == Derivation.ROOT
     }
     for gid, keys in (contracted or {}).items():
+        widenable = _widenable(group_graph, attrs, gid, environment)
         carry_demands[gid] = carry_demands.get(gid, frozenset()) | (
-            keys & _widenable(group_graph, attrs, gid, environment)
+            keys & (widenable | _renderable(widenable, keys, environment))
         )
     # A row stream is identified by the grain keys its rows turn out to hold
     # (`sale_recency` at customer and sale date holds both off its inputs);

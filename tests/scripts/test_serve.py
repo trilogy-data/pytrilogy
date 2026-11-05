@@ -750,9 +750,13 @@ def test_serve_nested_csv_file():
 @pytest.fixture
 def stop_servers(monkeypatch):
     """Ends a `serve --timeout` run once the test is done with it, instead of
-    idling out the rest of the timeout."""
+    idling out the rest of the timeout. Startup skips the studio bundle fetch:
+    a cold runner's download outlasts `_wait_for_server`."""
     import uvicorn
 
+    monkeypatch.setattr(
+        "trilogy.scripts.serve_helpers.resolve_studio_bundle", lambda *a, **k: None
+    )
     servers: list[uvicorn.Server] = []
     original_init = uvicorn.Server.__init__
 
