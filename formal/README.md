@@ -724,7 +724,8 @@ a design decision or a bug.
   `Types.fractional_rem_is_not_int`); `greatest` / `least` took their first
   argument's type (`greatest(-7, -0.6667)` stored `-1`,
   `Types.first_argument_type_drops`); a decimal beside a float merged to the
-  decimal (`Types.decimal_beside_float_rounds`), a product kept its operands'
+  decimal (`Types.decimal_beside_float_rounds`; a union still casts a float
+  arm to the decimal, by design, so its sums do not drift), a product kept its operands'
   scale (`Types.product_scale_rounds`), and a decimal quotient its dividend's
   (`Types.third_has_no_scale`). DuckDB's and MySQL's `FLOAT` are 4 bytes, so a
   persisted float kept 24 bits: `1234567.891` read back `1234567.875`
