@@ -859,8 +859,32 @@ merges and 201 GroupNodes. A mapped node can also belong to a
 nested plan's graph. What these helpers compare is the region identity of the
 rows actually being merged, so they read the built stream.
 
-**Open.** Nothing. Every decision stage 3 makes off a built node now
-reads a stage-2 fact or is classified above as applying one.
+**Per-group merges carry only planned keys (part 23).** A per-group merge
+with a plan (`_pre_merge_parents`) used to run `_widen_merge_join_keys`, which
+widened every side to the consumer's preserve keys and to the expression
+mates the sides reach, then projected the planned keys. It now does what the
+FINAL does: each side carries its planned keys and the plan's
+`carry_demands` (the contract keys it was asked to carry, `JoinPlan.owed_by`).
+A key the side already holds under another name of the same value class is
+not carried again: a side holding `game_tall_team_id` already pairs on
+`team_id` (ncaa adhoc05). The FINAL carry uses the same rule, so query29's
+FINAL parents stop projecting `catalog_customer_item_cat_*` beside the
+`store_sales_*` columns of the same value. `_widen_merge_join_keys` now runs
+only where there is no plan: a merge assembled below the consumer, and the
+gate merges. Corpus: 1 of 209 plans moved (query29, smaller). Fuzzer 522/522.
+
+**Open.** No stage-3 decision reads a built node. What §6 designs and is
+not built yet:
+
+1. The gate and condition merges (`_apply_final_conditions`, the FINAL
+   gate keys) still widen to gate keys, spans and relation keys with no plan.
+2. A merge with a side no group stands behind returns no plan, so resolve
+   still finds its keys.
+3. The MergeNode is given `permitted_keys`, not `node_joins` built from the
+   pairings.
+4. `GroupInputContract.preserve_keys` is still the union of five sets.
+5. The regraft functions still rewrite the group graph instead of picking a
+   provider.
 
 ## 8. Not claimed
 

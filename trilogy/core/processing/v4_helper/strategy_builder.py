@@ -2690,9 +2690,7 @@ def _owed_keys(
     held = {o.address for o in parent.output_concepts}
     roots = environment.address_roots()
     held_values = {roots.get(a, a) for a in held}
-    return frozenset(
-        k for k in keys if k in held or roots.get(k, k) not in held_values
-    )
+    return frozenset(k for k in keys if k in held or roots.get(k, k) not in held_values)
 
 
 def _carry_planned_keys(
