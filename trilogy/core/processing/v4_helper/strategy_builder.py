@@ -2715,10 +2715,9 @@ def _carry_planned_keys(
         return
     for parent in parents:
         gid = _origin_group(parent, origin)
-        if gid is None:
-            continue
-        keys = _owed_keys(parent, plan.owed_by(gid), environment)
-        if not keys:
+        if gid is None or not (
+            keys := _owed_keys(parent, plan.owed_by(gid), environment)
+        ):
             continue
         concepts = _join_key_concepts(parents, environment, set(keys))
         # a gate that hid the key it was joined on still holds the column
