@@ -1601,9 +1601,15 @@ class BaseDialect:
         logger.debug(
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
-        if cte.group_to_grain and c.address in {
-            concept.address for concept in cte.rollup_concepts
-        }:
+        planned = (
+            next((r for r in cte.rollup_concepts if r.address == c.address), None)
+            if cte.group_to_grain
+            else None
+        )
+        if planned is not None:
+            # the planned rollup, not a stale spelling of it in a parent's
+            # lineage (`count_distinct(k)` read as the `count(k)` it became)
+            c = planned
             rolled = self.safe_get_cte_value(cte, c, raise_invalid)
             if not rolled:
                 rolled = INVALID_REFERENCE_STRING(

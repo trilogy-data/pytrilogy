@@ -3169,6 +3169,40 @@ class Factory:
             metadata=base.metadata,
         )
 
+    def _stored_filtered_parts(self, base: Concept) -> Concept:
+        """An `agg(x ? c)` some datasource stores `agg(x)` for, as the
+        re-aggregate of the partials `c` keeps (`filtered_parts`)."""
+        lineage = base.lineage
+        if (
+            self.select_grouping is not None
+            or not isinstance(lineage, AggregateWrapper)
+            or lineage.grouping != AggregateGroupingMode.STANDARD
+        ):
+            return base
+        from trilogy.core.filtered_parts import filtered_of_parts
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        grain = self._abstract_resolution_grain()
+        rewritten = filtered_of_parts(
+            lineage,
+            [] if grain.abstract else list(grain.component_order),
+            (
+                [c.address for c in self.select_where.concept_arguments]
+                if self.select_where
+                else []
+            ),
+            self.environment,
+        )
+        if rewritten is None:
+            return base
+        return arbitrary_to_concept(
+            rewritten,
+            environment=self.environment,
+            namespace=base.namespace,
+            name=base.name,
+            metadata=base.metadata,
+        )
+
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
             return None
@@ -3680,7 +3714,9 @@ class Factory:
                 self._env_writes.add(base.address)
             self.canonical_build_cache[canonical_key] = rval
             return rval
-        base = self._grain_pinned(self._stored_average_of_parts(base))
+        base = self._grain_pinned(
+            self._stored_filtered_parts(self._stored_average_of_parts(base))
+        )
         resolution_grain = (
             self._abstract_resolution_grain() if base.is_aggregate else self.grain
         )

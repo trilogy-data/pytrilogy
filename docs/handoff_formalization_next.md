@@ -23,8 +23,9 @@ under a membership, per-atom peels; area 1), and `Windows.lean` /
 `SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
 placement per engine, set operators; area 4), and `Scalars.lean`
 (0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
-`log`; area 3), and `Types.lean` (0.3.448: a declared type holds every
-value a persisted copy stores; area 3b).
+`log`; area 3), `Types.lean` (0.3.448: a declared type holds every
+value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
+(0.3.449: `agg(x ? c)` read from a stored `agg(x)`; area 1c).
 
 ## The recipe
 
@@ -191,6 +192,23 @@ value a persisted copy stores; area 3b).
     - A SQLite error from "user-defined function raised exception" is
       SQLAlchemy's Python `floor`, not SQLite's.
 
+14. **Lessons from the filtered-aggregate round (`Cover.lean`, 0.3.449).**
+    - Look for a rewrite into a shape the planner already serves before
+      teaching the planner a new one. `agg(x ? c)` is `reagg(case when c then
+      agg(x) by G, cols(c) end)`, and rule 7 already served that; the Factory
+      rewrite (`filtered_parts.py`, beside `average_parts.py`) is one small module
+      where a rollup-matcher change was a planner redesign.
+    - Gate a performance rewrite on every input that decides whether it pays.
+      The first version ignored the select's WHERE, and under `dbh > 10` it
+      scanned the trees twice; `test_finer_where_scans_the_rows_once` pins it.
+    - A strict xfail hides a crash as well as a miss. Hold every `OPEN` shape
+      to the tree rows' answer in its own test: a `KeyError` this round sat
+      behind one.
+    - Re-test a handoff's prediction rather than trust it. The cover handoff
+      said resolving `_summary_leaves` would answer per species; with the
+      nested walk also resolving it did not, over data built to break it
+      (two species sharing a display name).
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -306,8 +324,19 @@ a filter its grain does not determine. Open questions:
 ### 1c. Summary coverage (`Cover.lean` follow-ons)
 
 See `docs/handoff_summary_cover_next.md`: the approach, and the open items in
-order. It starts with a pre-existing wrong answer on main, a CASE over a
-per-bucket aggregate that fans out.
+order. Items 1 (filtered aggregates, now for `sum`/`min`/`max` too) and 2
+(totals under a finer WHERE) are done in 0.3.449. Leads from that round:
+- **`count_distinct(k ? c)`** still reads the rows: `distinct_key_counts`
+  turns it into `count(k ? c)` after the Factory has run, so the filtered
+  rewrite never sees it (`summary:local-native-share`). Doing the distinct
+  rewrite at the author level, before `_stored_filtered_parts`, would serve it.
+- **The statement's lineage is still stale** after `_reaggregate_partials`.
+  This round resolved the two walks that read it (`_nested_rollup_roots`,
+  `_summary_leaves`) and the rollup render; a rewrite of the statement's own
+  nested lineage would retire the class.
+- `siblings/scalar` under a WHERE on a stored column right-joins the summary
+  to the trees' distinct `(city, species, plant_year)`: right, but a scan the
+  summary makes unnecessary.
 
 ### 1b. Cheapest source (`Cost.lean` follow-ons)
 

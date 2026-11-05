@@ -58,15 +58,23 @@ Gotchas:
 - The statement's lineage objects go stale after `_reaggregate_partials`
   (query_processor.py) rewrites concepts in the environment. A walk
   that doesn't `resolve` through `environment.concepts` sees the old
-  lineage. That stale walk is currently what keeps the open K3 item below
-  safe, so don't "fix" it alone.
+  lineage. `_nested_rollup_roots`, `_summary_leaves` and the rollup render
+  resolve it since 0.3.449; resolving only `_summary_leaves` was what the
+  K3 warning here was about, and with all three no wrong rows were found.
 - Trilogy's `count(tree_id) by ecoregion_id` counts a list repeating an
   element once per repeat, while `by biome` dedupes. A summary path
   must match the tree plan, whatever it does.
 
 ## Open items, in order
 
-### 1. Rule 2, filtered counts (`summary:local-native-share`, `species:sp-biome-fit`)
+### 1. Rule 2, filtered counts (DONE in 0.3.449 but `count_distinct`; see below)
+
+Done: the Factory builds `agg(x ? c)` as `reagg(case when c then agg(x) by G,
+cols(c) end)` when a datasource stores `agg(x)` (`trilogy/core/filtered_parts.py`,
+`Cover.filtered_sum_exact` and siblings), held by
+`tests/discovery/test_filtered_rollup_laws.py`. `count_distinct(k ? c)` (the F2
+KPIs, `summary:local-native-share`) still reads the trees: `distinct_key_counts`
+runs after the Factory. `species:sp-biome-fit` is rule 6. The original notes:
 
 `count(x ? c)` with `c` a function of the key. `_is_rollable_aggregate` and
 the rollup signature reject a `BuildFilterItem` argument. The re-sum is
@@ -79,7 +87,12 @@ and a filtered count is 0 for an empty group where the rewrite is NULL.
 Once this lands, `count_distinct(k ? c)` follows through `distinct_key_counts`
 (the F2 KPIs).
 
-### 2. Rule 4 under a WHERE the target does not determine (`species:sp-top-species`)
+### 2. Rule 4 under a WHERE the target does not determine (DONE in 0.3.449)
+
+Done by resolving `_summary_leaves` through the environment, together with
+the nested walk in `_nested_rollup_roots`; no wrong rows over two species
+sharing a display name (`test_target_shared_by_two_keys`). Left:
+`siblings/scalar` under a WHERE on a stored column. The original notes:
 
 A WHERE finer than the target routes through `_plan_finer_filter_rollup`
 (one pinned summary scan). `_summary_leaves` sees the stale total

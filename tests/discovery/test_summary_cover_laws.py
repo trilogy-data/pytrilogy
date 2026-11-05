@@ -170,22 +170,18 @@ UNSERVABLE = {
     "finer_existence": "dbh",
 }
 
-FINER = ("city", "species", "property", "year")
-
 # Shapes a rule covers that the planner does not serve yet: each is a miss
 # (read from the trees with the right answer), never a wrong summary answer.
 # `(rule, shape) -> (reason, filters)`; no filters means every filter.
-FILTERED_COUNT = "rule 2: rollup matching takes no `x ? c` argument"
 PINNED_TOTAL = (
-    "rule 4: a WHERE the target does not determine pins one summary scan, "
-    "which plans a total beside a derived target as a dedup of partials"
+    "rule 4: under a WHERE on a stored column, a total beside a scalar of the "
+    "key right-joins the summary to the trees' distinct keys"
 )
 NO_EXISTENCE_PROOF = (
     "rule 5: a selection with no aggregate is sourced from its columns' "
     "bindings; the summary is not offered as proof of existence"
 )
 OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
-    **{("filtered", shape): (FILTERED_COUNT, None) for shape in FILTERED},
     ("distinct", "filtered_ratio"): (
         "rule 2: count_distinct(k ? c) is count(k ? c), a filtered count",
         None,
@@ -198,17 +194,7 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
         "rule 1: a scalar of a key under a WHERE on a stored column",
         ("year",),
     ),
-    **{
-        ("siblings", shape): (
-            PINNED_TOTAL,
-            filters,
-        )
-        for shape, filters in (
-            ("rename", ("city", "property", "year")),
-            ("scalar", FINER),
-            ("coalesce", FINER),
-        )
-    },
+    ("siblings", "scalar"): (PINNED_TOTAL, ("year",)),
     ("siblings", "total_only"): (
         "rule 4: a total alone beside a derived dimension is not rolled",
         None,
@@ -296,6 +282,38 @@ def test_total_beside_a_target(select: str, where: str):
     _assert_same_answer(_query(select, where), served=True)
 
 
+# Two species sharing a display name: a plan that groups the partials by
+# species, not by the target, answers one row per species.
+SHARED_NAMES = BASE.replace("['sugar maple']", "['red maple']").replace(
+    "['linden', 'lime']", "['red maple', 'lime']"
+)
+SHARED_TARGETS = {
+    "siblings": SIBLINGS["coalesce"],
+    "filtered": (
+        "coalesce(common_names[1], species) as d, "
+        "count(tree_id ? bucket = 'Native') as k, count(tree_id) by * as t"
+    ),
+    "sum": "common_names[1] as d, sum(count(tree_id) by species) as n",
+}
+
+
+@pytest.mark.parametrize(
+    "select,where",
+    [
+        pytest.param(select, where, id=f"{shape}-{key}")
+        for (shape, select), (key, where) in itertools.product(
+            SHARED_TARGETS.items(), FILTERS.items()
+        )
+    ],
+)
+def test_target_shared_by_two_keys(select: str, where: str):
+    query = _query(select, where)
+    _, without = _run(SHARED_NAMES, query)
+    sql, with_summary = _run(SHARED_NAMES + SUMMARY, query)
+    assert with_summary == without, sql
+    assert len({row[0] for row in without}) == len(without)
+
+
 @pytest.mark.parametrize("select,where", _cases("existence", EXISTENCE))
 def test_existence_reads_the_summary(select: str, where: str):
     _assert_same_answer(_query(select, where), served=True)
@@ -369,6 +387,31 @@ def test_scalar_of_an_aggregates_grain(select: str, where: str):
 )
 def test_tree_plan_answer(query: str, expected: list[tuple]):
     assert _run(BASE, query)[1] == expected
+
+
+SHAPES = {
+    "value": VALUE,
+    "filtered": FILTERED,
+    "distinct": DISTINCT,
+    "siblings": SIBLINGS,
+    "existence": EXISTENCE,
+    "relation": RELATION,
+    "over_aggregate": OVER_AGGREGATE,
+}
+
+
+@pytest.mark.parametrize(
+    "select,where",
+    [
+        pytest.param(SHAPES[rule][shape], FILTERS[where], id=f"{rule}-{shape}-{where}")
+        for (rule, shape), (_, filters) in OPEN.items()
+        for where in (filters or FILTERS)
+    ],
+)
+def test_open_shape_answers_as_the_trees(select: str, where: str):
+    """A shape the planner does not serve yet still answers right."""
+    query = _query(select, where)
+    assert _run(BASE + SUMMARY, query)[1] == _run(BASE, query)[1]
 
 
 @pytest.mark.parametrize("select,where", _cases("unservable", UNSERVABLE))

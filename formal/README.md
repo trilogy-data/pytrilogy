@@ -42,7 +42,7 @@ a design decision or a bug.
 | `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal, an identity GROUP BY, a matched outer join, an existence fold, a semi-join into an aggregate; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a FULL join beside a `~` subset; a row-level filter argument beside a gate; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`, `identity_group_exact`, `merged_group_sum_exact`, `matched_left_is_inner`, `existence_fold_exact`, `semi_join_exact`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not; a FULL to a `~` side whose rows all match is the LEFT join (`subset_full_is_left`), and a proof on the key forces no `~` lookup (`key_proof_keeps_lookup_gap`); a row-level argument joins on the key its row determines (`keyed_arg_exact`) (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
-| `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py`) |
+| `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, and `sum`/`min`/`max(x ? c)` the re-aggregate of `agg(x) by G, cols(c)` over them (`filtered_sum_exact`, `filtered_min_exact`, `filtered_max_exact`), which needs the count's `coalesce` (`uncoalesced_case_count_null`) and the condition's columns in the partial's key (`partial_off_condition_misreads`), `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, and re-summing relation pairs double counts (checked by `tests/discovery/test_summary_cover_laws.py` and `tests/discovery/test_filtered_rollup_laws.py`) |
 | `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, and the rendering places NULLs as asked on every engine (checked by `tests/windows/test_window_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
 | `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
 | `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB and SQLite, `tests/dialect/test_scalar_law_renderings.py`, and chdb) |
@@ -739,6 +739,36 @@ a design decision or a bug.
   DuckDB's `date_trunc` to a day or coarser returned a timestamp for a
   DATE-typed concept and now returns a date. 49 of the 141 law cases fail on
   main.
+
+- **A filtered aggregate never read a summary** (`Cover.lean` §2, extended).
+  `count(x ? c)`, `sum`, `min` and `max` of `x ? c` always read the rows, since
+  rollup matching takes no `x ? c` argument. The Factory now builds `agg(x ? c)`
+  as `reagg(case when c then agg(x) by G, cols(c) end)` (`coalesce(.., 0)` for a
+  count) when a datasource stores `agg(x)` and reaches the grain, the
+  condition's columns and the select's WHERE (`trilogy/core/filtered_parts.py`):
+  a row condition is a function of its own columns, so the partial at
+  `G, cols(c)` is a summary the condition is a key predicate of
+  (`filtered_sum_exact`, `filtered_min_exact`, `filtered_max_exact`,
+  `case_count_exact`). Under a WHERE no summary reaches it is left alone, and
+  stays one pass over the rows. Serving it exposed three planner bugs. A
+  nested partial grouped by a stored derived column (`count(x) by species,
+  plant_year` against a stored `year(plant_date)`) rebuilt that column from
+  the facts and joined it back onto the summary. Two walks read the
+  statement's stale lineage after `_reaggregate_partials` had rewritten it
+  (`count(x)` read as the `sum(count(x) by k)` it became): `_nested_rollup_roots`
+  marked the old aggregate a summary root while the render used the new one,
+  and `_summary_leaves` saw the old one's row columns and declined the summary.
+  Resolving the second also serves the rule-4 totals beside a rename, a scalar
+  or a `coalesce` of the key under a finer WHERE (the dashboard's
+  `species:sp-top-species`), with no wrong answers, including over two species
+  sharing a display name (`test_target_shared_by_two_keys`). The render of a
+  rolled-up concept now takes the planned rollup, not a parent's stale
+  spelling of it: `count_distinct(k ? c) / count_distinct(k)` raised a
+  `KeyError` once the nested walk resolved. `test_filtered_rollup_laws.py`
+  (1,260 cases over seeded random trees with NULLs): 1,200 of 1,200 read the
+  trees on main, 0 wrong; now all read the summary. The cover suite's 225
+  coverable cases: 102 miss on main, 47 now, none wrong, none raise; every
+  open shape is now also held to the tree rows' answer.
 
 ## Limits
 
