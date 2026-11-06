@@ -981,12 +981,26 @@ are wrong the same way before and after, because the `1=1` the xfail names is
 in an earlier CTE. Corpus: 0 of 209 plans moved. Benchmark growth check
 clean.
 
+**A folded parent's groups ride its survivor (part 29).** Part 28 read the
+plan per pair only when no parent had been folded away: `deduplicate_nodes`
+drops a parent another binds completely, and nothing said which survivor
+stood for the dropped parent's groups, so the whole merge fell back to
+`permitted_keys`. `deduplicate_nodes` now names the survivor of each fold
+(followed through chained folds by `deduplicate_nodes_and_joins`), and
+`_credit_folded` adds the dropped parent's groups to it; an unattributed
+parent on either side still makes the survivor unattributed. The survivor
+binds every column the dropped parent exposed, so the pairings planned on
+the dropped parent's groups are keys it holds. Over the suite, 884 merges
+folded a parent and 209 of those were planned merges that reached join
+ordering; per pair, none of the 209 cut a key the merge-wide set allowed.
+Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
-   joins; `node_joins` are not built from the pairings, and a merge that folds
-   a redundant parent falls back to the merge-wide keys.
+   joins; `node_joins` are not built from the pairings. A pair with an
+   unattributed parent still reads the merge-wide keys.
 2. `GroupInputContract.preserve_keys` is still the union of five sets.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
