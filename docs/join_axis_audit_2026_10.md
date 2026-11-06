@@ -277,8 +277,8 @@ for every v4 merge whose sides are groups:
   (`final_cover.unrendered`);
 - every per-group merge (`_pre_merge_parents`), over the consumer's row
   parents, with the consumer's input contract `preserve_keys` as each side's
-  carry demand. A merge assembled below the consumer (no group behind a side)
-  still discovers its keys at resolve.
+  carry demand. A side that is itself a merge assembled below the consumer
+  stands for the groups it joins, and the merge pairs only across sides.
 
 The MergeNode carries the plan's `permitted_keys`, and `get_node_joins` drops
 every shared column off it before ordering and typing joins. Join typing,
@@ -918,18 +918,37 @@ pairs with), which a per-group plan cannot name. Corpus: 0 of 205 plans moved, a
 0 of 133 TPC-DS/TPC-H plans moved. The full-suite SQL capture moved no plan.
 Fuzzer 522/522.
 
+**A side merged below stands for its groups (part 26).** The 20 merges
+part 25 left without a plan are the aggregate-over-a-region path: the solid
+row parents merge first (an aggregate beside a window, a rowset beside the
+scan it pairs with), and that merge is one side of the merge with the domain.
+A side is now the set of planned groups whose rows it holds
+(`side_members`: its own group, or every group a merge below it joins). The
+plan is computed over those groups, and the merge reads it with
+`JoinPlan.across`, which keeps only pairings between two sides: the pairings
+inside a side were joined below it. Such a side elects no bridge, for the same
+reason. A merged side owes the keys its groups pair on across sides. Over the
+suite, every merge built with planner context now has a plan. In all 20 the
+merged side pairs with the domain on the span (`customer_id`, `ticket`,
+`product_id`/`user_id`), as a LOOKUP. With no planner context left to serve,
+the unplanned widening (`_widen_merge_join_keys`,
+`_unprojected_expression_mates`) is removed. The only call left without a plan
+is a unit test of `_pre_merge_parents` given no planner context, and that merge
+now widens no parent. Corpus: 0 of 205 plans moved. The full-suite SQL capture
+moved no plan: once tmp paths and CTE names are normalized, every remaining
+difference also moves between two runs of the same tree (the families above,
+plus temp-table hashes and script order). Fuzzer 522/522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The gate and condition merges carry planned asks, but not their
    pairings: the MergeNode a condition is hosted on still discovers its keys
    at resolve.
-2. A merge with a side that merges several planned groups returns no plan,
-   so resolve still finds its keys (20 merges over the suite).
-3. The MergeNode is given `permitted_keys`, not `node_joins` built from the
+2. The MergeNode is given `permitted_keys`, not `node_joins` built from the
    pairings.
-4. `GroupInputContract.preserve_keys` is still the union of five sets.
-5. The regraft functions still rewrite the group graph instead of picking a
+3. `GroupInputContract.preserve_keys` is still the union of five sets.
+4. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
 ## 8. Not claimed
