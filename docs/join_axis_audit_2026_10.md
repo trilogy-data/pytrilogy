@@ -939,16 +939,56 @@ moved no plan: once tmp paths and CTE names are normalized, every remaining
 difference also moves between two runs of the same tree (the families above,
 plus temp-table hashes and script order). Fuzzer 522/522.
 
+**A condition merge pairs on its plan (part 27).** The merge
+`_apply_final_conditions` builds to host a FINAL-deferred WHERE beside its
+filter arguments' producers computed a join plan, but only to carry the
+asks; the MergeNode itself discovered its keys at resolve. It now receives the
+plan's `permitted_keys` across its sides (`_planned_keys_across`), as the FINAL
+and per-group merges do. Enforcing the plan exposed one identity the plan
+lacked: a pinned value (`grain_pin`) is evaluated on the select's rows, keyed
+by its anchors, but its group's identity fell back to the keys its expression
+is a function of. `select latitude where city = 'A' and bucket = 'Other'`
+paired the row stream with the pinned `bucket` on `ecoregion_id`, a column
+the row side never holds, and resolve went keyless. Stage 2 already knew the
+anchors (`group_graph`'s `pin_anchors`, the columns a pinned group exposes);
+they are now on `GroupAttrs.grain_pin_anchors`, and `row_identity` adds them.
+Corpus: 0 of 205 plans moved.
+
+**Two sides pair on their own pairing (part 28).** `permitted_keys` is one
+set for the whole merge, so resolve could pair two sides on a key the plan
+pairs only between two *other* sides: with A–B planned on `k` and B–C on `k`,
+A–C on `k` passed the filter. Every planned MergeNode (FINAL, per-group,
+condition host) now also receives `PlannedPairs`, the groups each parent
+holds and `JoinPlan.pair_keys()` (each pairing's keys and implied columns, by
+group pair). `MergeNode._resolve` maps that onto the sources it joins
+(`_planned_source_pairs`), and `resolve_join_order_v2` narrows each pair's
+connecting keys to that pair's own (`JoinFacts.pair_keys`). A side that shares
+the pivot only with sides the plan does not pair it with waits for a planned
+partner under the same pivot, so it is not joined on nothing. A pair with a
+parent no planned group stands behind (an unattributed bridge or filter feeder)
+keeps the merge-wide `permitted_keys`. So does the whole merge when resolve
+folds a parent away as redundant, because no survivor is credited with that
+parent's groups (5 of 215 planned merges over the corpus).
+Over the suite, 18,010 planned merges reached join ordering, and the per-pair
+restriction cut a key in 10 of them outside the new unit tests. 8 are the
+tree_reporting city builds (USSTO, USSFO), where a `*_source` key the plan
+pairs elsewhere is cut and the emitted SQL is unchanged. One is
+`test_misgrained_broadcast_is_loud_not_silent`, which still raises as asserted.
+One is `test_list_aggregate_beside_second_species_source`, a strict xfail
+whose final merge now pairs the aggregate with the unnest on `species`, as the
+plan says, instead of FULL-joining the dimension on `species` too. Its rows
+are wrong the same way before and after, because the `1=1` the xfail names is
+in an earlier CTE. Corpus: 0 of 209 plans moved. Benchmark growth check
+clean.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
-1. The gate and condition merges carry planned asks, but not their
-   pairings: the MergeNode a condition is hosted on still discovers its keys
-   at resolve.
-2. The MergeNode is given `permitted_keys`, not `node_joins` built from the
-   pairings.
-3. `GroupInputContract.preserve_keys` is still the union of five sets.
-4. The regraft functions still rewrite the group graph instead of picking a
+1. The MergeNode is given its keys pair by pair, but resolve still orders the
+   joins; `node_joins` are not built from the pairings, and a merge that folds
+   a redundant parent falls back to the merge-wide keys.
+2. `GroupInputContract.preserve_keys` is still the union of five sets.
+3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
 ## 8. Not claimed

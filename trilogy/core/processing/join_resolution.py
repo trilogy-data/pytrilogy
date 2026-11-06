@@ -130,6 +130,26 @@ def get_connection_keys(
 
 
 @dataclass(frozen=True)
+class PlannedPairs:
+    """A merge's join plan, pair by pair of its parents."""
+
+    # id of each planned parent -> the planned groups whose rows it holds
+    sides: Mapping[int, frozenset[str]]
+    # two groups (one, for a group split into projections) -> what they may
+    # pair on
+    keys: Mapping[frozenset[str], frozenset[str]]
+
+    def between(self, left: frozenset[str], right: frozenset[str]) -> frozenset[str]:
+        return frozenset().union(
+            *(
+                self.keys.get(frozenset({a, b}), frozenset())
+                for a in left
+                for b in right
+            )
+        )
+
+
+@dataclass(frozen=True)
 class SideFacts:
     """What a merge knows about ONE of its sides, in the merge's node spelling.
 
@@ -194,6 +214,8 @@ class JoinFacts:
     demanded_domains: frozenset[str] = frozenset()
     # an arm key of a merged attribute -> the attribute it reaches
     span_families: Mapping[str, str] = field(default_factory=dict)
+    # two sides the join plan states -> the only keys they may pair on
+    pair_keys: Mapping[frozenset[str], frozenset[str]] = field(default_factory=dict)
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -775,6 +797,9 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     for i, ds1 in enumerate(datasources):
         for ds2 in datasources[i + 1 :]:
             connecting_concepts = find_all_connecting_concepts(g, ds1, ds2)
+            planned = facts.pair_keys.get(frozenset({ds1, ds2}))
+            if planned is not None:
+                connecting_concepts &= planned
             if connecting_concepts:
                 all_connections[(min(ds1, ds2), max(ds1, ds2))] = connecting_concepts
 
@@ -846,6 +871,7 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
         to_join = sorted(
             [x for x in pivot_map[root] if x not in eligible_left], key=score_key
         )
+        deferred: set[str] = set()
         while to_join:
             base = sorted([x for x in eligible_left], key=score_key)
             if not base:
@@ -897,6 +923,21 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
 
+            # paired with nothing joined yet, but with a side still to join
+            # under this pivot: wait for it instead of joining on nothing
+            if (
+                not joinkeys
+                and not deduped
+                and right not in deferred
+                and any(
+                    get_connection_keys(all_connections, other, right)
+                    for other in to_join
+                )
+            ):
+                deferred.add(right)
+                to_join.insert(0, right)
+                continue
+            deferred.clear()
             output.append(
                 JoinOrderOutput(
                     right=right,
@@ -1952,6 +1993,31 @@ def _drop_unplanned_keys(
     graph.remove_nodes_from(unplanned)
 
 
+def _planned_pair_nodes(
+    graph: nx.Graph,
+    planned_pairs: Mapping[frozenset[str], frozenset[str]],
+    environment: BuildEnvironment,
+) -> dict[frozenset[str], frozenset[str]]:
+    """`planned_pairs` (datasource identifiers -> addresses) as the graph's
+    datasource and concept nodes: a pair may share only the planned classes."""
+    concepts = [
+        node for node in graph.nodes() if graph.nodes[node]["type"] == NodeType.CONCEPT
+    ]
+    roots = environment.address_roots(
+        {node.removeprefix("c~") for node in concepts}
+        | frozenset().union(*planned_pairs.values())
+    )
+    out: dict[frozenset[str], frozenset[str]] = {}
+    for pair, keys in planned_pairs.items():
+        planned = {roots.get(address, address) for address in keys}
+        out[frozenset(f"ds~{identifier}" for identifier in pair)] = frozenset(
+            node
+            for node in concepts
+            if roots.get(node.removeprefix("c~"), node.removeprefix("c~")) in planned
+        )
+    return out
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -1960,11 +2026,15 @@ def get_node_joins(
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
     planned_keys: frozenset[str] | None = None,
+    planned_pairs: Mapping[frozenset[str], frozenset[str]] | None = None,
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
     rowset body pads them under and its region partition. `planned_keys`, when
     given, are the only value classes the sides may pair on: the planner's
-    join plan stated them, and a column two sides merely share is not a key."""
+    join plan stated them, and a column two sides merely share is not a key.
+    `planned_pairs` narrows that per pair of sides (by datasource identifier):
+    two sides pair only on what the plan pairs them on, so a key another pair
+    is planned on is no key between these two."""
     keyspace = keyspace or Keyspace()
     from trilogy.core import graph as nx
 
@@ -2152,6 +2222,11 @@ def get_node_joins(
         ),
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
         span_families=span_families,
+        pair_keys=(
+            _planned_pair_nodes(graph, planned_pairs, environment)
+            if planned_pairs
+            else {}
+        ),
     )
     joins = resolve_join_order_v2(graph, facts)
     paddings = _merge_paddings(joins, facts)
