@@ -126,3 +126,22 @@ def test_a_side_merged_below_pairs_only_across_sides():
     assert plan.over(["a", "b", "d"]).join_keys == {"ab", "ad", "bd"}
     split = plan.across([frozenset({"a", "b"}), frozenset({"b", "d"})])
     assert ("b", "b") in {(p.left, p.right) for p in split.pairings}
+
+
+class _Side:
+    parents: tuple = ()
+
+
+def test_planned_keys_need_every_side_planned():
+    plan = JoinPlan(
+        contributors=("a", "b"),
+        pins={},
+        identity={},
+        carry_demands={},
+        pairings=(Pairing("a", "b", frozenset({"k"}), PairingKind.LOOKUP),),
+        carries={"a": frozenset(), "b": frozenset()},
+    )
+    a, b = _Side(), _Side()
+    origin = {id(a): "a", id(b): "b"}
+    assert strategy_builder._planned_keys_across([a, b], origin, plan) == {"k"}
+    assert strategy_builder._planned_keys_across([a, _Side()], origin, plan) is None
