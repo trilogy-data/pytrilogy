@@ -333,8 +333,15 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
     """`copy()` shallow-shares `parents`; this recursively copies the whole
     subtree so the result shares no node object with the original tree."""
     clone = node.copy()
-    clone.parents = [_deep_copy_node(p) for p in node.parents]
+    _replace_parents(clone, [_deep_copy_node(p) for p in node.parents])
     return clone
+
+
+def _replace_parents(node: StrategyNode, parents: list[StrategyNode]) -> None:
+    if isinstance(node, MergeNode):
+        node.replace_parents(parents)
+    else:
+        node.parents = parents
 
 
 class _CleanFeederCache:
@@ -1836,13 +1843,9 @@ def _elide_passthrough_tree(
     if node_id in seen:
         return seen[node_id]
     original = node.parents
-    node.parents = [_elide_passthrough_tree(parent, seen) for parent in original]
-    # a merge's authored joins name its parents; they follow the collapse
-    if isinstance(node, MergeNode) and node.node_joins:
-        swap = {id(old): new for old, new in zip(original, node.parents)}
-        node.node_joins = [
-            join.bind(lambda n: swap.get(id(n), n)) for join in node.node_joins
-        ]
+    _replace_parents(
+        node, [_elide_passthrough_tree(parent, seen) for parent in original]
+    )
     # a resolution stays valid while every parent is the same, still-resolved node
     if any(
         new is not old or new.resolution_cache is None
@@ -3156,7 +3159,10 @@ def _pads_a_value_null_group(
 
 
 def _pair_inside_padding_streams(
-    parents: list[StrategyNode], environment: BuildEnvironment
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    origin: dict[int, str] | None = None,
+    plan: JoinPlan | None = None,
 ) -> list[StrategyNode]:
     """A grouping contributor holding no region pairs with a stream that
     padded one inside its own merge, there and not at FINAL.
@@ -3212,6 +3218,7 @@ def _pair_inside_padding_streams(
             )
             if not in_merge:
                 merge.add_parents([other])
+                _plan_moved_contributor(merge, other, stream, origin, plan)
                 merge.input_concepts = unique(merge.input_concepts + carried, "address")
                 merge.add_output_concepts(carried, rebuild=False)
             for node in reversed(path[:-1]):
@@ -3221,6 +3228,30 @@ def _pair_inside_padding_streams(
                 node.rebuild_cache()
             out.remove(other)
     return out
+
+
+def _plan_moved_contributor(
+    merge: StrategyNode,
+    other: StrategyNode,
+    stream: StrategyNode,
+    origin: dict[int, str] | None,
+    plan: JoinPlan | None,
+) -> None:
+    """A FINAL contributor moved into `stream`'s merge pairs with the rows
+    there as the FINAL plan pairs it with `stream`."""
+    if (
+        not isinstance(merge, MergeNode)
+        or merge.planned_pairs is None
+        or origin is None
+        or plan is None
+    ):
+        return
+    mine = side_members(other, origin)
+    theirs = side_members(stream, origin)
+    if mine is None or theirs is None:
+        return
+    keys = PlannedPairs({}, plan.pair_keys()).between(mine, theirs)
+    merge.planned_pairs = merge.planned_pairs.joined(id(other), mine, keys)
 
 
 def _raise_if_rowset_islanded(
@@ -6141,7 +6172,7 @@ def _assemble_final_node(
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
         environment,
     )
-    parents = _pair_inside_padding_streams(parents, environment)
+    parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()

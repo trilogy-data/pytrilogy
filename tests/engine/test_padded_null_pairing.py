@@ -14,6 +14,7 @@ from decimal import Decimal as D
 import pytest
 
 from tests.helpers.models import LINE_ITEMS
+from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from tests.helpers.rows import ExecutorCache, executor_for, sorted_rows
 from trilogy import Dialects
 
@@ -636,3 +637,14 @@ def test_a_where_on_a_partial_column_keeps_rows_another_side_supplies(
     model: str, query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(model), query) == expected
+
+
+def test_contributor_paired_inside_a_padding_stream_keeps_its_plan(monkeypatch):
+    stated = record_planned_sides(monkeypatch)
+    rows = sorted_rows(
+        _executor(TWO_REGIONS),
+        "select customer_id, bucket, sum(target) by bucket as t"
+        " where coalesce(sum(target) by bucket, 0) = 0",
+    )
+    assert rows == [(3, None, None)]
+    assert every_side_planned(stated)
