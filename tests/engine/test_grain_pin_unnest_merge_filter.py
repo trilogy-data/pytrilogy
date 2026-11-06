@@ -120,10 +120,8 @@ def test_condition_merge_pairs_the_pin_on_its_plan(monkeypatch):
     (plan, kwargs), *_ = planned
     pin = next(gid for gid in plan.contributors if ":pin:local.tree_id" in gid)
     assert "local.tree_id" in plan.identity[pin]
-    keys = kwargs["planned_keys"]
-    assert "local.tree_id" in keys
-    host = next(host for host in hosts if host.planned_keys == keys)
-    assert host.planned_pairs is kwargs["planned_pairs"]
+    host = next(host for host in hosts if host.planned_pairs is kwargs["planned_pairs"])
+    assert "local.tree_id" in host.planned_pairs.permitted
     row_side = next(
         side for side in host.planned_pairs.sides.values() if pin not in side
     )

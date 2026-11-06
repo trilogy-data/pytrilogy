@@ -995,12 +995,29 @@ folded a parent and 209 of those were planned merges that reached join
 ordering; per pair, none of the 209 cut a key the merge-wide set allowed.
 Corpus: 0 of 205 plans moved.
 
+**A merge carries one plan (part 30).** A planned MergeNode was handed the
+plan twice: `planned_keys` (the plan's `permitted_keys`) and `PlannedPairs`
+(its `pair_keys()`), from the same `JoinPlan` at each of the three call sites.
+The first is the union of the second's values, so the node now takes only
+`PlannedPairs`, and `PlannedPairs.permitted` is what `get_node_joins` drops
+every other shared column on. The per-pair map `_planned_source_pairs` hands
+resolve is now total: a pair with an unattributed parent is stated with the
+merge-wide keys instead of being left out. That is the same restriction as
+before, since `_drop_unplanned_keys` already took every unplanned column out of
+the graph, but resolve no longer reads two shapes of the plan. A probe over
+`tests/modeling`, `tests/complex`, `tests/discovery` and `tests/engine`, cut
+short after 4,519 planned merges, found one unattributed parent:
+`test_membership_in_having_auto_concept_renders_valid_subselect`, a
+GroupNode over a FilterNode over a merge, which `side_members` reads through
+only for a bare merge. Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an
-   unattributed parent still reads the merge-wide keys.
+   unattributed parent is stated with the merge-wide keys (one in the part 30
+   probe, a wrap over a merge).
 2. `GroupInputContract.preserve_keys` is still the union of five sets.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.

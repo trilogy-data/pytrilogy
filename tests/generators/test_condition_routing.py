@@ -769,3 +769,20 @@ def test_survivor_pairs_on_its_folded_groups_keys():
     pairs = _planned_source_pairs(sources, held, planned)
     assert pairs is not None
     assert pairs == {frozenset({"b", "c"}): frozenset({"k", "x"})}
+
+
+def test_unattributed_pair_reads_every_key_the_merge_may_pair_on():
+    planned = PlannedPairs(
+        {},
+        {
+            frozenset({"g1", "g2"}): frozenset({"k"}),
+            frozenset({"g2"}): frozenset({"m"}),
+        },
+    )
+    sources = {key: SimpleNamespace(identifier=key) for key in ("a", "b", "c")}
+    held = {"a": frozenset({"g1"}), "b": frozenset({"g2"}), "c": None}
+    assert _planned_source_pairs(sources, held, planned) == {
+        frozenset({"a", "b"}): frozenset({"k"}),
+        frozenset({"a", "c"}): frozenset({"k", "m"}),
+        frozenset({"b", "c"}): frozenset({"k", "m"}),
+    }

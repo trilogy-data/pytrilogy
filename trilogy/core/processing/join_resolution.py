@@ -139,6 +139,11 @@ class PlannedPairs:
     # pair on
     keys: Mapping[frozenset[str], frozenset[str]]
 
+    @property
+    def permitted(self) -> frozenset[str]:
+        """Everything the merge may pair on, across all of its sides."""
+        return frozenset().union(*self.keys.values())
+
     def between(self, left: frozenset[str], right: frozenset[str]) -> frozenset[str]:
         return frozenset().union(
             *(
