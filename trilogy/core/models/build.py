@@ -1212,11 +1212,11 @@ def aggregate_filter(
     (`Cover.filtered`), so discovery reads either as the pair."""
     if isinstance(argument, BuildConcept):
         lineage = argument.lineage
-        if isinstance(lineage, BuildFilterItem):
-            if isinstance(lineage.content, BuildConcept):
-                return lineage.content, lineage.where
-            return None
-        return aggregate_filter(lineage) if isinstance(lineage, BuildFunction) else None
+        if isinstance(lineage, BuildFilterItem) and isinstance(
+            lineage.content, BuildConcept
+        ):
+            return lineage.content, lineage.where
+        argument = lineage
     if not (
         isinstance(argument, BuildFunction) and argument.operator == FunctionType.CASE
     ):

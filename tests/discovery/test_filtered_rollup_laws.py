@@ -313,3 +313,41 @@ def test_stored_filtered_aggregate_is_read_as_stored(
         _rows(_trees(seed)), aggregate, "property", target, where
     ), sql
     assert '"stored_native"' in sql and '"trees"' not in sql, sql
+
+
+# CASE shapes that are not `x ? c`: a non-NULL else, two branches, a computed
+# value. None is the stored partial's argument, so each reads the trees.
+NOT_FILTERS = {
+    "else_zero": "sum(case when bucket = 'Native' then dbh else 0 end)",
+    "two_whens": (
+        "count(case when bucket = 'Native' then tree_id "
+        "when plant_year > 2005 then tree_id end)"
+    ),
+    "computed": "sum(case when bucket = 'Native' then dbh * 2 end)",
+}
+
+
+@pytest.mark.parametrize("shape", NOT_FILTERS)
+def test_other_case_shapes_read_the_rows(executors, shape):
+    seed = SEEDS[0]
+    sql, rows = _sql_and_rows(
+        executors[seed], f"select city, {NOT_FILTERS[shape]} as v;"
+    )
+    keep = {
+        "else_zero": lambda r: (r["dbh"] or 0) if r["bucket"] == "Native" else 0,
+        "two_whens": lambda r: (
+            r["tree_id"]
+            if r["bucket"] == "Native" or _gt(r["plant_year"], 2005)
+            else None
+        ),
+        "computed": lambda r: (
+            r["dbh"] * 2 if r["bucket"] == "Native" and r["dbh"] is not None else None
+        ),
+    }[shape]
+    reduce = _count if shape == "two_whens" else _sum
+    groups: dict[str, list] = {}
+    for r in _rows(_trees(seed)):
+        groups.setdefault(r["city"], []).append(keep(r))
+    expected = sorted(((k, reduce(v)) for k, v in groups.items()), key=repr)
+    assert rows == expected, sql
+    assert '"trees"' in sql, sql
