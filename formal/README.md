@@ -855,7 +855,8 @@ a design decision or a bug.
   random repeated, empty and NULL lists; three spellings, six shapes, four
   filters) answers as the trees everywhere; on main its 170 servable cases
   read the trees. A table storing the count by `ecoregion_id` itself is read
-  as stored, with no relation join. The cover suite's `relation/*` shapes are served with no
+  as stored, with no relation join; on main 9 of its 10 cases disagree with
+  the trees, whose plan double counted a repeated element. The cover suite's `relation/*` shapes are served with no
   WHERE. Under a WHERE they still read the trees, correctly: the group graph
   filters the list's parent rows, not a rolled root.
 

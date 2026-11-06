@@ -51,11 +51,21 @@ value the summary key relates to; area 1c).
    docstring names the Lean file. Generate random data with seeded `random`,
    compute the reference in Python with the same definitions as the Lean
    model, and assert per row.
-4. **A/B against main.** Copy `trilogy/` to the scratchpad, overwrite each file
-   in `git diff --name-only origin/main -- trilogy` with `git show origin/main:<f>`,
-   and run the suite from the scratchpad with `PYTHONPATH=<copy>` (the cwd must
-   be outside the repo). Report "N of M fail on main" in the PR. Never use
-   `git stash` or `git checkout`: parallel agents share the tree.
+4. **A/B against main.** Extract main's package to the scratchpad and run the
+   branch's suite against it from there (the native parser lives in
+   site-packages, so the copy needs nothing else):
+
+   ```bash
+   git archive origin/main trilogy | tar -x -C <scratch>
+   cd <scratch> && PYTHONPATH=<scratch> <repo>/.venv/bin/python -m pytest \
+     --import-mode=append <repo>/tests/<area>/test_<area>_laws.py -q
+   ```
+
+   `--import-mode=append` is required: `tests/` is a package, so pytest's
+   default mode prepends the repo root to `sys.path` and the branch's
+   `trilogy/` silently wins over `PYTHONPATH` (lesson 16). Check once with a
+   test that prints `trilogy.__file__`. Report "N of M fail on main" in the PR.
+   Never use `git stash` or `git checkout`: parallel agents share the tree.
 5. **Fix, then document.** Add a row to the module table in `formal/README.md`
    and a bullet under "What it found" that cites the theorems. Bump
    `trilogy/__init__.py`. Run `ruff check . --fix`, `black .` and
@@ -241,11 +251,12 @@ value the summary key relates to; area 1c).
       as an axis, not as a sample.
 
 16. **Lessons from the relation round (`Cover.lean` §6, 0.3.454).**
-    - The A/B recipe's `PYTHONPATH=<copy>` loses to pytest's rootdir insertion:
+    - The A/B recipe's `PYTHONPATH=<copy>` lost to pytest's rootdir insertion:
       `tests/` is a package, so pytest prepends the repo and the branch's
-      `trilogy/` is imported. Pass `--import-mode=append` (and check
-      `trilogy.__file__` from a test once). The first A/B of this round showed
-      0 failures on main for that reason.
+      `trilogy/` is imported. The first A/B of this round showed 0 failures on
+      main for that reason; step 4 now passes `--import-mode=append`. A/B
+      numbers in earlier rounds' PRs that were run through pytest the old way
+      may have compared the branch to itself.
     - Before serving a shape from a summary, check the tree plan against the
       model's own invariant (a group's answer is the answer filtered to it).
       `select ecoregion_id, count(tree_id)` disagreed with its `where
