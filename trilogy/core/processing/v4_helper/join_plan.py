@@ -137,6 +137,15 @@ class JoinPlan:
         """Everything resolve may equate: the keys and what they imply."""
         return self.join_keys | frozenset().union(*(p.implied for p in self.pairings))
 
+    def pair_keys(self) -> dict[frozenset[str], frozenset[str]]:
+        """What resolve may equate between each two contributors (one, for a
+        contributor split into projections that pair with each other)."""
+        out: dict[frozenset[str], frozenset[str]] = {}
+        for p in self.pairings:
+            pair = frozenset({p.left, p.right})
+            out[pair] = out.get(pair, frozenset()) | p.keys | p.implied
+        return out
+
     def keys_for(self, gid: str) -> frozenset[str]:
         """The keys `gid`'s own side of its pairings holds. A side of a
         `subset` relation carries its member, never its mate's (two rowsets

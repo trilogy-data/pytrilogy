@@ -77,7 +77,9 @@ def pytest_configure(config) -> None:
         if planned is None or len(datasources) < 2:
             return resolved(datasources, *a, **k)
         # what resolve picks unrestricted, beside what the plan states
-        shadow = resolved(datasources, *a, **{**k, "planned_keys": None})
+        shadow = resolved(
+            datasources, *a, **{**k, "planned_keys": None, "planned_pairs": None}
+        )
         environment = k["environment"]
         node = jc.CURRENT_MERGE[-1] if jc.CURRENT_MERGE else None
         plan, pairings = plans.get(id(node), (None, None))

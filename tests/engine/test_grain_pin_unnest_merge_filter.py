@@ -92,8 +92,8 @@ def test_pinned_filter_joins_the_select_rows(query: str, expected: list[tuple]):
 
 
 def test_condition_merge_pairs_the_pin_on_its_plan(monkeypatch):
-    planned: list[tuple[JoinPlan, frozenset[str] | None]] = []
-    across = strategy_builder._planned_keys_across
+    planned: list[tuple[JoinPlan, dict]] = []
+    across = strategy_builder._planned_across
 
     def capture(parents, origin, plan):
         keys = across(parents, origin, plan)
@@ -109,7 +109,7 @@ def test_condition_merge_pairs_the_pin_on_its_plan(monkeypatch):
             hosts.append(node)
         return node
 
-    monkeypatch.setattr(strategy_builder, "_planned_keys_across", capture)
+    monkeypatch.setattr(strategy_builder, "_planned_across", capture)
     monkeypatch.setattr(strategy_builder, "inject_condition_at_node", capture_host)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(MODEL)
@@ -117,11 +117,17 @@ def test_condition_merge_pairs_the_pin_on_its_plan(monkeypatch):
         "select latitude where city = 'A' and bucket = 'Other' order by latitude;"
     )[-1].fetchall()
     assert [tuple(r) for r in rows] == [(3.0,)]
-    (plan, keys), *_ = planned
+    (plan, kwargs), *_ = planned
     pin = next(gid for gid in plan.contributors if ":pin:local.tree_id" in gid)
     assert "local.tree_id" in plan.identity[pin]
-    assert keys is not None and "local.tree_id" in keys
-    assert any(host.planned_keys == keys for host in hosts)
+    keys = kwargs["planned_keys"]
+    assert "local.tree_id" in keys
+    host = next(host for host in hosts if host.planned_keys == keys)
+    assert host.planned_pairs is kwargs["planned_pairs"]
+    row_side = next(
+        side for side in host.planned_pairs.sides.values() if pin not in side
+    )
+    assert "local.tree_id" in host.planned_pairs.between(row_side, frozenset({pin}))
 
 
 @pytest.mark.parametrize(
