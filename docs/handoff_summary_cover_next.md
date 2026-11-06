@@ -61,7 +61,7 @@ Gotchas:
   lineage. `_nested_rollup_roots`, `_summary_leaves` and the rollup render
   resolve it since 0.3.450; resolving only `_summary_leaves` was what the
   K3 warning here was about, and with all three no wrong rows were found.
-- Before 0.3.454, `count(tree_id) by ecoregion_id` counted a list repeating
+- Before 0.3.455, `count(tree_id) by ecoregion_id` counted a list repeating
   an element once per repeat, while `by biome` deduped. That was a bug (the
   group disagreed with its own WHERE); both dedupe now.
 
@@ -112,7 +112,7 @@ summary is never offered as proof that a key value exists in the filtered
 rows (`Cover.exists_by_value`). This is source selection: `source_planning.py`
 and `test_cheapest_source_laws.py`.
 
-### 4. Rule 6, relations keyed on the grain (DONE in 0.3.454 with no WHERE)
+### 4. Rule 6, relations keyed on the grain (DONE in 0.3.455 with no WHERE)
 
 Done: `_plan_relation_rollup` joins the summary to the DISTINCT pairs and
 re-sums (`Cover.distinct_pairs_resum_exact`). The tree plan's own multiplicity
