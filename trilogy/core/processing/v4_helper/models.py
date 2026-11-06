@@ -246,6 +246,8 @@ class GroupAttrs(_HeldKeys):
     # Of an aggregate's members, the ones a same-grain grouping group built
     # before it already outputs: read through that twin, never recomputed.
     twin_reused: frozenset[str] = frozenset()
+    # the select keys a pinned value is evaluated on (`grain_pin`)
+    grain_pin_anchors: frozenset[str] = frozenset()
 
     @classmethod
     def from_bucket(cls, bucket: "GroupBucket") -> "GroupAttrs":

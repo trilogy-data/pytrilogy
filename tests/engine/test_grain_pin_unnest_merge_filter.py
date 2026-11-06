@@ -8,6 +8,9 @@ rows and for the scan the pinned value is evaluated over."""
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.processing.v4_helper import strategy_builder
+from trilogy.core.processing.v4_helper.join_plan import JoinPlan
 
 MODEL = """
 key tree_id string;
@@ -86,6 +89,39 @@ def test_pinned_filter_joins_the_select_rows(query: str, expected: list[tuple]):
     sql = executor.generate_sql(query)[-1]
     assert "on 1=1" not in sql, sql
     assert [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()] == expected
+
+
+def test_condition_merge_pairs_the_pin_on_its_plan(monkeypatch):
+    planned: list[tuple[JoinPlan, frozenset[str] | None]] = []
+    across = strategy_builder._planned_keys_across
+
+    def capture(parents, origin, plan):
+        keys = across(parents, origin, plan)
+        planned.append((plan, keys))
+        return keys
+
+    hosts: list[MergeNode] = []
+    inject = strategy_builder.inject_condition_at_node
+
+    def capture_host(*args, **kwargs):
+        node = inject(*args, **kwargs)
+        if isinstance(node, MergeNode):
+            hosts.append(node)
+        return node
+
+    monkeypatch.setattr(strategy_builder, "_planned_keys_across", capture)
+    monkeypatch.setattr(strategy_builder, "inject_condition_at_node", capture_host)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(MODEL)
+    rows = executor.execute_text(
+        "select latitude where city = 'A' and bucket = 'Other' order by latitude;"
+    )[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(3.0,)]
+    (plan, keys), *_ = planned
+    pin = next(gid for gid in plan.contributors if ":pin:local.tree_id" in gid)
+    assert "local.tree_id" in plan.identity[pin]
+    assert keys is not None and "local.tree_id" in keys
+    assert any(host.planned_keys == keys for host in hosts)
 
 
 @pytest.mark.parametrize(

@@ -124,6 +124,7 @@ def inject_condition_at_node(
     input_concepts: list[BuildConcept] | None = None,
     condition_on_merge: bool = False,
     combine_existing: bool = True,
+    planned_keys: frozenset[str] | None = None,
 ) -> StrategyNode:
     if condition_on_merge:
         combined = and_optional(
@@ -181,6 +182,7 @@ def inject_condition_at_node(
             conditions=combined,
             hidden_concepts=hidden_concepts,
             existence_concepts=sources.existence_concepts,
+            planned_keys=planned_keys,
         )
 
     base = node

@@ -5677,21 +5677,19 @@ def _apply_final_conditions(
         if ex_groups
         else []
     )
+    planned_keys: frozenset[str] | None = None
     if arg_nodes:
         feeders = list(dict.fromkeys(producers.values()))
-        _carry_asked_keys(
-            [node, *arg_nodes],
-            {id(built[f]): f for f in feeders} | {id(node): gid},
-            {gid: keep},
-            feeders,
-            _condition_join_asks(
-                attrs, producers, arg_concepts, avail, spans, environment
-            ),
-            keep,
-            group_graph,
-            attrs,
-            environment,
+        origin = {id(built[f]): f for f in feeders} | {id(node): gid}
+        asks = _condition_join_asks(
+            attrs, producers, arg_concepts, avail, spans, environment
         )
+        plan = _condition_join_plan(
+            {gid: keep}, feeders, asks, keep, group_graph, attrs, environment
+        )
+        if asks:
+            _carry_asked_keys([node, *arg_nodes], origin, plan, environment)
+        planned_keys = _planned_keys_across([node, *arg_nodes], origin, plan)
     sources = ConditionSources(
         row_concepts=row_concepts + arg_concepts,
         row_parents=arg_nodes,
@@ -5715,6 +5713,7 @@ def _apply_final_conditions(
         + arg_concepts,
         condition_on_merge=bool(arg_nodes),
         combine_existing=False,
+        planned_keys=planned_keys,
     )
 
 
@@ -5740,9 +5739,7 @@ def _condition_join_asks(
     return asks
 
 
-def _carry_asked_keys(
-    nodes: list[StrategyNode],
-    origin: dict[int, str],
+def _condition_join_plan(
     cover: dict[str, list[BuildConcept]],
     extras: Sequence[str],
     asks: frozenset[str],
@@ -5750,15 +5747,10 @@ def _carry_asked_keys(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
-) -> None:
-    """Widen `nodes` to the `asks` their join plan (`cover` beside `extras`)
-    finds each side can hold. Only the asks, not the pairing keys: a FINAL
-    side is deduped to the output grain, and its plan carries name the row
-    columns beneath that dedup (`order_id` under `select customer_id,
-    label`)."""
-    if not asks:
-        return
-    plan = plan_final_join(
+) -> JoinPlan:
+    """The join plan of a merge hosting a FINAL condition: `cover` beside the
+    `extras` joined to filter it, each side contracted to the `asks`."""
+    return plan_final_join(
         group_graph,
         attrs,
         cover,
@@ -5768,7 +5760,30 @@ def _carry_asked_keys(
         contracted={side: asks for side in (*cover, *extras)},
         extras=extras,
     )
+
+
+def _carry_asked_keys(
+    nodes: list[StrategyNode],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    environment: BuildEnvironment,
+) -> None:
+    """Widen `nodes` to the asks `plan` finds each side can hold. Only the
+    asks, not the pairing keys: a FINAL side is deduped to the output grain,
+    and its plan carries name the row columns beneath that dedup (`order_id`
+    under `select customer_id, label`)."""
     _carry_planned_keys(nodes, origin, dc_replace(plan, pairings=()), environment)
+
+
+def _planned_keys_across(
+    parents: list[StrategyNode], origin: dict[int, str], plan: JoinPlan
+) -> frozenset[str] | None:
+    """What resolve may pair `parents` on under `plan`; None when some side's
+    rows are no planned group's."""
+    sides = [side_members(parent, origin) for parent in parents]
+    if any(side is None for side in sides):
+        return None
+    return plan.across([side for side in sides if side is not None]).permitted_keys
 
 
 def _gate_key_row_stream(
@@ -6170,12 +6185,15 @@ def _assemble_final_node(
         _carry_asked_keys(
             [*parents, *arg_nodes],
             origin,
-            per_group,
-            [*bridges, *extras.groups],
-            gate_keys,
-            mandatory_list,
-            group_graph,
-            attrs,
+            _condition_join_plan(
+                per_group,
+                [*bridges, *extras.groups],
+                gate_keys,
+                mandatory_list,
+                group_graph,
+                attrs,
+                environment,
+            ),
             environment,
         )
         parents = _join_gate_hosts(parents, gate_keys, extras, built)

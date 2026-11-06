@@ -939,16 +939,28 @@ moved no plan: once tmp paths and CTE names are normalized, every remaining
 difference also moves between two runs of the same tree (the families above,
 plus temp-table hashes and script order). Fuzzer 522/522.
 
+**A condition merge pairs on its plan (part 27).** The merge
+`_apply_final_conditions` builds to host a FINAL-deferred WHERE beside its
+filter arguments' producers computed a join plan, but only to carry the
+asks; the MergeNode itself discovered its keys at resolve. It now receives the
+plan's `permitted_keys` across its sides (`_planned_keys_across`), as the FINAL
+and per-group merges do. Enforcing the plan exposed one identity the plan
+lacked: a pinned value (`grain_pin`) is evaluated on the select's rows, keyed
+by its anchors, but its group's identity fell back to the keys its expression
+is a function of. `select latitude where city = 'A' and bucket = 'Other'`
+paired the row stream with the pinned `bucket` on `ecoregion_id`, a column
+the row side never holds, and resolve went keyless. Stage 2 already knew the
+anchors (`group_graph`'s `pin_anchors`, the columns a pinned group exposes);
+they are now on `GroupAttrs.grain_pin_anchors`, and `row_identity` adds them.
+Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
-1. The gate and condition merges carry planned asks, but not their
-   pairings: the MergeNode a condition is hosted on still discovers its keys
-   at resolve.
-2. The MergeNode is given `permitted_keys`, not `node_joins` built from the
+1. The MergeNode is given `permitted_keys`, not `node_joins` built from the
    pairings.
-3. `GroupInputContract.preserve_keys` is still the union of five sets.
-4. The regraft functions still rewrite the group graph instead of picking a
+2. `GroupInputContract.preserve_keys` is still the union of five sets.
+3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
 ## 8. Not claimed
