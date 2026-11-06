@@ -13,6 +13,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.nodes import merge_node
 from trilogy.core.query_processor import process_query
 from trilogy.parser import parse_text
 
@@ -875,6 +876,32 @@ select
 having ws in ws_2001
 ;
 """)
+
+
+def test_membership_set_is_no_side_of_the_merge_hosting_it(monkeypatch):
+    stated: list[list[frozenset[str] | None]] = []
+    planned_source_pairs = merge_node._planned_source_pairs
+
+    def record(merged, held, planned):
+        if planned is not None:
+            stated.append([held[key] for key in merged])
+        return planned_source_pairs(merged, held, planned)
+
+    monkeypatch.setattr(merge_node, "_planned_source_pairs", record)
+    _assert_having_membership_subselect_valid("""
+import all_sales as all_sales;
+
+auto ws_2001 <- all_sales.sale_date.week_seq ? all_sales.sale_date.year = 2001;
+
+select
+    all_sales.sale_date.week_seq as ws,
+    --ws in ws_2001 as in_2001,
+    sum(all_sales.ext_sales_price) as sun
+having ws in ws_2001
+;
+""")
+    assert stated
+    assert all(groups is not None for sides in stated for groups in sides)
 
 
 def test_membership_in_having_no_projected_flag_renders_valid_subselect():

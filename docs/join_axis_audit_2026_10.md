@@ -1011,13 +1011,29 @@ short after 4,519 planned merges, found one unattributed parent:
 GroupNode over a FilterNode over a merge, which `side_members` reads through
 only for a bare merge. Corpus: 0 of 205 plans moved.
 
+**A membership set is no side (part 31).** The one unattributed parent the
+part 30 probe found was not a wrap the plan failed to read through. It was
+the set a `having ws in ws_2001` reads, handed to the condition host as an
+existence parent. The host renders it as an `exists (select 1 from ...)`
+subselect and leaves it out of `join_candidates`, but
+`_planned_source_pairs` still stated a pair for it, with the merge-wide keys.
+The per-pair map is now built over the sources the merge joins, so an
+existence-only source gets no pair. A probe over all of `tests/modeling`,
+`tests/complex`, `tests/discovery` and `tests/engine`, run to the end this
+time (9,943 planned merges), finds 18 that still join a parent no planned
+group stands behind, in 7 tests. Each is an aggregate feeding a WHERE (a
+`[@condition]` group: `sum(target) by bucket`, `sum(amount) by pstatus`, the
+set in `where dx in x`) built as a GroupNode that `origin` does not name.
+These are real joined sides, so they keep the merge-wide keys. Corpus: 0 of
+205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an
-   unattributed parent is stated with the merge-wide keys (one in the part 30
-   probe, a wrap over a merge).
+   unattributed parent is still stated with the merge-wide keys: 18 of 9,943
+   in the part 31 probe, each a condition aggregate built outside `origin`.
 2. `GroupInputContract.preserve_keys` is still the union of five sets.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
