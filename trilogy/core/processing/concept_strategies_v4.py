@@ -718,7 +718,9 @@ def _rollup_sources(
         if not holds_every_kept_row(source, where):
             continue
         if isinstance(source, BuildDatasource) and not (
-            _datasource_has_matching_rollup_aggregate(source, concept)
+            _datasource_has_matching_rollup_aggregate(
+                source, concept, environment.concepts
+            )
         ):
             continue
         if any(
@@ -730,6 +732,7 @@ def _rollup_sources(
                 datasources=datasources,
                 target_grain=target_grain,
                 conditions=where,
+                joined=True,
             )
         ):
             out.extend(

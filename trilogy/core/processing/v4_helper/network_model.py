@@ -98,6 +98,10 @@ class SourceCandidate:
     is_union: bool
     # The source's own row identity, in equivalence-class terms.
     grain: frozenset[str]
+    # A terminal bound as `agg(x ? c)` re-aggregated from a stored `agg(x)`
+    # -> the columns of `c` this source does not bind: a lookup off its rows
+    # must supply them before the re-aggregation (`ObligationKind.JOINED`).
+    owes: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def binds(self, address: str) -> bool:
         return address in self.bindings
@@ -240,6 +244,10 @@ class SourceNetwork:
                     tuple(
                         (address, binding.strength, binding.stored)
                         for address, binding in sorted(candidate.bindings.items())
+                    ),
+                    tuple(
+                        (address, tuple(sorted(columns)))
+                        for address, columns in sorted(candidate.owes.items())
                     ),
                 )
                 for node, candidate in sorted(self.candidates.items())
@@ -573,6 +581,11 @@ class ObligationKind(str, Enum):
                        beside it. Subject: (source,).
     - ``CONNECTED``  : the cover is in pieces and some candidate bridges them.
                        Subject: the components' minimum members.
+    - ``JOINED``     : every chosen binder of a terminal `agg(x ? c)` re-reads a
+                       stored `agg(x)` and owes a column of `c` no in-cover
+                       lookup off its rows supplies. Minted with no satisfiers
+                       when nothing can: that cover is no answer. Subject:
+                       (terminal,).
 
     `str` mixin so `Obligation.identity` orders and hashes as a bare string;
     the enumeration's scarcest-first tiebreak (`min(pending, key=...)`)
@@ -584,6 +597,7 @@ class ObligationKind(str, Enum):
     LABELABLE = "labelable"
     COLOCATED = "colocated"
     CONNECTED = "connected"
+    JOINED = "joined"
 
 
 @dataclass(frozen=True)

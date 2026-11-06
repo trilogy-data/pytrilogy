@@ -17,7 +17,10 @@ below is a function of the summary key `k`, so each reduces to
 2. **A key predicate inside the aggregate** (`filtered_count_exact`,
    `case_count_exact`). `count(x ? c)` with `c` a function of the key is the
    re-sum of the groups `c` keeps, written `sum(case when c then n end)` when
-   it shares a scan with other aggregates.
+   it shares a scan with other aggregates. `count(case when c then x end)` is
+   the same aggregate (`filtered` is that CASE row by row). A column of `c`
+   joined onto the summary through a functional lookup is a function of the
+   key too (`joined_case_exact`).
 3. **A distinct count of the counted key** (`count_distinct_of_key_exact`).
    On rows where the counted key is unique, `count_distinct(x)` is `count(x)`.
 4. **Siblings at other grains** (`ratio_parts_exact`). A total `count(x) by *`
@@ -260,6 +263,75 @@ theorem partial_off_condition_misreads :
     sqlCount (rows.map (filtered (fun r => some r.2) (fun r => r.2 == 1))) = 1 ∧
       ∀ r ∈ rows, coalesce0 (sqlSum (storedCase (fun r : Nat × Nat => r.1) [1] rows
         (countAgg (fun r => some r.2)) (fun _ => true) (fun _ => r.2 == 1))) ≠ 1 := by
+  decide
+
+/-! ### A condition joined onto the summary's rows
+
+`c` may read a column the summary does not bind: `bucket` of `species`, from
+a dimension `dim : μ → δ` keyed on a part `m : κ → μ` of the summary key.
+Joined on that part, each summary row meets one dimension row, so the CASE
+reads `c' (dim (m k))`, a function of the key, and rule 2 holds as it is
+(`joined_case_exact`, `joined_case_count_exact`). Two plans break it: a
+lookup that is not functional fans each summary row out
+(`joined_fanout_double_counts`), and a re-sum below the CASE at a grouping
+that does not determine `c` mixes rows on both sides of it
+(`case_above_coarser_grouping_misreads`). A re-sum at a grouping that does
+determine it is exact (`resum_then_case_exact`). The planner states the
+lookup as an obligation of the summary it reads (`ObligationKind.JOINED`): an
+in-cover functional chain off the summary's rows to a full binder of each
+column of `c`, and the re-aggregation after it. -/
+
+/-- The CASE reading a joined column: on summary row `k`, `c' (dim (m k))`. -/
+def joinedCond {μ δ : Type} (m : κ → μ) (dim : μ → δ) (c' : δ → Bool) : κ → Bool :=
+  fun k => c' (dim (m k))
+
+/-- **A joined condition rolls up**: `sum(case when c' then sum(x) end)` over
+the summary joined to its dimension. -/
+theorem joined_case_exact {μ δ : Type} (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q : κ → Bool) (m : κ → μ) (dim : μ → δ) (c' : δ → Bool) :
+    sqlSum (storedCase g ks rows (sumAgg v) q (joinedCond m dim c')) =
+      sumAgg (filtered v (fun r => c' (dim (m (g r))))) (keep g q rows) :=
+  filtered_sum_exact g ks hnd rows hcov v q _
+
+theorem joined_case_count_exact {μ δ : Type} (g : α → κ) (ks : List κ)
+    (hnd : ks.Nodup) (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v : α → Option Int) (q : κ → Bool) (m : κ → μ) (dim : μ → δ) (c' : δ → Bool) :
+    coalesce0 (sqlSum (storedCase g ks rows (countAgg v) q (joinedCond m dim c'))) =
+      sqlCount ((keep g q rows).map (filtered v (fun r => c' (dim (m (g r)))))) :=
+  case_count_exact g ks hnd rows hcov v q _
+
+omit [DecidableEq κ] in
+/-- **A re-sum below the CASE is exact at a grouping that determines `c`.**
+Re-summing the summary's partials at `h ∘ g` (`species` kept, `plant_year`
+summed away) yields the groups of `h ∘ g`, so a CASE over a condition of
+`h` is rule 2 at that grain. -/
+theorem resum_then_case_exact {ν : Type} [DecidableEq ν] (g : α → κ) (h : κ → ν)
+    (ns : List ν) (hnd : ns.Nodup) (rows : List α) (hcov : ∀ r ∈ rows, h (g r) ∈ ns)
+    (v : α → Option Int) (q c : ν → Bool) :
+    sqlSum (storedCase (fun r => h (g r)) ns rows (sumAgg v) q c) =
+      sumAgg (filtered v (fun r => c (h (g r)))) (keep (fun r => h (g r)) q rows) :=
+  filtered_sum_exact (fun r => h (g r)) ns hnd rows hcov v q c
+
+/-- A non-functional lookup fans a summary row out. One tree, key 1, kept by
+`c`; the dimension holds two rows for its key (one per region), so the joined
+summary row is counted twice. -/
+theorem joined_fanout_double_counts :
+    let rows : List (Nat × Nat) := [(1, 7)]
+    let joined : List (Nat × Bool) := [(1, true), (1, true)]
+    sqlCount (rows.map (filtered (fun r => some r.2) (fun _ => true))) = 1 ∧
+      coalesce0 (sqlSum (joined.map (fun p => if p.2 then some 1 else none))) = 2 := by
+  decide
+
+/-- A re-sum below the CASE at a grouping that does not determine `c` loses
+it. Summary partials at `(city, species)` are `(1, 1) ↦ 1` and `(1, 2) ↦ 1`,
+`c` holds for species 1 only, so the answer is 1. Re-summed at `city` first,
+the one group holds 2 and a CASE over any one value of `c` keeps 2 or 0. -/
+theorem case_above_coarser_grouping_misreads :
+    let partials : List ((Nat × Nat) × Int) := [((1, 1), 1), ((1, 2), 1)]
+    let c : Nat × Nat → Bool := fun k => k.2 == 1
+    (partials.filter (fun p => c p.1)).map (·.2) = [1] ∧
+      ∀ p ∈ partials, (if c p.1 then (partials.map (·.2)).sum else 0) ≠ 1 := by
   decide
 
 /-! ## 3. A distinct count of the counted key -/

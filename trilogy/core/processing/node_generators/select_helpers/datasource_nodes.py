@@ -410,7 +410,9 @@ def create_datasource_node(
             and not datasource_grain.issubset(c.grain)
             and (
                 datasource.aggregate_column_for(c) is not None
-                or _datasource_has_matching_rollup_aggregate(datasource, c)
+                or _datasource_has_matching_rollup_aggregate(
+                    datasource, c, environment.concepts
+                )
             )
             and holds_every_kept_row(datasource, conditions)
         ],

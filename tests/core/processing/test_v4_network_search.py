@@ -343,6 +343,31 @@ query '''select 'A' as origin_code, 'X' as destination_code, '2024-01-01'::date 
 """
 
 
+JOINED_CONDITION_MODEL = """
+key tree_id int;
+key city string;
+key species string;
+key plant_year int;
+property species.bucket string;
+datasource trees (tree_id, city, species, plant_year)
+grain (tree_id) query '''select 1 tree_id, 'A' city, 'x' species, 2000 plant_year''';
+datasource enrichment (species, bucket)
+grain (species) query '''select 'x' species, 'Native' bucket''';
+auto n_trees <- count(tree_id);
+datasource summary (city, species, plant_year, n_trees)
+grain (city, species, plant_year)
+query '''select 'A' city, 'x' species, 2000 plant_year, 1 n_trees''';
+auto native_by_city <- count(tree_id ? bucket = 'Native') by city;
+"""
+
+STORED_NATIVE = """
+auto native_trees <- count(tree_id ? bucket = 'Native');
+datasource stored_native (city, species, plant_year, native_trees)
+grain (city, species, plant_year)
+query '''select 'A' city, 'x' species, 2000 plant_year, 1 native_trees''';
+"""
+
+
 def _build(model: str):
     env = Environment()
     env.parse(model)
@@ -1276,6 +1301,56 @@ class TestArmUnionBranching:
         assert result.solution.sources == ("ds~web_sales",)
 
 
+class TestJoinedConditionObligation:
+    """`ObligationKind.JOINED`: `count(x ? c)` read off a stored `count(x)`
+    owes the columns of `c` the summary lacks, labeled onto its rows by an
+    in-cover lookup (`Cover.joined_case_exact`)."""
+
+    def _network(self, model: str):
+        benv, graph = _build(model)
+        return build_source_network(
+            _terminals(benv, "local.city", "local.native_by_city"), benv, graph
+        )
+
+    def test_summary_owes_the_condition_column(self):
+        network = self._network(JOINED_CONDITION_MODEL)
+        assert network.candidates["ds~summary"].owes == {
+            "local.native_by_city": frozenset({"local.bucket"})
+        }
+        pending = nob.pending_obligations(network, frozenset({"ds~summary"}))
+        assert [(o.kind, o.satisfiers) for o in pending] == [
+            (ObligationKind.JOINED, ("ds~enrichment",))
+        ]
+
+    def test_the_join_is_priced_into_the_cover(self):
+        result = search_sources(self._network(JOINED_CONDITION_MODEL))
+        assert result.solution is not None
+        assert set(result.solution.sources) == {"ds~summary", "ds~enrichment"}
+
+    def test_a_stored_filtered_count_needs_no_join(self):
+        network = self._network(JOINED_CONDITION_MODEL + STORED_NATIVE)
+        assert not network.candidates["ds~stored_native"].owes
+        result = search_sources(network)
+        assert result.solution is not None
+        assert result.solution.sources == ("ds~stored_native",)
+
+    def test_an_unreachable_column_leaves_the_binding_no_answer(self):
+        model = (
+            JOINED_CONDITION_MODEL.replace(
+                "datasource enrichment (species, bucket)\ngrain (species)",
+                "datasource enrichment (species, region, bucket)\n"
+                "grain (species, region)",
+            )
+            .replace("'Native' bucket", "'Native' bucket, 'r' region")
+            .replace("key plant_year int;", "key plant_year int;\nkey region string;")
+        )
+        network = self._network(model)
+        pending = nob.pending_obligations(network, frozenset({"ds~summary"}))
+        assert [(o.kind, o.satisfiers) for o in pending] == [
+            (ObligationKind.JOINED, ())
+        ]
+
+
 class TestRustWalkParity:
     """`_enumerate_covers` runs in Rust; `_enumerate_covers_py` is the
     executable spec it is held to. Parity is exact — same covers, same order,
@@ -1317,6 +1392,11 @@ class TestRustWalkParity:
             ("local.l_id", "local.l_val", "local.r_id", "local.r_val"),
         ),
         (RECURSIVE_MERGE_MODEL, ("local.id", "local.plabel")),
+        (JOINED_CONDITION_MODEL, ("local.city", "local.native_by_city")),
+        (
+            JOINED_CONDITION_MODEL + STORED_NATIVE,
+            ("local.city", "local.native_by_city"),
+        ),
     )
 
     def test_rust_walk_matches_the_python_spec(self):

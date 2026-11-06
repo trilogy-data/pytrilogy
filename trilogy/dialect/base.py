@@ -1646,7 +1646,7 @@ class BaseDialect:
                 # `agg(x ? c)` from a stored `agg(x)`: each partial counts where
                 # `c` holds on its row (`Cover.filtered_sum_exact`)
                 condition = self.render_expr(
-                    filtered[1].where.conditional, cte, raise_invalid=raise_invalid
+                    filtered[1].conditional, cte, raise_invalid=raise_invalid
                 )
                 rolled = f"CASE WHEN {condition} THEN {rolled} ELSE NULL END"
                 summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])

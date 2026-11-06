@@ -173,10 +173,6 @@ UNSERVABLE = {
 # Shapes a rule covers that the planner does not serve yet: each is a miss
 # (read from the trees with the right answer), never a wrong summary answer.
 # `(rule, shape) -> (reason, filters)`; no filters means every filter.
-JOINED_CONDITION = (
-    "rule 2: a condition on a property of the summary key needs its join below "
-    "the re-aggregating scan, which sees only the summary's own columns"
-)
 PINNED_TOTAL = (
     "rule 4: under a WHERE on a stored column, a total beside a scalar of the "
     "key right-joins the summary to the trees' distinct keys"
@@ -186,14 +182,6 @@ NO_EXISTENCE_PROOF = (
     "bindings; the summary is not offered as proof of existence"
 )
 OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
-    **{
-        ("filtered", shape): (JOINED_CONDITION, None)
-        for shape in ("property", "or", "ratio", "beside_plain", "list_property")
-    },
-    ("distinct", "filtered_ratio"): (
-        "rule 2: count_distinct(k ? c) is count(k ? c), a filtered count",
-        None,
-    ),
     ("value", "scalar_of_key"): (
         "rule 1: a scalar of a key under a WHERE on a stored column",
         ("year",),

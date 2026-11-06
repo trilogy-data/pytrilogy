@@ -1203,6 +1203,38 @@ class BuildBetween(DataTyped, BuildOperandArgs, ConstantInlineable):
         return DataType.BOOL
 
 
+def aggregate_filter(
+    argument: object,
+) -> tuple[BuildConcept, BuildWhereClause] | None:
+    """`(x, c)` for an aggregate argument that is `x` where `c` holds and NULL
+    elsewhere: `x ? c`, or `case when c then x [else null] end`, inline or
+    through a concept. Both spellings are one value per row
+    (`Cover.filtered`), so discovery reads either as the pair."""
+    if isinstance(argument, BuildConcept):
+        lineage = argument.lineage
+        if isinstance(lineage, BuildFilterItem) and isinstance(
+            lineage.content, BuildConcept
+        ):
+            return lineage.content, lineage.where
+        argument = lineage
+    if not (
+        isinstance(argument, BuildFunction) and argument.operator == FunctionType.CASE
+    ):
+        return None
+    branches = list(argument.arguments)
+    last = branches[-1] if branches else None
+    if isinstance(last, BuildCaseElse):
+        if last.expr is not None and last.expr != MagicConstants.NULL:
+            return None
+        branches = branches[:-1]
+    when = branches[0] if len(branches) == 1 else None
+    if not isinstance(when, BuildCaseWhen):
+        return None
+    if not isinstance(when.expr, BuildConcept):
+        return None
+    return when.expr, BuildWhereClause(conditional=when.comparison)
+
+
 @dataclass(slots=True)
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     name: str
@@ -1322,6 +1354,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             return None
         if self.lineage.function.operator not in ROLLUP_REAGGREGATES:
             return None
+        arguments = self.lineage.function.arguments
+        # `x ? c` and `case when c then x end` are one argument
+        filtered = aggregate_filter(arguments[0]) if len(arguments) == 1 else None
+        if filtered is not None:
+            content, where = filtered
+            argument = (
+                f"<Filter: {content.canonical_address} where "
+                f"{_canonical_str_for_hash(where)}>"
+            )
+            return self.lineage.function.operator, (argument,)
         return (
             self.lineage.function.operator,
             tuple(
@@ -1339,12 +1381,13 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     @cached_property
     def filtered_rollup(
         self,
-    ) -> tuple[tuple[FunctionType, tuple[str, ...]], BuildFilterItem] | None:
-        """For `agg(x ? c)`, the signature of the `agg(x)` a summary stores
-        and the filter: `reagg(case when c then agg(x) end)` over its partials
-        is the filtered aggregate wherever `c` is a function of the partial's
-        grain (`Cover.filtered_sum_exact`). Matched only where the partials
-        are re-aggregated, never as the column itself."""
+    ) -> tuple[tuple[FunctionType, tuple[str, ...]], BuildWhereClause] | None:
+        """For `agg(x ? c)`, spelled so or as `agg(case when c then x end)`,
+        the signature of the `agg(x)` a summary stores and `c`:
+        `reagg(case when c then agg(x) end)` over its partials is the filtered
+        aggregate wherever `c` is a function of the partial's grain
+        (`Cover.filtered_sum_exact`). Matched only where the partials are
+        re-aggregated, never as the column itself."""
         lineage = self.lineage
         if not (
             isinstance(lineage, BuildAggregateWrapper)
@@ -1352,16 +1395,11 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             and len(lineage.function.arguments) == 1
         ):
             return None
-        function = lineage.function
-        argument = function.arguments[0]
-        if not (
-            isinstance(argument, BuildConcept)
-            and isinstance(argument.lineage, BuildFilterItem)
-            and isinstance(argument.lineage.content, BuildConcept)
-        ):
+        filtered = aggregate_filter(lineage.function.arguments[0])
+        if filtered is None:
             return None
-        content = argument.lineage.content
-        return (function.operator, (content.canonical_address,)), argument.lineage
+        content, where = filtered
+        return (lineage.function.operator, (content.canonical_address,)), where
 
     def __str__(self):
         grain = str(self.grain) if self.grain else "Grain<>"

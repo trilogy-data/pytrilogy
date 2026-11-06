@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
+    aggregate_filter,
 )
 from trilogy.core.processing.condition_utility import condition_implies
 
@@ -20,15 +21,12 @@ def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
     """The aggregated row's columns: `x ? c` reads the rows of `x`."""
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
-    return [
-        (
-            argument.lineage.content
-            if isinstance(argument.lineage, BuildFilterItem)
-            and isinstance(argument.lineage.content, BuildConcept)
-            else argument
-        )
-        for argument in concept.lineage.function.concept_arguments
-    ]
+    function = concept.lineage.function
+    if len(function.arguments) == 1 and (
+        filtered := aggregate_filter(function.arguments[0])
+    ):
+        return [filtered[0]]
+    return list(function.concept_arguments)
 
 
 def _is_rollable_aggregate(concept: BuildConcept) -> bool:
@@ -39,12 +37,17 @@ def _is_rollable_aggregate(concept: BuildConcept) -> bool:
 
 
 def _datasource_has_matching_rollup_aggregate(
-    datasource: BuildDatasource, concept: BuildConcept
+    datasource: BuildDatasource,
+    concept: BuildConcept,
+    joined: Mapping[str, BuildConcept] | None = None,
 ) -> bool:
     """`datasource` stores a partial of `concept`: the same aggregate, or for
     `agg(x ? c)` the unfiltered `agg(x)` beside every column `c` reads, so the
     re-aggregating scan decides `c` per partial. A column only a join reaches
-    (a property of the grain) is not in that scan."""
+    (a property of the grain) is not in that scan; with `joined` (the
+    concepts), such a column matches too, for a plan that joins it onto the
+    summary's rows before their first re-aggregation
+    (`Cover.joined_case_exact`)."""
     signature = concept.rollup_signature
     if signature is None:
         return False
@@ -56,10 +59,26 @@ def _datasource_has_matching_rollup_aggregate(
     return (
         filtered is not None
         and datasource.filtered_column_for(concept) is not None
-        and _conditions_supported(datasource, filtered[1].where)
-        and bool(filtered[1].where.row_arguments)
-        and not any(c.is_aggregate for c in filtered[1].where.row_arguments)
+        and _conditions_supported(datasource, filtered[1], joined)
+        and bool(filtered[1].row_arguments)
+        and not any(c.is_aggregate for c in filtered[1].row_arguments)
     )
+
+
+def joined_condition_columns(
+    datasource: BuildDatasource, concept: BuildConcept
+) -> list[BuildConcept]:
+    """The columns `agg(x ? c)`'s condition reads that `datasource` does not
+    bind: a join onto its rows must supply them before the CASE."""
+    filtered = concept.filtered_rollup
+    if filtered is None or datasource.aggregate_column_for(concept) is not None:
+        return []
+    bound = {c.canonical_address for c in datasource.output_concepts}
+    return [
+        c
+        for c in filtered[1].row_arguments
+        if c.granularity != Granularity.SINGLE_ROW and c.canonical_address not in bound
+    ]
 
 
 def _base_keys(inputs: Iterable[BuildConcept]) -> set[str]:
@@ -320,9 +339,14 @@ def get_rollup_concepts(
     datasources: Iterable[BuildDatasource],
     target_grain: BuildGrain,
     conditions: BuildWhereClause | None = None,
+    joined: bool = False,
 ) -> list[BuildConcept]:
+    """The requested aggregates `datasource` rolls up to `target_grain`. With
+    `joined`, `agg(x ? c)` may read `c` from a join onto the summary's rows
+    (`_datasource_has_matching_rollup_aggregate`)."""
     if not _conditions_supported(datasource, conditions, concepts_by_address):
         return []
+    reach = concepts_by_address if joined else None
 
     datasource_grain = datasource.grain
     # Grand total target: any finer-grain rollable aggregate rolls up to one row.
@@ -335,7 +359,7 @@ def get_rollup_concepts(
             for concept in requested_concepts
             if concept.is_aggregate
             and _is_rollable_aggregate(concept)
-            and _datasource_has_matching_rollup_aggregate(datasource, concept)
+            and _datasource_has_matching_rollup_aggregate(datasource, concept, reach)
         ]
     target_concepts = [
         concepts_by_address[component]
@@ -363,7 +387,7 @@ def get_rollup_concepts(
             continue
         if not _is_rollable_aggregate(concept):
             continue
-        if not _datasource_has_matching_rollup_aggregate(datasource, concept):
+        if not _datasource_has_matching_rollup_aggregate(datasource, concept, reach):
             continue
         # Guards against a base row landing in two summary groups, which only
         # an additive re-sum (`ADDITIVE_ROLLUP_FUNCTIONS`) double counts.
@@ -388,6 +412,7 @@ def source_rollup_concepts(
     datasources: Iterable[BuildDatasource],
     target_grain: BuildGrain,
     conditions: BuildWhereClause | None = None,
+    joined: bool = False,
 ) -> list[BuildConcept]:
     """`get_rollup_concepts` for a scan or a stacked family. The arms partition
     the base rows on their bound discriminators, so summing the arms drops a
@@ -412,6 +437,7 @@ def source_rollup_concepts(
             datasources,
             target_grain,
             conditions,
+            joined,
         )
     # Arms that bind their discriminator outside their grain store partials
     # even when the stack's rows sit at the target grain.
@@ -686,21 +712,18 @@ def reaggregate_partials(
 
 
 def _distinct_count_key(concept: BuildConcept) -> BuildConcept | None:
-    """The key a `count_distinct(k)` counts, `k ? c` included."""
+    """The key a `count_distinct(k)` counts, `k ? c` (either spelling)
+    included."""
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return None
     function = concept.lineage.function
     if function.operator != FunctionType.COUNT_DISTINCT:
         return None
-    arguments = function.concept_arguments
-    if len(arguments) != 1:
+    if len(function.arguments) != 1:
         return None
-    key = arguments[0]
-    if isinstance(key.lineage, BuildFilterItem) and isinstance(
-        key.lineage.content, BuildConcept
-    ):
-        key = key.lineage.content
-    return key if key.purpose == Purpose.KEY else None
+    filtered = aggregate_filter(function.arguments[0])
+    key = filtered[0] if filtered else function.arguments[0]
+    return key if isinstance(key, BuildConcept) and key.purpose == Purpose.KEY else None
 
 
 def distinct_key_counts(

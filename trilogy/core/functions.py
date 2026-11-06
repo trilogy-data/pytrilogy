@@ -1912,6 +1912,9 @@ def _is_constant_count_argument(arg: Any, environment: Environment) -> bool:
         return _is_constant_count_argument(arg.content, environment)
     if isinstance(arg, Parenthetical):
         return _is_constant_count_argument(arg.content, environment)
+    # a CASE branch counts its value; the condition picks rows, it is no row
+    if isinstance(arg, (CaseWhen, CaseElse)):
+        return _is_constant_count_argument(arg.expr, environment)
     if isinstance(arg, Function):
         if arg.operator == FunctionType.UNNEST:
             return False

@@ -100,12 +100,18 @@ def _max(xs):
 
 
 AGGREGATES = {
-    "count_key": ("count(tree_id ? {c})", lambda r: r["tree_id"], _count),
-    "count_value": ("count(dbh ? {c})", lambda r: r["dbh"], _count),
-    "distinct_key": ("count_distinct(tree_id ? {c})", lambda r: r["tree_id"], _count),
-    "sum": ("sum(dbh ? {c})", lambda r: r["dbh"], _sum),
-    "min": ("min(dbh ? {c})", lambda r: r["dbh"], _min),
-    "max": ("max(dbh ? {c})", lambda r: r["dbh"], _max),
+    "count_key": ("count", "tree_id", _count),
+    "count_value": ("count", "dbh", _count),
+    "distinct_key": ("count_distinct", "tree_id", _count),
+    "sum": ("sum", "dbh", _sum),
+    "min": ("min", "dbh", _min),
+    "max": ("max", "dbh", _max),
+}
+
+# `x ? c` and `case when c then x end` are one value per row (`Cover.filtered`)
+SPELLINGS = {
+    "filter": "{fn}({x} ? {c})",
+    "case": "{fn}(case when {c} then {x} end)",
 }
 
 CONDITIONS = {
@@ -151,20 +157,21 @@ def _rows(trees: list[tuple]) -> list[dict]:
 
 
 def _reference(rows, aggregate, condition, target, where) -> list[tuple]:
-    _, value, reduce = AGGREGATES[aggregate]
+    _, column, reduce = AGGREGATES[aggregate]
     keep = CONDITIONS[condition][1]
     kept = [r for r in rows if WHERES[where][1](r)]
     columns = TARGETS[target]
     groups: dict[tuple, list] = {}
     for r in kept:
         groups.setdefault(tuple(r[c] for c in columns), []).append(
-            value(r) if keep(r) else None
+            r[column] if keep(r) else None
         )
     return sorted(((*k, reduce(v)) for k, v in groups.items()), key=repr)
 
 
-def _query(aggregate, condition, target, where) -> str:
-    expression = AGGREGATES[aggregate][0].format(c=CONDITIONS[condition][0])
+def _query(aggregate, condition, target, where, spelling="filter") -> str:
+    fn, column, _ = AGGREGATES[aggregate]
+    expression = SPELLINGS[spelling].format(fn=fn, x=column, c=CONDITIONS[condition][0])
     select = ", ".join([*TARGETS[target], f"{expression} as v"])
     clause = WHERES[where][0]
     return f"select {select}{' where ' + clause if clause else ''};"
@@ -176,26 +183,16 @@ def _executor(seed: int):
     return executor
 
 
-CASES = list(itertools.product(SEEDS, AGGREGATES, CONDITIONS, TARGETS, SERVABLE_WHERES))
+CASES = list(
+    itertools.product(
+        SEEDS, SPELLINGS, AGGREGATES, CONDITIONS, TARGETS, SERVABLE_WHERES
+    )
+)
 
 
 @pytest.fixture(scope="module")
 def executors():
     return {seed: _executor(seed) for seed in SEEDS}
-
-
-# Shapes the matcher does not serve yet: each reads the trees, and
-# `test_filtered_aggregate_answers` holds it to the reference.
-JOINED_CONDITION = (
-    "a condition on a property of the summary key needs its join below the "
-    "re-aggregating scan, which sees only the summary's own columns"
-)
-
-
-def _marks(condition: str) -> list:
-    if condition in ("property", "or"):
-        return [pytest.mark.xfail(strict=True, reason=JOINED_CONDITION)]
-    return []
 
 
 def _ids(cases: list[tuple]) -> list[str]:
@@ -209,13 +206,13 @@ def _sql_and_rows(executor, query: str) -> tuple[str, list[tuple]]:
 
 
 @pytest.mark.parametrize(
-    "seed,aggregate,condition,target,where", CASES, ids=_ids(CASES)
+    "seed,spelling,aggregate,condition,target,where", CASES, ids=_ids(CASES)
 )
 def test_filtered_aggregate_answers(
-    executors, seed, aggregate, condition, target, where
+    executors, seed, spelling, aggregate, condition, target, where
 ):
     sql, rows = _sql_and_rows(
-        executors[seed], _query(aggregate, condition, target, where)
+        executors[seed], _query(aggregate, condition, target, where, spelling)
     )
     assert rows == _reference(
         _rows(_trees(seed)), aggregate, condition, target, where
@@ -223,14 +220,14 @@ def test_filtered_aggregate_answers(
 
 
 @pytest.mark.parametrize(
-    "seed,aggregate,condition,target,where",
-    [pytest.param(*case, marks=_marks(case[2])) for case in CASES],
-    ids=_ids(CASES),
+    "seed,spelling,aggregate,condition,target,where", CASES, ids=_ids(CASES)
 )
 def test_filtered_aggregate_reads_the_summary(
-    executors, seed, aggregate, condition, target, where
+    executors, seed, spelling, aggregate, condition, target, where
 ):
-    sql, _ = _sql_and_rows(executors[seed], _query(aggregate, condition, target, where))
+    sql, _ = _sql_and_rows(
+        executors[seed], _query(aggregate, condition, target, where, spelling)
+    )
     assert '"summary"' in sql and '"trees"' not in sql, sql
 
 
@@ -259,23 +256,28 @@ def test_finer_where_scans_the_rows_once(executors, aggregate, condition, target
 
 NATIVE = "species in ('Acer rubrum', 'Acer saccharum', 'Quercus alba')"
 STORED_FILTERED = {
-    "count_key": ("native_trees", "count(tree_id ? bucket = 'Native')", "count", "1"),
-    "sum": ("native_dbh", "sum(dbh ? bucket = 'Native')", "sum", "dbh"),
-    "min": ("least_native_dbh", "min(dbh ? bucket = 'Native')", "min", "dbh"),
-    "max": ("most_native_dbh", "max(dbh ? bucket = 'Native')", "max", "dbh"),
+    "count_key": ("native_trees", "count", "1"),
+    "sum": ("native_dbh", "sum", "dbh"),
+    "min": ("least_native_dbh", "min", "dbh"),
+    "max": ("most_native_dbh", "max", "dbh"),
 }
 
 
-def _stored_filtered_model(trees: list[tuple]) -> str:
+def _stored_filtered_model(trees: list[tuple], spelling: str = "filter") -> str:
     tree_sql = _values(trees, "tree_id, city, species, dbh, plant_year")
     autos = "\n".join(
-        f"auto {name} <- {expression};"
-        for name, expression, _, _ in STORED_FILTERED.values()
+        f"auto {name} <- "
+        + SPELLINGS[spelling].format(fn=fn, x=column, c="bucket = 'Native'")
+        + ";"
+        for name, fn, column in (
+            (name, AGGREGATES[key][0], AGGREGATES[key][1])
+            for key, (name, *_) in STORED_FILTERED.items()
+        )
     )
     columns = ", ".join(f"{name}: ?{name}" for name, *_ in STORED_FILTERED.values())
     stored = ", ".join(
         f"{fn}(case when {NATIVE} then {value} end) as {name}"
-        for name, _, fn, value in STORED_FILTERED.values()
+        for name, fn, value in STORED_FILTERED.values()
     )
     return f"""{_model(trees)}
 {autos}
@@ -286,19 +288,66 @@ from ({tree_sql}) group by 1, 2, 3''';
 """
 
 
-STORED_CASES = list(itertools.product(STORED_FILTERED, TARGETS, SERVABLE_WHERES))
+STORED_CASES = list(
+    itertools.product(SPELLINGS, SPELLINGS, STORED_FILTERED, TARGETS, SERVABLE_WHERES)
+)
 
 
-@pytest.mark.parametrize("aggregate,target,where", STORED_CASES, ids=_ids(STORED_CASES))
-def test_stored_filtered_aggregate_is_read_as_stored(aggregate, target, where):
+@pytest.mark.parametrize(
+    "stored,spelling,aggregate,target,where", STORED_CASES, ids=_ids(STORED_CASES)
+)
+def test_stored_filtered_aggregate_is_read_as_stored(
+    stored, spelling, aggregate, target, where
+):
     """A summary storing `agg(x ? c)` itself holds filtered values: it answers
-    a condition no summary column reaches (`bucket`), and its column is never
-    filtered a second time."""
+    a condition no summary column reaches (`bucket`), in either spelling of
+    the stored or the asked aggregate, and its column is never filtered a
+    second time."""
     seed = SEEDS[0]
     executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(_stored_filtered_model(_trees(seed)))
-    sql, rows = _sql_and_rows(executor, _query(aggregate, "property", target, where))
+    executor.parse_text(_stored_filtered_model(_trees(seed), stored))
+    sql, rows = _sql_and_rows(
+        executor, _query(aggregate, "property", target, where, spelling)
+    )
     assert rows == _reference(
         _rows(_trees(seed)), aggregate, "property", target, where
     ), sql
     assert '"stored_native"' in sql and '"trees"' not in sql, sql
+
+
+# CASE shapes that are not `x ? c`: a non-NULL else, two branches, a computed
+# value. None is the stored partial's argument, so each reads the trees.
+NOT_FILTERS = {
+    "else_zero": "sum(case when bucket = 'Native' then dbh else 0 end)",
+    "two_whens": (
+        "count(case when bucket = 'Native' then tree_id "
+        "when plant_year > 2005 then tree_id end)"
+    ),
+    "computed": "sum(case when bucket = 'Native' then dbh * 2 end)",
+}
+
+
+@pytest.mark.parametrize("shape", NOT_FILTERS)
+def test_other_case_shapes_read_the_rows(executors, shape):
+    seed = SEEDS[0]
+    sql, rows = _sql_and_rows(
+        executors[seed], f"select city, {NOT_FILTERS[shape]} as v;"
+    )
+    keep = {
+        "else_zero": lambda r: (r["dbh"] or 0) if r["bucket"] == "Native" else 0,
+        "two_whens": lambda r: (
+            r["tree_id"]
+            if r["bucket"] == "Native" or _gt(r["plant_year"], 2005)
+            else None
+        ),
+        "computed": lambda r: (
+            r["dbh"] * 2 if r["bucket"] == "Native" and r["dbh"] is not None else None
+        ),
+    }[shape]
+    reduce = _count if shape == "two_whens" else _sum
+    groups: dict[str, list] = {}
+    for r in _rows(_trees(seed)):
+        groups.setdefault(r["city"], []).append(keep(r))
+    expected = sorted(((k, reduce(v)) for k, v in groups.items()), key=repr)
+    assert rows == expected, sql
+    assert '"trees"' in sql, sql

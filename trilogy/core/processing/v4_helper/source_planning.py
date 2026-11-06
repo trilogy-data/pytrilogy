@@ -16,7 +16,7 @@ from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.constants import parent_axis_keys
-from trilogy.core.enums import Derivation, Granularity, JoinType
+from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
@@ -32,6 +32,7 @@ from trilogy.core.processing.aggregate_rollup import (
     at_own_grain,
     filter_finer_row_args,
     holds_every_kept_row,
+    joined_condition_columns,
     merge_rollup_concepts,
     source_rollup_concepts,
 )
@@ -156,6 +157,10 @@ class BridgePlan:
     # The cover assembles a coalescing axis from every member arm: an arm whose
     # columns another arm also carries is still that axis's own domain.
     assembles_axis: bool = False
+    # Scans answering `agg(x ? c)` off a stored `agg(x)` with `c` joined on:
+    # read at their own grain, re-aggregated at the merge, after the join
+    # (`ObligationKind.JOINED`).
+    joined_scans: tuple[str, ...] = ()
 
 
 def _graph_neighbors(graph: ReferenceGraph, node: str) -> set[str]:
@@ -594,7 +599,16 @@ def _network_source(
         return None
     for node in [n for n in graph.datasources if n not in chosen]:
         del graph.datasources[node]
-    keep_addresses = set(network.terminals) | result.solution.connectors
+    keep_addresses = (
+        set(network.terminals)
+        | result.solution.connectors
+        | {
+            column
+            for node in result.solution.sources
+            for owed in network.candidates[node].owes.values()
+            for column in owed
+        }
+    )
     bridge_concepts = [
         concept
         for concept in concepts
@@ -681,6 +695,7 @@ def _network_source(
             graph=graph,
             connector_aliases=tuple(connector_aliases),
             assembles_axis=bool(network.axis_families),
+            joined_scans=tuple(sorted(n for n in chosen if network.candidates[n].owes)),
         )
     )
 
@@ -868,9 +883,17 @@ def _datasource_nodes_for_bridge(
             )
             else None
         )
+        scanned = subgraph_concepts(concept_nodes, request.environment, request.outputs)
+        if ds_node in plan.joined_scans and isinstance(ds_obj, BuildDatasource):
+            # its rows meet the join before any re-aggregation
+            scanned = unique(
+                scanned
+                + [request.environment.concepts[a] for a in ds_obj.grain.components],
+                "address",
+            )
         candidate = create_select_node_candidate(
             ds_node,
-            subgraph_concepts(concept_nodes, request.environment, request.outputs),
+            scanned,
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
@@ -1112,6 +1135,8 @@ def _datasource_rolls_up_to(
             concepts_by_address=environment.concepts,
             datasources=datasources,
             target_grain=concept.grain,
+            # a binding the search took only with its join (`JOINED`)
+            joined=True,
         )
     )
 
@@ -1439,6 +1464,7 @@ def _merge_component_sources(
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept] | None = None,
     preserve_parents: bool = False,
+    joined_rollup: bool = False,
 ) -> StrategyNode | None:
     if not parents:
         return None
@@ -1472,14 +1498,20 @@ def _merge_component_sources(
     # are no group keys.
     requested = {concept.address for concept in request.outputs}
     targets = [concept for concept in outputs if concept.address in requested]
-    rollup = merge_rollup_concepts(
-        (
-            (parent.grain, frozenset(c.address for c in parent.output_concepts))
-            for parent in parents
-        ),
-        targets,
-        request.environment.concepts,
+    rollup = (
+        _joined_rollup_concepts(targets)
+        if joined_rollup
+        else merge_rollup_concepts(
+            (
+                (parent.grain, frozenset(c.address for c in parent.output_concepts))
+                for parent in parents
+            ),
+            targets,
+            request.environment.concepts,
+        )
     )
+    if joined_rollup and not rollup:
+        return None
     if rollup:
         outputs = targets
     partials = [] if rollup else _summary_partials(parents, targets)
@@ -1507,6 +1539,15 @@ def _merge_component_sources(
         rollup_concepts=rollup or partials or None,
         preserve_parents=preserve_parents,
     )
+
+
+def _joined_rollup_concepts(targets: list[BuildConcept]) -> list[BuildConcept]:
+    """Every aggregate of a merge over a joined scan's raw rows, re-aggregated
+    there; none when one cannot be (a distinct count)."""
+    aggregates = [c for c in targets if c.is_aggregate]
+    if not all(_is_rollable_aggregate(c) for c in aggregates):
+        return []
+    return aggregates
 
 
 def _complete_partial_requested(
@@ -1652,12 +1693,29 @@ def _finer_filter_rollup_source(
                 for arm in arms
             )
         )
-        if not target_canonicals.issubset(canonicals):
+        # a target the summary does not bind is a dimension's column keyed on
+        # its grain, joined on like a filter, when every aggregate groups by
+        # it: one beside it at a coarser grain is not regrouped by it
+        if not all(
+            c in canonicals
+            or (
+                _joinable_property(environment.concepts.get(c), arms)
+                and all(
+                    at_own_grain(a, target_grain, environment.concepts)
+                    for a in aggregates
+                )
+            )
+            for c in target_canonicals
+        ) or not _rolls_every_aggregate(ds, request, target_grain, aggregates):
             continue
-        if not _rolls_every_aggregate(ds, request, target_grain, aggregates):
-            continue
-        joined = not condition_canonicals <= canonicals or not is_scalar_condition(
-            conditions.conditional
+        joined = (
+            not target_canonicals <= canonicals
+            or not condition_canonicals <= canonicals
+            or not is_scalar_condition(conditions.conditional)
+            or (
+                isinstance(ds, BuildDatasource)
+                and any(joined_condition_columns(ds, c) for c in aggregates)
+            )
         )
         # an arm-by-arm rollup has no joined-dimension plan
         if joined and isinstance(ds, BuildUnionDatasource):
@@ -1680,6 +1738,19 @@ def _finer_filter_rollup_source(
     return matches[0]
 
 
+def _joinable_property(
+    concept: BuildConcept | None, arms: list[BuildDatasource]
+) -> bool:
+    return (
+        concept is not None
+        and concept.lineage is None
+        and concept.purpose == Purpose.PROPERTY
+        and bool(concept.keys)
+        and len(arms) == 1
+        and set(concept.keys or ()) <= set(arms[0].grain.components)
+    )
+
+
 def _rolls_every_aggregate(
     datasource: BuildDatasource | BuildUnionDatasource,
     request: SourceRequest,
@@ -1693,6 +1764,8 @@ def _rolls_every_aggregate(
         datasources=request.graph.scope.datasources,
         target_grain=target_grain,
         conditions=request.conditions,
+        # an `agg(x ? c)` reading a joined column: the joined plan serves it
+        joined=True,
     )
     rolled_addresses = {c.address for c in rolled}
     return all(agg.address in rolled_addresses for agg in aggregates)
@@ -1841,42 +1914,58 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
 def _plan_joined_filter_rollup(
     request: SourceRequest, ds: BuildDatasource
 ) -> StrategyNode | None:
-    """The summary's rows at its own grain, joined to the dimensions the WHERE
-    reads, filtered, then summed to the requested grain: the filter selects
-    summary rows before any of them are added up."""
-    assert request.conditions is not None
+    """The summary's rows at its own grain, joined to the dimensions the WHERE,
+    the targets and each `agg(x ? c)` read, filtered, then summed to the
+    requested grain: the filter selects summary rows before any of them are
+    added up, and the CASE of `agg(x ? c)` reads `c` on each summary row, at a
+    grain that determines it (`Cover.joined_case_exact`)."""
     environment = request.environment
     outputs = list(request.outputs)
     grain = set(ds.grain.components)
     grain_keys = [environment.concepts[a] for a in sorted(grain)]
     bound = {c.canonical_address for c in ds.output_concepts}
-    row_args = [
-        c
-        for c in condition_row_args(request.conditions)
-        if c.granularity != Granularity.SINGLE_ROW
-    ]
+    row_args = unique(
+        [
+            c
+            for c in condition_row_args(request.conditions)
+            + [r for o in outputs for r in _filtered_condition_args(o)]
+            + [o for o in outputs if not o.is_aggregate]
+            if c.granularity != Granularity.SINGLE_ROW
+        ],
+        "address",
+    )
     joined = [c for c in row_args if c.canonical_address not in bound]
+    joined_addresses = {c.address for c in joined}
     scan = create_select_node(
         f"ds~{ds.name}",
         unique(
-            outputs + grain_keys + [c for c in row_args if c not in joined], "address"
+            [c for c in outputs if c.address not in joined_addresses]
+            + grain_keys
+            + [c for c in row_args if c.address not in joined_addresses],
+            "address",
         ),
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,
     )
     parents: list[StrategyNode] = [scan]
-    if joined:
-        join_keys = {
-            key
-            for c in joined
-            for key in set(c.keys or ()) | set(c.grain.components)
-            if key in grain
-        }
+    # one lookup per key set: two dimensions on different keys of the grain
+    # (`user.state`, `product.brand`) are two joins onto the summary's rows,
+    # never one request the search must bridge
+    by_keys: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
+    for c in joined:
+        by_keys[
+            frozenset(
+                key
+                for key in set(c.keys or ()) | set(c.grain.components)
+                if key in grain
+            )
+        ].append(c)
+    for join_keys, columns in sorted(by_keys.items(), key=lambda kv: sorted(kv[0])):
         dims = plan_source(
             SourceRequest(
                 outputs=unique(
-                    joined + [k for k in grain_keys if k.address in join_keys],
+                    columns + [k for k in grain_keys if k.address in join_keys],
                     "address",
                 ),
                 environment=environment,
@@ -1899,7 +1988,7 @@ def _plan_joined_filter_rollup(
         environment=environment,
         parents=parents,
         depth=request.depth,
-        conditions=request.conditions.conditional,
+        conditions=request.conditions.conditional if request.conditions else None,
     )
     return GroupNode(
         input_concepts=rows,
@@ -1910,6 +1999,11 @@ def _plan_joined_filter_rollup(
         force_group=True,
         rollup_concepts=[c for c in outputs if c.is_aggregate],
     )
+
+
+def _filtered_condition_args(concept: BuildConcept) -> list[BuildConcept]:
+    filtered = concept.filtered_rollup
+    return [] if filtered is None else list(filtered[1].row_arguments)
 
 
 def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
@@ -2147,7 +2241,11 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     if parents is None:
         return None
     merged = _merge_component_sources(
-        request, parents, bridge.concepts, bridge.assembles_axis
+        request,
+        parents,
+        bridge.concepts,
+        bridge.assembles_axis,
+        joined_rollup=bool(bridge.joined_scans),
     )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)

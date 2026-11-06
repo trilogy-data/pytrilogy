@@ -16,19 +16,6 @@ def keyed(city: str, charts: list[str], variants: list[str]) -> list[str]:
 SPECIES_VARIANTS = ["", " [cross:native_locality_bucket]", " [species]", " [cultivar]"]
 
 SERVED: dict[str, str] = {
-    # #827 filtered aggregates: count_distinct(tree_id ? <bucket>) / count_distinct(tree_id).
-    **{
-        key: "trees"
-        for key in keyed(
-            "USBOS",
-            ["summary:local-native-share"],
-            ["", " [cross:species]", " [cross:native_locality_bucket]"],
-        )
-    },
-    **{
-        key: "trees"
-        for key in keyed("USBOS", ["species:sp-biome-fit"], SPECIES_VARIANTS)
-    },
     # #827 key + property with no aggregate under a partition (city) filter.
     **{key: "trees" for key in keyed("USBOS", ["species:context"], SPECIES_VARIANTS)},
     # No city filter and no tree concept: answered from the species dimension alone.
