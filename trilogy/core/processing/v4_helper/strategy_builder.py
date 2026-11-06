@@ -3161,8 +3161,8 @@ def _pads_a_value_null_group(
 def _pair_inside_padding_streams(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
-    origin: dict[int, str] | None = None,
-    plan: JoinPlan | None = None,
+    origin: dict[int, str],
+    plan: JoinPlan,
 ) -> list[StrategyNode]:
     """A grouping contributor holding no region pairs with a stream that
     padded one inside its own merge, there and not at FINAL.
@@ -3234,21 +3234,19 @@ def _plan_moved_contributor(
     merge: StrategyNode,
     other: StrategyNode,
     stream: StrategyNode,
-    origin: dict[int, str] | None,
-    plan: JoinPlan | None,
+    origin: dict[int, str],
+    plan: JoinPlan,
 ) -> None:
     """A FINAL contributor moved into `stream`'s merge pairs with the rows
     there as the FINAL plan pairs it with `stream`."""
+    mine = side_members(other, origin)
+    theirs = side_members(stream, origin)
     if (
         not isinstance(merge, MergeNode)
         or merge.planned_pairs is None
-        or origin is None
-        or plan is None
+        or mine is None
+        or theirs is None
     ):
-        return
-    mine = side_members(other, origin)
-    theirs = side_members(stream, origin)
-    if mine is None or theirs is None:
         return
     keys = PlannedPairs({}, plan.pair_keys()).between(mine, theirs)
     merge.planned_pairs = merge.planned_pairs.joined(id(other), mine, keys)
