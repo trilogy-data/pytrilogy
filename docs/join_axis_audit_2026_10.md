@@ -902,14 +902,30 @@ carries the same columns. Corpus: 0 of 209 plans moved, and 0 of 133 tpc
 plans. `_widen_merge_join_keys` now runs only where a per-group merge has no
 plan.
 
+**A region projection keeps its group (part 25).** An aggregate over a
+region merges its solid row parents first, then projects its scalar inputs
+over that merge (`_project_basic_aggregate_inputs`) and merges the result
+with the domain. The projection widens a *copy* of the solid side, and the
+copy was in no `origin`, so the merge with the domain had a side no group
+stood behind and fell back to unplanned widening. When the solid rows are one
+planned group's, the copy now maps to that group, and the merge is planned like
+any other per-group merge. Over the suite, merges with no plan fell from 113 to
+20. Before the change, the fallback widening ran 115 times and added a
+column once, in a unit test calling `_pre_merge_parents` with no planner
+context. Every one of the 20 left has a side that is itself a merge of several
+planned groups (an aggregate beside a window, a rowset beside the scan it
+pairs with), which a per-group plan cannot name. Corpus: 0 of 205 plans moved, and
+0 of 133 TPC-DS/TPC-H plans moved. The full-suite SQL capture moved no plan.
+Fuzzer 522/522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The gate and condition merges carry planned asks, but not their
    pairings: the MergeNode a condition is hosted on still discovers its keys
    at resolve.
-2. A merge with a side no group stands behind returns no plan, so resolve
-   still finds its keys.
+2. A merge with a side that merges several planned groups returns no plan,
+   so resolve still finds its keys (20 merges over the suite).
 3. The MergeNode is given `permitted_keys`, not `node_joins` built from the
    pairings.
 4. `GroupInputContract.preserve_keys` is still the union of five sets.

@@ -6776,23 +6776,27 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
             )
-            parents = (
-                _project_basic_aggregate_inputs(
-                    outputs,
-                    primary_addrs,
-                    solid,
-                    ctx.folds.render(
-                        build.group_id
-                        for p, build in zip(parents, parent_builds)
-                        if p not in domains and p not in feeders
-                    ),
-                    environment,
-                    region_spans=domain_spans,
-                    named=named_arguments,
-                )
-                + domains
-                + feeders
+            projected = _project_basic_aggregate_inputs(
+                outputs,
+                primary_addrs,
+                solid,
+                ctx.folds.render(
+                    build.group_id
+                    for p, build in zip(parents, parent_builds)
+                    if p not in domains and p not in feeders
+                ),
+                environment,
+                region_spans=domain_spans,
+                named=named_arguments,
             )
+            # the projection is a copy of one planned group's rows: it is
+            # that group's side of the merge with the domain
+            if (
+                len(solid) == 1
+                and (solid_gid := _origin_group(solid[0], origin)) is not None
+            ):
+                origin.update((id(p), solid_gid) for p in projected)
+            parents = projected + domains + feeders
         if derivation == Derivation.UNNEST:
             element_filters = _element_filters(
                 parents, parent_builds, a, group_edges, gid
