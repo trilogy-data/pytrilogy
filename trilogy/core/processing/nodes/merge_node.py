@@ -242,8 +242,9 @@ def _planned_source_pairs(
     held: dict[str, frozenset[str] | None],
     planned: PlannedPairs | None,
 ) -> dict[frozenset[str], frozenset[str]] | None:
-    """What each two merged sources may pair on, by identifier. A pair with a
-    side the plan does not name may pair on anything the merge may."""
+    """What each two joined sources may pair on, by identifier. A pair with a
+    side the plan does not name may pair on anything the merge may. An
+    existence-only source is no side: it is read as a subselect, never paired."""
     if planned is None:
         return None
     out: dict[frozenset[str], frozenset[str]] = {}
@@ -743,8 +744,6 @@ class MergeNode(StrategyNode):
         final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
         )
-        planned_pairs = _planned_source_pairs(merged, held, self.planned_pairs)
-
         # a condition's row argument is read by the row stream like an output
         merge_output_addresses = {c.address for c in self.output_concepts} | (
             {c.address for c in self.conditions.row_arguments}
@@ -754,6 +753,15 @@ class MergeNode(StrategyNode):
         existence_final = [
             x for x in final_datasets if self._existence_only(x, merge_output_addresses)
         ]
+        planned_pairs = _planned_source_pairs(
+            {
+                k: v
+                for k, v in merged.items()
+                if all(v is not x for x in existence_final)
+            },
+            held,
+            self.planned_pairs,
+        )
         # ``force_group is True`` means this merge exists to regroup its finer
         # parent to the output grain; returning a parent that merely covers the
         # output columns would drop that group. ``preserve_parents`` marks a
