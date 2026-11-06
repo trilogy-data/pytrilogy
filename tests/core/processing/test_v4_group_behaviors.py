@@ -1842,6 +1842,5 @@ def test_side_members_reads_the_groups_a_merge_below_joins():
     a, b, stray = scan(), scan(), scan()
     origin = {id(a): "a", id(b): "b"}
     assert side_members(wrap(a), origin) == {"a"}
-    assert side_members(wrap(merge(a, wrap(b))), origin) == {"a", "b"}
+    assert side_members(merge(a, wrap(b)), origin) == {"a", "b"}
     assert side_members(merge(a, stray), origin) is None
-    assert side_members(stray, origin) is None

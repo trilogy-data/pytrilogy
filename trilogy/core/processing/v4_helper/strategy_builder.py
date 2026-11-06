@@ -6330,14 +6330,14 @@ def side_members(node: StrategyNode, origin: dict[int, str]) -> frozenset[str] |
     gid = _origin_group(node, origin)
     if gid is not None:
         return frozenset({gid})
-    while len(node.parents) == 1:
-        node = node.parents[0]
-    if not isinstance(node, MergeNode) or not node.parents:
+    if not isinstance(node, MergeNode):
         return None
-    members = [side_members(parent, origin) for parent in node.parents]
-    if any(m is None for m in members):
-        return None
-    return frozenset().union(*(m for m in members if m is not None))
+    members: set[str] = set()
+    for parent in node.parents:
+        if (held := side_members(parent, origin)) is None:
+            return None
+        members |= held
+    return frozenset(members)
 
 
 def side_groups(parents: list[StrategyNode], origin: dict[int, str]) -> list[str]:
