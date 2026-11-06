@@ -46,6 +46,7 @@ from trilogy.core.models.core import (
     EnumType,
     TupleWrapper,
     ValidatedType,
+    holds_unique_elements,
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.validation.common import (
@@ -242,6 +243,31 @@ def validate_unique_properties(
     return results
 
 
+def _length(arg: BuildConcept | BuildFunction) -> BuildFunction:
+    return BuildFunction(
+        operator=FunctionType.LENGTH,
+        arguments=[arg],
+        output_data_type=DataType.INTEGER,
+        output_purpose=Purpose.PROPERTY,
+        arg_count=1,
+    )
+
+
+def _repeated_element_violation(concept: BuildConcept) -> BuildComparison:
+    """A `::unique` list repeating an element: fewer distinct elements than
+    elements."""
+    distinct = BuildFunction(
+        operator=FunctionType.ARRAY_DISTINCT,
+        arguments=[concept],
+        output_data_type=concept.datatype,
+        output_purpose=Purpose.PROPERTY,
+        arg_count=1,
+    )
+    return BuildComparison(
+        left=_length(concept), operator=ComparisonOperator.NE, right=_length(distinct)
+    )
+
+
 def domain_violation_condition(
     concept: BuildConcept,
 ) -> BuildConditional | None:
@@ -252,7 +278,9 @@ def domain_violation_condition(
     while isinstance(dt, TraitDataType):
         dt = dt.type
     violation: BuildComparison | BuildConditional | BuildParenthetical | None = None
-    if isinstance(dt, EnumType):
+    if holds_unique_elements(concept.datatype):
+        violation = _repeated_element_violation(concept)
+    elif isinstance(dt, EnumType):
         if not dt.values:
             return None
         violation = BuildComparison(

@@ -28,6 +28,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
+    _datasource_has_matching_rollup_aggregate,
     _is_rollable_aggregate,
     at_own_grain,
     filter_finer_row_args,
@@ -68,6 +69,11 @@ from trilogy.core.processing.nodes import (
     MergeNode,
     SelectNode,
     StrategyNode,
+)
+from trilogy.core.processing.relation_rollup import (
+    names_each_once,
+    relation_rollup_concepts,
+    relation_targets,
 )
 from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.utility import walk_lineage
@@ -2001,6 +2007,186 @@ def _plan_joined_filter_rollup(
     )
 
 
+def _relation_rollup_source(
+    request: SourceRequest,
+) -> tuple[BuildDatasource, dict[str, frozenset[str]]] | None:
+    """The summary whose key relates to a target through a list, rolling up
+    every requested aggregate (`Cover.keyed_relation_count`). None under a
+    WHERE (`relation_rollup_concepts`' callers never mark one), and when a
+    datasource binds a related target itself: the search reads that one."""
+    if request.conditions is not None:
+        return None
+    outputs = request.outputs
+    aggregates = [c for c in outputs if c.is_aggregate]
+    if not aggregates or not all(_is_rollable_aggregate(c) for c in aggregates):
+        return None
+    environment = request.environment
+    target_grain = BuildGrain.from_concepts(outputs, environment=environment)
+    if any(
+        not c.is_aggregate and c.address not in target_grain.components for c in outputs
+    ) or not all(
+        at_own_grain(c, target_grain, environment.concepts) for c in aggregates
+    ):
+        return None
+    datasources = request.graph.scope.datasources
+    matches: list[tuple[BuildDatasource, dict[str, frozenset[str]]]] = []
+    # a union member is no standalone scan in the graph
+    scans = [
+        ds
+        for ds in request.graph.datasources.values()
+        if isinstance(ds, BuildDatasource)
+    ]
+    for ds in scans:
+        if not holds_every_kept_row(ds, None):
+            continue
+        relations = relation_targets(ds, target_grain, environment)
+        if not relations:
+            continue
+        rolled = {
+            c.address
+            for c in relation_rollup_concepts(
+                ds, aggregates, environment, datasources, target_grain
+            )
+        }
+        if all(c.address in rolled for c in aggregates):
+            matches.append((ds, relations))
+    if not matches:
+        return None
+    related = {environment.concepts[a].canonical_address for _, r in matches for a in r}
+    if any(
+        related & {c.canonical_address for c in ds.output_concepts}
+        and any(_datasource_has_matching_rollup_aggregate(ds, a) for a in aggregates)
+        for ds in datasources
+    ):
+        return None
+    matches.sort(key=lambda m: (len(m[0].grain.components), m[0].name))
+    return matches[0]
+
+
+def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
+    """The summary's rows joined to the DISTINCT pairs of each list's keys and
+    the targets it relates them to, then summed to the requested grain
+    (`Cover.distinct_pairs_resum_exact`). LEFT, as the tree plan joins an
+    unnest: a key whose list is empty or NULL keeps its rows under a NULL
+    target. FULL for a merged key, as the tree plan joins its pairs: a value
+    only a key with no rows lists answers an empty group."""
+    match = _relation_rollup_source(request)
+    if match is None:
+        return None
+    ds, relations = match
+    environment = request.environment
+    outputs = list(request.outputs)
+    concepts = environment.concepts
+    related = {a: concepts[a] for a in relations}
+    scan_outputs = unique(
+        [c for c in outputs if c.address not in related]
+        + [concepts[a] for a in sorted(ds.grain.components)],
+        "address",
+    )
+    unbound = [
+        c
+        for c in scan_outputs
+        if not c.is_aggregate
+        and c.canonical_address not in {o.canonical_address for o in ds.output_concepts}
+    ]
+    scan = create_select_node(
+        f"ds~{ds.name}",
+        [c for c in scan_outputs if c not in unbound],
+        g=request.graph,
+        environment=environment,
+        depth=request.depth + 1,
+    )
+    parents: list[StrategyNode] = [scan]
+    if unbound:
+        dims = _plan_lookup(request, unbound, set(ds.grain.components))
+        if dims is None:
+            return None
+        parents.append(dims)
+    by_keys: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
+    for address, keys in relations.items():
+        by_keys[keys].append(related[address])
+    for keys, columns in sorted(by_keys.items(), key=lambda kv: sorted(kv[0])):
+        pairs = _relation_pairs(request, columns, [concepts[k] for k in sorted(keys)])
+        if pairs is None:
+            return None
+        parents.append(pairs)
+    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
+    joined = MergeNode(
+        input_concepts=rows,
+        output_concepts=rows,
+        environment=environment,
+        parents=parents,
+        depth=request.depth,
+        force_join_type=(
+            JoinType.LEFT_OUTER
+            if all(c.derivation == Derivation.UNNEST for c in related.values())
+            else JoinType.FULL
+        ),
+    )
+    return GroupNode(
+        input_concepts=rows,
+        output_concepts=outputs,
+        environment=environment,
+        parents=[joined],
+        depth=request.depth,
+        force_group=True,
+        rollup_concepts=[c for c in outputs if c.is_aggregate],
+    )
+
+
+def _plan_lookup(
+    request: SourceRequest, columns: list[BuildConcept], grain: set[str]
+) -> StrategyNode | None:
+    keys = [
+        request.environment.concepts[k]
+        for c in columns
+        for k in sorted(set(c.keys or ()) & grain)
+    ]
+    return plan_source(
+        SourceRequest(
+            outputs=unique(columns + keys, "address"),
+            environment=request.environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=None,
+            deferred_conditions=_deferred_conditions(request),
+            depth=request.depth + 1,
+        )
+    )
+
+
+def _relation_pairs(
+    request: SourceRequest, targets: list[BuildConcept], keys: list[BuildConcept]
+) -> StrategyNode | None:
+    """DISTINCT `(keys, targets)`: a list repeating an element names it once
+    (`Cover.repeated_element_counts_once`). Pairs of a list declared
+    `::unique` are distinct as listed (`Cover.unique_list_pairs_are_distinct`)."""
+    # Imported lazily: `concept_strategies_v4` imports this module's package.
+    from trilogy.core.processing.concept_strategies_v4 import search_concepts
+
+    columns = unique(keys + targets, "address")
+    info = search_concepts(
+        mandatory_list=columns,
+        history=cast(V4History, request.history),
+        environment=request.environment,
+        depth=request.depth + 1,
+        g=request.graph,
+        conditions=[],
+    )
+    if info.strategy_node is None:
+        return None
+    if all(names_each_once(t, request.environment) for t in targets):
+        return info.strategy_node
+    return GroupNode(
+        input_concepts=columns,
+        output_concepts=columns,
+        environment=request.environment,
+        parents=[info.strategy_node],
+        depth=request.depth,
+        force_group=True,
+    )
+
+
 def _filtered_condition_args(concept: BuildConcept) -> list[BuildConcept]:
     filtered = concept.filtered_rollup
     return [] if filtered is None else list(filtered[1].row_arguments)
@@ -2341,7 +2527,7 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
     complete_where = _plan_complete_where_source(request)
     if complete_where is not None:
         return complete_where
-    pinned_rollup = _plan_finer_filter_rollup(request)
+    pinned_rollup = _plan_finer_filter_rollup(request) or _plan_relation_rollup(request)
     if pinned_rollup is not None:
         return pinned_rollup
     decision = _network_source(request)

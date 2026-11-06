@@ -494,6 +494,18 @@ def data_type(
     return base
 
 
+def _trait_applies(trait_type: Any, base: Any) -> bool:
+    """A trait over `list<any>` (`std.collection.unique`) annotates a list of
+    any element type."""
+    if (
+        isinstance(trait_type, ArrayType)
+        and trait_type.type == DataType.ANY
+        and isinstance(base, ArrayType)
+    ):
+        return True
+    return is_compatible_datatype(trait_type, base)
+
+
 def _apply_traits(
     base: Any,
     traits: list[str],
@@ -517,7 +529,7 @@ def _apply_traits(
             raise TypeError(
                 f"Invalid type (trait) {trait} for {base}, line {line}.{hint}"
             )
-        if not is_compatible_datatype(matched.type, base):
+        if not _trait_applies(matched.type, base):
             raise TypeError(
                 f"Invalid type (trait) {trait} for {base}, line {line}. "
                 f"Trait expects type {matched.type}, has {base}"

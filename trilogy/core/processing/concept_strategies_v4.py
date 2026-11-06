@@ -66,6 +66,10 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.node_generators.select_node import root_is_unsourced
 from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.relation_rollup import (
+    relation_rollup_concepts,
+    relation_targets,
+)
 from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
@@ -548,6 +552,9 @@ def materialized_root_addresses(
     return frozenset(
         out
         | rolled_roots
+        | _related_unnest_roots(
+            mandatory_list, rolled_roots, target_grain, where, environment, datasources
+        )
         | _summary_bound_expressions(
             mandatory_list
             + list(condition_args_by_address.values())
@@ -555,6 +562,33 @@ def materialized_root_addresses(
             rollup_sources,
         )
     )
+
+
+def _related_unnest_roots(
+    mandatory_list: list[BuildConcept],
+    rolled_roots: set[str],
+    target_grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> set[str]:
+    """An unnested element the summary's key relates to, when every demanded
+    aggregate rolls through that relation: read beside the rolled aggregates
+    (`relation_rollup_concepts`), not expanded over their rows."""
+    aggregates = {c.address for c in mandatory_list if c.is_aggregate}
+    if where is not None or not aggregates or not aggregates <= rolled_roots:
+        return set()
+    for ds in datasources:
+        rolled = relation_rollup_concepts(
+            ds, mandatory_list, environment, datasources, target_grain
+        )
+        if aggregates <= {c.address for c in rolled}:
+            return {
+                address
+                for address in relation_targets(ds, target_grain, environment)
+                if environment.concepts[address].derivation == Derivation.UNNEST
+            }
+    return set()
 
 
 def _exactly_materialized(
@@ -723,18 +757,22 @@ def _rollup_sources(
             )
         ):
             continue
-        if any(
-            r.address == concept.address
-            for r in source_rollup_concepts(
-                datasource=source,
-                requested_concepts=requested,
-                concepts_by_address=environment.concepts,
-                datasources=datasources,
-                target_grain=target_grain,
-                conditions=where,
-                joined=True,
+        rolled = source_rollup_concepts(
+            datasource=source,
+            requested_concepts=requested,
+            concepts_by_address=environment.concepts,
+            datasources=datasources,
+            target_grain=target_grain,
+            conditions=where,
+            joined=True,
+        )
+        # under a WHERE the group graph filters the list's parent rows, not a
+        # rolled root, so a relation rollup would drop it
+        if isinstance(source, BuildDatasource) and where is None:
+            rolled = rolled + relation_rollup_concepts(
+                source, requested, environment, datasources, target_grain
             )
-        ):
+        if any(r.address == concept.address for r in rolled):
             out.extend(
                 source.children
                 if isinstance(source, BuildUnionDatasource)

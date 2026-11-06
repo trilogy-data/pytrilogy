@@ -139,6 +139,7 @@ EXISTENCE = {
 RELATION = {
     "member": "ecoregion_id, count(tree_id) as n",
     "member_property": "biome, count(tree_id) as n",
+    "beside_property": "bucket, biome, count(tree_id) as n",
 }
 
 # `Cover.case_on_aggregate_rows`, `Cover.finer_grain_read_fans_out`: a scalar
@@ -212,8 +213,11 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
     ),
     **{
         ("relation", shape): (
-            "rule 6: a summary is never joined through the fan-out it is keyed on",
-            None,
+            (
+                "rule 6 under a WHERE: the group graph filters the list's parent "
+                "rows, not the rolled root"
+            ),
+            ("city", "species", "property", "year"),
         )
         for shape in RELATION
     },
