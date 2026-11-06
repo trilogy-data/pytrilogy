@@ -255,3 +255,50 @@ def test_finer_where_scans_the_rows_once(executors, aggregate, condition, target
     )
     assert rows == expected, sql
     assert sql.count(' as "trees"') == 1, sql
+
+
+NATIVE = "species in ('Acer rubrum', 'Acer saccharum', 'Quercus alba')"
+STORED_FILTERED = {
+    "count_key": ("native_trees", "count(tree_id ? bucket = 'Native')", "count", "1"),
+    "sum": ("native_dbh", "sum(dbh ? bucket = 'Native')", "sum", "dbh"),
+    "min": ("least_native_dbh", "min(dbh ? bucket = 'Native')", "min", "dbh"),
+    "max": ("most_native_dbh", "max(dbh ? bucket = 'Native')", "max", "dbh"),
+}
+
+
+def _stored_filtered_model(trees: list[tuple]) -> str:
+    tree_sql = _values(trees, "tree_id, city, species, dbh, plant_year")
+    autos = "\n".join(
+        f"auto {name} <- {expression};"
+        for name, expression, _, _ in STORED_FILTERED.values()
+    )
+    columns = ", ".join(f"{name}: ?{name}" for name, *_ in STORED_FILTERED.values())
+    stored = ", ".join(
+        f"{fn}(case when {NATIVE} then {value} end) as {name}"
+        for name, _, fn, value in STORED_FILTERED.values()
+    )
+    return f"""{_model(trees)}
+{autos}
+datasource stored_native (city, species, plant_year: ?plant_year, {columns})
+grain (city, species, plant_year)
+query '''select city, species, plant_year, {stored}
+from ({tree_sql}) group by 1, 2, 3''';
+"""
+
+
+STORED_CASES = list(itertools.product(STORED_FILTERED, TARGETS, SERVABLE_WHERES))
+
+
+@pytest.mark.parametrize("aggregate,target,where", STORED_CASES, ids=_ids(STORED_CASES))
+def test_stored_filtered_aggregate_is_read_as_stored(aggregate, target, where):
+    """A summary storing `agg(x ? c)` itself holds filtered values: it answers
+    a condition no summary column reaches (`bucket`), and its column is never
+    filtered a second time."""
+    seed = SEEDS[0]
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(_stored_filtered_model(_trees(seed)))
+    sql, rows = _sql_and_rows(executor, _query(aggregate, "property", target, where))
+    assert rows == _reference(
+        _rows(_trees(seed)), aggregate, "property", target, where
+    ), sql
+    assert '"stored_native"' in sql and '"trees"' not in sql, sql

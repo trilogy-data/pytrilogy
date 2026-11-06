@@ -980,22 +980,30 @@ CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create
 """.strip())
 
 
-def _filtered_below(cte: CTE | UnionCTE, address: str) -> bool:
-    """Some CTE `cte` reads `address` from already re-aggregated it, applying
-    its filter: what `cte` re-aggregates is filtered partials, not the stored
-    unfiltered column."""
-    sources = set(cte.source_map.get(address, []))
+def _reads_unfiltered_partial(cte: CTE | UnionCTE, concept: BuildConcept) -> bool:
+    """`cte` re-aggregates the stored `agg(x)` that `concept`, an `agg(x ? c)`,
+    was matched to, so its filter is applied here. A table storing
+    `agg(x ? c)` itself holds filtered values, and so does a CTE below that
+    re-aggregated them already."""
+    sources = set(cte.source_map.get(concept.address, []))
+    for datasource in cte.source.datasources:
+        if isinstance(datasource, BuildDatasource) and (
+            {datasource.name, datasource.safe_identifier} & sources
+        ):
+            return (
+                datasource.aggregate_column_for(concept) is None
+                and datasource.filtered_column_for(concept) is not None
+            )
     for parent in cte.parent_ctes:
         if parent.name not in sources:
             continue
         if (
             isinstance(parent, CTE)
             and parent.group_to_grain
-            and address in {r.address for r in parent.rollup_concepts}
+            and concept.address in {r.address for r in parent.rollup_concepts}
         ):
-            return True
-        if _filtered_below(parent, address):
-            return True
+            return False
+        return _reads_unfiltered_partial(parent, concept)
     return False
 
 
@@ -1635,7 +1643,7 @@ class BaseDialect:
                     f"Missing rollup source reference to {c.address}"
                 )
             filtered = c.filtered_rollup
-            if filtered is not None and not _filtered_below(cte, c.address):
+            if filtered is not None and _reads_unfiltered_partial(cte, c):
                 # `agg(x ? c)` from a stored `agg(x)`: each partial counts where
                 # `c` holds on its row (`Cover.filtered_sum_exact`)
                 condition = self.render_expr(

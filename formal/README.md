@@ -754,7 +754,11 @@ a design decision or a bug.
   partials already filtered below is a plain one. The query's concepts are
   never rewritten. A count over the filter's rows guards its fan-out on the
   rows of `x`, not of `x ? c`. `count_distinct(k ? c)` follows, through
-  `distinct_key_counts`. Serving it exposed three planner bugs. A nested
+  `distinct_key_counts`. A summary storing `agg(x ? c)` itself is read as
+  stored, with no CASE on top: it answers a condition on any column, a
+  property of its key included (`test_stored_filtered_aggregate_is_read_as_stored`),
+  and now beside a target that is such a property too, which read the rows on
+  main. Serving it exposed three planner bugs. A nested
   partial grouped by a stored derived column (`count(x) by species,
   plant_year` against a stored `year(plant_date)`) rebuilt that column from
   the facts and joined it back onto the summary. Two walks read the

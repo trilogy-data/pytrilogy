@@ -201,6 +201,10 @@ value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
       match, and added a stage whose order mattered (`count_distinct(k ? c)`
       was rewritten too late to be seen). It was replaced by a matcher rule
       and a CASE in the rollup render; the law suites did not change.
+    - A summary may store the filtered aggregate itself. The first matcher
+      version wrapped that column in the CASE again and crashed; the render
+      now applies it only where it reaches a table storing the unfiltered
+      partial alone. Test the exact match beside every new rollup path.
     - Apply a filter where the stored column is first re-aggregated, and only
       there: a target that is a property of the summary key re-aggregates
       twice, and the second pass, after the join, has no condition columns.
