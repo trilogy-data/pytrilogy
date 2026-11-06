@@ -78,6 +78,19 @@ _UNORDERED_FIELDS: dict[str, set[str]] = {
 }
 
 
+# Dataclasses that were pydantic models when fingerprints were first stored:
+# they keep that encoding so a stored fingerprint still matches.
+_MODEL_ENCODED = frozenset(
+    {
+        "ColumnAssignment",
+        "Datasource",
+        "DatasourceAssertion",
+        "DatasourceTemplate",
+        "FreshnessLag",
+    }
+)
+
+
 class FingerprintError(Exception):
     pass
 
@@ -243,10 +256,12 @@ class _Canonicalizer:
             return _h("uset", *sorted(self.node(v) for v in obj))
         if isinstance(obj, dict):
             return self._mapping(obj)
+        if type(obj).__name__ in _MODEL_ENCODED:
+            return self._model(obj, [f.name for f in dc_fields(obj)])
         if is_dataclass(obj):
             return self._dataclass(obj)
         if isinstance(obj, BaseModel):
-            return self._pydantic(obj)
+            return self._model(obj, list(type(obj).model_fields))
         raise FingerprintError(f"Cannot canonicalize {type(obj).__name__}")
 
     def _mapping(self, obj: dict) -> str:
@@ -269,9 +284,9 @@ class _Canonicalizer:
                 parts.append(self.node(value))
         return _h(*parts)
 
-    def _pydantic(self, obj: BaseModel) -> str:
+    def _model(self, obj: Any, names: list[str]) -> str:
         parts = ["pm", type(obj).__name__]
-        for name in sorted(type(obj).model_fields):
+        for name in sorted(names):
             parts.append(name)
             parts.append(self.node(getattr(obj, name)))
         return _h(*parts)

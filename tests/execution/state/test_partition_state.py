@@ -5,6 +5,7 @@ observed/expected slices, judging each one, and merging per-partition deltas
 back into a base snapshot without workers clobbering each other.
 """
 
+from dataclasses import replace
 from datetime import date, datetime
 from unittest.mock import patch
 
@@ -1218,8 +1219,8 @@ def test_a_targeted_slice_survives_the_post_script_re_evaluation(executor):
     prevent."""
     executor.execute_text(BUILD_ONE_DAY)
     raw = executor.environment.datasources["raw_orders"]
-    executor.environment.datasources["raw_orders"] = raw.model_copy(
-        update={"freshness_probe": "/fake/probe.py", "refresh_script": "/fake/ref.py"}
+    executor.environment.datasources["raw_orders"] = replace(
+        raw, **{"freshness_probe": "/fake/probe.py", "refresh_script": "/fake/ref.py"}
     )
     policy = RefreshPolicy(
         force_sources=frozenset({"raw_orders"}),

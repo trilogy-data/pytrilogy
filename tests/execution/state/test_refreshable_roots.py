@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,8 +35,8 @@ def _executor_with_refreshable_root(probe_path: str, refresh_path: str):
     e.connection.commit()
 
     raw = e.environment.datasources["raw"]
-    e.environment.datasources["raw"] = raw.model_copy(
-        update={"freshness_probe": probe_path, "refresh_script": refresh_path}
+    e.environment.datasources["raw"] = replace(
+        raw, **{"freshness_probe": probe_path, "refresh_script": refresh_path}
     )
     return e
 
@@ -86,9 +87,7 @@ def test_root_with_only_probe_no_script_is_still_skipped():
         query '''SELECT 1 as rid''';
         """)
     ds = e.environment.datasources["r"]
-    e.environment.datasources["r"] = ds.model_copy(
-        update={"freshness_probe": "/fake/p.py"}
-    )
+    e.environment.datasources["r"] = replace(ds, **{"freshness_probe": "/fake/p.py"})
 
     with patch(
         "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
@@ -255,11 +254,12 @@ def test_cross_script_cascade_dependent_refreshes():
     e.execute_raw_sql("INSERT INTO d_table VALUES (1, 100)")  # D matches R initially
 
     raw = e.environment.datasources["r"]
-    e.environment.datasources["r"] = raw.model_copy(
-        update={
+    e.environment.datasources["r"] = replace(
+        raw,
+        **{
             "freshness_probe": "/fake/probe.py",
             "refresh_script": "/fake/refresh.py",
-        }
+        },
     )
 
     def fake_refresh(_path, cwd=None):
@@ -313,11 +313,12 @@ def test_probe_memoization_same_path_called_once():
 
     for name in ("r1", "r2"):
         ds = e.environment.datasources[name]
-        e.environment.datasources[name] = ds.model_copy(
-            update={
+        e.environment.datasources[name] = replace(
+            ds,
+            **{
                 "freshness_probe": "/fake/shared_probe.py",
                 "refresh_script": f"/fake/{name}_refresh.py",
-            }
+            },
         )
 
     with patch(

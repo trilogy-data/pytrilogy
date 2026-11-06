@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
-from functools import cached_property
+from functools import cache, cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -3469,30 +3469,24 @@ class CustomFunctionFactory:
         )
 
     def to_dict(self) -> dict:
-        from pydantic import TypeAdapter
-
-        expr_adapter: TypeAdapter[Expr] = TypeAdapter(Expr)
         return {
             "name": self.name,
             "namespace": self.namespace,
-            "function": expr_adapter.dump_python(self.function, mode="json"),
+            "function": _expr_adapter().dump_python(self.function, mode="json"),
             "function_arguments": [
-                TypeAdapter(ArgBinding).dump_python(a, mode="json")
+                _arg_binding_adapter().dump_python(a, mode="json")
                 for a in self.function_arguments
             ],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> CustomFunctionFactory:
-        from pydantic import TypeAdapter
-
-        expr_adapter: TypeAdapter[Expr] = TypeAdapter(Expr)
         return cls(
             name=data["name"],
             namespace=data["namespace"],
-            function=expr_adapter.validate_python(data["function"]),
+            function=_expr_adapter().validate_python(data["function"]),
             function_arguments=[
-                TypeAdapter(ArgBinding).validate_python(a)
+                _arg_binding_adapter().validate_python(a)
                 for a in data["function_arguments"]
             ],
         )
@@ -3708,3 +3702,23 @@ FuncArgs = (
     | Ordering
     | SubselectItem
 )
+
+
+# Building a pydantic schema for these unions costs far more than using it.
+@cache
+def _expr_adapter() -> Any:
+    from pydantic import TypeAdapter
+
+    return TypeAdapter(Expr)
+
+
+@cache
+def _arg_binding_adapter() -> Any:
+    from pydantic import TypeAdapter
+
+    return TypeAdapter(ArgBinding)
+
+
+from trilogy.core.models.copying import install_dataclass_deepcopy
+
+install_dataclass_deepcopy(globals())
