@@ -16,12 +16,6 @@ def keyed(city: str, charts: list[str], variants: list[str]) -> list[str]:
 SPECIES_VARIANTS = ["", " [cross:native_locality_bucket]", " [species]", " [cultivar]"]
 
 SERVED: dict[str, str] = {
-    # #827 K3: a ratio over the total beside coalesce(common_names[1], species).
-    **{
-        key: "trees"
-        for key in keyed("USBOS", ["species:sp-top-species"], SPECIES_VARIANTS)
-    },
-    "ALL species:sp-top-species": "trees",
     # #827 filtered aggregates: count_distinct(tree_id ? <bucket>) / count_distinct(tree_id).
     **{
         key: "trees"

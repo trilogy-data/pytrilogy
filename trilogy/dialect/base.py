@@ -980,6 +980,32 @@ CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create
 """.strip())
 
 
+def _reads_unfiltered_partial(cte: CTE | UnionCTE, concept: BuildConcept) -> bool:
+    """`cte` re-aggregates the stored `agg(x)` that `concept`, an `agg(x ? c)`,
+    was matched to, so its filter is applied here. A table storing
+    `agg(x ? c)` itself holds filtered values, and so does a CTE below that
+    re-aggregated them already."""
+    sources = set(cte.source_map.get(concept.address, []))
+    for datasource in cte.source.datasources:
+        if isinstance(datasource, BuildDatasource) and (
+            {datasource.name, datasource.safe_identifier} & sources
+        ):
+            return (
+                datasource.aggregate_column_for(concept) is None
+                and datasource.filtered_column_for(concept) is not None
+            )
+    parent = next((p for p in cte.parent_ctes if p.name in sources), None)
+    return (
+        parent is not None
+        and not (
+            isinstance(parent, CTE)
+            and parent.group_to_grain
+            and concept.address in {r.address for r in parent.rollup_concepts}
+        )
+        and _reads_unfiltered_partial(parent, concept)
+    )
+
+
 class BaseDialect:
     NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
         dict[WindowType, Callable[[str, str], str]]
@@ -1601,14 +1627,32 @@ class BaseDialect:
         logger.debug(
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
-        if cte.group_to_grain and c.address in {
-            concept.address for concept in cte.rollup_concepts
-        }:
+        planned = (
+            next((r for r in cte.rollup_concepts if r.address == c.address), None)
+            if cte.group_to_grain
+            else None
+        )
+        if planned is not None:
+            # the planned rollup, not a stale spelling of it in a parent's
+            # lineage (`count_distinct(k)` read as the `count(k)` it became)
+            c = planned
             rolled = self.safe_get_cte_value(cte, c, raise_invalid)
             if not rolled:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"
                 )
+            filtered = c.filtered_rollup
+            if filtered is not None and _reads_unfiltered_partial(cte, c):
+                # `agg(x ? c)` from a stored `agg(x)`: each partial counts where
+                # `c` holds on its row (`Cover.filtered_sum_exact`)
+                condition = self.render_expr(
+                    filtered[1].where.conditional, cte, raise_invalid=raise_invalid
+                )
+                rolled = f"CASE WHEN {condition} THEN {rolled} ELSE NULL END"
+                summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])
+                if filtered[0][0] == FunctionType.COUNT:
+                    return self.FUNCTION_MAP[FunctionType.COALESCE]([summed, "0"], [])
+                return summed
             summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])
             # a pre-aggregated COUNT rolled up through a join that padded it
             # (a sparse summary table beside its dimension): the group of one

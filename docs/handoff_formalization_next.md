@@ -23,8 +23,9 @@ under a membership, per-atom peels; area 1), and `Windows.lean` /
 `SetOps.lean` (0.3.444 and 0.3.445: what a window ranks, `over ()`, NULL
 placement per engine, set operators; area 4), and `Scalars.lean`
 (0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
-`log`; area 3), and `Types.lean` (0.3.448: a declared type holds every
-value a persisted copy stores; area 3b).
+`log`; area 3), `Types.lean` (0.3.448: a declared type holds every
+value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
+(0.3.450: `agg(x ? c)` read from a stored `agg(x)`; area 1c).
 
 ## The recipe
 
@@ -191,6 +192,31 @@ value a persisted copy stores; area 3b).
     - A SQLite error from "user-defined function raised exception" is
       SQLAlchemy's Python `floor`, not SQLite's.
 
+14. **Lessons from the filtered-aggregate round (`Cover.lean`, 0.3.450).**
+    - Match what was asked; never rewrite it into what a summary serves. The
+      round first built `agg(x ? c)` in the Factory as `reagg(case when c then
+      agg(x) by G, cols(c) end)`. It answered right, but it decided the plan
+      before the planner chose a source (it scanned the trees twice when no
+      summary applied), changed the concept a stored `count(x ? c)` would
+      match, and added a stage whose order mattered (`count_distinct(k ? c)`
+      was rewritten too late to be seen). It was replaced by a matcher rule
+      and a CASE in the rollup render; the law suites did not change.
+    - A summary may store the filtered aggregate itself. The first matcher
+      version wrapped that column in the CASE again and crashed; the render
+      now applies it only where it reaches a table storing the unfiltered
+      partial alone. Test the exact match beside every new rollup path.
+    - Apply a filter where the stored column is first re-aggregated, and only
+      there: a target that is a property of the summary key re-aggregates
+      twice, and the second pass, after the join, has no condition columns.
+      A render that cannot see them raises; it never skips the CASE.
+    - A strict xfail hides a crash as well as a miss. Hold every `OPEN` shape
+      to the tree rows' answer in its own test: a `KeyError` this round sat
+      behind one.
+    - Re-test a handoff's prediction rather than trust it. The cover handoff
+      said resolving `_summary_leaves` would answer per species; with the
+      nested walk also resolving it did not, over data built to break it
+      (two species sharing a display name).
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -306,8 +332,27 @@ a filter its grain does not determine. Open questions:
 ### 1c. Summary coverage (`Cover.lean` follow-ons)
 
 See `docs/handoff_summary_cover_next.md`: the approach, and the open items in
-order. It starts with a pre-existing wrong answer on main, a CASE over a
-per-bucket aggregate that fans out.
+order. Items 1 (filtered aggregates, now for `sum`/`min`/`max` too) and 2
+(totals under a finer WHERE) are done in 0.3.450, but for one case. Leads
+from that round:
+- **A condition on a property of the summary key** (`bucket` of `species`,
+  `common_names[1]`) still reads the rows: the summary scan re-aggregates and
+  sees only its own columns. Serving it needs the scan to keep the property's
+  key (`species`), the join to the dimension, and the filtered re-aggregation
+  after it, which `merge_rollup_concepts` already does for a plain partial
+  joined to a property target. This is the dashboards' case
+  (`summary:local-native-share`); `test_filtered_rollup_laws.py` marks it with
+  `JOINED_CONDITION`.
+- A summary storing `agg(x)` at exactly the target grain does not answer
+  `agg(x ? c)`: the matcher pairs them only where the partials are
+  re-aggregated.
+- **The statement's lineage is still stale** after `_reaggregate_partials`.
+  This round resolved the two walks that read it (`_nested_rollup_roots`,
+  `_summary_leaves`) and the rollup render; a rewrite of the statement's own
+  nested lineage would retire the class.
+- `siblings/scalar` under a WHERE on a stored column right-joins the summary
+  to the trees' distinct `(city, species, plant_year)`: right, but a scan the
+  summary makes unnecessary.
 
 ### 1b. Cheapest source (`Cost.lean` follow-ons)
 

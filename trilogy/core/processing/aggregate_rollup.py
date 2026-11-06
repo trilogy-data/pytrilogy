@@ -17,9 +17,18 @@ from trilogy.core.processing.condition_utility import condition_implies
 
 
 def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
+    """The aggregated row's columns: `x ? c` reads the rows of `x`."""
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
-    return list(concept.lineage.function.concept_arguments)
+    return [
+        (
+            argument.lineage.content
+            if isinstance(argument.lineage, BuildFilterItem)
+            and isinstance(argument.lineage.content, BuildConcept)
+            else argument
+        )
+        for argument in concept.lineage.function.concept_arguments
+    ]
 
 
 def _is_rollable_aggregate(concept: BuildConcept) -> bool:
@@ -32,11 +41,24 @@ def _is_rollable_aggregate(concept: BuildConcept) -> bool:
 def _datasource_has_matching_rollup_aggregate(
     datasource: BuildDatasource, concept: BuildConcept
 ) -> bool:
+    """`datasource` stores a partial of `concept`: the same aggregate, or for
+    `agg(x ? c)` the unfiltered `agg(x)` beside every column `c` reads, so the
+    re-aggregating scan decides `c` per partial. A column only a join reaches
+    (a property of the grain) is not in that scan."""
     signature = concept.rollup_signature
     if signature is None:
         return False
-    return any(
+    if any(
         output.rollup_signature == signature for output in datasource.output_concepts
+    ):
+        return True
+    filtered = concept.filtered_rollup
+    return (
+        filtered is not None
+        and datasource.filtered_column_for(concept) is not None
+        and _conditions_supported(datasource, filtered[1].where)
+        and bool(filtered[1].where.row_arguments)
+        and not any(c.is_aggregate for c in filtered[1].where.row_arguments)
     )
 
 

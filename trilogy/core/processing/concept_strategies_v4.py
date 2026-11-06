@@ -32,6 +32,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -548,7 +549,9 @@ def materialized_root_addresses(
         out
         | rolled_roots
         | _summary_bound_expressions(
-            mandatory_list + list(condition_args_by_address.values()),
+            mandatory_list
+            + list(condition_args_by_address.values())
+            + _rolled_grain_columns(rolled_roots, environment),
             rollup_sources,
         )
     )
@@ -578,6 +581,22 @@ def _exactly_materialized(
         )
         for source in sources
     )
+
+
+def _rolled_grain_columns(
+    rolled_roots: set[str], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """The columns a rolled aggregate groups by (`plant_year` of `count(x) by
+    species, plant_year`): read from its summary, not rebuilt from the facts
+    and joined back onto it."""
+    return [
+        environment.concepts.get(c.address) or c
+        for address in sorted(rolled_roots)
+        if isinstance(
+            (lineage := environment.concepts[address].lineage), BuildAggregateWrapper
+        )
+        for c in lineage.by
+    ]
 
 
 def _summary_bound_expressions(
@@ -737,7 +756,9 @@ def _nested_rollup_roots(
     out: dict[str, list[BuildDatasource]] = {}
     rows = _nested_row_grains(mandatory_list, roots, environment)
     for concept in walk_lineage(
-        mandatory_list, descend=lambda c: c.address not in roots
+        mandatory_list,
+        descend=lambda c: c.address not in roots,
+        resolve=lambda c: environment.concepts.get(c.address) or c,
     ):
         if (
             concept.address in mandatory
@@ -847,7 +868,9 @@ def _finer_filter_reaches_rollup(
         return False
     return any(
         _concepts_reachable(
-            ds, _summary_leaves(demands, rolled_roots, ds), environment.concepts
+            ds,
+            _summary_leaves(demands, rolled_roots, ds, environment),
+            environment.concepts,
         )
         for ds in rollup_sources
     )
@@ -876,7 +899,10 @@ def _aggregates_rolled_groups(
 
 
 def _summary_leaves(
-    demands: list[BuildConcept], rolled_roots: set[str], datasource: BuildDatasource
+    demands: list[BuildConcept],
+    rolled_roots: set[str],
+    datasource: BuildDatasource,
+    environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     """The columns `datasource` must supply for `demands`: a derived concept the
     summary binds (`year(plant_date)` stored at its grain) is read, not rebuilt
@@ -886,6 +912,7 @@ def _summary_leaves(
         demands,
         descend=lambda c: c.address not in rolled_roots
         and c.canonical_address not in bound,
+        resolve=lambda c: environment.concepts.get(c.address) or c,
     )
     return [c for c in reached if c.lineage is None or c.canonical_address in bound]
 

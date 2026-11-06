@@ -141,6 +141,127 @@ theorem case_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
     coalesce0_sqlSum, storedCase, sum_getD_case, stored, List.filter_filter]
   simp only [Bool.and_comm]
 
+/-! ### Any re-aggregable function, at the partial grain `G ∪ cols(c)`
+
+Rule 2 holds for `sum`, `min` and `max` too: a summary storing `agg(x)` at a
+grain `g` that determines the condition's columns answers `agg(x ? c)` as
+`reagg(case when c then agg(x) end)` over its rows. The planner matches the
+filtered aggregate to the stored one (`BuildConcept.filtered_rollup`) and
+renders that CASE where it re-aggregates the stored column. `c` is a function
+of the summary key, so each lemma below is the rule over the summary's
+groups. -/
+
+/-- `case when c then f end`, the shape both sides of the rule share: a
+per-group value, or a per-row one under `filtered`. -/
+def kept (c : κ → Bool) (f : κ → Option Int) : κ → Option Int :=
+  fun k => if c k then f k else none
+
+omit [DecidableEq κ] in
+theorem all_none_kept (xs : List κ) (f : κ → Option Int) (c : κ → Bool) :
+    (xs.map (kept c f)).all (·.isNone) = ((xs.filter c).map f).all (·.isNone) := by
+  induction xs with
+  | nil => rfl
+  | cons k ks ih => by_cases hc : c k <;> simp_all [kept]
+
+omit [DecidableEq κ] in
+/-- SUM skips the NULLs a CASE leaves. -/
+theorem sqlSum_kept (xs : List κ) (f : κ → Option Int) (c : κ → Bool) :
+    sqlSum (xs.map (kept c f)) = sqlSum ((xs.filter c).map f) := by
+  have hs := sum_getD_case xs f c
+  unfold sqlSum
+  rw [all_none_kept]
+  unfold kept
+  rw [hs]
+
+omit [DecidableEq κ] in
+/-- So does MIN. -/
+theorem sqlMin_kept (xs : List κ) (f : κ → Option Int) (c : κ → Bool) :
+    sqlMin (xs.map (kept c f)) = sqlMin ((xs.filter c).map f) := by
+  induction xs with
+  | nil => rfl
+  | cons k ks ih =>
+    by_cases hc : c k
+    · simp only [List.map_cons, List.filter_cons, hc, ↓reduceIte, sqlMin,
+        List.foldr_cons, kept] at *
+      rw [ih]
+    · simp only [List.map_cons, List.filter_cons, hc, sqlMin, List.foldr_cons,
+        kept, Bool.false_eq_true, ↓reduceIte] at *
+      rw [← ih]; rfl
+
+omit [DecidableEq κ] in
+theorem sqlMax_kept (xs : List κ) (f : κ → Option Int) (c : κ → Bool) :
+    sqlMax (xs.map (kept c f)) = sqlMax ((xs.filter c).map f) := by
+  have h : (xs.map (kept c f)).map negOpt = xs.map (kept c (fun k => negOpt (f k))) := by
+    simp only [List.map_map]
+    congr 1; funext k; by_cases hc : c k <;> simp [kept, hc, negOpt]
+  simp only [sqlMax, h, sqlMin_kept, List.map_map, Function.comp_def]
+
+theorem storedCase_kept (g : α → κ) (ks : List κ) (rows : List α)
+    (agg : List α → Option Int) (q c : κ → Bool) :
+    storedCase g ks rows agg q c =
+      ((groups g ks rows).filter q).map (kept c (fun k => agg (slice g k rows))) := rfl
+
+theorem stored_and (g : α → κ) (ks : List κ) (rows : List α)
+    (agg : List α → Option Int) (q c : κ → Bool) :
+    (((groups g ks rows).filter q).filter c).map (fun k => agg (slice g k rows)) =
+      stored g ks rows agg (fun k => q k && c k) := by
+  simp [stored, List.filter_filter, Bool.and_comm]
+
+/-- **A filtered SUM rolls up**: `sum(case when c then sum(x) by G, C end)`. -/
+theorem filtered_sum_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q c : κ → Bool) :
+    sqlSum (storedCase g ks rows (sumAgg v) q c) =
+      sumAgg (filtered v (fun r => c (g r))) (keep g q rows) := by
+  have hrow : (keep g q rows).map (filtered v (fun r => c (g r))) =
+      (keep g q rows).map (kept (fun r => c (g r)) v) := rfl
+  rw [storedCase_kept, sqlSum_kept, stored_and, Rollup.sum_exact g ks hnd rows hcov]
+  unfold sumAgg
+  rw [hrow, sqlSum_kept, keep_filter]
+
+/-- **A filtered MIN rolls up**: `min(case when c then min(x) by G, C end)`. -/
+theorem filtered_min_exact (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q c : κ → Bool) :
+    sqlMin (storedCase g ks rows (minAgg v) q c) =
+      minAgg (filtered v (fun r => c (g r))) (keep g q rows) := by
+  have hrow : (keep g q rows).map (filtered v (fun r => c (g r))) =
+      (keep g q rows).map (kept (fun r => c (g r)) v) := rfl
+  rw [storedCase_kept, sqlMin_kept, stored_and, Rollup.min_exact g ks rows hcov]
+  unfold minAgg
+  rw [hrow, sqlMin_kept, keep_filter]
+
+/-- **A filtered MAX rolls up**: `max(case when c then max(x) by G, C end)`. -/
+theorem filtered_max_exact (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q c : κ → Bool) :
+    sqlMax (storedCase g ks rows (maxAgg v) q c) =
+      maxAgg (filtered v (fun r => c (g r))) (keep g q rows) := by
+  have hrow : (keep g q rows).map (filtered v (fun r => c (g r))) =
+      (keep g q rows).map (kept (fun r => c (g r)) v) := rfl
+  rw [storedCase_kept, sqlMax_kept, stored_and, Rollup.max_exact g ks rows hcov]
+  unfold maxAgg
+  rw [hrow, sqlMax_kept, keep_filter]
+
+/-- The re-sum of a filtered count needs its `coalesce`: a group whose rows
+all fail `c` counts 0, and `sum` over only NULL cases is NULL. -/
+theorem uncoalesced_case_count_null :
+    sqlSum (storedCase (fun r : Nat × Nat => r.1) [1] [(1, 7)]
+        (countAgg (fun r => some r.2)) (fun _ => true) (fun _ => false)) = none ∧
+      sqlCount ([(1, 7)].map (filtered (fun r : Nat × Nat => some r.2)
+        (fun _ => false))) = 0 := by
+  decide
+
+/-- The summary's grain must determine the condition's columns. Keyed on
+`r.1` alone, a group holding rows on both sides of `c` (`r.2 = 1`) has no
+single value of `c`: reading `c` off any one of its rows keeps both rows or
+neither, never the one row `count(x ? c)` counts. This is why the matcher
+requires the summary to bind every column `c` reads. -/
+theorem partial_off_condition_misreads :
+    let rows : List (Nat × Nat) := [(1, 1), (1, 2)]
+    sqlCount (rows.map (filtered (fun r => some r.2) (fun r => r.2 == 1))) = 1 ∧
+      ∀ r ∈ rows, coalesce0 (sqlSum (storedCase (fun r : Nat × Nat => r.1) [1] rows
+        (countAgg (fun r => some r.2)) (fun _ => true) (fun _ => r.2 == 1))) ≠ 1 := by
+  decide
+
 /-! ## 3. A distinct count of the counted key -/
 
 /-- The number of distinct values. -/
