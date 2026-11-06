@@ -994,17 +994,16 @@ def _reads_unfiltered_partial(cte: CTE | UnionCTE, concept: BuildConcept) -> boo
                 datasource.aggregate_column_for(concept) is None
                 and datasource.filtered_column_for(concept) is not None
             )
-    for parent in cte.parent_ctes:
-        if parent.name not in sources:
-            continue
-        if (
+    parent = next((p for p in cte.parent_ctes if p.name in sources), None)
+    return (
+        parent is not None
+        and not (
             isinstance(parent, CTE)
             and parent.group_to_grain
             and concept.address in {r.address for r in parent.rollup_concepts}
-        ):
-            return False
-        return _reads_unfiltered_partial(parent, concept)
-    return False
+        )
+        and _reads_unfiltered_partial(parent, concept)
+    )
 
 
 class BaseDialect:

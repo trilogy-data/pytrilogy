@@ -1345,11 +1345,14 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         is the filtered aggregate wherever `c` is a function of the partial's
         grain (`Cover.filtered_sum_exact`). Matched only where the partials
         are re-aggregated, never as the column itself."""
-        if not isinstance(self.lineage, BuildAggregateWrapper):
+        lineage = self.lineage
+        if not (
+            isinstance(lineage, BuildAggregateWrapper)
+            and lineage.function.operator in ROLLUP_REAGGREGATES
+            and len(lineage.function.arguments) == 1
+        ):
             return None
-        function = self.lineage.function
-        if function.operator not in ROLLUP_REAGGREGATES or len(function.arguments) != 1:
-            return None
+        function = lineage.function
         argument = function.arguments[0]
         if not (
             isinstance(argument, BuildConcept)
