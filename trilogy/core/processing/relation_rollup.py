@@ -43,18 +43,17 @@ def relation_keys(
     """The grain keys whose list `concept` is an element of (or a property of
     such an element), when that list is a property keyed inside `grain`."""
     for origin in _unnest_origins(concept, environment):
-        args = origin.lineage.concept_arguments if origin.lineage else []
-        if len(args) != 1:
-            continue
-        listed = environment.concepts.get(args[0].address)
-        if (
-            listed is not None
-            and listed.lineage is None
-            and listed.purpose == Purpose.PROPERTY
-            and listed.keys
-            and set(listed.keys) <= grain
-        ):
-            return frozenset(listed.keys)
+        args = origin.lineage.concept_arguments[:1] if origin.lineage else []
+        for arg in args:
+            listed = environment.concepts.get(arg.address)
+            if (
+                listed is not None
+                and listed.lineage is None
+                and listed.purpose == Purpose.PROPERTY
+                and listed.keys
+                and set(listed.keys) <= grain
+            ):
+                return frozenset(listed.keys)
     if concept.lineage is None and concept.purpose == Purpose.PROPERTY and concept.keys:
         keys: set[str] = set()
         for key in concept.keys:
@@ -81,9 +80,7 @@ def relation_targets(
     out: dict[str, frozenset[str]] = {}
     for address in sorted(target_grain.components):
         concept = environment.concepts.get(address)
-        if concept is None:
-            return {}
-        if concept.canonical_address in bound:
+        if concept is None or concept.canonical_address in bound:
             continue
         keys = relation_keys(concept, grain, environment)
         if keys is not None:

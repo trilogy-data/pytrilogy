@@ -139,6 +139,7 @@ EXISTENCE = {
 RELATION = {
     "member": "ecoregion_id, count(tree_id) as n",
     "member_property": "biome, count(tree_id) as n",
+    "beside_property": "bucket, biome, count(tree_id) as n",
 }
 
 # `Cover.case_on_aggregate_rows`, `Cover.finer_grain_read_fans_out`: a scalar

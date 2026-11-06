@@ -145,3 +145,15 @@ def test_a_summary_binding_the_value_is_read_as_stored(seed):
     sql, got = _rows(_executor(model, data, "equal"), query)
     assert got == expected, sql
     assert '"summary_eco"' in sql and '"summary"' not in sql, sql
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_partial_summary_is_not_read(seed):
+    """A summary missing rows cannot answer for them: the trees do."""
+    data = random_data(seed)
+    query = "select tree_eco_region, count(tree_id) as n;"
+    _, expected = _rows(_executor(BASE, data, "plain"), query)
+    partial = SUMMARY.replace("datasource summary", "partial datasource summary")
+    sql, got = _rows(_executor(BASE + partial, data, "plain"), query)
+    assert got == expected, sql
+    assert '"summary"' not in sql, sql

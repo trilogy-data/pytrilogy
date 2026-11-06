@@ -2029,9 +2029,13 @@ def _relation_rollup_source(
         return None
     datasources = request.graph.scope.datasources
     matches: list[tuple[BuildDatasource, dict[str, frozenset[str]]]] = []
-    for ds in datasources:
-        if f"ds~{ds.name}" not in request.graph.datasources:
-            continue
+    # a union member is no standalone scan in the graph
+    scans = [
+        ds
+        for ds in request.graph.datasources.values()
+        if isinstance(ds, BuildDatasource)
+    ]
+    for ds in scans:
         if not holds_every_kept_row(ds, None):
             continue
         relations = relation_targets(ds, target_grain, environment)
