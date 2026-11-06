@@ -89,6 +89,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _parent_nodes_for,
     _pre_merge_parents,
     _required_final_contract,
+    side_members,
 )
 
 
@@ -1816,3 +1817,31 @@ def test_partition_constants_splits_distinct_grain():
     )
     buckets = partition_constants([a, b], nx.DiGraph(), {}, {}, {}, lambda d: None)
     assert len(buckets) == 2
+
+
+def test_side_members_reads_the_groups_a_merge_below_joins():
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+
+    def scan() -> StrategyNode:
+        return StrategyNode(input_concepts=[], output_concepts=[key], environment=env)
+
+    def wrap(node: StrategyNode) -> SelectNode:
+        return SelectNode(
+            input_concepts=[key], output_concepts=[key], parents=[node], environment=env
+        )
+
+    def merge(*parents: StrategyNode) -> MergeNode:
+        return MergeNode(
+            input_concepts=[key],
+            output_concepts=[key],
+            parents=list(parents),
+            environment=env,
+        )
+
+    a, b, stray = scan(), scan(), scan()
+    origin = {id(a): "a", id(b): "b"}
+    assert side_members(wrap(a), origin) == {"a"}
+    assert side_members(wrap(merge(a, wrap(b))), origin) == {"a", "b"}
+    assert side_members(merge(a, stray), origin) is None
+    assert side_members(stray, origin) is None
