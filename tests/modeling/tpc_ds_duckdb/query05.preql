@@ -1,47 +1,51 @@
 import all_sales as s;
 
+const period_start <- '2000-08-23'::date;
+const period_end <- '2000-09-06'::date;
+
+# A sale rolls up to its sale entity and a return to its RETURN entity (a
+# catalog return can land on a different page than its sale), so each side is
+# its own arm, mirroring the reference's sales UNION ALL returns.
+with entity_rows as union(
+    (where s.sale_date.date between period_start and period_end
+        and s.channel_dim_text_id is not null
+     select
+        s.channel as u_channel,
+        s.channel_dim_text_id as u_entity,
+        sum(s.ext_sales_price)::numeric(15,2) as u_sales,
+        0::numeric(15,2) as u_returns,
+        sum(s.net_profit)::numeric(15,2) as u_profit,
+    ),
+    (where s.return_date.date between period_start and period_end
+        and s.return_channel_dim_text_id is not null
+     select
+        s.channel as u_channel,
+        s.return_channel_dim_text_id as u_entity,
+        0::numeric(15,2) as u_sales,
+        sum(s.return_amount)::numeric(15,2) as u_returns,
+        (0 - sum(s.return_net_loss))::numeric(15,2) as u_profit,
+    )
+) -> (u_channel, u_entity, u_sales, u_returns, u_profit);
+
 auto channel_label <- case
-    when s.channel = 'STORE' then 'store channel'
-    when s.channel = 'CATALOG' then 'catalog channel'
-    when s.channel = 'WEB' then 'web channel'
+    when entity_rows.u_channel = 'STORE' then 'store channel'
+    when entity_rows.u_channel = 'CATALOG' then 'catalog channel'
+    when entity_rows.u_channel = 'WEB' then 'web channel'
     else null
 end;
-
-# Sale rows expose the entity via channel_dim_text_id; return rows via
-# return_channel_dim_text_id. Coalesce so sales roll up to the sale entity and
-# returns to the return entity (matching the reference's UNION-then-rollup).
-auto entity_text <- coalesce(s.channel_dim_text_id, s.return_channel_dim_text_id);
 auto entity_id <- case
-    when s.channel = 'STORE' then 'store' || entity_text
-    when s.channel = 'CATALOG' then 'catalog_page' || entity_text
-    when s.channel = 'WEB' then 'web_site' || entity_text
+    when entity_rows.u_channel = 'STORE' then 'store' || entity_rows.u_entity
+    when entity_rows.u_channel = 'CATALOG' then 'catalog_page' || entity_rows.u_entity
+    when entity_rows.u_channel = 'WEB' then 'web_site' || entity_rows.u_entity
     else null
 end;
 
-# Roll up `metric` over rows whose `date_field` falls in the [lo, hi] window and
-# whose `id_field` (the entity dim) is present, coalescing empty groups to 0.
-# Gating each measure by its OWN dim mirrors the reference's separate inner joins:
-# a sale counts only with a sale entity, a return only with a return entity, so a
-# combined row whose return entity is null but sale entity is valid can't
-# mis-count its return. The SELECT-level `by rollup (…)` clause stamps the
-# grouping onto every aggregate the macro expands to.
-def windowed(metric, date_field, id_field, lo='2000-08-23', hi='2000-09-06') ->
-    coalesce(
-        sum(metric ? date_field between lo::date and hi::date and id_field is not null),
-        0.0
-    );
-
-where
-    entity_text is not null
-    and (s.sale_date.date between '2000-08-23'::date and '2000-09-06'::date
-         or s.return_date.date between '2000-08-23'::date and '2000-09-06'::date)
 select
     channel_label,
     entity_id,
-    @windowed(s.ext_sales_price, s.sale_date.date, s.channel_dim_text_id) as sales,
-    @windowed(s.return_amount, s.return_date.date, s.return_channel_dim_text_id) as returns,
-    @windowed(s.net_profit, s.sale_date.date, s.channel_dim_text_id)
-        - @windowed(s.return_net_loss, s.return_date.date, s.return_channel_dim_text_id) as profit
+    sum(entity_rows.u_sales) as sales,
+    sum(entity_rows.u_returns) as returns,
+    sum(entity_rows.u_profit) as profit
 by rollup (channel_label, entity_id)
 order by
     channel_label NULLS FIRST,

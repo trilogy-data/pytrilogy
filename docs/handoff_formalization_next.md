@@ -27,7 +27,7 @@ placement per engine, set operators; area 4), and `Scalars.lean`
 value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
 (0.3.450: `agg(x ? c)` read from a stored `agg(x)`; 0.3.452: a condition
 joined onto the summary, priced in the source search; area 1c), and
-`Cover.lean` §6 (0.3.455: a group by an unnested element, and counts by a
+`Cover.lean` §6 (0.3.456: a group by an unnested element, and counts by a
 value the summary key relates to; area 1c).
 
 ## The recipe
@@ -250,7 +250,7 @@ value the summary key relates to; area 1c).
       CASE form of a count did not parse. Run the law suite in every spelling
       as an axis, not as a sample.
 
-16. **Lessons from the relation round (`Cover.lean` §6, 0.3.455).**
+16. **Lessons from the relation round (`Cover.lean` §6, 0.3.456).**
     - The A/B recipe's `PYTHONPATH=<copy>` lost to pytest's rootdir insertion:
       `tests/` is a package, so pytest prepends the repo and the branch's
       `trilogy/` is imported. The first A/B of this round showed 0 failures on
@@ -402,7 +402,7 @@ from that round:
   scan reads the summary at its full grain under a joined condition, where a
   re-sum to the target plus the condition's keys would be exact
   (`Cover.resum_then_case_exact`) and smaller.
-- **Done in 0.3.455: rule 6, relations keyed on the grain**, with no WHERE
+- **Done in 0.3.456: rule 6, relations keyed on the grain**, with no WHERE
   (`_plan_relation_rollup`, `trilogy/core/processing/relation_rollup.py`;
   `tests/discovery/test_relation_rollup_laws.py`). Leads left:
   - Under a WHERE the relation shapes read the trees. The group graph places

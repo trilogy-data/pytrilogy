@@ -5,6 +5,7 @@ where
     and analysis.store_return_date.year in (2001, 2002)
     and analysis.catalog_date.year in (2001, 2002)
     and analysis.is_returned
+    and analysis.store.sk is not null
 select
     analysis.item.id,
     analysis.item.desc,

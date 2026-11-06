@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
@@ -16,6 +18,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     absence_atoms,
     covered_conditions,
@@ -34,7 +37,11 @@ from trilogy.core.processing.node_generators.select_merge_node import (
     _parents_apply_condition_atoms,
 )
 from trilogy.core.processing.nodes import StrategyNode
-from trilogy.core.processing.nodes.merge_node import deduplicate_nodes
+from trilogy.core.processing.nodes.merge_node import (
+    _credit_folded,
+    _planned_source_pairs,
+    deduplicate_nodes,
+)
 
 
 def _build_sales_environment():
@@ -729,3 +736,36 @@ address trees_table;
     assert subset.identifier in merged
     assert full.identifier in merged
     assert not removed
+
+
+def test_folded_parent_credits_its_groups_to_the_survivor():
+    held = {
+        "a": frozenset({"g1"}),
+        "b": frozenset({"g2"}),
+        "c": frozenset({"g3"}),
+        "d": None,
+    }
+    assert _credit_folded(held, {"a": "b"}) == {
+        "b": frozenset({"g1", "g2"}),
+        "c": frozenset({"g3"}),
+        "d": None,
+    }
+    assert _credit_folded(held, {"a": "d"})["d"] is None
+
+
+def test_survivor_pairs_on_its_folded_groups_keys():
+    planned = PlannedPairs(
+        {},
+        {
+            frozenset({"g1", "g3"}): frozenset({"k"}),
+            frozenset({"g2", "g3"}): frozenset({"x"}),
+        },
+    )
+    sources = {key: SimpleNamespace(identifier=key) for key in ("b", "c")}
+    held = _credit_folded(
+        {"a": frozenset({"g1"}), "b": frozenset({"g2"}), "c": frozenset({"g3"})},
+        {"a": "b"},
+    )
+    pairs = _planned_source_pairs(sources, held, planned)
+    assert pairs is not None
+    assert pairs == {frozenset({"b", "c"}): frozenset({"k", "x"})}

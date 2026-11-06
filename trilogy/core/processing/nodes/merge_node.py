@@ -127,9 +127,11 @@ def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
     environment: BuildEnvironment,
-) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], set[str]]:
+) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], dict[str, str]]:
+    """Drop one parent another binds completely; `removed` maps it to the
+    parent that subsumes it."""
     duplicates = False
-    removed: set[str] = set()
+    removed: dict[str, str] = {}
     set_map: dict[str, set[str]] = {}
     all_map: dict[str, set[str]] = {}
     for k, v in merged.items():
@@ -173,7 +175,7 @@ def deduplicate_nodes(
                     f"{logging_prefix}{LOGGER_PREFIX} extraneous parent node that is subset of another parent node {og.grain.issubset(subset_to.grain)} {og.grain.components} {subset_to.grain.components}"
                 )
                 merged = {k: v for k, v in merged.items() if k != k1}
-                removed.add(k1)
+                removed[k1] = k2
                 duplicates = True
                 found = True
                 break
@@ -188,12 +190,19 @@ def deduplicate_nodes_and_joins(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
     environment: BuildEnvironment,
-) -> tuple[list[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
+) -> tuple[
+    list[NodeJoin] | None,
+    dict[str, QueryDatasource | BuildDatasource],
+    dict[str, str],
+]:
+    """Also returns each folded parent's survivor, followed through later folds."""
+    folded: dict[str, str] = {}
     duplicates = True
     while duplicates:
         duplicates, merged, removed = deduplicate_nodes(
             merged, logging_prefix, environment=environment
         )
+        folded = {k: removed.get(v, v) for k, v in folded.items()} | removed
         if joins is not None:
             joins = [
                 j
@@ -204,7 +213,7 @@ def deduplicate_nodes_and_joins(
                     if side is not None
                 )
             ]
-    return joins, merged
+    return joins, merged, folded
 
 
 def _held_groups(
@@ -216,16 +225,26 @@ def _held_groups(
     return None if held is None or side is None else held | side
 
 
+def _credit_folded(
+    held: dict[str, frozenset[str] | None], folded: dict[str, str]
+) -> dict[str, frozenset[str] | None]:
+    """A parent folded away as redundant is bound completely by its survivor,
+    so the survivor stands for its groups too."""
+    out = {key: groups for key, groups in held.items() if key not in folded}
+    for gone, survivor in folded.items():
+        mine, theirs = out[survivor], held[gone]
+        out[survivor] = None if mine is None or theirs is None else mine | theirs
+    return out
+
+
 def _planned_source_pairs(
     merged: dict[str, QueryDatasource | BuildDatasource],
     held: dict[str, frozenset[str] | None],
     planned: PlannedPairs | None,
 ) -> dict[frozenset[str], frozenset[str]] | None:
     """What each two merged sources may pair on, by identifier. A pair with a
-    side the plan does not name keeps the merge-wide planned keys; a source
-    folded away as redundant stood for groups no survivor is credited with,
-    so the plan is not read per pair at all."""
-    if planned is None or len(held) != len(merged):
+    side the plan does not name keeps the merge-wide planned keys."""
+    if planned is None:
         return None
     out: dict[frozenset[str], frozenset[str]] = {}
     keys = sorted(merged)
@@ -716,9 +735,10 @@ class MergeNode(StrategyNode):
         # drop redundant sources, unless every parent is a deliberate side of a
         # coalescing relation
         if not self.preserve_parents:
-            final_joins, merged = deduplicate_nodes_and_joins(
+            final_joins, merged, folded = deduplicate_nodes_and_joins(
                 final_joins, merged, self.logging_prefix, self.environment
             )
+            held = _credit_folded(held, folded)
         final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
         )

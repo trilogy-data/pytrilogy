@@ -324,7 +324,8 @@ def test_return_date_pin_heals_beside_sales_measure(engine: Executor):
         (working_path / "_q83_with_sales_measure.preql").read_text(encoding="utf-8")
     )[-1]
     assert sql.count("FULL JOIN") == 0, sql
-    assert len(engine.execute_raw_sql(sql).fetchall()) == 24
+    expected = engine.execute_raw_sql("PRAGMA tpcds(83);").fetchall()
+    assert len(engine.execute_raw_sql(sql).fetchall()) == len(expected)
 
 
 def test_partition_pin_keeps_returns_absence_at_merge(engine_sf001: Executor):

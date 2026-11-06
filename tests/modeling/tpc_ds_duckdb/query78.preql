@@ -20,6 +20,9 @@ auto cs_wc <- sum(sales.wholesale_cost ? sales.channel = 'CATALOG')
     by sales.sale_date.year, sales.item.sk, sales.billing_customer.sk;
 auto cs_sp <- sum(sales.sales_price ? sales.channel = 'CATALOG')
     by sales.sale_date.year, sales.item.sk, sales.billing_customer.sk;
+# A store group exists even when every ss_quantity in it is null.
+auto ss_lines <- count(sales.item.sk ? sales.channel = 'STORE')
+    by sales.sale_date.year, sales.item.sk, sales.billing_customer.sk;
 auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
 auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);
 auto other_chan_sp <- coalesce(ws_sp, 0) + coalesce(cs_sp, 0);
@@ -38,7 +41,7 @@ select
     other_chan_wc as other_chan_wholesale_cost,
     other_chan_sp as other_chan_sales_price,
 having
-    store_qty > 0 and (coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0)
+    ss_lines > 0 and (coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0)
 
 order by
     ss_sold_year asc nulls first,
