@@ -1,6 +1,7 @@
 import pytest
 
 from trilogy import Dialects, Environment
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.v4_helper import strategy_builder
 from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
 
@@ -143,5 +144,33 @@ def test_planned_keys_need_every_side_planned():
     )
     a, b = _Side(), _Side()
     origin = {id(a): "a", id(b): "b"}
-    assert strategy_builder._planned_keys_across([a, b], origin, plan) == {"k"}
-    assert strategy_builder._planned_keys_across([a, _Side()], origin, plan) is None
+    planned = strategy_builder._planned_across([a, b], origin, plan)
+    assert planned["planned_keys"] == {"k"}
+    pairs = planned["planned_pairs"]
+    assert pairs.sides == {id(a): {"a"}, id(b): {"b"}}
+    assert pairs.between(frozenset({"a"}), frozenset({"b"})) == {"k"}
+    assert strategy_builder._planned_across([a, _Side()], origin, plan) == {}
+
+
+def test_pair_keys_are_per_pair_with_what_they_imply():
+    plan = JoinPlan(
+        contributors=("a", "b", "c"),
+        pins={},
+        identity={},
+        carry_demands={},
+        pairings=(
+            Pairing("a", "b", frozenset({"k"}), PairingKind.LOOKUP, frozenset({"n"})),
+            Pairing("b", "c", frozenset({"j"}), PairingKind.BLEND),
+            Pairing("c", "c", frozenset(), PairingKind.LOOKUP, frozenset({"m"})),
+        ),
+        carries={"a": frozenset(), "b": frozenset(), "c": frozenset()},
+    )
+    assert plan.pair_keys() == {
+        frozenset({"a", "b"}): {"k", "n"},
+        frozenset({"b", "c"}): {"j"},
+        frozenset({"c"}): {"m"},
+    }
+    pairs = PlannedPairs({}, plan.pair_keys())
+    assert pairs.between(frozenset({"a"}), frozenset({"c"})) == set()
+    assert pairs.between(frozenset({"a", "c"}), frozenset({"b"})) == {"k", "n", "j"}
+    assert pairs.between(frozenset({"c"}), frozenset({"b", "c"})) == {"j", "m"}

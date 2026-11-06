@@ -67,6 +67,52 @@ def test_resolve_join_order_v2():
     ]
 
 
+def _shared_key_graph() -> Graph:
+    g = Graph()
+    for ds in ("ds~a", "ds~b", "ds~c"):
+        g.add_edge(ds, "c~k")
+    return g
+
+
+def test_sides_pair_only_on_their_own_planned_keys():
+    g = _shared_key_graph()
+    g.add_edge("ds~a", "c~x")
+    g.add_edge("ds~b", "c~x")
+    unplanned = resolve_join_order_v2(g, JoinFacts())
+    assert unplanned[0].keys == {"ds~b": {"c~x", "c~k"}}
+    planned = resolve_join_order_v2(
+        g,
+        JoinFacts(
+            pair_keys={
+                frozenset({"ds~a", "ds~b"}): frozenset({"c~x"}),
+                frozenset({"ds~b", "ds~c"}): frozenset({"c~k"}),
+                frozenset({"ds~a", "ds~c"}): frozenset(),
+            }
+        ),
+    )
+    assert [(j.right, j.keys) for j in planned] == [
+        ("ds~a", {"ds~b": {"c~x"}}),
+        ("ds~c", {"ds~b": {"c~k"}}),
+    ]
+
+
+def test_a_side_waits_for_its_planned_partner():
+    planned = resolve_join_order_v2(
+        _shared_key_graph(),
+        JoinFacts(
+            pair_keys={
+                frozenset({"ds~a", "ds~b"}): frozenset({"c~k"}),
+                frozenset({"ds~a", "ds~c"}): frozenset({"c~k"}),
+                frozenset({"ds~b", "ds~c"}): frozenset(),
+            }
+        ),
+    )
+    assert [(j.right, j.keys) for j in planned] == [
+        ("ds~a", {"ds~c": {"c~k"}}),
+        ("ds~b", {"ds~a": {"c~k"}}),
+    ]
+
+
 def test_empty_joins_list():
     """Test that an empty list doesn't cause any errors."""
     joins = []
