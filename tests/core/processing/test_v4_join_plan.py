@@ -145,8 +145,8 @@ def test_planned_keys_need_every_side_planned():
     a, b = _Side(), _Side()
     origin = {id(a): "a", id(b): "b"}
     planned = strategy_builder._planned_across([a, b], origin, plan)
-    assert planned["planned_keys"] == {"k"}
     pairs = planned["planned_pairs"]
+    assert pairs.permitted == plan.permitted_keys == {"k"}
     assert pairs.sides == {id(a): {"a"}, id(b): {"b"}}
     assert pairs.between(frozenset({"a"}), frozenset({"b"})) == {"k"}
     assert strategy_builder._planned_across([a, _Side()], origin, plan) == {}
@@ -171,6 +171,7 @@ def test_pair_keys_are_per_pair_with_what_they_imply():
         frozenset({"c"}): {"m"},
     }
     pairs = PlannedPairs({}, plan.pair_keys())
+    assert pairs.permitted == plan.permitted_keys == {"k", "n", "j", "m"}
     assert pairs.between(frozenset({"a"}), frozenset({"c"})) == set()
     assert pairs.between(frozenset({"a", "c"}), frozenset({"b"})) == {"k", "n", "j"}
     assert pairs.between(frozenset({"c"}), frozenset({"b", "c"})) == {"j", "m"}

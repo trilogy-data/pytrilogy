@@ -5794,10 +5794,9 @@ def _planned_across(
 def _planned_join(
     plan: JoinPlan, sides: dict[int, frozenset[str] | None]
 ) -> dict[str, Any]:
-    """A MergeNode's planned keys under `plan`, already read over its sides:
-    every key it may pair on, and which two sides pair on which."""
+    """A MergeNode's join plan under `plan`, already read over its sides:
+    which two sides pair on which keys."""
     return {
-        "planned_keys": plan.permitted_keys,
         "planned_pairs": PlannedPairs(
             {key: side for key, side in sides.items() if side is not None},
             plan.pair_keys(),

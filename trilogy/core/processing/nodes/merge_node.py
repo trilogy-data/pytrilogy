@@ -243,7 +243,7 @@ def _planned_source_pairs(
     planned: PlannedPairs | None,
 ) -> dict[frozenset[str], frozenset[str]] | None:
     """What each two merged sources may pair on, by identifier. A pair with a
-    side the plan does not name keeps the merge-wide planned keys."""
+    side the plan does not name may pair on anything the merge may."""
     if planned is None:
         return None
     out: dict[frozenset[str], frozenset[str]] = {}
@@ -251,10 +251,10 @@ def _planned_source_pairs(
     for i, left in enumerate(keys):
         for right in keys[i + 1 :]:
             lgroups, rgroups = held[left], held[right]
-            if lgroups is None or rgroups is None:
-                continue
             out[frozenset({merged[left].identifier, merged[right].identifier})] = (
-                planned.between(lgroups, rgroups)
+                planned.permitted
+                if lgroups is None or rgroups is None
+                else planned.between(lgroups, rgroups)
             )
     return out
 
@@ -289,7 +289,6 @@ class MergeNode(StrategyNode):
         preserve_parents: bool = False,
         host_stitch: bool = False,
         span_scope: SpanScope | None = None,
-        planned_keys: frozenset[str] | None = None,
         planned_pairs: PlannedPairs | None = None,
     ):
         super().__init__(
@@ -325,10 +324,8 @@ class MergeNode(StrategyNode):
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
         self.span_scope = environment.span_scope if span_scope is None else span_scope
-        # The keys the planner's join plan pairs the parents on; join inference
-        # pairs on these alone.
-        self.planned_keys = planned_keys
-        # ... and which two parents pair on which of them
+        # The planner's join plan: which two parents pair on which keys. Join
+        # inference pairs on these alone.
         self.planned_pairs = planned_pairs
 
         final_joins: list[NodeJoin] = []
@@ -463,7 +460,11 @@ class MergeNode(StrategyNode):
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
-                    planned_keys=self.planned_keys,
+                    planned_keys=(
+                        self.planned_pairs.permitted
+                        if self.planned_pairs is not None
+                        else None
+                    ),
                     planned_pairs=planned_pairs,
                 )
         elif final_joins:
@@ -1106,7 +1107,6 @@ class MergeNode(StrategyNode):
             preserve_parents=self.preserve_parents,
             host_stitch=self.host_stitch,
             span_scope=self.span_scope,
-            planned_keys=self.planned_keys,
             planned_pairs=self.planned_pairs,
         )
         return self.with_marks(node)
