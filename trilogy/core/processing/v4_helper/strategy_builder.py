@@ -2261,6 +2261,15 @@ def _unnested_addresses(node: StrategyNode) -> set[str]:
     }
 
 
+def _pairs_repeated_elements(keys: set[str], node: StrategyNode) -> bool:
+    """Rows of a parent row and one of its list's elements repeat once per
+    repeat in the list (`[1, 1]`), so they are never unique on a grain of the
+    row's key and the element (`Cover.repeated_element_counts_once`). A
+    literal list has no parent row: its repeats are rows of their own."""
+    elements = keys & _unnested_addresses(node)
+    return bool(elements) and bool(keys - elements)
+
+
 def _subtree_pinned_addresses(
     node: StrategyNode, seen: set[int] | None = None
 ) -> set[str]:
@@ -2410,6 +2419,8 @@ def _parents_already_at_input_grain(
         if id(parent) in seen:
             return False
         seen.add(id(parent))
+        if _pairs_repeated_elements(keys, parent):
+            return False
         resolved_grain = parent.resolve().grain.components
         unresolved = [
             component
@@ -6956,12 +6967,18 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 matched_addrs.add(concept_match.address)
                 normalize_concepts.append(concept_match)
         if normalize_concepts:
+            # a parent claiming the input grain is still not unique on it
+            repeats_element = any(
+                _pairs_repeated_elements(set(a.aggregate_input_grain), p)
+                for p in parents
+            )
             parents = [
                 GroupNode(
                     output_concepts=normalize_concepts,
                     input_concepts=normalize_concepts,
                     environment=environment,
                     parents=parents,
+                    force_group=True if repeats_element else None,
                 )
             ]
     if derivation == Derivation.WINDOW and parents:

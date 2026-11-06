@@ -26,7 +26,9 @@ placement per engine, set operators; area 4), and `Scalars.lean`
 `log`; area 3), `Types.lean` (0.3.448: a declared type holds every
 value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
 (0.3.450: `agg(x ? c)` read from a stored `agg(x)`; 0.3.452: a condition
-joined onto the summary, priced in the source search; area 1c).
+joined onto the summary, priced in the source search; area 1c), and
+`Cover.lean` §6 (0.3.453: a group by an unnested element, and counts by a
+value the summary key relates to; area 1c).
 
 ## The recipe
 
@@ -238,6 +240,31 @@ joined onto the summary, priced in the source search; area 1c).
       CASE form of a count did not parse. Run the law suite in every spelling
       as an axis, not as a sample.
 
+16. **Lessons from the relation round (`Cover.lean` §6, 0.3.453).**
+    - The A/B recipe's `PYTHONPATH=<copy>` loses to pytest's rootdir insertion:
+      `tests/` is a package, so pytest prepends the repo and the branch's
+      `trilogy/` is imported. Pass `--import-mode=append` (and check
+      `trilogy.__file__` from a test once). The first A/B of this round showed
+      0 failures on main for that reason.
+    - Before serving a shape from a summary, check the tree plan against the
+      model's own invariant (a group's answer is the answer filtered to it).
+      `select ecoregion_id, count(tree_id)` disagreed with its `where
+      ecoregion_id = 1` twin, so no summary path could have matched it
+      honestly; the handoff's "match the tree plan, whatever it does" was
+      matching a bug.
+    - A dedup elided because a node CLAIMS a grain is only as right as the
+      claim. An unnest's rows claim `(row key, element)` and break it when a
+      list repeats; a literal `unnest([...])` has no row key and its repeats
+      are rows. The test that tells them apart is whether the grain holds a
+      key beside the element.
+    - The group graph decides where a WHERE lands before source planning sees
+      it: under a filter on the list's parent it filters those rows, not a
+      rolled root, so a relation rollup marked under a WHERE silently drops
+      it. Mark only what the plan downstream will filter.
+    - Ablate guards in combination. The `at_own_grain` guard in
+      `_relation_rollup_source` ablates clean alone, and is what keeps 15
+      cases right once the unnest-root marking is also off.
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -364,6 +391,30 @@ from that round:
   scan reads the summary at its full grain under a joined condition, where a
   re-sum to the target plus the condition's keys would be exact
   (`Cover.resum_then_case_exact`) and smaller.
+- **Done in 0.3.453: rule 6, relations keyed on the grain**, with no WHERE
+  (`_plan_relation_rollup`, `trilogy/core/processing/relation_rollup.py`;
+  `tests/discovery/test_relation_rollup_laws.py`). Leads left:
+  - Under a WHERE the relation shapes read the trees. The group graph places
+    the WHERE on the list's parent rows (`native_ecoregions` by `species`), so
+    a rolled root never sees it; marking under a WHERE dropped it (wrong rows
+    under `species` and `bucket` filters). Serving it needs the group graph to
+    hand a rolled root the WHERE its rows need, as `scan_filtered_roots` does
+    for a finer filter.
+  - `species, ecoregion_id, sum(height)` under `merge ... into ecoregion_id`
+    reads the trees (`OPEN` in the relation suite): the request carries the
+    list beside the merged key.
+  - `_plan_relation_rollup` is a pinned path like `_plan_finer_filter_rollup`,
+    and declines when a table storing a matching aggregate binds a related
+    target itself; the `JOINED`-obligation move (lesson 15) applies to both.
+    It does not see a table binding the target's KEY: `biome` beside a
+    `(city, ecoregion_id)` summary reads the species summary through the
+    relation join (right, but the larger read).
+  - Grouping by an unnested element now dedups `(row key, element)`, but
+    `select ecoregion_id, tree_id` still returns a pair once per repeat. That
+    is the documented element-keyed-by-ordinal behaviour
+    (`test_element_pairs_with_the_row_it_expands`); the aggregate's input
+    grain and the select's rows now disagree on repeats, which is worth a
+    decision.
 - A summary storing `agg(x)` at exactly the target grain does not answer
   `agg(x ? c)`: the matcher pairs them only where the partials are
   re-aggregated.

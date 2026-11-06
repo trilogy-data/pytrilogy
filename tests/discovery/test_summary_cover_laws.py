@@ -212,8 +212,11 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
     ),
     **{
         ("relation", shape): (
-            "rule 6: a summary is never joined through the fan-out it is keyed on",
-            None,
+            (
+                "rule 6 under a WHERE: the group graph filters the list's parent "
+                "rows, not the rolled root"
+            ),
+            ("city", "species", "property", "year"),
         )
         for shape in RELATION
     },

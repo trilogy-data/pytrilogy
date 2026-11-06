@@ -33,7 +33,8 @@ below is a function of the summary key `k`, so each reduces to
    it) is the re-sum of the groups related to `t`: the relation is a key
    predicate. Joining the summary to relation PAIRS and re-summing counts a
    group once per pair, so the joined pairs must be distinct per `(k, t)`
-   (`collapsed_fanout_double_counts`).
+   (`collapsed_fanout_double_counts`, `distinct_pairs_resum_exact`,
+   `repeated_element_counts_once`).
 7. **A scalar over an aggregate's own grain** (`case_on_aggregate_rows`).
    `sum(case when bucket = 'Native' then count(x) by bucket end)` reads
    `bucket` on the aggregate's rows; reading it from the finer table it is a
@@ -443,6 +444,106 @@ theorem collapsed_fanout_double_counts :
     ((pairs.filter (fun p => biome p.2 = 0)).map (fun p => n p.1)).sum = 4 ∧
       ((([1] : List Nat).filter (fun k => pairs.any (fun p => p.1 = k && biome p.2 = 0))).map
         n).sum = 2 := by
+  decide
+
+/-! ### The pairs a relation is joined on
+
+A count by a related value is read from the summary by joining it to the
+relation's `(key, value)` pairs and re-summing. Over the DISTINCT pairs that
+is the re-sum `keyed_relation_count` proves exact
+(`distinct_pairs_resum_exact`, `relation_resum_count_exact`); over the pairs an
+unnest lists, a list repeating a value counts its key once per repeat
+(`repeated_element_counts_once`). The tree rows are held to the same rule: a
+row lands in a group once, however often its list names it. -/
+
+/-- A list with each value once. -/
+def dedup : List τ → List τ
+  | [] => []
+  | x :: xs => if x ∈ xs then dedup xs else x :: dedup xs
+
+omit [DecidableEq κ] in
+theorem count_dedup (l : List τ) (t : τ) :
+    (dedup l).count t = if t ∈ l then 1 else 0 := by
+  induction l with
+  | nil => simp [dedup]
+  | cons x xs ih =>
+    by_cases hx : x ∈ xs
+    · simp only [dedup, hx, ↓reduceIte, ih, List.mem_cons]
+      by_cases ht : t = x
+      · subst ht; simp [hx]
+      · simp [ht]
+    · simp only [dedup, hx, ↓reduceIte, List.count_cons, ih, List.mem_cons]
+      by_cases ht : t = x
+      · subst ht; simp [hx]
+      · have : (x == t) = false := by simp [Ne.symm ht]
+        simp [ht, this]
+
+/-- The DISTINCT `(key, value)` pairs of a relation listed per key. -/
+def distinctPairs (ks : List κ) (rel : κ → List τ) : List (κ × τ) :=
+  ks.flatMap (fun k => (dedup (rel k)).map (fun t => (k, t)))
+
+/-- The summary's per-group values re-summed over the pairs naming `t`. -/
+def pairResum (f : κ → Int) (ps : List (κ × τ)) (t : τ) : Int :=
+  ((ps.filter (fun p => decide (p.2 = t))).map (fun p => f p.1)).sum
+
+omit [DecidableEq κ] in
+theorem pairResum_one (f : κ → Int) (k : κ) (l : List τ) (t : τ) :
+    pairResum f (l.map (fun u => (k, u))) t = (l.count t : Int) * f k := by
+  induction l with
+  | nil => simp [pairResum]
+  | cons u us ih =>
+    unfold pairResum at *
+    by_cases hu : u = t
+    · subst hu
+      simp [ih]
+      rw [Int.add_mul, Int.one_mul, Int.add_comm]
+    · simp only [List.map_cons, List.filter_cons]
+      simp [hu, ih]
+
+omit [DecidableEq κ] in
+theorem pairResum_append (f : κ → Int) (a b : List (κ × τ)) (t : τ) :
+    pairResum f (a ++ b) t = pairResum f a t + pairResum f b t := by
+  simp [pairResum, List.filter_append]
+
+omit [DecidableEq κ] in
+/-- **Distinct pairs re-sum exactly.** Summing a per-key value over the
+DISTINCT pairs naming `t` is summing it over the keys whose list names `t`,
+each once. -/
+theorem distinct_pairs_resum_exact (f : κ → Int) (ks : List κ) (rel : κ → List τ)
+    (t : τ) :
+    pairResum f (distinctPairs ks rel) t =
+      ((ks.filter (fun k => decide (t ∈ rel k))).map f).sum := by
+  induction ks with
+  | nil => rfl
+  | cons k ks ih =>
+    simp only [distinctPairs, List.flatMap_cons] at *
+    rw [pairResum_append, ih, pairResum_one, count_dedup]
+    by_cases ht : t ∈ rel k <;> simp [ht]
+
+/-- **A count by a related value is the summary over distinct pairs.** The
+summary's per-group counts, joined to the DISTINCT `(key, value)` pairs and
+re-summed for `t`, count the rows whose key's list names `t`, each once. -/
+theorem relation_resum_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (rel : κ → List τ) (t : τ) :
+    pairResum (fun k => sqlCount ((slice g k rows).map v))
+        (distinctPairs (groups g ks rows) rel) t =
+      sqlCount ((rows.filter (fun r => decide (t ∈ rel (g r)))).map v) := by
+  have h := keyed_relation_count g ks hnd rows hcov v (fun _ => true)
+    (fun k t => decide (t ∈ rel k)) t
+  have hall : rows.filter (fun _ => true) = rows := List.filter_eq_self.mpr (by simp)
+  simp only [Bool.true_and, keep, hall] at h
+  rw [distinct_pairs_resum_exact, ← h, coalesce0_sqlSum, stored]
+  simp [List.map_map, Function.comp_def, countAgg]
+
+/-- Re-summing over the pairs the expansion lists, not the distinct ones,
+counts a key once per repeat: a species of one tree listing ecoregion 1 twice
+is one tree in ecoregion 1, and two over its expanded pairs. -/
+theorem repeated_element_counts_once :
+    let rel : Nat → List Nat := fun _ => [1, 1]
+    let expanded := ([7] : List Nat).flatMap (fun k => (rel k).map (fun t => (k, t)))
+    pairResum (fun _ => 1) expanded 1 = 2 ∧
+      pairResum (fun _ => 1) (distinctPairs [7] rel) 1 = 1 := by
   decide
 
 /-! ## 7. A scalar over an aggregate's own grain -/

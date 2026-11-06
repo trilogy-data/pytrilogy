@@ -234,3 +234,51 @@ def test_element_pairs_with_the_row_it_expands(spelling, seed):
             expected = [(None, k)]
         query = f"select tree_id, {element} where {element} = {k};"
         assert _run(executor, query) == expected, query
+
+
+GROUPED = {
+    "count": ("count(tree_id)", lambda ts: len(ts)),
+    "sum": ("sum(height)", lambda ts: sum(t[3] for t in ts)),
+    "max": ("max(height)", lambda ts: max(t[3] for t in ts)),
+    "distinct": ("count_distinct(tree_id)", lambda ts: len(ts)),
+}
+
+GROUPINGS = {
+    "element": ("{e}", lambda t, k: (k,)),
+    "city": ("city, {e}", lambda t, k: (t[1], k)),
+    "species": ("species, {e}", lambda t, k: (t[2], k)),
+}
+
+
+def grouped_reference(data: Data, key, agg) -> dict[tuple, object]:
+    groups: dict[tuple, list] = {}
+    for t in data.trees:
+        for k in set(data.lists.get(t[2]) or []):
+            groups.setdefault(key(t, k), []).append(t)
+    return {k: agg(ts) for k, ts in groups.items()}
+
+
+@pytest.mark.parametrize("spelling", list(SPELLINGS))
+@pytest.mark.parametrize("grouping", list(GROUPINGS))
+@pytest.mark.parametrize("aggregate", list(GROUPED))
+@pytest.mark.parametrize("seed", SEEDS)
+def test_group_by_element_reads_each_row_once(spelling, grouping, aggregate, seed):
+    """Grouped by an element, a group holds the rows whose list names it, each
+    once however often the list repeats it: the group's answer is the answer
+    filtered to it (`Unnest.agg_reads_each_row_once`,
+    `Cover.repeated_element_counts_once`)."""
+    data = random_data(seed)
+    executor = _executor(spelling, data)
+    element = SPELLINGS[spelling][1]
+    (select, key), (expr, agg) = GROUPINGS[grouping], GROUPED[aggregate]
+    query = f"select {select.format(e=element)}, {expr} as v;"
+    expected = grouped_reference(data, key, agg)
+    sql = executor.generate_sql(query)[-1]
+    rows = executor.execute_raw_sql(sql).fetchall()
+    # a merged key pads a member with no tree; its empty group is not compared
+    got = {
+        tuple(r[:-1]): r[-1]
+        for r in rows
+        if r[-2] in data.listed() and r[-1] not in (0, None)
+    }
+    assert got == expected, (query, sql)

@@ -61,9 +61,9 @@ Gotchas:
   lineage. `_nested_rollup_roots`, `_summary_leaves` and the rollup render
   resolve it since 0.3.450; resolving only `_summary_leaves` was what the
   K3 warning here was about, and with all three no wrong rows were found.
-- Trilogy's `count(tree_id) by ecoregion_id` counts a list repeating an
-  element once per repeat, while `by biome` dedupes. A summary path
-  must match the tree plan, whatever it does.
+- Before 0.3.453, `count(tree_id) by ecoregion_id` counted a list repeating
+  an element once per repeat, while `by biome` deduped. That was a bug (the
+  group disagreed with its own WHERE); both dedupe now.
 
 ## Open items, in order
 
@@ -112,7 +112,14 @@ summary is never offered as proof that a key value exists in the filtered
 rows (`Cover.exists_by_value`). This is source selection: `source_planning.py`
 and `test_cheapest_source_laws.py`.
 
-### 4. Rule 6, relations keyed on the grain (the nativeness charts)
+### 4. Rule 6, relations keyed on the grain (DONE in 0.3.453 with no WHERE)
+
+Done: `_plan_relation_rollup` joins the summary to the DISTINCT pairs and
+re-sums (`Cover.distinct_pairs_resum_exact`). The tree plan's own multiplicity
+was the gotcha above, and it was a bug: a group by `ecoregion_id` now dedups
+`(tree_id, ecoregion_id)` as `by biome` did (`Cover.repeated_element_counts_once`).
+Left: the same shapes under a WHERE (see area 1c in
+`handoff_formalization_next.md`). The original notes:
 
 Join the summary to DISTINCT `(species, value)` pairs and re-sum, matching
 the tree plan's multiplicity per element (see the gotcha above). Keep
