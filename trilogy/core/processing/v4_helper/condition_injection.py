@@ -17,6 +17,7 @@ from trilogy.core.processing.condition_utility import (
     gather_non_null_proofs,
     gather_or_groups,
 )
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import region_reads
 from trilogy.utility import unique
@@ -125,6 +126,7 @@ def inject_condition_at_node(
     condition_on_merge: bool = False,
     combine_existing: bool = True,
     planned_keys: frozenset[str] | None = None,
+    planned_pairs: PlannedPairs | None = None,
 ) -> StrategyNode:
     if condition_on_merge:
         combined = and_optional(
@@ -183,6 +185,7 @@ def inject_condition_at_node(
             hidden_concepts=hidden_concepts,
             existence_concepts=sources.existence_concepts,
             planned_keys=planned_keys,
+            planned_pairs=planned_pairs,
         )
 
     base = node

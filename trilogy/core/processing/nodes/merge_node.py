@@ -44,6 +44,7 @@ from trilogy.core.processing.grain_utility import (
     rows_unique_at_outputs,
 )
 from trilogy.core.processing.join_resolution import (
+    PlannedPairs,
     compute_outer_null_status,
     get_node_joins,
     held_region_spans,
@@ -206,6 +207,39 @@ def deduplicate_nodes_and_joins(
     return joins, merged
 
 
+def _held_groups(
+    held: frozenset[str] | None,
+    parent: StrategyNode,
+    planned: PlannedPairs | None,
+) -> frozenset[str] | None:
+    side = planned.sides.get(id(parent)) if planned is not None else None
+    return None if held is None or side is None else held | side
+
+
+def _planned_source_pairs(
+    merged: dict[str, QueryDatasource | BuildDatasource],
+    held: dict[str, frozenset[str] | None],
+    planned: PlannedPairs | None,
+) -> dict[frozenset[str], frozenset[str]] | None:
+    """What each two merged sources may pair on, by identifier. A pair with a
+    side the plan does not name keeps the merge-wide planned keys; a source
+    folded away as redundant stood for groups no survivor is credited with,
+    so the plan is not read per pair at all."""
+    if planned is None or len(held) != len(merged):
+        return None
+    out: dict[frozenset[str], frozenset[str]] = {}
+    keys = sorted(merged)
+    for i, left in enumerate(keys):
+        for right in keys[i + 1 :]:
+            lgroups, rgroups = held[left], held[right]
+            if lgroups is None or rgroups is None:
+                continue
+            out[frozenset({merged[left].identifier, merged[right].identifier})] = (
+                planned.between(lgroups, rgroups)
+            )
+    return out
+
+
 def _resolve_node(node: StrategyNode) -> BuildDatasource | QueryDatasource:
     return node.resolve()
 
@@ -237,6 +271,7 @@ class MergeNode(StrategyNode):
         host_stitch: bool = False,
         span_scope: SpanScope | None = None,
         planned_keys: frozenset[str] | None = None,
+        planned_pairs: PlannedPairs | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -274,6 +309,8 @@ class MergeNode(StrategyNode):
         # The keys the planner's join plan pairs the parents on; join inference
         # pairs on these alone.
         self.planned_keys = planned_keys
+        # ... and which two parents pair on which of them
+        self.planned_pairs = planned_pairs
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -335,6 +372,7 @@ class MergeNode(StrategyNode):
         pregrain: BuildGrain,
         grain: BuildGrain,
         environment: BuildEnvironment,
+        planned_pairs: dict[frozenset[str], frozenset[str]] | None = None,
     ) -> list[SourceJoin | UnnestJoin]:
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
@@ -407,6 +445,7 @@ class MergeNode(StrategyNode):
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
                     planned_keys=self.planned_keys,
+                    planned_pairs=planned_pairs,
                 )
         elif final_joins:
             logger.info(
@@ -651,15 +690,21 @@ class MergeNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
         merged: dict[str, QueryDatasource | BuildDatasource] = {}
+        # the planned groups each merged source holds; None for a source
+        # holding rows no planned group's
+        held: dict[str, frozenset[str] | None] = {}
         final_joins: list[NodeJoin] | None = self.node_joins
         # Two parents built under different extent ownership carry distinct
         # identifiers; when their resolved joins came out the same they are one
         # relation and fold like any other identifier match.
         by_shape: dict[tuple, str] = {}
-        for source in parent_sources:
+        for parent, source in zip(self.parents, parent_sources):
             key = source.identifier
             if isinstance(source, QueryDatasource) and key not in merged:
                 key = by_shape.setdefault(source.shape, key)
+            held[key] = _held_groups(
+                held.get(key, frozenset()), parent, self.planned_pairs
+            )
             if key in merged:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} merging parent node with {source.identifier} into existing"
@@ -677,6 +722,7 @@ class MergeNode(StrategyNode):
         final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
         )
+        planned_pairs = _planned_source_pairs(merged, held, self.planned_pairs)
 
         # a condition's row argument is read by the row stream like an output
         merge_output_addresses = {c.address for c in self.output_concepts} | (
@@ -766,7 +812,12 @@ class MergeNode(StrategyNode):
         join_proofs = self._join_proofs(final_datasets, zero_filled)
         if len(join_candidates) > 1:
             joins: list[SourceJoin | UnnestJoin] = self.generate_joins(
-                join_candidates, final_joins, raw_pregrain, grain, self.environment
+                join_candidates,
+                final_joins,
+                raw_pregrain,
+                grain,
+                self.environment,
+                planned_pairs,
             )
         else:
             joins = []
@@ -1036,5 +1087,6 @@ class MergeNode(StrategyNode):
             host_stitch=self.host_stitch,
             span_scope=self.span_scope,
             planned_keys=self.planned_keys,
+            planned_pairs=self.planned_pairs,
         )
         return self.with_marks(node)

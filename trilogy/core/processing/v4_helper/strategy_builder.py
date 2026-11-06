@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from functools import partial
-from typing import cast
+from typing import Any, cast
 
 from trilogy.constants import MagicConstants, logger
 from trilogy.core import graph as nx
@@ -73,6 +73,7 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.node_generators.presence_probe import (
     axis_scalar_reads,
     is_presence_probe,
@@ -3450,12 +3451,15 @@ def _pre_merge_parents(
         # a region domain hosts its spans' extension rows: preserve it, and
         # the feeder only where it holds a value-NULL key
         host_stitch=any(p.region_spans for p in parents),
-        planned_keys=(
-            plan.across(
-                [side_members(parent, origin) or frozenset() for parent in parents]
-            ).permitted_keys
+        **(
+            _planned_join(
+                plan.across(
+                    [side_members(parent, origin) or frozenset() for parent in parents]
+                ),
+                {id(parent): side_members(parent, origin) for parent in parents},
+            )
             if plan is not None and origin is not None
-            else None
+            else {}
         ),
     )
     return [merged]
@@ -5677,7 +5681,7 @@ def _apply_final_conditions(
         if ex_groups
         else []
     )
-    planned_keys: frozenset[str] | None = None
+    planned: dict[str, Any] = {}
     if arg_nodes:
         feeders = list(dict.fromkeys(producers.values()))
         origin = {id(built[f]): f for f in feeders} | {id(node): gid}
@@ -5689,7 +5693,7 @@ def _apply_final_conditions(
         )
         if asks:
             _carry_asked_keys([node, *arg_nodes], origin, plan, environment)
-        planned_keys = _planned_keys_across([node, *arg_nodes], origin, plan)
+        planned = _planned_across([node, *arg_nodes], origin, plan)
     sources = ConditionSources(
         row_concepts=row_concepts + arg_concepts,
         row_parents=arg_nodes,
@@ -5713,7 +5717,7 @@ def _apply_final_conditions(
         + arg_concepts,
         condition_on_merge=bool(arg_nodes),
         combine_existing=False,
-        planned_keys=planned_keys,
+        **planned,
     )
 
 
@@ -5775,15 +5779,30 @@ def _carry_asked_keys(
     _carry_planned_keys(nodes, origin, dc_replace(plan, pairings=()), environment)
 
 
-def _planned_keys_across(
+def _planned_across(
     parents: list[StrategyNode], origin: dict[int, str], plan: JoinPlan
-) -> frozenset[str] | None:
-    """What resolve may pair `parents` on under `plan`; None when some side's
-    rows are no planned group's."""
-    sides = [side_members(parent, origin) for parent in parents]
-    if any(side is None for side in sides):
-        return None
-    return plan.across([side for side in sides if side is not None]).permitted_keys
+) -> dict[str, Any]:
+    """What resolve may pair `parents` on under `plan`; nothing when some
+    side's rows are no planned group's."""
+    sides = {id(parent): side_members(parent, origin) for parent in parents}
+    held = [side for side in sides.values() if side is not None]
+    if len(held) < len(parents):
+        return {}
+    return _planned_join(plan.across(held), sides)
+
+
+def _planned_join(
+    plan: JoinPlan, sides: dict[int, frozenset[str] | None]
+) -> dict[str, Any]:
+    """A MergeNode's planned keys under `plan`, already read over its sides:
+    every key it may pair on, and which two sides pair on which."""
+    return {
+        "planned_keys": plan.permitted_keys,
+        "planned_pairs": PlannedPairs(
+            {key: side for key, side in sides.items() if side is not None},
+            plan.pair_keys(),
+        ),
+    }
 
 
 def _gate_key_row_stream(
@@ -6248,7 +6267,10 @@ def _assemble_final_node(
         # not collapse the authored fan-out back to distinct key pairs.
         whole_grain=not final_contract.deduplicate_to_grain,
         host_stitch=True,
-        planned_keys=merge_plan.permitted_keys,
+        **_planned_join(
+            merge_plan,
+            {id(parent): _origin_singleton(parent, origin) for parent in parents},
+        ),
     )
     _clear_groupmate_completed_partials(merged, environment)
     # A hidden axis mate rides sides kept at their own finer row grain, and the
@@ -6331,6 +6353,13 @@ def _at_declared_identity(
         preexisting_conditions=node.preexisting_conditions,
         force_group=True,
     )
+
+
+def _origin_singleton(
+    node: StrategyNode, origin: dict[int, str]
+) -> frozenset[str] | None:
+    gid = _origin_group(node, origin)
+    return frozenset({gid}) if gid is not None else None
 
 
 def _origin_group(node: StrategyNode, origin: dict[int, str]) -> str | None:
