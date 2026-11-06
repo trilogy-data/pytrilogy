@@ -509,12 +509,16 @@ def exact_covers(matrix: list[list[bool]]) -> list[tuple[int, ...]]:
     """Every set of columns (atoms) that holds exactly once on each row
     (cell): the sub-families that partition the domain."""
     found: list[tuple[int, ...]] = []
-    _search_covers(matrix, frozenset(range(len(matrix))), (), found)
+    claims = [
+        frozenset(i for i, r in enumerate(matrix) if r[col])
+        for col in range(len(matrix[0]) if matrix else 0)
+    ]
+    _search_covers(claims, frozenset(range(len(matrix))), (), found)
     return found
 
 
 def _search_covers(
-    matrix: list[list[bool]],
+    claims: list[frozenset[int]],
     open_rows: frozenset[int],
     chosen: tuple[int, ...],
     found: list[tuple[int, ...]],
@@ -524,15 +528,18 @@ def _search_covers(
     if not open_rows:
         found.append(chosen)
         return
+    # A cell no remaining column can claim dooms the branch. Without this
+    # check one such cell makes the search try every product of duplicate
+    # arms before giving up: 2**n for n doubled partitions.
+    fitting = [claimed for claimed in claims if claimed <= open_rows]
+    if not open_rows <= frozenset().union(*fitting):
+        return
     # Branch on the lowest open cell: exactly one column of any cover claims
     # it, so each cover is found once.
     row = min(open_rows)
-    for col, holds in enumerate(matrix[row]):
-        if not holds:
-            continue
-        claimed = frozenset(i for i, r in enumerate(matrix) if r[col])
-        if claimed <= open_rows:
-            _search_covers(matrix, open_rows - claimed, chosen + (col,), found)
+    for col, claimed in enumerate(claims):
+        if row in claimed and claimed <= open_rows:
+            _search_covers(claims, open_rows - claimed, chosen + (col,), found)
 
 
 def reduce_expression(

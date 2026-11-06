@@ -203,6 +203,14 @@ def test_exact_covers_pick_one_copy_of_a_duplicate_arm():
     assert len(exact_covers([[True] * 100])) == MAX_EXACT_COVERS
 
 
+def test_exact_covers_give_up_on_an_unclaimed_cell_at_once():
+    cells = 60
+    doubled = [[c // 2 == row for c in range(2 * cells)] for row in range(cells)]
+    assert len(exact_covers(doubled)) == MAX_EXACT_COVERS
+    assert exact_covers(doubled + [[False] * (2 * cells)]) == []
+    assert exact_covers([[False] * (2 * cells)] + doubled) == []
+
+
 def test_string_cells_are_literals_and_everything_else():
     NE = ComparisonOperator.NE
     assert domain_hits(DataType.STRING, [(EQ, "a")]) == [1, 0]
