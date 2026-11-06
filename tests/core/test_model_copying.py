@@ -1,8 +1,9 @@
 import copy
+from dataclasses import dataclass
 
 from trilogy import Environment
 from trilogy.core.models.author import Concept
-from trilogy.core.models.copying import dataclass_deepcopy
+from trilogy.core.models.copying import _copies_itself, dataclass_deepcopy
 
 MODEL = """
 key id int;
@@ -46,3 +47,25 @@ def test_duplicate_is_independent_of_its_source():
     assert "local.other" not in (env.concepts["name"].keys or set())
     assert len(env.datasources["things"].columns) == 3
     assert duplicate.datasources["things"].columns[0].concept.address == "local.id"
+
+
+@dataclass
+class _Pair:
+    left: list
+    right: list
+
+
+def test_shared_lists_stay_shared():
+    shared = ["a"]
+    copied = dataclass_deepcopy(_Pair(left=shared, right=shared), {})
+    assert copied.left is copied.right
+    assert copied.left is not shared
+
+
+@dataclass(slots=True)
+class _Slotted:
+    value: int
+
+
+def test_slotted_dataclasses_keep_the_generic_copy():
+    assert _copies_itself(_Slotted)

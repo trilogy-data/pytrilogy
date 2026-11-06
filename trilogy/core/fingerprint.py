@@ -260,8 +260,6 @@ class _Canonicalizer:
             return self._model(obj, [f.name for f in dc_fields(obj)])
         if is_dataclass(obj):
             return self._dataclass(obj)
-        if isinstance(obj, BaseModel):
-            return self._model(obj, list(type(obj).model_fields))
         raise FingerprintError(f"Cannot canonicalize {type(obj).__name__}")
 
     def _mapping(self, obj: dict) -> str:

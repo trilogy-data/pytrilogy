@@ -1,5 +1,6 @@
 import gc
 
+import duckdb
 import pytest
 
 from trilogy import Dialects
@@ -90,3 +91,27 @@ def test_configs_with_instance_state_open_their_own(monkeypatch):
     assert DuckDBConfig(path="x.db").create_engine_args() == {}
     monkeypatch.setattr(CONFIG, "reuse_duckdb_instances", False)
     assert DuckDBConfig().create_engine_args() == {}
+
+
+def test_an_instance_that_cannot_reset_is_closed():
+    instance = duckdb_pool._Instance()
+    assert not instance.reset()
+    cursor = instance.open()
+    instance.db.close()
+    duckdb_pool._release(instance, cursor, [False])
+    assert instance not in duckdb_pool._idle
+
+
+def test_opening_an_instance_twice_fails_cleanly():
+    instance = duckdb_pool._Instance()
+    instance.open()
+    with pytest.raises(duckdb.Error):
+        instance.open()
+
+
+def test_a_forked_child_abandons_idle_instances():
+    assert _kept()
+    idle = list(duckdb_pool._idle)
+    duckdb_pool._abandon_idle()
+    assert duckdb_pool._idle == []
+    assert all(instance in duckdb_pool._abandoned for instance in idle)
