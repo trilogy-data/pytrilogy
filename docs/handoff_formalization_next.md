@@ -28,7 +28,8 @@ value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
 (0.3.450: `agg(x ? c)` read from a stored `agg(x)`; 0.3.452: a condition
 joined onto the summary, priced in the source search; area 1c), and
 `Cover.lean` §6 (0.3.457: a group by an unnested element, and counts by a
-value the summary key relates to; area 1c).
+value the summary key relates to; area 1c), and `Windows.lean` extended
+(0.3.458: grouping by a window's value; area 4).
 
 ## The recipe
 
@@ -275,6 +276,22 @@ value the summary key relates to; area 1c).
     - Ablate guards in combination. The `at_own_grain` guard in
       `_relation_rollup_source` ablates clean alone, and is what keeps 15
       cases right once the unnest-root marking is also off.
+
+17. **Lessons from the window-grouping round (`Windows.lean`, 0.3.458).**
+    - A lead that reads like a modelling nit can be a wrong answer one step
+      away. "A value window's keys are its operand" was recorded as why a
+      suite compared sets; grouping by the window (`select l, count(id)`)
+      counted by the operand. Before parking a lead, put the concept in each
+      position a select gives it: alone, beside an aggregate, beside its own
+      inputs.
+    - A substitution that is right for one consumer is wrong for another:
+      a window's keys stand in for it as a join key, never as a group key,
+      unless the map from keys to value is injective
+      (`Windows.group_by_tuple_splits_value`).
+    - A law suite that reuses a cached executor across cases shares its
+      environment: an `auto w` from one case was still defined in the next,
+      and the failures moved with `-n`. Give each case a fresh environment
+      when the query defines concepts.
 
 ## Candidate areas
 
@@ -556,11 +573,14 @@ placement); `nulls auto` is the engine's own. Leads left:
   `(c, NULL)` comes back three times. The FINAL dedup skips a GroupNode
   contributor ("aggregates sit at their own grain"). Decide whether the
   select is the distinct tuples, as `select g, x` is.
-- **A value window's keys are its operand.** `lag(x)` gets keys `{x}`, though
-  two rows with the same `x` lag differently; the statement grain of `select
-  lag(x) over (order by id)` is then `{x}` while the rows are per `id`. The
-  law suite compares value windows as sets for this reason. The window's
-  grain (`{id}`) is right; its keys are not.
+- **Done in 0.3.458: a value window's keys were its operand**, and a group by
+  a window's value grouped by those keys (`select l, count(id)` counted by
+  `x`; `Windows.regroup_by_value_exact`, `tests/windows/test_window_group_laws.py`).
+  Left: a window ordered by an aggregate (`rank(x) over (order by sum(y))`)
+  still gives a select its keys, because the aggregate inherits the select's
+  grain and grouping by the window would group the aggregate by itself. Its
+  group by the rank value is the same split as before; it needs the
+  aggregate's grain fixed before the window's contribution.
 - **SQL Server orders by a select alias inside the NULL flag.** T-SQL
   resolves an alias only as a bare ORDER BY term, so `CASE WHEN "alias" IS
   NULL ...` fails where the FINAL orders by a column derived in it. No

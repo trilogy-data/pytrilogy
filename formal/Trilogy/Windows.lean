@@ -20,6 +20,11 @@ every row that holds the tuple. An aggregate window with no order
 - `empty_over_is_total`: `count(x) over ()` counts every row. Partitioned by
   the select's grain (`id`), as Trilogy read it, it counts one row's `x`
   (`grain_count_is_not_total`).
+- `regroup_by_value_exact`: grouping rows by a window's value is the re-sum
+  of the groups of the tuple it is a function of, over the tuples of that
+  value. Grouping by the tuple and projecting the value splits a value into
+  a group per tuple (`group_by_tuple_splits_value`), and a value window is
+  no function of its operand (`lag_reads_rows_not_values`).
 
 ORDER BY names a direction and a NULL placement. A plain direction places
 NULLs last, DuckDB's placement; `nulls auto` leaves it to the engine. Engines
@@ -113,6 +118,86 @@ theorem empty_over_is_total (rows : List (Nat × Option Int)) (r : Nat) :
 theorem grain_count_is_not_total :
     let rows : List (Nat × Option Int) := [(0, some 1), (1, none), (2, some 3)]
     countOver rows (fun _ => 0) 1 = 2 ∧ countOver rows id 1 = 0 := by decide
+
+/-! ## Grouping by a window's value
+
+`select r, count(id)` groups the rows by `r`'s value. A window is a value of
+its grain's tuple (`rank(x) over (partition by g ...)` is a function of
+`(x, g)`), but grouping by that tuple and projecting the value is not
+grouping by the value: two tuples of one rank are two groups
+(`group_by_tuple_splits_value`). A value window is not even a function of its
+operand: `lag(x)` differs on two rows with the same `x`
+(`lag_reads_rows_not_values`). Trilogy grouped by both: a window in a select
+gave the statement its keys in its place. The exact regrouping is the re-sum
+of the tuple's groups over the tuples of one value (`regroup_by_value_exact`),
+and grouping by the value itself is that. -/
+
+/-- The rows whose `w` is `v`: the count of `v`'s group. -/
+def countBy {α β : Type} [DecidableEq β] (w : α → β) (rows : List α) (v : β) : Nat :=
+  (rows.filter fun r => w r = v).length
+
+theorem countBy_cons {α β : Type} [DecidableEq β] (w : α → β) (r : α) (rows : List α)
+    (v : β) : countBy w (r :: rows) v = (if w r = v then 1 else 0) + countBy w rows v := by
+  unfold countBy
+  rw [List.filter_cons]
+  by_cases h : w r = v <;> simp [h] <;> omega
+
+theorem sum_indicator_nodup {κ : Type} [DecidableEq κ] (a : κ) (us : List κ)
+    (hnd : us.Nodup) :
+    (us.map fun u => if a = u then 1 else 0).sum = if a ∈ us then 1 else 0 := by
+  induction us with
+  | nil => simp
+  | cons u rest ih =>
+    have ⟨hu, hrest⟩ := List.nodup_cons.mp hnd
+    simp only [List.map_cons, List.sum_cons, ih hrest, List.mem_cons]
+    by_cases h : a = u
+    · subst h; simp [hu]
+    · simp [h]
+
+theorem sum_map_add {κ : Type} (us : List κ) (f g : κ → Nat) :
+    (us.map fun u => f u + g u).sum = (us.map f).sum + (us.map g).sum := by
+  induction us with
+  | nil => rfl
+  | cons u rest ih => simp only [List.map_cons, List.sum_cons, ih]; omega
+
+/-- **Grouping by a function of a tuple is the re-sum of the tuple's groups**
+over the tuples it maps to `v`: the count of `v` is never one group's count. -/
+theorem regroup_by_value_exact {α κ β : Type} [DecidableEq κ] [DecidableEq β]
+    (k : α → κ) (f : κ → β) (ks : List κ) (hnd : ks.Nodup) (rows : List α)
+    (hcov : ∀ r ∈ rows, k r ∈ ks) (v : β) :
+    countBy (fun r => f (k r)) rows v =
+      ((ks.filter fun u => f u = v).map (countBy k rows)).sum := by
+  induction rows with
+  | nil =>
+    have e : countBy k ([] : List α) = fun _ => 0 := funext fun _ => rfl
+    rw [e]
+    simp only [countBy, List.filter_nil, List.length_nil]
+    induction (ks.filter fun u => f u = v) with
+    | nil => rfl
+    | cons _ _ ih' => simp only [List.map_cons, List.sum_cons, ← ih']
+  | cons r rest ih =>
+    rw [countBy_cons, ih fun r' h => hcov r' (List.mem_cons_of_mem _ h)]
+    have e : countBy k (r :: rest) = fun u => (if k r = u then 1 else 0) + countBy k rest u :=
+      funext fun u => countBy_cons k r rest u
+    rw [e, sum_map_add, sum_indicator_nodup _ _ (hnd.filter _)]
+    have hk := hcov r List.mem_cons_self
+    by_cases h : f (k r) = v <;> simp [h, hk]
+
+/-- `rank(x) over (partition by g order by x)` over rows `(g, x)`:
+`(a, 1)` and `(b, 1)` both rank 1. Grouped by the tuple, rank 1 is two
+groups of one row each; grouped by the value, one group of two. -/
+theorem group_by_tuple_splits_value :
+    let rows : List (Nat × Nat) := [(0, 1), (1, 1)]
+    let rank : Nat × Nat → Nat := fun _ => 1
+    ((rows.eraseDups.filter fun t => rank t = 1).map (countBy id rows)) = [1, 1] ∧
+      countBy (fun t => rank (id t)) rows 1 = 2 := by decide
+
+/-- `lag(x) over (order by id)` over `x = [10, 10, 20]`: the two rows with
+`x = 10` lag `none` and `10`, so `x` does not determine the lag. -/
+theorem lag_reads_rows_not_values :
+    let xs : List Nat := [10, 10, 20]
+    let lag : Nat → Option Nat := fun i => if i = 0 then none else xs[i - 1]?
+    xs[0]? = xs[1]? ∧ lag 0 ≠ lag 1 := by decide
 
 /-! ## Where NULLs sort -/
 
