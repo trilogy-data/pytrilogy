@@ -11,7 +11,14 @@ must answer alike, and the summary must be read wherever no WHERE applies."""
 
 import pytest
 
-from tests.unnest.test_unnest_filter_laws import REGIONS, Data, load, random_data
+from tests.unnest.test_unnest_filter_laws import (
+    REGIONS,
+    Data,
+    declared_unique,
+    load,
+    random_data,
+    without_repeats,
+)
 from trilogy import Dialects
 
 SEEDS = range(10)
@@ -157,3 +164,24 @@ def test_a_partial_summary_is_not_read(seed):
     sql, got = _rows(_executor(BASE + partial, data, "plain"), query)
     assert got == expected, sql
     assert '"summary"' not in sql, sql
+
+
+@pytest.mark.parametrize("shape", list(SHAPES))
+@pytest.mark.parametrize("spelling", list(SPELLINGS))
+@pytest.mark.parametrize("seed", SEEDS)
+def test_unique_list_pairs_need_no_distinct(seed, spelling, shape):
+    """Over a list declared `::unique`, the summary's pairs are distinct as
+    listed: the relation join reads them without a DISTINCT, and a property of
+    the element (two ecoregions share a biome) still dedups."""
+    model, value, sizing, _ = SPELLINGS[spelling]
+    data = without_repeats(random_data(seed))
+    query = f"select {SHAPES[shape].format(v=value)};"
+    _, expected = _rows(_executor(model, data, sizing), query)
+    plain_sql, _ = _rows(_executor(model + SUMMARY, data, sizing), query)
+    sql, got = _rows(_executor(declared_unique(model) + SUMMARY, data, sizing), query)
+    assert got == expected, (query, sql)
+    if (spelling, shape) in OPEN:
+        return
+    assert '"summary"' in sql and '"trees"' not in sql, sql
+    fewer = sql.upper().count("GROUP BY") < plain_sql.upper().count("GROUP BY")
+    assert fewer == (spelling != "property"), sql

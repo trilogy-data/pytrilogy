@@ -71,6 +71,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.relation_rollup import (
+    names_each_once,
     relation_rollup_concepts,
     relation_targets,
 )
@@ -2158,7 +2159,8 @@ def _relation_pairs(
     request: SourceRequest, targets: list[BuildConcept], keys: list[BuildConcept]
 ) -> StrategyNode | None:
     """DISTINCT `(keys, targets)`: a list repeating an element names it once
-    (`Cover.repeated_element_counts_once`)."""
+    (`Cover.repeated_element_counts_once`). Pairs of a list declared
+    `::unique` are distinct as listed (`Cover.unique_list_pairs_are_distinct`)."""
     # Imported lazily: `concept_strategies_v4` imports this module's package.
     from trilogy.core.processing.concept_strategies_v4 import search_concepts
 
@@ -2173,6 +2175,8 @@ def _relation_pairs(
     )
     if info.strategy_node is None:
         return None
+    if all(names_each_once(t, request.environment) for t in targets):
+        return info.strategy_node
     return GroupNode(
         input_concepts=columns,
         output_concepts=columns,

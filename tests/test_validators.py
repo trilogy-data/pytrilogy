@@ -945,3 +945,40 @@ def test_get_validation_cached_datasource_skips_non_python_script():
     # Without validation scope (cache is None)
     result = executor.get_validation_cached_datasource(ds)
     assert result is ds
+
+
+_UNIQUE_LIST = """
+    import std.collection;
+    key species string;
+    property species.regions list<int>::unique;
+
+    datasource ranges (species: species, regions: ?regions)
+    grain (species)
+    query '''
+    SELECT 'oak' AS species, {oak} AS regions UNION ALL
+    SELECT 'elm', [] UNION ALL
+    SELECT 'ash', NULL::int[]
+    ''';
+"""
+
+
+def test_unique_list_validation_rejects_a_repeated_element():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_UNIQUE_LIST.format(oak="[1, 2, 1]"))
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceModelValidationError)
+        and "violate declared domain" in child.message
+        and "local.regions" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_unique_list_validation_allows_distinct_empty_and_null_lists():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_UNIQUE_LIST.format(oak="[1, 2]"))
+
+    validate_environment(executor.environment, exec=executor)

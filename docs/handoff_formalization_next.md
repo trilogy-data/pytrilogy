@@ -420,6 +420,10 @@ from that round:
     It does not see a table binding the target's KEY: `biome` beside a
     `(city, ecoregion_id)` summary reads the species summary through the
     relation join (right, but the larger read).
+  - A list declared `::unique` (`std.collection`) skips both dedups and is
+    validated; `unique` is matched by its last name segment, so a model's own
+    `type unique list<...>` means the same. Other paths that dedup an unnest
+    (a WHERE on an element) do not read the claim yet.
   - Grouping by an unnested element now dedups `(row key, element)`, but
     `select ecoregion_id, tree_id` still returns a pair once per repeat. That
     is the documented element-keyed-by-ordinal behaviour

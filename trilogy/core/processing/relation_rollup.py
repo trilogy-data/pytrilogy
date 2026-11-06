@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
     BuildGrain,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.core import holds_unique_elements
 from trilogy.core.processing.aggregate_rollup import (
     _concepts_reachable,
     _datasource_has_matching_rollup_aggregate,
@@ -66,6 +67,19 @@ def relation_keys(
             keys |= found
         return frozenset(keys)
     return None
+
+
+def names_each_once(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """`concept` is an element of a list declared `::unique` (or a key merged
+    with one): its `(key, element)` pairs are distinct as listed. A property
+    of the element is not (two ecoregions share a biome)."""
+    for origin in _unnest_origins(concept, environment):
+        args = origin.lineage.concept_arguments[:1] if origin.lineage else []
+        for arg in args:
+            listed = environment.concepts.get(arg.address)
+            if listed is not None and holds_unique_elements(listed.datatype):
+                return True
+    return False
 
 
 def relation_targets(

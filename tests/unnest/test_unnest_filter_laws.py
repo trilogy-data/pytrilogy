@@ -272,13 +272,57 @@ def test_group_by_element_reads_each_row_once(spelling, grouping, aggregate, see
     element = SPELLINGS[spelling][1]
     (select, key), (expr, agg) = GROUPINGS[grouping], GROUPED[aggregate]
     query = f"select {select.format(e=element)}, {expr} as v;"
-    expected = grouped_reference(data, key, agg)
+    sql, got = _grouped(executor, query, data)
+    assert got == grouped_reference(data, key, agg), (query, sql)
+
+
+def _grouped(executor, query: str, data: Data) -> tuple[str, dict]:
     sql = executor.generate_sql(query)[-1]
     rows = executor.execute_raw_sql(sql).fetchall()
     # a merged key pads a member with no tree; its empty group is not compared
-    got = {
+    return sql, {
         tuple(r[:-1]): r[-1]
         for r in rows
         if r[-2] in data.listed() and r[-1] not in (0, None)
     }
-    assert got == expected, (query, sql)
+
+
+LIST_DECLARATION = "property species.native_ecoregions list<int>;"
+
+
+def declared_unique(model: str) -> str:
+    assert LIST_DECLARATION in model
+    return "import std.collection;\n" + model.replace(
+        LIST_DECLARATION, LIST_DECLARATION.replace("list<int>", "list<int>::unique")
+    )
+
+
+def without_repeats(data: Data) -> Data:
+    lists = {
+        s: None if v is None else list(dict.fromkeys(v)) for s, v in data.lists.items()
+    }
+    return Data(data.trees, lists, data.biomes)
+
+
+@pytest.mark.parametrize("spelling", list(SPELLINGS))
+@pytest.mark.parametrize("grouping", list(GROUPINGS))
+@pytest.mark.parametrize("aggregate", list(GROUPED))
+@pytest.mark.parametrize("seed", SEEDS)
+def test_unique_list_groups_without_a_dedup(spelling, grouping, aggregate, seed):
+    """A list declared `::unique` (and holding each element once) pairs each
+    element with its row once, so the group needs no dedup: the plan drops it
+    and answers as before (`Cover.unique_list_pairs_are_distinct`)."""
+    data = without_repeats(random_data(seed))
+    model, element = SPELLINGS[spelling]
+    (select, key), (expr, agg) = GROUPINGS[grouping], GROUPED[aggregate]
+    query = f"select {select.format(e=element)}, {expr} as v;"
+    plain = Dialects.DUCK_DB.default_executor()
+    load(plain, data, spelling)
+    plain.parse_text(model)
+    declared = Dialects.DUCK_DB.default_executor()
+    load(declared, data, spelling)
+    declared.parse_text(declared_unique(model))
+    plain_sql, _ = _grouped(plain, query, data)
+    sql, got = _grouped(declared, query, data)
+    assert got == grouped_reference(data, key, agg), (query, sql)
+    assert sql.upper().count("GROUP BY") < plain_sql.upper().count("GROUP BY"), sql

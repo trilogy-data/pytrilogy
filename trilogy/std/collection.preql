@@ -1,0 +1,6 @@
+# Traits on collection types.
+
+# A list that holds each element at most once. Unnested beside its parent row,
+# its elements pair with that row once each, so grouping by an element needs
+# no dedup; `trilogy validate` reports a row whose list repeats one.
+type unique list<any>;

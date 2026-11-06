@@ -77,6 +77,36 @@ argument, partition and order fields, not the rows the argument lives on:
 and a select of `tree_id` beside it reads each tree's species' rank. The rank
 is the same whatever else the select projects (`formal/Trilogy/Windows.lean`).
 
+## A list's elements, and `::unique`
+
+`unnest(xs)` gives one row per element of a list. Grouping by an element
+counts a parent row once in each group its list names, however often it names
+it, so the group's answer is the answer filtered to it:
+
+```
+property species.native_ecoregions list<int>;
+auto ecoregion <- unnest(native_ecoregions);
+
+select ecoregion, count(tree_id) as trees;   # a tree listing [1, 1] counts once in 1
+```
+
+A list may repeat a value, so that grouping deduplicates each `(row, element)`
+pair. When the model knows each list holds a value at most once, declare it
+with the `unique` trait from `std.collection`, and the plan drops that dedup:
+
+```
+import std.collection;
+
+property species.native_ecoregions list<int>::unique;
+```
+
+The trait is a claim about the data, like a grain: `trilogy validate` reports
+any row whose list repeats an element, and a false claim over unchecked data
+counts that row twice. It is a different promise from `unique property`, which
+says a property's value is held by one key. A property of the element
+(`biome` of an ecoregion) still deduplicates: two ecoregions share a biome
+(`formal/Trilogy/Cover.lean`, `unique_list_pairs_are_distinct`).
+
 ## NULLs sort last
 
 A bare `asc` or `desc` places NULLs last in both directions, on every

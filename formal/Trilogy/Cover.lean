@@ -453,8 +453,10 @@ relation's `(key, value)` pairs and re-summing. Over the DISTINCT pairs that
 is the re-sum `keyed_relation_count` proves exact
 (`distinct_pairs_resum_exact`, `relation_resum_count_exact`); over the pairs an
 unnest lists, a list repeating a value counts its key once per repeat
-(`repeated_element_counts_once`). The tree rows are held to the same rule: a
-row lands in a group once, however often its list names it. -/
+(`repeated_element_counts_once`); a list declared `::unique` repeats none, so
+its expansion is already distinct (`unique_list_pairs_are_distinct`). The
+tree rows are held to the same rule: a row lands in a group once, however
+often its list names it. -/
 
 /-- A list with each value once. -/
 def dedup : List τ → List τ
@@ -535,6 +537,30 @@ theorem relation_resum_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodu
   simp only [Bool.true_and, keep, hall] at h
   rw [distinct_pairs_resum_exact, ← h, coalesce0_sqlSum, stored]
   simp [List.map_map, Function.comp_def, countAgg]
+
+omit [DecidableEq κ] in
+/-- A list holding each value once is its own dedup. -/
+theorem dedup_of_nodup (l : List τ) (h : l.Nodup) : dedup l = l := by
+  induction l with
+  | nil => rfl
+  | cons x xs ih =>
+    rw [List.nodup_cons] at h
+    simp only [dedup, h.1, ↓reduceIte, ih h.2]
+
+omit [DecidableEq κ] in
+/-- **A list declared `::unique` needs no DISTINCT.** When no key's list
+repeats a value, the pairs an unnest expands are the distinct pairs, so
+`distinct_pairs_resum_exact` holds over the expansion as listed: the planner
+drops the dedup it adds for an undeclared list. -/
+theorem unique_list_pairs_are_distinct (ks : List κ) (rel : κ → List τ)
+    (h : ∀ k ∈ ks, (rel k).Nodup) :
+    ks.flatMap (fun k => (rel k).map (fun t => (k, t))) = distinctPairs ks rel := by
+  induction ks with
+  | nil => rfl
+  | cons k ks ih =>
+    simp only [distinctPairs, List.flatMap_cons] at *
+    rw [dedup_of_nodup _ (h k (List.mem_cons_self ..)),
+      ih (fun k' hk => h k' (List.mem_cons_of_mem _ hk))]
 
 /-- Re-summing over the pairs the expansion lists, not the distinct ones,
 counts a key once per repeat: a species of one tree listing ecoregion 1 twice
