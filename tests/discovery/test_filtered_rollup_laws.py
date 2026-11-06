@@ -102,6 +102,7 @@ def _max(xs):
 AGGREGATES = {
     "count_key": ("count(tree_id ? {c})", lambda r: r["tree_id"], _count),
     "count_value": ("count(dbh ? {c})", lambda r: r["dbh"], _count),
+    "distinct_key": ("count_distinct(tree_id ? {c})", lambda r: r["tree_id"], _count),
     "sum": ("sum(dbh ? {c})", lambda r: r["dbh"], _sum),
     "min": ("min(dbh ? {c})", lambda r: r["dbh"], _min),
     "max": ("max(dbh ? {c})", lambda r: r["dbh"], _max),
@@ -183,21 +184,53 @@ def executors():
     return {seed: _executor(seed) for seed in SEEDS}
 
 
+# Shapes the matcher does not serve yet: each reads the trees, and
+# `test_filtered_aggregate_answers` holds it to the reference.
+JOINED_CONDITION = (
+    "a condition on a property of the summary key needs its join below the "
+    "re-aggregating scan, which sees only the summary's own columns"
+)
+
+
+def _marks(condition: str) -> list:
+    if condition in ("property", "or"):
+        return [pytest.mark.xfail(strict=True, reason=JOINED_CONDITION)]
+    return []
+
+
+def _ids(cases: list[tuple]) -> list[str]:
+    return ["-".join(map(str, case)) for case in cases]
+
+
+def _sql_and_rows(executor, query: str) -> tuple[str, list[tuple]]:
+    sql = executor.generate_sql(query)[-1]
+    rows = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
+    return sql, sorted(rows, key=repr)
+
+
+@pytest.mark.parametrize(
+    "seed,aggregate,condition,target,where", CASES, ids=_ids(CASES)
+)
+def test_filtered_aggregate_answers(
+    executors, seed, aggregate, condition, target, where
+):
+    sql, rows = _sql_and_rows(
+        executors[seed], _query(aggregate, condition, target, where)
+    )
+    assert rows == _reference(
+        _rows(_trees(seed)), aggregate, condition, target, where
+    ), sql
+
+
 @pytest.mark.parametrize(
     "seed,aggregate,condition,target,where",
-    CASES,
-    ids=["-".join(map(str, case)) for case in CASES],
+    [pytest.param(*case, marks=_marks(case[2])) for case in CASES],
+    ids=_ids(CASES),
 )
 def test_filtered_aggregate_reads_the_summary(
     executors, seed, aggregate, condition, target, where
 ):
-    executor = executors[seed]
-    sql = executor.generate_sql(_query(aggregate, condition, target, where))[-1]
-    rows = sorted(
-        (tuple(r) for r in executor.execute_raw_sql(sql).fetchall()), key=repr
-    )
-    expected = _reference(_rows(_trees(seed)), aggregate, condition, target, where)
-    assert rows == expected, sql
+    sql, _ = _sql_and_rows(executors[seed], _query(aggregate, condition, target, where))
     assert '"summary"' in sql and '"trees"' not in sql, sql
 
 

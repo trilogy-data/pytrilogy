@@ -1336,6 +1336,30 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             ),
         )
 
+    @cached_property
+    def filtered_rollup(
+        self,
+    ) -> tuple[tuple[FunctionType, tuple[str, ...]], BuildFilterItem] | None:
+        """For `agg(x ? c)`, the signature of the `agg(x)` a summary stores
+        and the filter: `reagg(case when c then agg(x) end)` over its partials
+        is the filtered aggregate wherever `c` is a function of the partial's
+        grain (`Cover.filtered_sum_exact`). Matched only where the partials
+        are re-aggregated, never as the column itself."""
+        if not isinstance(self.lineage, BuildAggregateWrapper):
+            return None
+        function = self.lineage.function
+        if function.operator not in ROLLUP_REAGGREGATES or len(function.arguments) != 1:
+            return None
+        argument = function.arguments[0]
+        if not (
+            isinstance(argument, BuildConcept)
+            and isinstance(argument.lineage, BuildFilterItem)
+            and isinstance(argument.lineage.content, BuildConcept)
+        ):
+            return None
+        content = argument.lineage.content
+        return (function.operator, (content.canonical_address,)), argument.lineage
+
     def __str__(self):
         grain = str(self.grain) if self.grain else "Grain<>"
         return f"{self.namespace}.{self.name}@{grain}"
@@ -2271,6 +2295,18 @@ class BuildDatasource:
                 return column
         return None
 
+    def filtered_column_for(
+        self, concept: BuildConcept
+    ) -> BuildColumnAssignment | None:
+        """The column storing the unfiltered partial of `agg(x ? c)`."""
+        filtered = concept.filtered_rollup
+        if filtered is None:
+            return None
+        for column in self.columns:
+            if column.concept.rollup_signature == filtered[0]:
+                return column
+        return None
+
     @property
     def bound_discriminators(self) -> frozenset[str]:
         """The columns its `complete where` reads that it binds."""
@@ -2310,11 +2346,14 @@ class BuildDatasource:
         by = {c.address for c in lineage.by}
         grain = set(self.grain.components)
         stacked = set(self.row_determinants)
+        partial = self.aggregate_column_for(concept) or self.filtered_column_for(
+            concept
+        )
         if stacked != grain:
-            return None if stacked < by else self.aggregate_column_for(concept)
+            return None if stacked < by else partial
         if grain.issubset(by):
             return None
-        return self.aggregate_column_for(concept)
+        return partial
 
     @property
     def bound_spellings(self) -> set[str]:
@@ -3169,40 +3208,6 @@ class Factory:
             metadata=base.metadata,
         )
 
-    def _stored_filtered_parts(self, base: Concept) -> Concept:
-        """An `agg(x ? c)` some datasource stores `agg(x)` for, as the
-        re-aggregate of the partials `c` keeps (`filtered_parts`)."""
-        lineage = base.lineage
-        if (
-            self.select_grouping is not None
-            or not isinstance(lineage, AggregateWrapper)
-            or lineage.grouping != AggregateGroupingMode.STANDARD
-        ):
-            return base
-        from trilogy.core.filtered_parts import filtered_of_parts
-        from trilogy.parsing.common import arbitrary_to_concept
-
-        grain = self._abstract_resolution_grain()
-        rewritten = filtered_of_parts(
-            lineage,
-            [] if grain.abstract else list(grain.component_order),
-            (
-                [c.address for c in self.select_where.concept_arguments]
-                if self.select_where
-                else []
-            ),
-            self.environment,
-        )
-        if rewritten is None:
-            return base
-        return arbitrary_to_concept(
-            rewritten,
-            environment=self.environment,
-            namespace=base.namespace,
-            name=base.name,
-            metadata=base.metadata,
-        )
-
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
             return None
@@ -3714,9 +3719,7 @@ class Factory:
                 self._env_writes.add(base.address)
             self.canonical_build_cache[canonical_key] = rval
             return rval
-        base = self._grain_pinned(
-            self._stored_filtered_parts(self._stored_average_of_parts(base))
-        )
+        base = self._grain_pinned(self._stored_average_of_parts(base))
         resolution_grain = (
             self._abstract_resolution_grain() if base.is_aggregate else self.grain
         )

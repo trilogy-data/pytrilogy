@@ -25,7 +25,7 @@ placement per engine, set operators; area 4), and `Scalars.lean`
 (0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
 `log`; area 3), `Types.lean` (0.3.448: a declared type holds every
 value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
-(0.3.449: `agg(x ? c)` read from a stored `agg(x)`; area 1c).
+(0.3.450: `agg(x ? c)` read from a stored `agg(x)`; area 1c).
 
 ## The recipe
 
@@ -192,15 +192,19 @@ value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
     - A SQLite error from "user-defined function raised exception" is
       SQLAlchemy's Python `floor`, not SQLite's.
 
-14. **Lessons from the filtered-aggregate round (`Cover.lean`, 0.3.449).**
-    - Look for a rewrite into a shape the planner already serves before
-      teaching the planner a new one. `agg(x ? c)` is `reagg(case when c then
-      agg(x) by G, cols(c) end)`, and rule 7 already served that; the Factory
-      rewrite (`filtered_parts.py`, beside `average_parts.py`) is one small module
-      where a rollup-matcher change was a planner redesign.
-    - Gate a performance rewrite on every input that decides whether it pays.
-      The first version ignored the select's WHERE, and under `dbh > 10` it
-      scanned the trees twice; `test_finer_where_scans_the_rows_once` pins it.
+14. **Lessons from the filtered-aggregate round (`Cover.lean`, 0.3.450).**
+    - Match what was asked; never rewrite it into what a summary serves. The
+      round first built `agg(x ? c)` in the Factory as `reagg(case when c then
+      agg(x) by G, cols(c) end)`. It answered right, but it decided the plan
+      before the planner chose a source (it scanned the trees twice when no
+      summary applied), changed the concept a stored `count(x ? c)` would
+      match, and added a stage whose order mattered (`count_distinct(k ? c)`
+      was rewritten too late to be seen). It was replaced by a matcher rule
+      and a CASE in the rollup render; the law suites did not change.
+    - Apply a filter where the stored column is first re-aggregated, and only
+      there: a target that is a property of the summary key re-aggregates
+      twice, and the second pass, after the join, has no condition columns.
+      A render that cannot see them raises; it never skips the CASE.
     - A strict xfail hides a crash as well as a miss. Hold every `OPEN` shape
       to the tree rows' answer in its own test: a `KeyError` this round sat
       behind one.
@@ -325,11 +329,19 @@ a filter its grain does not determine. Open questions:
 
 See `docs/handoff_summary_cover_next.md`: the approach, and the open items in
 order. Items 1 (filtered aggregates, now for `sum`/`min`/`max` too) and 2
-(totals under a finer WHERE) are done in 0.3.449. Leads from that round:
-- **`count_distinct(k ? c)`** still reads the rows: `distinct_key_counts`
-  turns it into `count(k ? c)` after the Factory has run, so the filtered
-  rewrite never sees it (`summary:local-native-share`). Doing the distinct
-  rewrite at the author level, before `_stored_filtered_parts`, would serve it.
+(totals under a finer WHERE) are done in 0.3.450, but for one case. Leads
+from that round:
+- **A condition on a property of the summary key** (`bucket` of `species`,
+  `common_names[1]`) still reads the rows: the summary scan re-aggregates and
+  sees only its own columns. Serving it needs the scan to keep the property's
+  key (`species`), the join to the dimension, and the filtered re-aggregation
+  after it, which `merge_rollup_concepts` already does for a plain partial
+  joined to a property target. This is the dashboards' case
+  (`summary:local-native-share`); `test_filtered_rollup_laws.py` marks it with
+  `JOINED_CONDITION`.
+- A summary storing `agg(x)` at exactly the target grain does not answer
+  `agg(x ? c)`: the matcher pairs them only where the partials are
+  re-aggregated.
 - **The statement's lineage is still stale** after `_reaggregate_partials`.
   This round resolved the two walks that read it (`_nested_rollup_roots`,
   `_summary_leaves`) and the rollup render; a rewrite of the statement's own

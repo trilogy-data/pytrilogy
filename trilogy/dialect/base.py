@@ -980,6 +980,25 @@ CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create
 """.strip())
 
 
+def _filtered_below(cte: CTE | UnionCTE, address: str) -> bool:
+    """Some CTE `cte` reads `address` from already re-aggregated it, applying
+    its filter: what `cte` re-aggregates is filtered partials, not the stored
+    unfiltered column."""
+    sources = set(cte.source_map.get(address, []))
+    for parent in cte.parent_ctes:
+        if parent.name not in sources:
+            continue
+        if (
+            isinstance(parent, CTE)
+            and parent.group_to_grain
+            and address in {r.address for r in parent.rollup_concepts}
+        ):
+            return True
+        if _filtered_below(parent, address):
+            return True
+    return False
+
+
 class BaseDialect:
     NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
         dict[WindowType, Callable[[str, str], str]]
@@ -1615,6 +1634,18 @@ class BaseDialect:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"
                 )
+            filtered = c.filtered_rollup
+            if filtered is not None and not _filtered_below(cte, c.address):
+                # `agg(x ? c)` from a stored `agg(x)`: each partial counts where
+                # `c` holds on its row (`Cover.filtered_sum_exact`)
+                condition = self.render_expr(
+                    filtered[1].where.conditional, cte, raise_invalid=raise_invalid
+                )
+                rolled = f"CASE WHEN {condition} THEN {rolled} ELSE NULL END"
+                summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])
+                if filtered[0][0] == FunctionType.COUNT:
+                    return self.FUNCTION_MAP[FunctionType.COALESCE]([summed, "0"], [])
+                return summed
             summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])
             # a pre-aggregated COUNT rolled up through a join that padded it
             # (a sparse summary table beside its dimension): the group of one

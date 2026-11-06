@@ -59,7 +59,7 @@ Gotchas:
   (query_processor.py) rewrites concepts in the environment. A walk
   that doesn't `resolve` through `environment.concepts` sees the old
   lineage. `_nested_rollup_roots`, `_summary_leaves` and the rollup render
-  resolve it since 0.3.449; resolving only `_summary_leaves` was what the
+  resolve it since 0.3.450; resolving only `_summary_leaves` was what the
   K3 warning here was about, and with all three no wrong rows were found.
 - Trilogy's `count(tree_id) by ecoregion_id` counts a list repeating an
   element once per repeat, while `by biome` dedupes. A summary path
@@ -67,14 +67,17 @@ Gotchas:
 
 ## Open items, in order
 
-### 1. Rule 2, filtered counts (DONE in 0.3.449 but `count_distinct`; see below)
+### 1. Rule 2, filtered aggregates (DONE in 0.3.450 for bound conditions)
 
-Done: the Factory builds `agg(x ? c)` as `reagg(case when c then agg(x) by G,
-cols(c) end)` when a datasource stores `agg(x)` (`trilogy/core/filtered_parts.py`,
+Done: the rollup matcher pairs `agg(x ? c)` with a stored `agg(x)` when the
+summary binds every column `c` reads, and the rollup render emits
+`reagg(case when c then n end)` (`BuildConcept.filtered_rollup`,
 `Cover.filtered_sum_exact` and siblings), held by
-`tests/discovery/test_filtered_rollup_laws.py`. `count_distinct(k ? c)` (the F2
-KPIs, `summary:local-native-share`) still reads the trees: `distinct_key_counts`
-runs after the Factory. `species:sp-biome-fit` is rule 6. The original notes:
+`tests/discovery/test_filtered_rollup_laws.py`. `count_distinct(k ? c)` follows.
+Left: a condition on a property of the key (`bucket`), which needs the
+enrichment join below the re-aggregation; see area 1c in
+`handoff_formalization_next.md`. `species:sp-biome-fit` is rule 6. The
+original notes:
 
 `count(x ? c)` with `c` a function of the key. `_is_rollable_aggregate` and
 the rollup signature reject a `BuildFilterItem` argument. The re-sum is
@@ -87,7 +90,7 @@ and a filtered count is 0 for an empty group where the rewrite is NULL.
 Once this lands, `count_distinct(k ? c)` follows through `distinct_key_counts`
 (the F2 KPIs).
 
-### 2. Rule 4 under a WHERE the target does not determine (DONE in 0.3.449)
+### 2. Rule 4 under a WHERE the target does not determine (DONE in 0.3.450)
 
 Done by resolving `_summary_leaves` through the environment, together with
 the nested walk in `_nested_rollup_roots`; no wrong rows over two species

@@ -143,11 +143,13 @@ theorem case_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
 
 /-! ### Any re-aggregable function, at the partial grain `G ∪ cols(c)`
 
-The planner states rule 2 for `sum`, `min` and `max` too, and at any target
-grain: `agg(x ? c)` at `G` is `reagg(case when c then agg(x) by G, C end)`,
-`C` the condition's columns (`trilogy/core/filtered_parts.py`). The partial
-`agg(x) by G, C` is a summary keyed on `g = (G, C)`, and `c` is a function of
-that key, so each lemma below is the rule over the partial's own groups. -/
+Rule 2 holds for `sum`, `min` and `max` too: a summary storing `agg(x)` at a
+grain `g` that determines the condition's columns answers `agg(x ? c)` as
+`reagg(case when c then agg(x) end)` over its rows. The planner matches the
+filtered aggregate to the stored one (`BuildConcept.filtered_rollup`) and
+renders that CASE where it re-aggregates the stored column. `c` is a function
+of the summary key, so each lemma below is the rule over the summary's
+groups. -/
 
 /-- `case when c then f end`, the shape both sides of the rule share: a
 per-group value, or a per-row one under `filtered`. -/
@@ -248,10 +250,11 @@ theorem uncoalesced_case_count_null :
         (fun _ => false))) = 0 := by
   decide
 
-/-- The partial must be keyed on the condition's columns. Keyed on `G` alone
-(`r.1`), a group holding rows on both sides of `c` (`r.2 = 1`) has no single
-value of `c`: reading `c` off any one of its rows keeps both rows or neither,
-never the one row `count(x ? c)` counts. -/
+/-- The summary's grain must determine the condition's columns. Keyed on
+`r.1` alone, a group holding rows on both sides of `c` (`r.2 = 1`) has no
+single value of `c`: reading `c` off any one of its rows keeps both rows or
+neither, never the one row `count(x ? c)` counts. This is why the matcher
+requires the summary to bind every column `c` reads. -/
 theorem partial_off_condition_misreads :
     let rows : List (Nat × Nat) := [(1, 1), (1, 2)]
     sqlCount (rows.map (filtered (fun r => some r.2) (fun r => r.2 == 1))) = 1 ∧

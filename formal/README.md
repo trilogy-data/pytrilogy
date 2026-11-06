@@ -741,17 +741,21 @@ a design decision or a bug.
   main.
 
 - **A filtered aggregate never read a summary** (`Cover.lean` §2, extended).
-  `count(x ? c)`, `sum`, `min` and `max` of `x ? c` always read the rows, since
-  rollup matching takes no `x ? c` argument. The Factory now builds `agg(x ? c)`
-  as `reagg(case when c then agg(x) by G, cols(c) end)` (`coalesce(.., 0)` for a
-  count) when a datasource stores `agg(x)` and reaches the grain, the
-  condition's columns and the select's WHERE (`trilogy/core/filtered_parts.py`):
-  a row condition is a function of its own columns, so the partial at
-  `G, cols(c)` is a summary the condition is a key predicate of
+  `count(x ? c)`, `sum`, `min` and `max` of `x ? c` always read the rows: the
+  rollup matcher compared the aggregate's argument whole, and `x ? c` is not
+  `x`. A summary storing `agg(x)` at a grain that determines `c`'s columns
+  answers it as `reagg(case when c then agg(x) end)` over its rows
   (`filtered_sum_exact`, `filtered_min_exact`, `filtered_max_exact`,
-  `case_count_exact`). Under a WHERE no summary reaches it is left alone, and
-  stays one pass over the rows. Serving it exposed three planner bugs. A
-  nested partial grouped by a stored derived column (`count(x) by species,
+  `case_count_exact`; `coalesce(.., 0)` for a count, `uncoalesced_case_count_null`).
+  The matcher now pairs the filtered aggregate with the stored one
+  (`BuildConcept.filtered_rollup`, `BuildDatasource.filtered_column_for`) when
+  the summary binds every column `c` reads, and the rollup render emits the
+  CASE where it first re-aggregates the stored column; a re-aggregation of
+  partials already filtered below is a plain one. The query's concepts are
+  never rewritten. A count over the filter's rows guards its fan-out on the
+  rows of `x`, not of `x ? c`. `count_distinct(k ? c)` follows, through
+  `distinct_key_counts`. Serving it exposed three planner bugs. A nested
+  partial grouped by a stored derived column (`count(x) by species,
   plant_year` against a stored `year(plant_date)`) rebuilt that column from
   the facts and joined it back onto the summary. Two walks read the
   statement's stale lineage after `_reaggregate_partials` had rewritten it
@@ -764,11 +768,13 @@ a design decision or a bug.
   sharing a display name (`test_target_shared_by_two_keys`). The render of a
   rolled-up concept now takes the planned rollup, not a parent's stale
   spelling of it: `count_distinct(k ? c) / count_distinct(k)` raised a
-  `KeyError` once the nested walk resolved. `test_filtered_rollup_laws.py`
-  (1,260 cases over seeded random trees with NULLs): 1,200 of 1,200 read the
-  trees on main, 0 wrong; now all read the summary. The cover suite's 225
-  coverable cases: 102 miss on main, 47 now, none wrong, none raise; every
-  open shape is now also held to the tree rows' answer.
+  `KeyError`. `test_filtered_rollup_laws.py` (1,440 cases over seeded random
+  trees with NULLs): all read the trees on main, 0 wrong; now 960 read the
+  summary, and the 480 whose condition reads a property of the summary key
+  (`bucket` of `species`) still read the trees, which `test_filtered_aggregate_answers`
+  holds to the reference. The cover suite's 225 coverable cases: 102 miss on
+  main, 72 now, none wrong, none raise; every open shape is now also held to
+  the tree rows' answer.
 
 ## Limits
 

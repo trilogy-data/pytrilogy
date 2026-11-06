@@ -47,7 +47,7 @@ def _datasource_materializes_aggregate(
         for output in datasource.output_concepts:
             if _aggregate_signature(output) == signature:
                 return True
-        return False
+        return datasource.filtered_column_for(concept) is not None
     # An aggregate without lineage has no signature, so fall back to
     # canonical-address match. The canonical address is derived from the
     # original lineage, so equivalent aggregates share it.
