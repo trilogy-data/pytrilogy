@@ -25,6 +25,10 @@ every row that holds the tuple. An aggregate window with no order
   value. Grouping by the tuple and projecting the value splits a value into
   a group per tuple (`group_by_tuple_splits_value`), and a value window is
   no function of its operand (`lag_reads_rows_not_values`).
+- `order_aggregate_per_partition`: a bare aggregate a window orders by is
+  evaluated per the tuple the window ranks, its arguments and partition; per
+  its first argument alone it reads every partition's rows
+  (`anchor_sum_crosses_partitions`).
 
 ORDER BY names a direction and a NULL placement. A plain direction places
 NULLs last, DuckDB's placement; `nulls auto` leaves it to the engine. Engines
@@ -198,6 +202,45 @@ theorem lag_reads_rows_not_values :
     let xs : List Nat := [10, 10, 20]
     let lag : Nat → Option Nat := fun i => if i = 0 then none else xs[i - 1]?
     xs[0]? = xs[1]? ∧ lag 0 ≠ lag 1 := by decide
+
+/-! ## An aggregate a window orders by
+
+`rank(g) over (partition by p order by sum(y))` ranks each `g` within its
+partition by the sum of `y` over the rows of that `(p, g)`. A bare aggregate in
+a window's order is evaluated per the tuple the window ranks, its arguments
+and partition (`order_aggregate_per_partition`: the sum per tuple is the sum
+per argument over the partition's rows alone). Trilogy summed per argument
+alone, over every partition's rows, so `b` tied `a` inside a partition where
+it led (`anchor_sum_crosses_partitions`). And a window ordered by an aggregate
+is still a value the select groups by: its ties are one group, not one per
+tuple (`group_by_tuple_splits_value` again). -/
+
+/-- The sum of `y` over the rows `keep` holds. -/
+def sumWhere {α : Type} (keep : α → Bool) (y : α → Nat) (rows : List α) : Nat :=
+  ((rows.filter keep).map y).sum
+
+/-- **The aggregate per window tuple is the aggregate over its partition's
+rows**: summing per `(p, g)` reads exactly the rows of partition `p`. -/
+theorem order_aggregate_per_partition {α π γ : Type} [DecidableEq π] [DecidableEq γ]
+    (p : α → π) (g : α → γ) (y : α → Nat) (rows : List α) (p0 : π) (g0 : γ) :
+    sumWhere (fun r => decide (p r = p0) && decide (g r = g0)) y rows =
+      sumWhere (fun r => decide (g r = g0)) y (rows.filter fun r => decide (p r = p0)) := by
+  unfold sumWhere
+  rw [List.filter_filter]
+  congr 3
+  funext r
+  exact Bool.and_comm _ _
+
+/-- Rows `(p, g, y)`: partition `Q` holds `a = 20` and `b = 25`, partition `P`
+holds `a = 10` and `b = 5`. Summed per `g` alone, `a` and `b` both total 30 and
+tie inside `Q`; per `(p, g)`, `b` leads `Q`. -/
+theorem anchor_sum_crosses_partitions :
+    let rows : List (Nat × Nat × Nat) := [(0, 0, 10), (1, 0, 20), (0, 1, 5), (1, 1, 25)]
+    let y : Nat × Nat × Nat → Nat := fun r => r.2.2
+    let perG (g0 : Nat) := sumWhere (fun r => decide (r.2.1 = g0)) y rows
+    let perPG (g0 : Nat) :=
+      sumWhere (fun r => decide (r.1 = 1) && decide (r.2.1 = g0)) y rows
+    perG 0 = perG 1 ∧ perPG 0 < perPG 1 := by decide
 
 /-! ## Where NULLs sort -/
 

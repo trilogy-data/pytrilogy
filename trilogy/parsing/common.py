@@ -6,6 +6,7 @@ from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicCo
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
     NULL_INTRODUCING_FUNCTIONS,
+    AggregateGroupingMode,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -799,9 +800,9 @@ def _reads_aggregate(
     x: Concept,
     lookup: Callable[[str], Concept | None],
 ) -> bool:
-    """Whether `x` reads an aggregate anywhere below it, inline or named (a
-    window ordered by `sum(y)`): one that inherits the select's grain cannot
-    be grouped by `x`."""
+    """Whether `x` reads an aggregate that inherits the select's grain, inline
+    or named (a window ordered by `sum(y)`): the select cannot group by `x`.
+    One `by` fixed keys (`sum(y) by g`) is evaluated at its own grain."""
     seen: set[int] = set()
     stack: list[Any] = [x.lineage]
     while stack:
@@ -816,20 +817,48 @@ def _reads_aggregate(
         elif isinstance(node, ConceptRef):
             concept = lookup(node.address)
             if concept is not None:
-                if concept.is_aggregate:
-                    return True
                 stack.append(concept.lineage)
-        elif isinstance(node, AggregateWrapper) or (
+        elif isinstance(node, AggregateWrapper):
+            # an aggregate `by` fixed keys has its own grain, not the select's
+            if not node.by:
+                return True
+        elif (
             isinstance(node, Function)
             and node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
+        elif isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
+            stack.extend(
+                getattr(node, attr, None) for attr in ("content", "arguments", "over")
+            )
+            stack.extend(
+                o.expr for o in node.order_by if not _pinned_by_window(node, o.expr)
+            )
         else:
             stack.extend(
                 getattr(node, attr, None)
                 for attr in (*_SUBEXPR_ATTRS, "over", "order_by")
             )
     return False
+
+
+def _pinned_by_window(
+    window: NumberingWindowItem | NavigationWindowItem, expr: Any
+) -> bool:
+    """A bare aggregate a window orders by is evaluated per the tuple the
+    window ranks, not at the select's grain (the build's
+    `_window_order_by_items`)."""
+    anchored = (
+        bool(window.arguments)
+        if isinstance(window, NumberingWindowItem)
+        else isinstance(window.content, (ConceptRef, Concept))
+    )
+    return (
+        anchored
+        and isinstance(expr, AggregateWrapper)
+        and not expr.by
+        and expr.grouping == AggregateGroupingMode.STANDARD
+    )
 
 
 def concepts_to_grain_concepts_ordered(
