@@ -6,7 +6,7 @@ the complete domain, `facts.d1` the partial side. `count(id) by d1` must group t
 facts by `facts.d1` and LEFT/FULL-join the spine to surface spine values with no
 facts. v4 used to source the group key entirely from the spine and emit the fact
 scan with ONLY `id`, so the merge had no shared column and fell back to
-`FULL JOIN ... on 1=1` (a cartesian, wrong counts). `_widen_merge_join_keys` now
+`FULL JOIN ... on 1=1` (a cartesian, wrong counts). `_carry_join_keys` now
 includes a leaf datasource node's own columns when carrying a declared join key,
 so the fact emits its partial `d1` and the merge joins `facts.d1 = spine.s1`.
 

@@ -2,7 +2,7 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.processing.v4_helper import strategy_builder
-from trilogy.core.processing.v4_helper.join_plan import JoinPlan, PairingKind
+from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
 
 MODEL = """
 key order_id int;
@@ -107,3 +107,22 @@ def test_group_merge_pairs_on_its_plan(monkeypatch):
     )
     assert rows == [("east", 2, 12.0), ("west", 1, 1.0)]
     assert any(plan and "local.customer_id" in plan.permitted_keys for plan in planned)
+
+
+def test_a_side_merged_below_pairs_only_across_sides():
+    def pairing(left: str, right: str) -> Pairing:
+        return Pairing(left, right, frozenset({f"{left}{right}"}), PairingKind.LOOKUP)
+
+    plan = JoinPlan(
+        contributors=("a", "b", "d"),
+        pins={},
+        identity={},
+        carry_demands={},
+        pairings=(pairing("a", "b"), pairing("a", "d"), pairing("b", "d")),
+        carries={"a": frozenset(), "b": frozenset(), "d": frozenset()},
+    )
+    across = plan.across([frozenset({"a", "b"}), frozenset({"d"})])
+    assert across.join_keys == {"ad", "bd"}
+    assert plan.over(["a", "b", "d"]).join_keys == {"ab", "ad", "bd"}
+    split = plan.across([frozenset({"a", "b"}), frozenset({"b", "d"})])
+    assert ("b", "b") in {(p.left, p.right) for p in split.pairings}
