@@ -401,3 +401,26 @@ def test_two_facts_at_one_grain(
     derived, materialized = two_fact_join
     rows = twin_rows(derived, materialized, query)
     assert rows == sort_rows(expected)
+
+
+def test_aggregate_over_a_region_pairs_its_merged_rows_on_the_span(monkeypatch):
+    from trilogy.core.processing.v4_helper import strategy_builder
+
+    planned = []
+    plan_merge = strategy_builder._merge_plan
+
+    def capture(parents, attrs, origin, *args, **kwargs):
+        plan = plan_merge(parents, attrs, origin, *args, **kwargs)
+        sides = [strategy_builder.side_members(p, origin) for p in parents]
+        planned.append((sides, plan and plan.across(sides)))
+        return plan
+
+    monkeypatch.setattr(strategy_builder, "_merge_plan", capture)
+    assert sorted_rows(
+        executor_for(ROLLUP_SUMMARY), "select name, count(order_id) as n, total_amount"
+    ) == [("ann", 2, 30), ("bob", 1, 30), ("cat", 0, None)]
+    composite = [
+        plan for sides, plan in planned if any(len(side or ()) > 1 for side in sides)
+    ]
+    assert composite and all(plan is not None for plan in composite)
+    assert all(plan.join_keys == {"local.customer_id"} for plan in composite)

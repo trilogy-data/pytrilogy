@@ -1133,7 +1133,7 @@ def test_partition_rollup_aggregates_split_by_source_signature():
     }
 
 
-def test_pre_merge_carries_declared_join_keys_without_metrics():
+def test_pre_merge_without_a_plan_widens_no_parent():
 
     env = BuildEnvironment()
     part_name = _build_concept(
@@ -1188,10 +1188,8 @@ def test_pre_merge_carries_declared_join_keys_without_metrics():
     )
 
     assert len(merged) == 1
-    assert isinstance(merged[0], MergeNode)
     row_outputs = {concept.address for concept in row_projection.output_concepts}
-    assert "local.part.name" in row_outputs
-    assert "local.charge_percent" not in row_outputs
+    assert "local.part.name" not in row_outputs
 
 
 def test_fold_passthrough_only_drops_row_preserving_redundant_parent():
