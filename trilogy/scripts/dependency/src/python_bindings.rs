@@ -33,7 +33,13 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pyfunction]
 fn enumerate_network_covers(
     terminals: Vec<String>,
-    candidates: Vec<(String, Vec<(String, bool)>, Vec<String>, bool)>,
+    candidates: Vec<(
+        String,
+        Vec<(String, bool)>,
+        Vec<String>,
+        bool,
+        Vec<(String, Vec<String>)>,
+    )>,
     axis_families: Vec<(String, Vec<Vec<String>>)>,
     join_requirements: Vec<(String, Vec<String>, Vec<String>)>,
     subsumed_arms: Vec<(String, String)>,
@@ -44,11 +50,12 @@ fn enumerate_network_covers(
         terminals,
         candidates: candidates
             .into_iter()
-            .map(|(node, bindings, grain, partial_is_full)| CandidateSpec {
+            .map(|(node, bindings, grain, partial_is_full, owes)| CandidateSpec {
                 node,
                 bindings,
                 grain,
                 partial_is_full,
+                owes,
             })
             .collect(),
         axis_families,

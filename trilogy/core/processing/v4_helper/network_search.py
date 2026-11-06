@@ -85,6 +85,10 @@ def _enumerate_covers(
                 ],
                 list(candidate.grain),
                 candidate.condition.partial_is_full,
+                [
+                    (terminal, sorted(columns))
+                    for terminal, columns in sorted(candidate.owes.items())
+                ],
             )
             for node, candidate in network.candidates.items()
         ],

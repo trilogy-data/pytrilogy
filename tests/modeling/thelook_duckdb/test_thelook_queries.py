@@ -274,6 +274,10 @@ def test_fifteen(engine):
 def test_sixteen(engine):
     query = run_query(engine, 16)
     assert "FULL" not in query, query
+    # the pair summary joined once to each dimension its targets live on,
+    # never back onto itself to bridge them
+    assert '"user_product_sales"' in query and "WITH" not in query, query
+    assert '"order_items"' not in query, query
 
 
 def test_seventeen(engine):

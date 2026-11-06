@@ -25,7 +25,8 @@ placement per engine, set operators; area 4), and `Scalars.lean`
 (0.3.447: month-end offsets, the type of a date offset, `greatest`/`least`,
 `log`; area 3), `Types.lean` (0.3.448: a declared type holds every
 value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
-(0.3.450: `agg(x ? c)` read from a stored `agg(x)`; area 1c).
+(0.3.450: `agg(x ? c)` read from a stored `agg(x)`; 0.3.451: a condition
+joined onto the summary, priced in the source search; area 1c).
 
 ## The recipe
 
@@ -217,6 +218,26 @@ value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
       nested walk also resolving it did not, over data built to break it
       (two species sharing a display name).
 
+15. **Lessons from the joined-condition round (`Cover.lean`, 0.3.451).**
+    - A pinned source path that runs before the search wins by position, not
+      by cost. The first version of this round planned the joined CASE in a
+      pinned path and declined it when another table stored `agg(x ? c)`
+      itself: a precedence rule written into one path. Stating the join as an
+      obligation of the binding (`ObligationKind.JOINED`) let the cost order
+      choose, and the no-join table won on `sources` with no special case.
+      `_plan_finer_filter_rollup` still has the old shape (`joined` is its
+      first sort key); it is the next candidate for the same move.
+    - An obligation that can never be discharged must still be minted, with
+      no satisfiers: every other kind is skipped when nothing can satisfy it,
+      which here would accept a summary with no join and an unfiltered sum.
+    - The cover enumeration runs in Rust (`network_search.rs`). A new
+      obligation kind goes into both, with its string-order rank in `Kind`, and
+      into the parity cases of `test_v4_network_search.py`.
+    - Two spellings of one value should be one key in discovery. `x ? c` and
+      `case when c then x end` were matched, guarded and signed apart, and the
+      CASE form of a count did not parse. Run the law suite in every spelling
+      as an axis, not as a sample.
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -335,14 +356,14 @@ See `docs/handoff_summary_cover_next.md`: the approach, and the open items in
 order. Items 1 (filtered aggregates, now for `sum`/`min`/`max` too) and 2
 (totals under a finer WHERE) are done in 0.3.450, but for one case. Leads
 from that round:
-- **A condition on a property of the summary key** (`bucket` of `species`,
-  `common_names[1]`) still reads the rows: the summary scan re-aggregates and
-  sees only its own columns. Serving it needs the scan to keep the property's
-  key (`species`), the join to the dimension, and the filtered re-aggregation
-  after it, which `merge_rollup_concepts` already does for a plain partial
-  joined to a property target. This is the dashboards' case
-  (`summary:local-native-share`); `test_filtered_rollup_laws.py` marks it with
-  `JOINED_CONDITION`.
+- **Done in 0.3.451: a condition on a property of the summary key**
+  (`bucket` of `species`, `common_names[1]`), as a `JOINED` obligation of the
+  summary's binding in the source search, and both spellings of a filtered
+  aggregate (`aggregate_filter`). Left: `_plan_finer_filter_rollup` is still
+  a pinned path that runs before the search with its own ranking; the
+  scan reads the summary at its full grain under a joined condition, where a
+  re-sum to the target plus the condition's keys would be exact
+  (`Cover.resum_then_case_exact`) and smaller.
 - A summary storing `agg(x)` at exactly the target grain does not answer
   `agg(x ? c)`: the matcher pairs them only where the partials are
   re-aggregated.

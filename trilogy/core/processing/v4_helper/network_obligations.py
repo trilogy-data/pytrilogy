@@ -201,6 +201,7 @@ def compute_pending_obligations(
                     out.append(
                         Obligation(ObligationKind.COLOCATED, (source,), satisfiers)
                     )
+    out.extend(_joined_obligations(network, chosen))
     # connected: a cover in pieces must be joined up. As an obligation every
     # alternative bridge enters the cost order, and multi-hop paths (a
     # drill-down chain to a finer-grain terminal) build hop by hop through the
@@ -230,6 +231,39 @@ def compute_pending_obligations(
                 subject = tuple(sorted(min(comp) for comp in comps))
                 out.append(Obligation(ObligationKind.CONNECTED, subject, satisfiers))
     return prune_subsumed_arms(network, out)
+
+
+def _joined_obligations(
+    network: SourceNetwork, chosen: frozenset[str]
+) -> list[Obligation]:
+    """joined: a terminal `agg(x ? c)` read off a stored `agg(x)` needs each
+    column of `c` the binder lacks labeled onto its rows by an in-cover lookup,
+    the same functional chain `labelable` walks, so a summary row meets one
+    value of `c` (`Cover.joined_case_exact`). Satisfied by any chosen binder
+    owing nothing more. Unlike the other kinds it is minted with no satisfiers
+    when no chain exists: the binding is then no answer at all."""
+    out: list[Obligation] = []
+    for terminal in network.terminals:
+        binders = network.binder_set(terminal) & chosen
+        if not binders:
+            continue
+        frontier: set[str] = set()
+        for source in sorted(binders):
+            owed = network.candidates[source].owes.get(terminal, frozenset())
+            pending = [
+                state
+                for column in sorted(owed)
+                if not (state := _label_chain_state(network, source, column, chosen))[0]
+            ]
+            if not pending:
+                frontier = set()
+                break
+            frontier.update(node for _, nodes in pending for node in nodes)
+        else:
+            out.append(
+                Obligation(ObligationKind.JOINED, (terminal,), tuple(sorted(frontier)))
+            )
+    return out
 
 
 def prune_subsumed_arms(

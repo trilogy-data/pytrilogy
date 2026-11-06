@@ -89,6 +89,8 @@ pub struct CandidateSpec {
     pub grain: Vec<String>,
     /// `ConditionFit.partial_is_full` (IMPLIED_EXACT).
     pub partial_is_full: bool,
+    /// `SourceCandidate.owes`: (terminal, the columns a lookup must supply).
+    pub owes: Vec<(String, Vec<String>)>,
 }
 
 pub struct NetworkSpec {
@@ -118,8 +120,9 @@ enum Kind {
     Colocated = 1, // "colocated"
     Connected = 2, // "connected"
     Cover = 3,     // "cover"
-    Labelable = 4, // "labelable"
-    Paired = 5,    // "paired"
+    Joined = 4,    // "joined"
+    Labelable = 5, // "labelable"
+    Paired = 6,    // "paired"
 }
 
 /// A pending obligation reduced to what the branch choice reads: the
@@ -184,6 +187,12 @@ struct Net {
     subsumed: Vec<Option<u32>>,
     /// COVER satisfiers per terminal position, already arm-pruned.
     cover_satisfiers: Vec<Vec<u32>>,
+    /// Per owed column: its full binders and chain completers, as for a
+    /// terminal.
+    owed_full_bits: Vec<Bits>,
+    owed_completers: Vec<Bits>,
+    /// Per node: (terminal position, owed column indices).
+    owes: Vec<Vec<(usize, Vec<usize>)>>,
 }
 
 fn intern(sorted: &[String], name: &str) -> u32 {
@@ -205,6 +214,10 @@ impl Net {
         for candidate in &spec.candidates {
             addr_names.extend(candidate.bindings.iter().map(|(a, _)| a.clone()));
             addr_names.extend(candidate.grain.iter().cloned());
+            for (terminal, columns) in &candidate.owes {
+                addr_names.push(terminal.clone());
+                addr_names.extend(columns.iter().cloned());
+            }
         }
         for (representative, _) in &spec.axis_families {
             addr_names.push(representative.clone());
@@ -327,24 +340,64 @@ impl Net {
 
         // `chain_completers`: ancestors of the full binders, expanded only
         // through row-complete nodes.
-        let chain_completers: Vec<Bits> = (0..n_terms)
-            .map(|position| {
-                let mut seen = full_binder_bits[position].clone();
-                let mut stack: Vec<usize> = seen.ones().collect();
-                while let Some(current) = stack.pop() {
-                    for origin in func_pred[current].ones() {
-                        if seen.contains(origin) {
-                            continue;
-                        }
-                        seen.insert(origin);
-                        if row_complete[origin] {
-                            stack.push(origin);
-                        }
+        let completers_of = |full: &Bits| {
+            let mut seen = full.clone();
+            let mut stack: Vec<usize> = seen.ones().collect();
+            while let Some(current) = stack.pop() {
+                for origin in func_pred[current].ones() {
+                    if seen.contains(origin) {
+                        continue;
+                    }
+                    seen.insert(origin);
+                    if row_complete[origin] {
+                        stack.push(origin);
                     }
                 }
-                seen
+            }
+            seen
+        };
+        let chain_completers: Vec<Bits> = full_binder_bits.iter().map(completers_of).collect();
+
+        // JOINED: owed columns get the terminal treatment (full binders,
+        // chain completers), indexed apart from the terminals.
+        let mut owed_addrs: Vec<usize> = spec
+            .candidates
+            .iter()
+            .flat_map(|c| c.owes.iter().flat_map(|(_, cols)| cols.iter()))
+            .map(|a| addr_id(a))
+            .collect();
+        owed_addrs.sort();
+        owed_addrs.dedup();
+        let owed_full_bits: Vec<Bits> = owed_addrs
+            .iter()
+            .map(|addr| {
+                let mut bits = Bits::new(n_nodes);
+                for node in 0..n_nodes {
+                    if full_binds[node].contains(*addr) {
+                        bits.insert(node);
+                    }
+                }
+                bits
             })
             .collect();
+        let owed_completers: Vec<Bits> = owed_full_bits.iter().map(completers_of).collect();
+        let mut owes: Vec<Vec<(usize, Vec<usize>)>> = vec![Vec::new(); n_nodes];
+        for candidate in &spec.candidates {
+            let node = node_id(&candidate.node);
+            for (terminal, columns) in &candidate.owes {
+                let Some(position) = terminals.iter().position(|t| *t as usize == addr_id(terminal))
+                else {
+                    continue;
+                };
+                let mut indices: Vec<usize> = columns
+                    .iter()
+                    .map(|c| owed_addrs.binary_search(&addr_id(c)).unwrap())
+                    .collect();
+                indices.sort();
+                indices.dedup();
+                owes[node].push((position, indices));
+            }
+        }
 
         let mut subsumed: Vec<Option<u32>> = vec![None; n_nodes];
         for (arm, union_node) in &spec.subsumed_arms {
@@ -463,6 +516,9 @@ impl Net {
             sides,
             subsumed,
             cover_satisfiers,
+            owed_full_bits,
+            owed_completers,
+            owes,
         }
     }
 
@@ -524,7 +580,21 @@ impl Net {
     /// otherwise the satisfiers are the frontier completers one hop from a
     /// row-complete walked origin.
     fn label_chain(&self, source: usize, position: usize, chosen: &Bits) -> Option<Vec<u32>> {
-        let full = &self.full_binder_bits[position];
+        self.label_chain_to(
+            source,
+            &self.full_binder_bits[position],
+            &self.chain_completers[position],
+            chosen,
+        )
+    }
+
+    fn label_chain_to(
+        &self,
+        source: usize,
+        full: &Bits,
+        completers: &Bits,
+        chosen: &Bits,
+    ) -> Option<Vec<u32>> {
         let mut walked = Bits::new(self.n_nodes);
         walked.insert(source);
         let mut origins = Bits::new(self.n_nodes);
@@ -545,7 +615,7 @@ impl Net {
                 }
             }
         }
-        let frontier: Vec<u32> = self.chain_completers[position]
+        let frontier: Vec<u32> = completers
             .ones()
             .filter(|node| !chosen.contains(*node) && self.func_pred[*node].intersects(&origins))
             .map(|node| node as u32)
@@ -605,6 +675,49 @@ impl Net {
                 subject: side.subject.clone(),
                 satisfiers: side.satisfiers.clone(),
             });
+        }
+        // joined
+        for (position, terminal) in self.terminals.iter().enumerate() {
+            if !self.binder_bits[position].intersects(chosen) {
+                continue;
+            }
+            let mut frontier = Bits::new(self.n_nodes);
+            let mut discharged = false;
+            for source in self.binder_bits[position].ones() {
+                if !chosen.contains(source) {
+                    continue;
+                }
+                let mut pending = false;
+                if let Some((_, columns)) = self.owes[source].iter().find(|(p, _)| *p == position) {
+                    for column in columns {
+                        if let Some(nodes) = self.label_chain_to(
+                            source,
+                            &self.owed_full_bits[*column],
+                            &self.owed_completers[*column],
+                            chosen,
+                        ) {
+                            pending = true;
+                            for node in nodes {
+                                frontier.insert(node as usize);
+                            }
+                        }
+                    }
+                }
+                if !pending {
+                    discharged = true;
+                    break;
+                }
+            }
+            if !discharged {
+                consider(Ob {
+                    kind: Kind::Joined,
+                    subject: vec![*terminal],
+                    satisfiers: prune_arms(
+                        &self.subsumed,
+                        frontier.ones().map(|n| n as u32).collect(),
+                    ),
+                });
+            }
         }
         let chosen_count = chosen.count();
         for source in chosen.ones() {
@@ -799,6 +912,7 @@ mod tests {
                 .map(|(a, p)| (a.to_string(), *p))
                 .collect(),
             grain: grain.iter().map(|g| g.to_string()).collect(),
+            owes: Vec::new(),
             partial_is_full: false,
         }
     }

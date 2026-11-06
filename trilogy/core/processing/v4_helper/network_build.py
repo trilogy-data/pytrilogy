@@ -16,6 +16,8 @@ search it feeds.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from trilogy.core.constants import parent_axis_keys
 from trilogy.core.enums import (
     ComparisonOperator,
@@ -47,6 +49,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     filter_finer_row_args,
     holds_every_kept_row,
+    joined_condition_columns,
     source_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
@@ -164,10 +167,25 @@ def rollup_concepts_by_node(
             datasources=datasources,
             target_grain=target_grain,
             conditions=conditions,
+            joined=True,
         )
         if rolled:
             out[node] = rolled
     return out
+
+
+def owed_columns(
+    datasource: BuildDatasource | BuildUnionDatasource, rolled: list[BuildConcept]
+) -> dict[str, list[BuildConcept]]:
+    """Each rolled `agg(x ? c)` -> the columns of `c` a lookup onto
+    `datasource`'s rows must supply (`joined_condition_columns`)."""
+    if not isinstance(datasource, BuildDatasource):
+        return {}
+    return {
+        concept.address: columns
+        for concept in rolled
+        if (columns := joined_condition_columns(datasource, concept))
+    }
 
 
 def _probe_offers(
@@ -411,12 +429,17 @@ def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     """Single-row / abstract-grain concepts join by cross product, never by a
     key, so they must not drive connectivity: sourcing them is a cross join the
     caller adds. The `__preql_internal` concepts are declared single-row, so
-    this is also what keeps them out."""
+    this is also what keeps them out. A grand-total `agg(x ? c)` is sourced
+    off a summary's rows, which a column of `c` may have to be joined onto
+    (`ObligationKind.JOINED`), so it drives the search, and so does every
+    rollable total read off the same rows beside it."""
+    filtered = any(c.filtered_rollup is not None for c in terminals)
     return sorted(
         {
             concept.address
             for concept in terminals
             if concept.granularity != Granularity.SINGLE_ROW
+            or (filtered and concept.rollup_signature is not None)
         }
     )
 
@@ -791,6 +814,15 @@ def build_source_network(
     rollups = rollup_concepts_by_node(
         terminals, environment, graph, conditions, deferred_conditions
     )
+    owed_by_node = {
+        node: owed
+        for node, rolled in rollups.items()
+        if (owed := owed_columns(graph.datasources[node], rolled))
+    }
+    owed_addresses = {
+        c.address for owed in owed_by_node.values() for cs in owed.values() for c in cs
+    }
+    all_addresses |= owed_addresses
     for node in graph.datasources:
         if node in graph:
             emitted_by_node[node] = _emitted_addresses(graph, node) | {
@@ -815,7 +847,7 @@ def build_source_network(
     relevant = _relevant_nodes(
         graph,
         emitted_by_node,
-        addresses,
+        addresses + sorted(owed_addresses),
         environment,
         equivalence,
         [frozenset(candidate.bindings) for candidate in connector_candidates.values()],
@@ -837,6 +869,16 @@ def build_source_network(
             # completes them, so the fact's `~` column is a full binding here
             promoted=environment.span_scope.extent_free,
         )
+        if candidate is not None and node in owed_by_node:
+            candidate = replace(
+                candidate,
+                owes={
+                    equivalence.get(address, address): frozenset(
+                        equivalence.get(c.address, c.address) for c in columns
+                    )
+                    for address, columns in owed_by_node[node].items()
+                },
+            )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate
     for node, connector in connector_candidates.items():
