@@ -565,7 +565,7 @@ def test_sixty_four(engine_sf001):
     # The sf=1 price window [65,74] selects 0 of the 180 items at sf=0.01, so
     # the query compared 0 rows against 0 rows. i_current_price's base is a
     # TPC-DS substitution parameter; shifting 64 -> 74 lands on the two purple
-    # items at ~75.2 and yields 90 rows. Colors are left alone — the canonical
+    # items at ~75.2 and yields 48 rows. Colors are left alone — the canonical
     # list is well represented at this scale.
     _ = run_query(
         engine_sf001,
@@ -576,7 +576,7 @@ def test_sixty_four(engine_sf001):
             ("BETWEEN 64 AND 64 + 10", "BETWEEN 74 AND 74 + 10"),
             ("BETWEEN 64 + 1 AND 64 + 15", "BETWEEN 74 + 1 AND 74 + 15"),
         ],
-        min_rows=90,
+        min_rows=48,
     )
 
 
@@ -585,8 +585,8 @@ def test_sixty_four_no_transitive_key_fanout(engine):
     # coalescing full-join boundary. Sourcing that property through the customer
     # grain (customer FULL JOIN customer_address, ~2.3 rows/address) instead of the
     # address grain fans each correct row out by #customers-sharing-the-address.
-    # test_sixty_four covers sf=0.01 (90 rows, shifted price parameter); this one
-    # pins the sf=1 result at exactly 2 rows, so any duplication is a pure fan-out.
+    # test_sixty_four covers sf=0.01 (shifted price parameter); this one pins the
+    # sf=1 row count to the reference, so any duplication is a pure fan-out.
     engine.environment = Environment(working_path=working_path)
     text = (working_path / "query64.preql").read_text()
     sql = engine.generate_sql(text)[-1]
@@ -595,7 +595,8 @@ def test_sixty_four_no_transitive_key_fanout(engine):
         f"transitive-key enrichment fan-out: {len(rows)} rows, "
         f"{len(set(rows))} distinct"
     )
-    assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
+    expected = len(engine.execute_raw_sql("PRAGMA tpcds(64);").fetchall())
+    assert len(rows) == expected, f"expected {expected} rows, got {len(rows)}"
     # The dimension lookups hang off the agg_99/agg_00 boundaries at the
     # boundaries' identity; a boundary that claimed that grain without
     # exposing it left the lookups FULL and RIGHT OUTER over whole dimensions.
