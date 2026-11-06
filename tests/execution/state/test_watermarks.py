@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -1451,8 +1452,8 @@ def test_get_stale_assets_probe_stale():
         """)
 
     ds = executor.environment.datasources["pb_source"]
-    executor.environment.datasources["pb_source"] = ds.model_copy(
-        update={"freshness_probe": "/fake/probe.py"}
+    executor.environment.datasources["pb_source"] = replace(
+        ds, freshness_probe="/fake/probe.py"
     )
 
     with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
@@ -1480,8 +1481,8 @@ def test_get_stale_assets_probe_up_to_date():
         """)
 
     ds = executor.environment.datasources["pb2_source"]
-    executor.environment.datasources["pb2_source"] = ds.model_copy(
-        update={"freshness_probe": "/fake/probe2.py"}
+    executor.environment.datasources["pb2_source"] = replace(
+        ds, freshness_probe="/fake/probe2.py"
     )
 
     with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
@@ -1504,8 +1505,8 @@ def test_get_stale_assets_probe_skipped_for_root():
         """)
 
     ds = executor.environment.datasources["pb3_source"]
-    executor.environment.datasources["pb3_source"] = ds.model_copy(
-        update={"freshness_probe": "/fake/probe3.py"}
+    executor.environment.datasources["pb3_source"] = replace(
+        ds, freshness_probe="/fake/probe3.py"
     )
 
     with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:

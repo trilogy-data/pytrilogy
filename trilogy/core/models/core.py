@@ -828,3 +828,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             raise ValueError(
                 f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
             )
+
+
+from trilogy.core.models.copying import install_dataclass_deepcopy
+
+install_dataclass_deepcopy(globals())

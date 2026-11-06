@@ -164,6 +164,9 @@ class Config:
     # Full gc pass when a DuckDB executor closes, so a long-lived process (a
     # server cycling engines) frees DuckDB instances held by reference cycles.
     collect_on_close: bool = True
+    # In-memory DuckDB executors draw a recycled instance (trilogy.dialect.
+    # duckdb_pool) instead of paying ~12ms to open and close their own.
+    reuse_duckdb_instances: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)

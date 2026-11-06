@@ -1,3 +1,4 @@
+import copy
 import glob as glob_module
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
@@ -5,8 +6,6 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
-
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES, MagicConstants
 from trilogy.core.enums import (
@@ -60,7 +59,8 @@ LAG_UNIT_SECONDS: dict[DatePart, int] = {
 }
 
 
-class FreshnessLag(BaseModel):
+@dataclass(kw_only=True)
+class FreshnessLag:
     """How far behind its upstream a datasource may be and still count as fresh.
 
     ``unit`` set means a temporal watermark and a timedelta tolerance; ``unit``
@@ -143,16 +143,15 @@ class RawColumnExpr:
     text: str
 
 
-class ColumnAssignment(BaseModel):
+@dataclass(kw_only=True, eq=False)
+class ColumnAssignment:
     alias: str | RawColumnExpr | Function
     concept: ConceptRef
-    modifiers: list[Modifier] = Field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
-    @field_validator("concept", mode="before")
-    def force_reference(cls, v: ConceptRef, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self) -> None:
+        if isinstance(self.concept, Concept):
+            self.concept = self.concept.reference
 
     def __eq__(self, other):
         if not isinstance(other, ColumnAssignment):
@@ -176,7 +175,7 @@ class ColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return ColumnAssignment.model_construct(
+        return ColumnAssignment(
             alias=(
                 self.alias.with_namespace(namespace)
                 if isinstance(self.alias, Function)
@@ -329,7 +328,8 @@ AssertionCondition = (
 )
 
 
-class DatasourceAssertion(BaseModel):
+@dataclass(kw_only=True)
+class DatasourceAssertion:
     """A boolean over aggregates of a build of the datasource, checked before
     the build replaces the asset. ``prior(expr)`` inside the condition is the
     same expression over the asset being replaced. A ``@function(...)`` call
@@ -348,7 +348,8 @@ class DatasourceAssertion(BaseModel):
         )
 
 
-class DatasourceTemplate(BaseModel):
+@dataclass(kw_only=True)
+class DatasourceTemplate:
     """The declarative parts of a datasource, without a physical location.
 
     Declared by a ``datasource`` statement that names no address, query or
@@ -359,23 +360,23 @@ class DatasourceTemplate(BaseModel):
 
     name: str
     namespace: str = DEFAULT_NAMESPACE
-    columns: list[ColumnAssignment] = Field(default_factory=list)
+    columns: list[ColumnAssignment] = field(default_factory=list)
     grain: Grain | None = None
     where: WhereClause | None = None
     non_partial_for: WhereClause | None = None
-    incremental_by: list[ConceptRef] = Field(default_factory=list)
-    partition_by: list[ConceptRef] = Field(default_factory=list)
-    freshness_by: list[ConceptRef] = Field(default_factory=list)
+    incremental_by: list[ConceptRef] = field(default_factory=list)
+    partition_by: list[ConceptRef] = field(default_factory=list)
+    freshness_by: list[ConceptRef] = field(default_factory=list)
     freshness_probe: str | None = None
     refresh_script: str | None = None
     allowed_lag: FreshnessLag | None = None
     order_by: OrderBy | None = None
-    storage: dict[str, StorageValue] = Field(default_factory=dict)
-    assertions: list[DatasourceAssertion] = Field(default_factory=list)
+    storage: dict[str, StorageValue] = field(default_factory=dict)
+    assertions: list[DatasourceAssertion] = field(default_factory=list)
     is_partial: bool = False
-    column_level_partial_addresses: set[str] = Field(default_factory=set)
+    column_level_partial_addresses: set[str] = field(default_factory=set)
     # What this declaration itself extended, for rendering.
-    extends: list[str] = Field(default_factory=list)
+    extends: list[str] = field(default_factory=list)
     # A concrete base's location, inherited when the child names none.
     address: "Address | None" = None
 
@@ -519,15 +520,14 @@ def safe_grain(v) -> Grain:
         raise ValueError(f"Invalid input type to safe_grain {type(v)}")
 
 
-class Datasource(HasUUID, Namespaced, BaseModel):
+@dataclass(kw_only=True, eq=False)
+class Datasource(HasUUID, Namespaced):
     name: str
     columns: list[ColumnAssignment]
     address: Address | str
-    grain: Grain = Field(
-        default_factory=lambda: Grain(components=set()), validate_default=True
-    )
-    namespace: str | None = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    metadata: DatasourceMetadata = Field(
+    grain: Grain = field(default_factory=lambda: Grain(components=set()))
+    namespace: str | None = DEFAULT_NAMESPACE
+    metadata: DatasourceMetadata = field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
     where: WhereClause | None = None
@@ -538,10 +538,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # persist must not inject it again — and its HAVING atoms would be illegal
     # as a pre-aggregation WHERE. See process_persist.
     non_partial_for_embedded: bool = False
-    status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
-    incremental_by: list[ConceptRef] = Field(default_factory=list)
-    partition_by: list[ConceptRef] = Field(default_factory=list)
-    freshness_by: list[ConceptRef] = Field(default_factory=list)
+    status: DatasourceState = DatasourceState.PUBLISHED
+    incremental_by: list[ConceptRef] = field(default_factory=list)
+    partition_by: list[ConceptRef] = field(default_factory=list)
+    freshness_by: list[ConceptRef] = field(default_factory=list)
     freshness_probe: str | None = None
     refresh_script: str | None = None
     # Lag this datasource is allowed to run behind its upstream before it
@@ -550,12 +550,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # The order rows are written in, and options for the written format.
     # Write-side only: neither changes what the datasource answers.
     order_by: OrderBy | None = None
-    storage: dict[str, StorageValue] = Field(default_factory=dict)
-    assertions: list[DatasourceAssertion] = Field(default_factory=list)
+    storage: dict[str, StorageValue] = field(default_factory=dict)
+    assertions: list[DatasourceAssertion] = field(default_factory=list)
     # Datasources this one was composed from (`extends a, b`), and the parts
     # it declared itself; the fields above hold the composed result. Kept so
     # the declaration renders as written rather than flattened.
-    extends: list[str] = Field(default_factory=list)
+    extends: list[str] = field(default_factory=list)
     authored: DatasourceTemplate | None = None
     is_root: bool = False
     is_partial: bool = False
@@ -564,7 +564,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # represent intrinsic column-level partials (e.g. ``~order_id``) — the
     # column is missing values even within the table's complete-for slice —
     # and survive a covering UNION. Table-level stamps do not.
-    column_level_partial_addresses: set[str] = Field(default_factory=set)
+    column_level_partial_addresses: set[str] = field(default_factory=set)
     # The file this datasource was declared in; None when it was declared in
     # the entrypoint text itself. With ``name`` it identifies the declaration
     # across every namespace an import chain spells it under.
@@ -605,7 +605,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     def duplicate(self) -> "Datasource":
-        return self.model_copy(deep=True)
+        return copy.deepcopy(self)
 
     @property
     def concrete_columns(self) -> dict[str, ColumnAssignment]:
@@ -643,23 +643,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
-    @field_validator("namespace", mode="plain")
-    @classmethod
-    def namespace_validation(cls, v):
-        return v or DEFAULT_NAMESPACE
-
-    @field_validator("address")
-    @classmethod
-    def address_enforcement(cls, v):
-        if isinstance(v, str):
-            v = Address(location=v)
-        return v
-
-    @field_validator("grain", mode="before")
-    @classmethod
-    def grain_enforcement(cls, v: Grain, info: ValidationInfo):
-        grain: Grain = safe_grain(v)
-        return grain
+    def __post_init__(self) -> None:
+        self.namespace = self.namespace or DEFAULT_NAMESPACE
+        if isinstance(self.address, str):
+            self.address = Address(location=self.address)
+        self.grain = safe_grain(self.grain)
 
     def add_column(
         self,
@@ -697,7 +685,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             if self.namespace and self.namespace != DEFAULT_NAMESPACE
             else namespace
         )
-        new = Datasource.model_construct(
+        new = Datasource(
             name=self.name,
             namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
@@ -909,7 +897,15 @@ class EnvironmentDatasourceDict(dict):
     def items(self) -> ItemsView[str, Datasource]:  # type: ignore
         return super().items()
 
-    def duplicate(self) -> "EnvironmentDatasourceDict":
+    def duplicate(
+        self, memo: dict[int, Any] | None = None
+    ) -> "EnvironmentDatasourceDict":
         new = EnvironmentDatasourceDict()
-        new.update({k: v.duplicate() for k, v in self.items()})
+        memo = {} if memo is None else memo
+        new.update({k: copy.deepcopy(v, memo) for k, v in self.items()})
         return new
+
+
+from trilogy.core.models.copying import install_dataclass_deepcopy
+
+install_dataclass_deepcopy(globals())

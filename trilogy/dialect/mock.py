@@ -2,7 +2,7 @@ import math
 import random
 from binascii import crc32
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
@@ -1566,7 +1566,7 @@ def derive_datasource(
 def _repoint(environment: Environment, datasource: Datasource, address: str) -> None:
     """Swap in a repointed copy rather than editing the datasource, which a
     bare import shares with the process-wide import cache."""
-    mocked = datasource.model_copy(update={"address": Address(location=address)})
+    mocked = replace(datasource, address=Address(location=address))
     for key, value in list(environment.datasources.items()):
         if value is datasource:
             environment.datasources[key] = mocked

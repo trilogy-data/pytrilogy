@@ -172,3 +172,20 @@ def test_backticking_an_address_is_not_a_change():
         "address customer_totals_tbl;", "address `customer_totals_tbl`;"
     )
     assert fingerprint(DERIVED).root == fingerprint(quoted).root
+
+
+def test_datasource_hash_holds_across_the_pydantic_to_dataclass_move():
+    from trilogy import Environment
+    from trilogy.core.fingerprint import datasource_effective_hash
+
+    env = Environment()
+    env.parse("""
+key order_id int;
+property order_id.updated_at datetime;
+datasource orders (id: order_id, ts: updated_at) grain (order_id) address orders
+freshness by updated_at within 5 minutes;
+""")
+    assert (
+        datasource_effective_hash(env, env.datasources["orders"])
+        == "44140db335d5b4d7d6a8c147833631de"
+    )

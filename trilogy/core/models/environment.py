@@ -365,10 +365,13 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
 
-    def duplicate(self) -> EnvironmentConceptDict:
+    def duplicate(self, memo: dict[int, Any] | None = None) -> EnvironmentConceptDict:
         new = EnvironmentConceptDict()
+        # One memo for the whole dict, so concepts that share structure (and
+        # one concept under several keys) copy it once and keep sharing it.
+        memo = {} if memo is None else memo
         # include hidden items via raw iteration
-        new.update({k: v.duplicate() for k, v in self.data.items()})
+        new.update({k: copy.deepcopy(v, memo) for k, v in self.data.items()})
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
         new.hidden = set(self.hidden)
@@ -767,6 +770,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
 
 _concept_ta: _TypeAdapter | None = None
 _custom_type_ta: _TypeAdapter | None = None
+_datasource_ta: _TypeAdapter | None = None
 
 
 def _concept_adapter():
@@ -776,6 +780,13 @@ def _concept_adapter():
 
         _concept_ta = _TypeAdapter(Concept)
     return _concept_ta
+
+
+def _datasource_adapter():
+    global _datasource_ta
+    if _datasource_ta is None:
+        _datasource_ta = _TypeAdapter(Datasource)
+    return _datasource_ta
 
 
 def _custom_type_adapter():
@@ -1264,9 +1275,10 @@ class Environment:
         self._merge_lint_graph = (len(self.merges) + 1, graph)
 
     def duplicate(self):
+        memo: dict[int, Any] = {}
         return Environment(
-            datasources=self.datasources.duplicate(),
-            concepts=self.concepts.duplicate(),
+            datasources=self.datasources.duplicate(memo),
+            concepts=self.concepts.duplicate(memo),
             functions=dict(self.functions),
             data_types=dict(self.data_types),
             datasource_templates=dict(self.datasource_templates),
@@ -1280,7 +1292,7 @@ class Environment:
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
             alias_origin_lookup={
-                k: v.duplicate() for k, v in self.alias_origin_lookup.items()
+                k: copy.deepcopy(v, memo) for k, v in self.alias_origin_lookup.items()
             },
             merges=list(self.merges),
             env_file_path=self.env_file_path,
@@ -1333,7 +1345,7 @@ class Environment:
             concepts[k] = _concept_adapter().validate_python(v)
         datasources = EnvironmentDatasourceDict()
         for k, v in data.get("datasources", {}).items():
-            datasources[k] = Datasource.model_validate(v)
+            datasources[k] = _datasource_adapter().validate_python(v)
         return cls(
             concepts=concepts,
             datasources=datasources,
@@ -1370,7 +1382,8 @@ class Environment:
                 for k, v in self.concepts.items()
             },
             "datasources": {
-                k: v.model_dump(mode="json") for k, v in self.datasources.items()
+                k: _datasource_adapter().dump_python(v, mode="json")
+                for k, v in self.datasources.items()
             },
             "functions": {k: v.to_dict() for k, v in self.functions.items()},
             "data_types": {

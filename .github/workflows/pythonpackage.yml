@@ -195,11 +195,16 @@ jobs:
         run: |
           # stop the build if there are Python syntax errors or undefined names
           python -m mypy trilogy
+      # ruff and black read only the source, so one cell proves them for all.
+      # mypy stays in every cell: it resolves sys.platform and version
+      # branches against the interpreter it runs under.
       - name: Lint with ruff
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.duckdb == '1.x'
         run: |
           # stop the build if there are Python syntax errors or undefined names
           python -m ruff check trilogy
       - name: Lint with black
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.duckdb == '1.x'
         run: |
           python -m black --check .
       - name: Benchmark plans did not grow against main

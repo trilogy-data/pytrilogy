@@ -220,6 +220,24 @@ class DuckDBConfig(DialectConfig):
             return f"{scheme}:///:memory:"
         return f"{scheme}:///{self.path}"
 
+    def create_engine_args(self) -> dict:
+        from trilogy.constants import CONFIG
+
+        # The extensions, secrets and variables these set up are instance
+        # state a recycled instance must not carry, so it would never be kept.
+        if (
+            self.path
+            or not CONFIG.reuse_duckdb_instances
+            or self.enable_python_datasources
+            or self.enable_gcs
+            or self.enable_spatial
+            or self.python_datasource_transport != PythonDatasourceTransport.SHELL
+        ):
+            return {}
+        from trilogy.dialect.duckdb_pool import connect
+
+        return {"creator": connect}
+
     def create_connect_args(self) -> dict:
         # read_only lets many processes share one on-disk db (DuckDB allows
         # concurrent readers but only a single writer). Only meaningful for a
