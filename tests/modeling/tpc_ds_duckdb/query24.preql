@@ -16,5 +16,8 @@ having
                 by store_sales.customer.sk, store_sales.item.sk, store_sales.store.sk
         )
             by *)
-
+order by
+    store_sales.customer.last_name asc,
+    store_sales.customer.first_name asc,
+    store_sales.store.name asc
 ;

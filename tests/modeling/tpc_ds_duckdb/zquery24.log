@@ -1,6 +1,6 @@
 query_id = "24"
-gen_length = 3286
-preql_size = 665
+gen_length = 3437
+preql_size = 786
 comp_size = 1264
 generated_sql = """
 
@@ -67,4 +67,8 @@ FROM
     INNER JOIN \"yummy\" on 1=1
 WHERE
     \"yummy\".\"peach_sales\" > 0.05 * (\"vacuous\".\"_virt_agg_avg_3394423827549395\")
-"""
+
+ORDER BY 
+    \"yummy\".\"store_sales_customer_last_name\" asc,
+    \"yummy\".\"store_sales_customer_first_name\" asc,
+    \"yummy\".\"store_sales_store_name\" asc"""
