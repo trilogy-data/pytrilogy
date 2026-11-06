@@ -311,6 +311,8 @@ def row_identity(
     keys = set(_statement_scoped_relation_members(environment) & axes & available)
     pinned = group.output_concepts or group.members
     keys |= lineage_pinned_grain(pinned, environment) & available
+    # a pinned value is evaluated on the select's rows, keyed by its anchors
+    keys |= group.grain_pin_anchors & available
     grouped = frozenset().union(
         *(
             attrs[other].grain_components

@@ -1889,6 +1889,9 @@ def _compute_concept_sets(
         )
         for gid, bucket in buckets.items()
     }
+    for gid, anchors in pin_anchors.items():
+        if gid in attrs:
+            attrs[gid].grain_pin_anchors = anchors
 
     mate_accumulator: dict[str, set[str]] = {}
     for ca in concept_attrs.values():
