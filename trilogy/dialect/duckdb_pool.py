@@ -25,7 +25,9 @@ import duckdb
 from duckdb_engine import ConnectionWrapper
 
 _HOST = "trilogy_host"
-_MAX_IDLE = 4
+# ~3.6MB each. Executors dropped without close() come back in batches when the
+# cycle collector runs, and a batch larger than this is closed instead.
+_MAX_IDLE = 8
 
 # Instance-level state an executor could leave behind. LOCAL settings belong
 # to the connection and close with it.
@@ -68,6 +70,8 @@ _idle: list["_Instance"] = []
 # Instances inherited across a fork are never touched again: their threads
 # did not survive it, so neither using nor closing them is safe.
 _abandoned: list["_Instance"] = []
+# What every fresh instance reports, read from the first one opened.
+_baseline: tuple | None = None
 
 
 def _user_agent() -> str:
@@ -84,7 +88,9 @@ class _Instance:
             ":memory:", config={"custom_user_agent": _user_agent()}
         )
         self.db.execute(f"ATTACH ':memory:' AS {_HOST}; USE {_HOST}; DETACH memory")
-        self.baseline = self._state()
+        global _baseline
+        if _baseline is None:
+            _baseline = self._state()
 
     def _state(self) -> tuple:
         cursor = self.db.cursor()
@@ -113,7 +119,7 @@ class _Instance:
             return False
         finally:
             cursor.close()
-        return self._state() == self.baseline
+        return self._state() == _baseline
 
 
 class PooledConnection(ConnectionWrapper):
@@ -146,7 +152,8 @@ def _release(
 ) -> None:
     try:
         cursor.close()
-        keep = not tainted[0] and instance.reset()
+        # Only an instance with room to be kept is worth the state check.
+        keep = not tainted[0] and len(_idle) < _MAX_IDLE and instance.reset()
     except Exception:
         keep = False
     with _lock:
