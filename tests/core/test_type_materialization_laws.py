@@ -1,6 +1,7 @@
 """Declared types hold their values (formal/Trilogy/Types.lean): an
 expression persisted into a table typed by its declared type reads back the
-live value, on DuckDB and SQLite.
+live value, on DuckDB, SQLite and ClickHouse (chdb). A remainder is also held
+to a reference, which a round trip cannot check: both sides share an error.
 
 - a product of decimals carries the sum of their scales; a decimal beside a
   float, a decimal quotient, `sqrt` and `**` are doubles.
@@ -10,17 +11,19 @@ live value, on DuckDB and SQLite.
 - a cast to a date or a datetime is one, so it equals the stored value.
 """
 
+import math
 import random
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
+from tests.windows.test_window_laws import CHDB, new_executor
 from trilogy import Dialects, Executor
 from trilogy.core.models.core import DataType, NumericType
 from trilogy.core.models.environment import Environment
 
-DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE]
+DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE, *CHDB]
 SEEDS = range(4)
 
 MODEL = """
@@ -35,9 +38,12 @@ property id.t datetime;
 datasource raw (id: id, i: i, f: f, n: n, m: m, b: b, d: d, t: t) grain (id) address raw;
 """
 
+MODEL_COLUMNS = ["id", "i", "f", "n", "m", "b", "d", "t"]
+
 DDL = {
     Dialects.DUCK_DB: "create table raw (id int, i int, f double, n decimal(12,4), m decimal(12,4), b boolean, d date, t timestamp)",
     Dialects.SQLITE: "create table raw (id int, i int, f real, n numeric, m numeric, b int, d text, t text)",
+    Dialects.CLICKHOUSE: "create table raw (id Int64, i Int64, f Float64, n Decimal(12,4), m Decimal(12,4), b Bool, d Date, t DateTime) engine = Memory",
 }
 
 EXPRESSIONS = {
@@ -93,7 +99,8 @@ def _literal(value: object) -> str:
 
 
 def _executor(dialect: Dialects, rows: list[tuple]) -> Executor:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
+    executor.execute_raw_sql("drop table if exists raw")
     executor.execute_raw_sql(DDL[dialect])
     values = ", ".join("(" + ", ".join(_literal(v) for v in row) + ")" for row in rows)
     executor.execute_raw_sql(f"insert into raw values {values}")
@@ -163,8 +170,30 @@ def test_casts_compare_to_stored_dates(dialect: Dialects) -> None:
 
 
 def test_floor_and_ceil_of_null(dialect: Dialects) -> None:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
     rows = executor.execute_text(
         "select floor(null::float) as a, ceil(null::float) as b, floor(-0.125) as c, ceil(-0.125) as d;"
     )[-1].fetchall()
     assert [tuple(r) for r in rows] == [(None, None, -1, 0)]
+
+
+def truncated_rem(value: Decimal | float, m: int) -> Decimal | float:
+    if isinstance(value, float):
+        return math.fmod(value, m)
+    return Decimal(value) % m
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("column", ["i", "f", "n"])
+def test_remainder_keeps_the_fraction(
+    dialect: Dialects, seed: int, column: str
+) -> None:
+    rows = _rows(random.Random(seed))
+    executor = _executor(dialect, rows)
+    out = executor.execute_text(
+        f"select id, {column} % 3 as r, {column} % -7 as s order by id asc;"
+    )[-1].fetchall()
+    index = MODEL_COLUMNS.index(column)
+    for row, (_, r, s) in zip(rows, out, strict=True):
+        assert _same(truncated_rem(row[index], 3), r), (row[index], r)
+        assert _same(truncated_rem(row[index], -7), s), (row[index], s)

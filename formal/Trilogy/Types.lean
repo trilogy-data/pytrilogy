@@ -16,7 +16,10 @@ needs and where Trilogy's typing was narrower:
 - no decimal scale holds a third (`third_has_no_scale`), so a quotient of
   decimals is the double the engine computes, as a quotient of integers is.
 - a remainder has its dividend's fraction (`rem_preserved`); Trilogy typed every
-  `%` INTEGER (`fractional_rem_is_not_int`).
+  `%` INTEGER (`fractional_rem_is_not_int`). The value itself dropped the
+  fraction on SQLite (`%` of the integer parts) and on ClickHouse (`modulo`
+  of a decimal's unscaled integer; `integer_rem_drops_fraction`);
+  `x - m * trunc(x / m)` is the remainder (`rem_by_trunc`).
 - `greatest` / `least` return one of their arguments, so they need the join of
   all of them (`pick_preserved`); Trilogy typed them by the first
   (`first_argument_type_drops`).
@@ -152,5 +155,27 @@ def representable (p n : Nat) : Bool := decide (oddPart 64 n < 2 ^ p)
 theorem single_misses_double :
     representable 24 16777217 = false ∧ representable 53 16777217 = true := by
   decide
+
+/-! ## A remainder keeps the fraction on every engine -/
+
+/-- SQLite's `%` casts both sides to integers first. -/
+def intRem (a : Dec) (m : Int) : Dec := ⟨(a.n.tdiv (pow10 a.k)).tmod m * pow10 a.k, a.k⟩
+
+/-- ClickHouse's `modulo` of a decimal divides its unscaled integer by `m`. -/
+def unscaledRem (a : Dec) (m : Int) : Dec := ⟨a.n.tmod m, a.k⟩
+
+/-- `7.5 % 3` is `1.5`; SQLite answered `1` and ClickHouse `0`. -/
+theorem integer_rem_drops_fraction :
+    intRem ⟨75, 1⟩ 3 ≠ rem ⟨75, 1⟩ 3 ∧ unscaledRem ⟨75, 1⟩ 3 ≠ rem ⟨75, 1⟩ 3 := by
+  decide
+
+/-- The ClickHouse rendering `x - m * trunc(x / m)`: a decimal quotient is
+truncated toward zero, so `trunc` of it is `tdiv` of the scaled integers. -/
+def remByTrunc (a : Dec) (m : Int) : Dec :=
+  ⟨a.n - m * pow10 a.k * a.n.tdiv (m * pow10 a.k), a.k⟩
+
+theorem rem_by_trunc (a : Dec) (m : Int) : remByTrunc a m = rem a m := by
+  unfold remByTrunc rem
+  rw [Int.tmod_def]
 
 end Trilogy.Types

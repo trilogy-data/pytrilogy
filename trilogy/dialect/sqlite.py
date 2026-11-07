@@ -90,6 +90,14 @@ def render_cast(args: list[str], types: list) -> str:
     return f"cast({args[0]} as {args[1]})"
 
 
+def render_mod(args: list[str], types: list) -> str:
+    """`%` casts both sides to an integer (`7.5 % 3` is 1); `mod` keeps the
+    fraction, but answers a REAL for integers too."""
+    if any(getattr(t, "data_type", t) in FRACTIONAL_TYPES for t in types):
+        return f"mod({args[0]}, {args[1]})"
+    return f"{args[0]} % {args[1]}"
+
+
 MONTH_FACTOR = {"month": 1, "quarter": 3, "year": 12}
 OFFSET_UNIT = {
     "day": ("day", 1),
@@ -205,6 +213,7 @@ FUNCTION_MAP = {
     FunctionType.FORMAT_TIME: lambda x, types: f"strftime({x[1]}, {x[0]})",
     FunctionType.PARSE_TIME: lambda x, types: f"datetime({x[0]})",
     FunctionType.RANDOM: lambda x, types: f"(abs(random()) % {x[0]})",
+    FunctionType.MOD: render_mod,
     # the multi-argument max/min are greatest/least, NULL if any argument is
     FunctionType.GREATEST: render_present_extreme("max"),
     FunctionType.LEAST: render_present_extreme("min"),

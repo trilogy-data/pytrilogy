@@ -1026,6 +1026,8 @@ class BaseDialect:
     RECURSIVE_KEYWORD = "RECURSIVE"
     QUOTE_CTE_NAMES = False
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
+    # the name a `numeric(p,s)` renders with, when not DATATYPE_MAP's NUMERIC
+    NUMERIC_TYPE_NAME: ClassVar[str | None] = None
     # datatypes a constant renders inline rather than binding as a parameter
     INLINE_PARAM_DATATYPES: ClassVar[frozenset[DataType]] = INLINE_SAFE_PARAM_DATATYPES
     COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
@@ -2732,7 +2734,8 @@ class BaseDialect:
         elif isinstance(e, DatePart):
             return str(e.value)
         elif isinstance(e, NumericType):
-            return f"{self.DATATYPE_MAP[DataType.NUMERIC]}({e.precision},{e.scale})"
+            name = self.NUMERIC_TYPE_NAME or self.DATATYPE_MAP[DataType.NUMERIC]
+            return f"{name}({e.precision},{e.scale})"
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"

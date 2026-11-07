@@ -38,7 +38,10 @@ tuples; area 4), and `SelectGrain.lean` extended again (0.3.464: an
 aggregate of a fixed value, a rowset member of one, and a persisted copy of
 one read the value once per key; area 4), and `Padding.lean` (0.3.465: an
 outer join pads NULL and a cast keeps NULL on ClickHouse too; the window and
-select-grain law suites now run on chdb; area 5).
+select-grain law suites now run on chdb; area 5), and `Functions.lean` /
+`Types.lean` extended (0.3.466: the function, scalar and type law suites run
+on chdb; a cast and `round` round half away, `week` is whole spans, and a
+remainder keeps its fraction on ClickHouse and SQLite; area 5).
 
 ## The recipe
 
@@ -410,23 +413,38 @@ select-grain law suites now run on chdb; area 5).
       runs the select-grain fixtures slower than DuckDB, so ClickHouse runs
       the first seed only (`seeds_for`).
 
+23. **Lessons from the ClickHouse function round (0.3.466).**
+    - A suite that compares two engine answers (a live value and its
+      persisted copy) cannot see an error both share. `n % 3` dropped the
+      fraction on ClickHouse and SQLite in both, and the copy suite passed;
+      only a test against a Python reference found it. Give each operator one
+      reference check before trusting a round-trip suite with it.
+    - chdb is one session per process: a table one executor creates is there
+      for the next. A harness that creates fixed table names drops them first.
+    - A dialect's base type name can be parametric already (`Decimal64(4)`);
+      appending `(p,s)` to it is invalid DDL. `NUMERIC_TYPE_NAME` names the
+      parametric form separately.
+
 ## Candidate areas
 
-**Suggested next: area 5 (the function suites on ClickHouse), the area-1,
+**Suggested next: the area-5 leads (decimal products, division by zero), the area-1,
 area-2 and area-4 leads below, or the area-3 leads left.**
 
-### 5. ClickHouse (chdb in CI; `Padding.lean` done, leads left)
+### 5. ClickHouse (chdb in CI; `Padding.lean` done, the function, scalar and type suites run there; leads left)
 
-The window and select-grain law suites run on ClickHouse; the function,
-scalar and type law suites do not: their harnesses key DDL and casts per
-dialect and raise `KeyError` for ClickHouse, so a run of them there says
-nothing yet. Give them a ClickHouse DDL/literal map first. Probed directly on
-chdb, and leads until held to a reference:
-- `round` of a float rounds half to even (`round(2.5)` is 2,
-  `round(toDecimal64(2.5, 4))` is 3), and `CAST(2.7 AS Int64)` truncates to
-  2; the function law is half away from zero (`test_cast_to_int_is_round`).
-- `7 / 0` is NULL (as on SQLite) and `7 % 0` raises (as on DuckDB): the
-  area-3 division lead applies here too.
+Every law suite with a DuckDB/SQLite harness that runs a typed fixture now
+runs on chdb. Leads left, probed on chdb 26.9:
+- `7 / 0` is `inf` (it was NULL on older chdb), `0 / 0` is `nan`, and `7 % 0`
+  raises (as on DuckDB): the area-3 division lead applies here too.
+- A product of decimals is `Decimal(18, s1 + s2)` whatever the operands'
+  precision, so `n * m` of two `numeric(12,4)` raises `Decimal math overflow`
+  above 18 digits although the declared type is `numeric(24,8)`. It is loud,
+  not wrong; a cast to the declared type first would fix it.
+- `round(f, n)` with `n > 0` is `sign(x) * floor(abs(x) * 10^n + 0.5) / 10^n`
+  on a binary float, as DuckDB computes it; a tie that is not exact in binary
+  (`round(1.005, 2)`) is not held to a decimal reference anywhere.
+- `%` of a float or a decimal on Postgres, BigQuery and the other dialects
+  with no engine in CI is not checked (Postgres has no `double % int`).
 - `lag`/`lead` of an array operand would fail `toNullable`; no suite covers it.
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
