@@ -426,6 +426,39 @@ def test_input_contract_declares_shared_row_parent_join_key():
     assert "local.amount" not in fact_contract.preserve_keys
 
 
+def test_sibling_grains_fix_the_projection_not_the_carry_demand():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "lines": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.order_id", "local.qty"),
+        ),
+        "domain": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.order_id", "local.status"),
+            extent_spans=frozenset({"local.order_id"}),
+        ),
+        "consumer": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.BASIC,
+            input_concepts=("local.qty", "local.status"),
+        ),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "lines", "consumer", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "domain", "consumer", EdgeKind.LINEAGE)
+    _refresh_input_contracts(
+        group_graph, group_edges, attrs, {}, {}, BuildEnvironment()
+    )
+
+    for contract in attrs["consumer"].input_contracts:
+        assert "local.order_id" in contract.projection_grain
+        assert "local.order_id" not in contract.preserve_keys
+
+
 def test_input_contract_keeps_existence_parent_side_channel():
     group_graph = nx.DiGraph()
     group_edges: EdgeMap = {}

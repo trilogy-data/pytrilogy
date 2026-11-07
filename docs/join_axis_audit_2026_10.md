@@ -1084,6 +1084,42 @@ them back as one capture, which takes the suite oracle from 20 minutes to 7
 on four workers. Corpus: 0 of 209 plans moved. Suite capture: no plan moved; the only
 diffs are column and GROUP BY order.
 
+**Two sets are a projection grain, not a carry demand (part 34).** Part 33
+showed each of the five sets shapes plans, not which reader of the union
+it shapes them through. The union has five: the merge plan's per-side
+`contracted`, the `needed` it adds to a consumer's sourcing, `renders`'s
+asks, a row stream's `_joined_on`, and `_satisfy_parent_projection_contract`,
+which projects a dimension parent to a grain before it merges beside an
+already-shaped sibling. With a set dropped and added back to one reader at a
+time, `grouping_parent_grain` and `domain_spans` are restored by the
+projection reader alone and by none of the four key readers;
+`relation_keys` is restored by the join-key readers and not by the
+projection. No pairing reads the first two: they are the grains the
+consumer's siblings already stand at, so they fix the projection and ask no
+side to carry anything.
+
+The contract now says so. `GroupInputContract.preserve_keys` is the carry
+demand, `required_grain | bridge_keys | relation_keys`
+(`_consumer_preserve_keys`). `projection_grain` is that plus the sibling
+grains (`_consumer_sibling_grains`), and is all the projection reads. The
+three part 33 guards pass unchanged, and
+`test_sibling_grains_fix_the_projection_not_the_carry_demand` pins the
+split. Suite capture against `main`: 76 statements moved. 58 are known noise
+(column and GROUP BY order, worker statement counts, temp-table names). The
+other 18 are two shapes:
+
+- 16 class-rejoin and fit-chain plans. A scalar aggregate (`g_b`, `b_pick`)
+  is no longer asked to render `all_rows`, so it is not carried through the
+  merge, and the consumer selects `1` instead. CTE and join counts are the
+  same, the SQL is shorter, and the rows asserted are the same.
+- 2 gcat plans, `test_full_join_issue` and `_2`. The satcat side was
+  inner-joined to `launch_info` only to stand at `launch_tag` (the
+  `~launch_tag` domain's span), then FULL-joined back to `launch_info` on it.
+  Now it FULL-joins once: 3 CTEs to 2, and 7 to 6. On the full GCAT data
+  the rows are identical (235 and 120).
+
+Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1091,10 +1127,13 @@ not built yet:
    joins; `node_joins` are not built from the pairings. The merge-wide
    fallback for a pair with an unattributed parent remains, but no suite
    merge reaches it (part 32).
-2. `GroupInputContract.preserve_keys` is still the union of five sets, now
-   built in `_consumer_preserve_keys`. Every set shapes some suite plan, and
-   each is held by a test (part 33). The per-edge carry demand has to
-   reproduce those plans, not only the rows.
+2. `GroupInputContract.preserve_keys` is still a union, now of three sets
+   (`required_grain`, `bridge_keys`, `relation_keys`), built in
+   `_consumer_preserve_keys`. The other two are the contract's
+   `projection_grain` (part 34). Each shapes some suite plan, and each is held
+   by a test (part 33). The per-edge carry demand has to reproduce those
+   plans, not only the rows. Which key reader `bridge_keys` shapes plans
+   through is not yet isolated: its only guard asserts on the contract.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
