@@ -139,3 +139,47 @@ def test_date_part_agrees_with_the_function(dialect) -> None:
         part = render(dialect, F.DATE_PART, ["x", name], [DT])
         assert part.upper() == render(dialect, fn, ["x"], [DT]).upper()
     assert "MONTH" in render(dialect, F.DATE_PART, ["x", "month"], [DT]).upper()
+
+
+FLOAT = DataType.FLOAT
+NUMERIC = DataType.NUMERIC
+
+
+def test_clickhouse_renderings() -> None:
+    ch = ClickhouseDialect
+    assert render(ch, F.ROUND, ["f", "0"], [FLOAT, INT]) == (
+        "(sign(f) * floor(abs(f) + 0.5))"
+    )
+    assert render(ch, F.ROUND, ["n", "2"], [NUMERIC, INT]) == "round(n, 2)"
+    assert render(ch, F.ROUND, ["f", "2"], [FLOAT, INT]) == (
+        "(sign(f) * floor(abs(f) * pow(10, 2) + 0.5) / pow(10, 2))"
+    )
+    assert render(ch, F.ROUND, ["f", "0"], []) == "round(f, 0)"
+    assert render(ch, F.CAST, ["n", "Int64"], [NUMERIC, INT]) == (
+        "CAST(round(n, 0) AS Nullable(Int64))"
+    )
+    assert (
+        render(ch, F.MOD, ["n", "3"], [NUMERIC, INT]) == "(n - (3) * trunc((n) / (3)))"
+    )
+    assert render(ch, F.MOD, ["i", "3"], [INT, INT]) == "modulo(i, 3)"
+    assert (
+        render(ch, F.GREATEST, ["i", "f"], [INT, FLOAT]) == "greatest(toFloat64(i), f)"
+    )
+    assert render(ch, F.LEAST, ["i", "n"], [INT, NUMERIC]) == "least(i, n)"
+    assert render(ch, F.DATE_DIFF, ["a", "b", "week"], [DT, DT, INT]) == (
+        "intDiv(dateDiff('day', a, b), 7)"
+    )
+    assert render(ch, F.DATE_TRUNCATE, ["t", "day"], [DT, INT]) == (
+        "toDate(date_trunc('day', t))"
+    )
+    assert render(ch, F.DATE_TRUNCATE, ["t", "month"], [DT, INT]) == (
+        "date_trunc('month', t)"
+    )
+    assert render(ch, F.DATE_DIFF, ["a", "b", "day"], [DT, DT, INT]) == (
+        "dateDiff('day', a, b)"
+    )
+
+
+def test_sqlite_fractional_remainder() -> None:
+    assert render(SQLiteDialect, F.MOD, ["f", "3"], [FLOAT, INT]) == "mod(f, 3)"
+    assert render(SQLiteDialect, F.MOD, ["i", "3"], [INT, INT]) == "i % 3"

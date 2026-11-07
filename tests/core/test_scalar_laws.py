@@ -1,5 +1,5 @@
-"""Scalar function laws (formal/Trilogy/Scalars.lean), checked on DuckDB and
-SQLite against a Python reference with the model's definitions.
+"""Scalar function laws (formal/Trilogy/Scalars.lean), checked on DuckDB,
+SQLite and ClickHouse (chdb) against a Python reference with the model's definitions.
 
 - `date_add` / `date_sub` by months, quarters and years clamp to the month's
   last day, so `date_diff` counts back the offset.
@@ -16,11 +16,12 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from tests.windows.test_window_laws import CHDB, new_executor
 from trilogy import Dialects, Executor
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 
-DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE]
+DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE, *CHDB]
 SEEDS = range(6)
 MONTHS = {"month": 1, "quarter": 3, "year": 12}
 
@@ -43,6 +44,7 @@ grain (id) address raw;
 DDL = {
     Dialects.DUCK_DB: "create table raw (id int, d date, t timestamp, n int, e date, p int, q int, r int, x double, s varchar, needle varchar)",
     Dialects.SQLITE: "create table raw (id int, d text, t text, n int, e text, p int, q int, r int, x real, s text, needle text)",
+    Dialects.CLICKHOUSE: "create table raw (id Int64, d Date, t DateTime, n Int64, e Date, p Nullable(Int64), q Nullable(Int64), r Nullable(Int64), x Float64, s String, needle String) engine = Memory",
 }
 
 
@@ -101,7 +103,8 @@ def _literal(value: object) -> str:
 
 
 def _executor(dialect: Dialects, rows: list[tuple]) -> Executor:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
+    executor.execute_raw_sql("drop table if exists raw")
     executor.execute_raw_sql(DDL[dialect])
     values = ", ".join("(" + ", ".join(_literal(v) for v in row) + ")" for row in rows)
     executor.execute_raw_sql(f"insert into raw values {values}")

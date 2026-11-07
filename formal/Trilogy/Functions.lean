@@ -15,11 +15,15 @@ each failed on at least one dialect:
 - a cast to an integer rounds as `round` does, half away from zero
   (`cast_is_round`). DuckDB and Postgres round a double half to even, SQLite
   and SQL Server truncate (`half_even_cast_is_not_round`, `trunc_cast_is_not_round`).
+  ClickHouse did both: `round` of a float is half to even and a cast
+  truncates; `sign(x) * floor(abs(x) + 0.5)` is the reference
+  (`sign_round_is_round`).
 - `date_diff(a, b, part)` counts the part's boundaries between `a` and `b`, so
   it adds along a chain and is zero exactly when both truncate to the same part
   (`diff_add`, `diff_eq_zero_iff`). SQLite, Postgres and MySQL counted whole
   elapsed units, which does neither (`elapsed_not_additive`,
-  `elapsed_zero_across_a_boundary`).
+  `elapsed_zero_across_a_boundary`). `week` is whole 7-day spans instead;
+  ClickHouse counted Monday boundaries (`monday_boundaries_is_not_week_diff`).
 - `day_of_week` is 1 on Sunday through 7 on Saturday. Dialects read an ISO day
   or a `DATEFIRST`-relative day and shift it (`sunday_first_from_iso`,
   `datefirst_independent`); BigQuery subtracted one
@@ -110,6 +114,26 @@ theorem half_even_cast_is_not_round : roundHalfEven ⟨5, 2, by decide⟩ ≠ ro
 /-- SQLite and SQL Server truncate: `3.7::int` was `3`. -/
 theorem trunc_cast_is_not_round : (37 : Int).tdiv 10 ≠ roundHalfAway ⟨37, 10, by decide⟩ := by
   decide
+
+/-- ClickHouse's `round` of a float is half to even and its cast truncates (the
+two theorems above); its rendering is `sign(x) * floor(abs(x) + 0.5)`. -/
+def absInt (n : Int) : Int := if 0 ≤ n then n else -n
+
+def signRound (p : Frac) : Int := p.n.sign * ((2 * absInt p.n + p.d) / (2 * p.d))
+
+theorem sign_round_is_round (p : Frac) : signRound p = roundHalfAway p := by
+  obtain ⟨n, d, h⟩ := p
+  unfold signRound roundHalfAway absInt
+  simp only
+  rcases Int.lt_trichotomy n 0 with neg | zero | pos
+  · have : ¬ 0 ≤ n := by omega
+    simp only [this, ↓reduceIte, Int.sign_eq_neg_one_of_neg neg, Int.neg_one_mul]
+  · subst zero
+    simp only [Int.sign_zero, Int.zero_mul, Int.le_refl, ↓reduceIte, Int.mul_zero,
+      Int.zero_add]
+    exact (Int.ediv_eq_zero_of_lt (by omega) (by omega)).symm
+  · have : 0 ≤ n := by omega
+    simp only [this, ↓reduceIte, Int.sign_eq_one_of_pos pos, Int.one_mul]
 
 /-- Half-away rounding is odd: `round(-x) = -round(x)`, so a sign flip in a
 model never moves a value to a different integer. -/
@@ -205,5 +229,14 @@ theorem datefirst_independent (first d : Int) :
 /-- BigQuery's `DAYOFWEEK` is already 1 on Sunday; subtracting one numbered
 Sunday 0, and its `date_part(x, day_of_week)` did not. -/
 theorem bigquery_minus_one_disagrees : dow 3 - 1 ≠ dow 3 := by decide
+
+/-! ## ClickHouse's `week` -/
+
+/-- ClickHouse's `dateDiff('week', a, b)` counts Monday boundaries (day 0,
+1970-01-01, is a Thursday, so day 4 is the first Monday). -/
+def mondayWeeks (a b : Int) : Int := diff 7 (a + 3) (b + 3)
+
+/-- A Sunday to the next day's Monday crosses a boundary, but no 7-day span. -/
+theorem monday_boundaries_is_not_week_diff : mondayWeeks 3 4 ≠ weekDiff 3 4 := by decide
 
 end Trilogy.Functions

@@ -57,13 +57,78 @@ def _ch_struct(args, types):
 UNWRAPPABLE_TYPES = (DataType.ARRAY, DataType.MAP, DataType.STRUCT)
 
 
+FLOAT_TYPES = (DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER)
+INTEGER_TYPES = (DataType.INTEGER, DataType.BIGINT)
+
+
+def data_type(datatype: Any) -> Any:
+    return getattr(datatype, "data_type", datatype)
+
+
+def round_half_away(value: str, digits: str, value_type: Any) -> str:
+    """`round` of a float is half to even here (`round(2.5)` is 2) and half
+    away from zero everywhere else; a decimal already rounds half away."""
+    if data_type(value_type) not in FLOAT_TYPES:
+        return f"round({value}, {digits})"
+    if digits.strip() == "0":
+        return f"(sign({value}) * floor(abs({value}) + 0.5))"
+    scale = f"pow(10, {digits})"
+    return f"(sign({value}) * floor(abs({value}) * {scale} + 0.5) / {scale})"
+
+
 def render_cast(args: list[str], types: list) -> str:
-    """A cast keeps NULL: CAST to a bare type raises on one."""
-    target = args[1]
-    target_type = getattr(types[-1], "data_type", types[-1]) if types else None
+    """A cast keeps NULL: CAST to a bare type raises on one. A fraction cast
+    to an integer rounds, as `round` does; ClickHouse truncates it."""
+    value, target = args
+    target_type = data_type(types[-1]) if types else None
     if target_type not in UNWRAPPABLE_TYPES and not target.startswith("Nullable("):
         target = f"Nullable({target})"
-    return f"CAST({args[0]} AS {target})"
+    if (
+        len(types) == 2
+        and target_type in INTEGER_TYPES
+        and data_type(types[0]) in (*FLOAT_TYPES, DataType.NUMERIC)
+    ):
+        value = round_half_away(value, "0", types[0])
+    return f"CAST({value} AS {target})"
+
+
+def render_mod(args: list[str], types: list) -> str:
+    """`modulo` of a decimal drops its fraction (`7.5 % 3` is 0); the
+    truncated remainder `x - y * trunc(x / y)` keeps it."""
+    x, y = args
+    if any(data_type(t) == DataType.NUMERIC for t in types):
+        return f"({x} - ({y}) * trunc(({x}) / ({y})))"
+    return f"modulo({x}, {y})"
+
+
+def present_extreme(name: str) -> Callable[[list[str], list], str]:
+    """`greatest`/`least` refuse an integer beside a float; the float is the
+    type they declare, so the integers are widened to it."""
+
+    def render(args: list[str], types: list) -> str:
+        bases = [data_type(t) for t in types]
+        if any(b in FLOAT_TYPES for b in bases):
+            args = [
+                f"toFloat64({a})" if b in INTEGER_TYPES else a
+                for a, b in zip(args, bases)
+            ]
+        return f"{name}({', '.join(args)})"
+
+    return render
+
+
+def date_trunc(args: list[str], types: list) -> str:
+    # a day truncation is a DateTime here; it is typed DATE (`get_date_trunc_output`)
+    rendered = f"date_trunc('{args[1]}', {args[0]})"
+    return f"toDate({rendered})" if args[1].lower() == "day" else rendered
+
+
+def date_diff(args: list[str], types: list) -> str:
+    # `week` is whole 7-day spans of the day difference; ClickHouse counts
+    # Monday boundaries instead
+    if args[2].lower() == "week":
+        return f"intDiv(dateDiff('day', {args[0]}, {args[1]}), 7)"
+    return f"dateDiff('{args[2]}', {args[0]}, {args[1]})"
 
 
 def null_safe_join_key(
@@ -128,7 +193,12 @@ FUNCTION_MAP = {
     FunctionType.POWER: lambda x, types: f"pow({x[0]}, {x[1]})",
     FunctionType.RANDOM: lambda x, types: "randCanonical()",
     FunctionType.LOG: lambda x, types: _ch_log(x),
-    FunctionType.MOD: lambda x, types: f"modulo({x[0]}, {x[1]})",
+    FunctionType.MOD: render_mod,
+    FunctionType.ROUND: lambda x, types: round_half_away(
+        x[0], x[1], types[0] if types else None
+    ),
+    FunctionType.GREATEST: present_extreme("greatest"),
+    FunctionType.LEAST: present_extreme("least"),
     # string
     FunctionType.STRPOS: lambda x, types: f"position({x[0]}, {x[1]})",
     FunctionType.CONTAINS: lambda x, types: (
@@ -173,11 +243,11 @@ FUNCTION_MAP = {
     FunctionType.PARSE_TIME: lambda x, types: f"parseDateTime({x[0]}, {x[1]})",
     # CH versions ≥25 alias dateAdd/date_add to `plus` (binary +) with a 3-arg
     # mismatch error. INTERVAL syntax is the portable form.
-    FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_TRUNCATE: date_trunc,
     FunctionType.DATE_PART: lambda x, types: date_part(x[0], x[1]),
     FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - INTERVAL ({x[2]}) {x[1]})",
-    FunctionType.DATE_DIFF: lambda x, types: f"dateDiff('{x[2]}', {x[0]}, {x[1]})",
+    FunctionType.DATE_DIFF: date_diff,
     FunctionType.WEEK: lambda x, types: f"toISOWeek({x[0]})",
     # casts
     FunctionType.CAST: lambda x, types: render_cast(x, types),
@@ -276,6 +346,8 @@ class ClickhouseDialect(BaseDialect):
         WindowType.LAG: nullable_navigation("lag"),
         WindowType.LEAD: nullable_navigation("lead"),
     }
+    # `Decimal(p, s)`; DATATYPE_MAP's bare `Decimal64(4)` takes no precision
+    NUMERIC_TYPE_NAME = "Decimal"
     QUOTE_CHARACTER = "`"
     SUPPORTS_QUALIFY = True
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode

@@ -1,5 +1,6 @@
 """Scalar function laws (formal/Trilogy/Functions.lean), checked on every
-dialect we can run against DuckDB's answers.
+dialect we can run (DuckDB, SQLite, and ClickHouse through chdb where it
+installs) against DuckDB's answers.
 
 - `/` is true division, and a materialized quotient reads back unchanged.
 - a cast to an integer is `round`, half away from zero.
@@ -14,11 +15,12 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from tests.windows.test_window_laws import CHDB, new_executor
 from trilogy import Dialects, Executor
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 
-DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE]
+DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE, *CHDB]
 SEEDS = range(8)
 EPOCH = datetime(1970, 1, 1)
 
@@ -36,6 +38,7 @@ datasource raw (id: id, x: x, y: y, f: f, a: a, b: b, c: c) grain (id) address r
 DDL = {
     Dialects.DUCK_DB: "create table raw (id int, x int, y int, f double, a timestamp, b timestamp, c timestamp)",
     Dialects.SQLITE: "create table raw (id int, x int, y int, f real, a text, b text, c text)",
+    Dialects.CLICKHOUSE: "create table raw (id Int64, x Int64, y Int64, f Float64, a DateTime, b DateTime, c DateTime) engine = Memory",
 }
 
 
@@ -55,7 +58,8 @@ def _rows(rng: random.Random) -> list[tuple]:
 
 
 def _executor(dialect: Dialects, rows: list[tuple]) -> Executor:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
+    executor.execute_raw_sql("drop table if exists raw")
     executor.execute_raw_sql(DDL[dialect])
     values = ", ".join(
         "("
@@ -139,10 +143,11 @@ def test_cast_to_int_is_round(dialect: Dialects, seed: int) -> None:
     executor = _executor(dialect, rows)
     out = _select(
         executor,
-        "select id, f::int as c, round(f, 0) as r, (x / 2)::int as h order by id asc;",
+        "select id, f::int as c, round(f, 0) as r, (x / 2)::int as h, round(f, 1) as t order by id asc;",
     )
-    for (_, x, _, f, *_), (_, c, r, h) in zip(rows, out):
+    for (_, x, _, f, *_), (_, c, r, h, t) in zip(rows, out):
         assert c == round_half_away(f) == r, (f, c, r)
+        assert t == pytest.approx(round_half_away(f * 10) / 10), (f, t)
         assert h == round_half_away(x / 2), (x, h)
 
 
