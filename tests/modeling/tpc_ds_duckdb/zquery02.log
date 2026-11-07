@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 4740
+gen_length = 4817
 preql_size = 951
 comp_size = 2566
 generated_sql = """
@@ -53,13 +53,13 @@ GROUP BY
 uneven as (
 SELECT
     \"questionable\".\"sales_sale_date_week_seq\" as \"sales_sale_date_week_seq\",
-    round(\"questionable\".\"_virt_agg_sum_2147862938205875\" / (lead(\"questionable\".\"_virt_agg_sum_2147862938205875\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"tuesday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_3940035664520405\" / (lead(\"questionable\".\"_virt_agg_sum_3940035664520405\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"saturday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_4848039152713969\" / (lead(\"questionable\".\"_virt_agg_sum_4848039152713969\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"thursday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_6178901442700580\" / (lead(\"questionable\".\"_virt_agg_sum_6178901442700580\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"monday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_7660402966670123\" / (lead(\"questionable\".\"_virt_agg_sum_7660402966670123\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"wednesday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_8018526525264939\" / (lead(\"questionable\".\"_virt_agg_sum_8018526525264939\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"friday_increase\",
-    round(\"questionable\".\"_virt_agg_sum_9819218140412840\" / (lead(\"questionable\".\"_virt_agg_sum_9819218140412840\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"sunday_increase\"
+    round(\"questionable\".\"_virt_agg_sum_2147862938205875\" / nullif((lead(\"questionable\".\"_virt_agg_sum_2147862938205875\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"tuesday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_3940035664520405\" / nullif((lead(\"questionable\".\"_virt_agg_sum_3940035664520405\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"saturday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_4848039152713969\" / nullif((lead(\"questionable\".\"_virt_agg_sum_4848039152713969\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"thursday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_6178901442700580\" / nullif((lead(\"questionable\".\"_virt_agg_sum_6178901442700580\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"monday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_7660402966670123\" / nullif((lead(\"questionable\".\"_virt_agg_sum_7660402966670123\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"wednesday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_8018526525264939\" / nullif((lead(\"questionable\".\"_virt_agg_sum_8018526525264939\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"friday_increase\",
+    round(\"questionable\".\"_virt_agg_sum_9819218140412840\" / nullif((lead(\"questionable\".\"_virt_agg_sum_9819218140412840\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )), 0),2) as \"sunday_increase\"
 FROM
     \"questionable\")
 SELECT

@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 1930
+gen_length = 1941
 preql_size = 852
 comp_size = 1014
 generated_sql = """
@@ -33,10 +33,10 @@ HAVING
 	END) > 0 THEN (sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END) * 1.0) / sum(CASE
+	END) * 1.0) / nullif(sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END)
+	END), 0)
 	ELSE null
 	END BETWEEN 2.0 / 3.0 AND 3.0 / 2.0
 

@@ -156,7 +156,7 @@ def test_adhoc07():
     pattern = re.compile(
         r"rank\(\) over \(order by "
         + eligible_term
-        + r'\s*desc,\s*"\w+"\."_virt_agg_sum_\d+"\s*/\s*"\w+"\."_virt_agg_count_\d+"'
+        + r'\s*desc,\s*"\w+"\."_virt_agg_sum_\d+"\s*/\s*nullif\("\w+"\."_virt_agg_count_\d+", 0\)'
         r'\s*desc\s*\) as "player_rank"',
         re.MULTILINE,
     )

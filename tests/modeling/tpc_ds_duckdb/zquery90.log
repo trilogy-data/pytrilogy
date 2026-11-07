@@ -1,12 +1,12 @@
 query_id = "90"
-gen_length = 1221
+gen_length = 1232
 preql_size = 513
 comp_size = 982
 generated_sql = """
 SELECT
     CASE
 	WHEN sum(CASE WHEN \"ws_sale_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) = 0 THEN null
-	ELSE cast(sum(CASE WHEN \"ws_sale_time_time\".\"T_HOUR\" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as numeric(15,4)) / cast(sum(CASE WHEN \"ws_sale_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as numeric(15,4))
+	ELSE cast(sum(CASE WHEN \"ws_sale_time_time\".\"T_HOUR\" BETWEEN 8 AND 9 THEN 1 ELSE NULL END) as numeric(15,4)) / nullif(cast(sum(CASE WHEN \"ws_sale_time_time\".\"T_HOUR\" BETWEEN 19 AND 20 THEN 1 ELSE NULL END) as numeric(15,4)), 0)
 	END as \"am_pm_ratio\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"

@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 5939
+gen_length = 6016
 preql_size = 2263
 comp_size = 2234
 generated_sql = """
@@ -71,13 +71,13 @@ GROUP BY
     3),
 abundant as (
 SELECT
-    \"questionable\".\"fri_sales\" / lead(\"questionable\".\"fri_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"fri_sales_ratio\",
-    \"questionable\".\"mon_sales\" / lead(\"questionable\".\"mon_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"mon_sales_ratio\",
-    \"questionable\".\"sat_sales\" / lead(\"questionable\".\"sat_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"sat_sales_ratio\",
-    \"questionable\".\"sun_sales\" / lead(\"questionable\".\"sun_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"sun_sales_ratio\",
-    \"questionable\".\"thu_sales\" / lead(\"questionable\".\"thu_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"thu_sales_ratio\",
-    \"questionable\".\"tue_sales\" / lead(\"questionable\".\"tue_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"tue_sales_ratio\",
-    \"questionable\".\"wed_sales\" / lead(\"questionable\".\"wed_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"wed_sales_ratio\",
+    \"questionable\".\"fri_sales\" / nullif(lead(\"questionable\".\"fri_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"fri_sales_ratio\",
+    \"questionable\".\"mon_sales\" / nullif(lead(\"questionable\".\"mon_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"mon_sales_ratio\",
+    \"questionable\".\"sat_sales\" / nullif(lead(\"questionable\".\"sat_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"sat_sales_ratio\",
+    \"questionable\".\"sun_sales\" / nullif(lead(\"questionable\".\"sun_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"sun_sales_ratio\",
+    \"questionable\".\"thu_sales\" / nullif(lead(\"questionable\".\"thu_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"thu_sales_ratio\",
+    \"questionable\".\"tue_sales\" / nullif(lead(\"questionable\".\"tue_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"tue_sales_ratio\",
+    \"questionable\".\"wed_sales\" / nullif(lead(\"questionable\".\"wed_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ), 0) as \"wed_sales_ratio\",
     \"thoughtful\".\"ss_sale_date_week_seq\" as \"ss_sale_date_week_seq\",
     \"thoughtful\".\"ss_store_sk\" as \"ss_store_sk\",
     \"thoughtful\".\"year_flag\" as \"year_flag\"

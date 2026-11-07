@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 6399
+gen_length = 6432
 preql_size = 1403
 comp_size = 1588
 generated_sql = """
@@ -54,9 +54,9 @@ SELECT
     avg(\"concerned\".\"analysis_store_return_quantity\") as \"store_returns_quantityave\",
     count(\"concerned\".\"analysis_store_quantity\") as \"store_sales_quantitycount\",
     count(\"concerned\".\"analysis_store_return_quantity\") as \"store_returns_quantitycount\",
-    stddev_samp(\"concerned\".\"analysis_store_quantity\") / avg(\"concerned\".\"analysis_store_quantity\") as \"store_sales_quantitycov\",
+    stddev_samp(\"concerned\".\"analysis_store_quantity\") / nullif(avg(\"concerned\".\"analysis_store_quantity\"), 0) as \"store_sales_quantitycov\",
     stddev_samp(\"concerned\".\"analysis_store_quantity\") as \"store_sales_quantitystdev\",
-    stddev_samp(\"concerned\".\"analysis_store_return_quantity\") / avg(\"concerned\".\"analysis_store_return_quantity\") as \"store_returns_quantitycov\",
+    stddev_samp(\"concerned\".\"analysis_store_return_quantity\") / nullif(avg(\"concerned\".\"analysis_store_return_quantity\"), 0) as \"store_returns_quantitycov\",
     stddev_samp(\"concerned\".\"analysis_store_return_quantity\") as \"store_returns_quantitystdev\"
 FROM
     \"concerned\"
@@ -86,7 +86,7 @@ SELECT
     \"yummy\".\"analysis_store_state\" as \"analysis_store_state\",
     avg(\"yummy\".\"analysis_catalog_quantity\") as \"catalog_sales_quantityave\",
     count(\"yummy\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycount\",
-    stddev_samp(\"yummy\".\"analysis_catalog_quantity\") / avg(\"yummy\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitycov\",
+    stddev_samp(\"yummy\".\"analysis_catalog_quantity\") / nullif(avg(\"yummy\".\"analysis_catalog_quantity\"), 0) as \"catalog_sales_quantitycov\",
     stddev_samp(\"yummy\".\"analysis_catalog_quantity\") as \"catalog_sales_quantitystdev\"
 FROM
     \"yummy\"

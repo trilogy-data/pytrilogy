@@ -1,5 +1,5 @@
 query_id = "47"
-gen_length = 5842
+gen_length = 5853
 preql_size = 2231
 comp_size = 2473
 generated_sql = """
@@ -88,7 +88,7 @@ FROM
     \"uneven\"
 WHERE
     \"uneven\".\"store_sales_sale_date_year\" = 1999 and \"uneven\".\"avg_monthly_sales\" > 0 and CASE
-	WHEN \"uneven\".\"avg_monthly_sales\" > 0 THEN abs(\"uneven\".\"sum_sales\" - \"uneven\".\"avg_monthly_sales\") / \"uneven\".\"avg_monthly_sales\"
+	WHEN \"uneven\".\"avg_monthly_sales\" > 0 THEN abs(\"uneven\".\"sum_sales\" - \"uneven\".\"avg_monthly_sales\") / nullif(\"uneven\".\"avg_monthly_sales\", 0)
 	ELSE null
 	END > 0.1
 

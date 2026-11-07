@@ -22,7 +22,7 @@ def _sql(folder: str, file: str) -> str:
 def test_ratio_over_group_folds_without_a_refire():
     sql = _sql("ncaa", "adhoc03.preql")
     assert sql.count("GROUP BY") == 1, sql
-    assert "/ count(distinct CASE" in sql, sql
+    assert "/ nullif(count(distinct CASE" in sql, sql
 
 
 def test_every_where_atom_moves_into_having_in_one_pushdown(monkeypatch, caplog):

@@ -1,5 +1,5 @@
 query_id = "53"
-gen_length = 2701
+gen_length = 2712
 preql_size = 1408
 comp_size = 1808
 generated_sql = """
@@ -36,7 +36,7 @@ FROM
     INNER JOIN \"cooperative\" on \"cheerful\".\"store_sales_item_manufacturer_id\" is not distinct from \"cooperative\".\"store_sales_item_manufacturer_id\"
 WHERE
     CASE
-	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
+	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / nullif(\"cooperative\".\"avg_quarterly_sales\", 0)
 	ELSE null
 	END > 0.1
 

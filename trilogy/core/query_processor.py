@@ -1332,19 +1332,14 @@ def written_nullable(select: ProcessedQuery) -> set[str]:
     }
 
 
-def _with_written_nulls(datasource: Datasource, nullable: set[str]) -> Datasource:
+def _bind_written_nulls(datasource: Datasource, nullable: set[str]) -> None:
     """A datasource a persist creates binds `?` every column it writes NULL to,
     so a read of the copy keeps `x is not null` and a NOT NULL-by-default
-    engine (ClickHouse) declares the column Nullable."""
-    columns = [
-        (
-            replace(c, modifiers=[*c.modifiers, Modifier.NULLABLE])
-            if c.concept.address in nullable and not c.is_nullable
-            else c
-        )
-        for c in datasource.columns
-    ]
-    return replace(datasource, columns=columns)
+    engine (ClickHouse) declares the column Nullable. In place: a later
+    redeclaration prunes this same object."""
+    for column in datasource.columns:
+        if column.concept.address in nullable and not column.is_nullable:
+            column.modifiers = [*column.modifiers, Modifier.NULLABLE]
 
 
 def process_persist(
@@ -1381,9 +1376,8 @@ def process_persist(
     finally:
         ds.status = original_status
     _validate_persist_projection(statement, select)
-    datasource = statement.datasource
-    if datasource.identifier not in environment.datasources:
-        datasource = _with_written_nulls(datasource, written_nullable(select))
+    if statement.datasource.identifier not in environment.datasources:
+        _bind_written_nulls(statement.datasource, written_nullable(select))
 
     arg_dict = {k: v for k, v in select.__dict__.items()}
     partition_by: list[str] = []
@@ -1399,7 +1393,7 @@ def process_persist(
         output_to=MaterializedDataset(address=statement.address),
         persist_mode=statement.persist_mode,
         partition_by=partition_by,
-        datasource=datasource,
+        datasource=statement.datasource,
         partition_types=partition_types,
         create_mode=statement.create_mode,
     )

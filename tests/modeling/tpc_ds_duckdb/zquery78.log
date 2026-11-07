@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 7000
+gen_length = 7011
 preql_size = 2694
 comp_size = 2512
 generated_sql = """
@@ -81,7 +81,7 @@ SELECT
     \"abundant\".\"sales_sale_date_year\" as \"ss_sold_year\",
     coalesce(\"abundant\".\"sales_item_sk\",\"cheerful\".\"sales_item_sk\") as \"ss_item_sk\",
     \"abundant\".\"sales_billing_customer_sk\" as \"ss_customer_sk\",
-    round(cast(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)),2) as \"ratio\",
+    round(cast(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / nullif(cast(coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)), 0),2) as \"ratio\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"store_qty\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"store_sales_price\",

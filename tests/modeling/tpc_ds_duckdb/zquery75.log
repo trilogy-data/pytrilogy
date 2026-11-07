@@ -1,5 +1,5 @@
 query_id = "75"
-gen_length = 7032
+gen_length = 7043
 preql_size = 1517
 comp_size = 2947
 generated_sql = """
@@ -135,7 +135,7 @@ SELECT
 FROM
     \"friendly\"
 WHERE
-    cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"friendly\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
+    cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / nullif(cast(\"friendly\".\"prev_prev_cnt\" as numeric(17,2)), 0) < 0.9
 
 ORDER BY 
     \"sales_cnt_diff\" asc nulls first,

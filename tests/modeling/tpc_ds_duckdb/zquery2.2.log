@@ -1,5 +1,5 @@
 query_id = "2.2"
-gen_length = 6289
+gen_length = 6366
 preql_size = 1232
 comp_size = 2566
 generated_sql = """
@@ -97,13 +97,13 @@ GROUP BY
 vacuous as (
 SELECT
     \"questionable\".\"date_week_seq\" as \"date_week_seq\",
-    round(( \"yummy\".\"_virt_agg_sum_2293560889657522\" + \"questionable\".\"_virt_agg_sum_3727603509126659\" ) / (lead(\"yummy\".\"_virt_agg_sum_2293560889657522\" + \"questionable\".\"_virt_agg_sum_3727603509126659\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"wednesday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_5332872165953971\" + \"questionable\".\"_virt_agg_sum_7662941318754865\" ) / (lead(\"yummy\".\"_virt_agg_sum_5332872165953971\" + \"questionable\".\"_virt_agg_sum_7662941318754865\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"saturday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_6823422966658347\" + \"questionable\".\"_virt_agg_sum_733654448721027\" ) / (lead(\"yummy\".\"_virt_agg_sum_6823422966658347\" + \"questionable\".\"_virt_agg_sum_733654448721027\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"tuesday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_8086371301050807\" + \"questionable\".\"_virt_agg_sum_2131371712943644\" ) / (lead(\"yummy\".\"_virt_agg_sum_8086371301050807\" + \"questionable\".\"_virt_agg_sum_2131371712943644\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"thursday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_8302396398525202\" + \"questionable\".\"_virt_agg_sum_7224794219444244\" ) / (lead(\"yummy\".\"_virt_agg_sum_8302396398525202\" + \"questionable\".\"_virt_agg_sum_7224794219444244\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"monday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_8833754379564371\" + \"questionable\".\"_virt_agg_sum_4518379598128005\" ) / (lead(\"yummy\".\"_virt_agg_sum_8833754379564371\" + \"questionable\".\"_virt_agg_sum_4518379598128005\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"friday_increase\",
-    round(( \"yummy\".\"_virt_agg_sum_9238538473336606\" + \"questionable\".\"_virt_agg_sum_5446384850356435\" ) / (lead(\"yummy\".\"_virt_agg_sum_9238538473336606\" + \"questionable\".\"_virt_agg_sum_5446384850356435\", 53) over (order by \"questionable\".\"date_week_seq\" asc )),2) as \"sunday_increase\"
+    round(( \"yummy\".\"_virt_agg_sum_2293560889657522\" + \"questionable\".\"_virt_agg_sum_3727603509126659\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_2293560889657522\" + \"questionable\".\"_virt_agg_sum_3727603509126659\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"wednesday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_5332872165953971\" + \"questionable\".\"_virt_agg_sum_7662941318754865\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_5332872165953971\" + \"questionable\".\"_virt_agg_sum_7662941318754865\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"saturday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_6823422966658347\" + \"questionable\".\"_virt_agg_sum_733654448721027\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_6823422966658347\" + \"questionable\".\"_virt_agg_sum_733654448721027\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"tuesday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_8086371301050807\" + \"questionable\".\"_virt_agg_sum_2131371712943644\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_8086371301050807\" + \"questionable\".\"_virt_agg_sum_2131371712943644\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"thursday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_8302396398525202\" + \"questionable\".\"_virt_agg_sum_7224794219444244\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_8302396398525202\" + \"questionable\".\"_virt_agg_sum_7224794219444244\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"monday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_8833754379564371\" + \"questionable\".\"_virt_agg_sum_4518379598128005\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_8833754379564371\" + \"questionable\".\"_virt_agg_sum_4518379598128005\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"friday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_9238538473336606\" + \"questionable\".\"_virt_agg_sum_5446384850356435\" ) / nullif((lead(\"yummy\".\"_virt_agg_sum_9238538473336606\" + \"questionable\".\"_virt_agg_sum_5446384850356435\", 53) over (order by \"questionable\".\"date_week_seq\" asc )), 0),2) as \"sunday_increase\"
 FROM
     \"yummy\"
     INNER JOIN \"questionable\" on \"yummy\".\"date_week_seq\" = \"questionable\".\"date_week_seq\")

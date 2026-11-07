@@ -1,11 +1,11 @@
 query_id = "08"
-gen_length = 1522
+gen_length = 1533
 preql_size = 312
 comp_size = 949
 generated_sql = """
 SELECT
     year(\"order_orders\".\"o_orderdate\") as \"o_year\",
-    sum(CASE WHEN UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'BRAZIL' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) / sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"mkt_share\"
+    sum(CASE WHEN UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'BRAZIL' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) / nullif(sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")), 0) as \"mkt_share\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"part\" as \"part_part\" on \"lineitem\".\"l_partkey\" = \"part_part\".\"p_partkey\"

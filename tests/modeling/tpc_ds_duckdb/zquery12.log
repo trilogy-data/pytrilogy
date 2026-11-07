@@ -1,5 +1,5 @@
 query_id = "12"
-gen_length = 2075
+gen_length = 2086
 preql_size = 664
 comp_size = 749
 generated_sql = """
@@ -41,7 +41,7 @@ SELECT
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     \"cheerful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     \"cheerful\".\"itemrevenue\" as \"itemrevenue\",
-    (\"cheerful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
+    (\"cheerful\".\"itemrevenue\" * 100.0) / nullif(\"cooperative\".\"itemclassrevenue\", 0) as \"revenueratio\"
 FROM
     \"cheerful\"
     INNER JOIN \"cooperative\" on \"cheerful\".\"web_sales_item_class\" is not distinct from \"cooperative\".\"web_sales_item_class\"

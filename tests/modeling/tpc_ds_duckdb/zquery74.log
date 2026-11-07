@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 2838
+gen_length = 2860
 preql_size = 1416
 comp_size = 2151
 generated_sql = """
@@ -37,10 +37,10 @@ GROUP BY
     1
 HAVING
     sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / nullif(sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END), 0)
 	ELSE null
 	END ) > ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / nullif(sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END), 0)
 	ELSE null
 	END )
 )

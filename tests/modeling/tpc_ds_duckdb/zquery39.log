@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 2135
+gen_length = 2179
 preql_size = 1145
 comp_size = 1546
 generated_sql = """
@@ -29,7 +29,7 @@ SELECT
     \"wakeful\".\"mean1\" as \"mean1\",
     CASE
 	WHEN \"wakeful\".\"mean1\" = 0 THEN null
-	ELSE \"wakeful\".\"stdev1\" / \"wakeful\".\"mean1\"
+	ELSE \"wakeful\".\"stdev1\" / nullif(\"wakeful\".\"mean1\", 0)
 	END as \"cov1\",
     \"wakeful\".\"inventory_warehouse_sk\" as \"wsk2\",
     \"wakeful\".\"inventory_item_sk\" as \"isk2\",
@@ -37,17 +37,17 @@ SELECT
     \"wakeful\".\"mean2\" as \"mean2\",
     CASE
 	WHEN \"wakeful\".\"mean2\" = 0 THEN null
-	ELSE \"wakeful\".\"stdev2\" / \"wakeful\".\"mean2\"
+	ELSE \"wakeful\".\"stdev2\" / nullif(\"wakeful\".\"mean2\", 0)
 	END as \"cov2\"
 FROM
     \"wakeful\"
 WHERE
     CASE
 	WHEN \"wakeful\".\"mean1\" = 0 THEN null
-	ELSE \"wakeful\".\"stdev1\" / \"wakeful\".\"mean1\"
+	ELSE \"wakeful\".\"stdev1\" / nullif(\"wakeful\".\"mean1\", 0)
 	END > 1 and CASE
 	WHEN \"wakeful\".\"mean2\" = 0 THEN null
-	ELSE \"wakeful\".\"stdev2\" / \"wakeful\".\"mean2\"
+	ELSE \"wakeful\".\"stdev2\" / nullif(\"wakeful\".\"mean2\", 0)
 	END > 1
 
 ORDER BY 
