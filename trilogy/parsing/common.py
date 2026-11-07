@@ -711,8 +711,11 @@ def concept_is_relevant(
         and all(c in other_addresses for c in concept.keys)
     ):
         return False
-    if concept.purpose in (Purpose.METRIC,) and all(
-        c in other_addresses for c in concept.grain.components
+    # a rowset member of an aggregate is its own grain, not covered by itself
+    if (
+        concept.purpose in (Purpose.METRIC,)
+        and not concept.grain.components & concept.equivalent_addresses
+        and all(c in other_addresses for c in concept.grain.components)
     ):
         return False
     if (

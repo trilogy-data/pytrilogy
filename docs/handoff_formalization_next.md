@@ -34,7 +34,9 @@ orders by; area 4), and `SelectGrain.lean` (0.3.462: an aggregate with no
 `by` is at the select's raw grain, a window's order included; this corrects
 0.3.459's pin; area 4), and `SelectGrain.lean` extended (0.3.463: a select of
 an aggregate `by` fixed keys groups by its value and returns distinct
-tuples; area 4).
+tuples; area 4), and `SelectGrain.lean` extended again (0.3.464: an
+aggregate of a fixed value, a rowset member of one, and a persisted copy of
+one read the value once per key; area 4).
 
 ## The recipe
 
@@ -366,6 +368,27 @@ tuples; area 4).
       skip for identity dedups looked load-bearing until it was rerun after
       the commit, and was dropped.
 
+21. **Lessons from the fixed-value lifecycle round (`SelectGrain.lean`, 0.3.464).**
+    - Follow a value through its life, not just its first select: filtered,
+      gated, wrapped in a rowset, aggregated, persisted and read back. The
+      positions the previous round listed (WHERE, HAVING, rowset) held on
+      main (0 of 1,920); every bug was one step further on (an aggregate of
+      the value, a rowset member's outer grain, a read back after persist).
+    - Spell the same value five ways (`s`, `t <- s`, `t <- s + 0`, `(s + 0)`,
+      inline) and diff them before writing an oracle. Parentheses alone
+      (`sum((sum(y) by g))`) changed the answer; the twins pointed straight
+      at the walk that treats a `BuildConcept` argument and a `Function` one
+      differently.
+    - A twin can share the bug. `t <- s` was the "named" baseline and was
+      itself wrong beside `g, h`; only the reference showed which side of a
+      disagreement was right.
+    - A persisted copy is a claim the planner reads back. Diff every read
+      before and after a `persist`; a table storing a `by` value at a finer
+      grain looked like a summary partial to the rollup matcher, and three
+      unrelated reads went wrong at once.
+    - Helper names collide in `strategy_builder.py` (a second
+      `_reads_aggregate` silently shadowed the first); grep before naming.
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -652,9 +675,20 @@ placement); `nulls auto` is the engine's own. Leads left:
   - A FINAL dedup keeps the hidden join keys a node exposed (q30 groups by
     `return_customer.sk`, q79 by `pos_address.sk`, beside the projected
     columns), so it groups by more than the tuple needs.
-  - The suite covers a value beside dimensions and bare `count`/`sum`; a
-    WHERE or HAVING over the value, and the value inside a rowset, are not
-    in it.
+  - Done in 0.3.464: WHERE and HAVING over the value, rowsets of it, an
+    aggregate of it or of a scalar of it in any spelling, a rowset member as
+    an outer key, and a persisted copy read back
+    (`tests/core/test_fixed_value_lifecycle_laws.py`). Leads left:
+    - A table storing `sum(y) by g` at grain `(g, h)` is now never read for
+      `s`: the planner falls back to the base rows. `max(p.s)` grouped by a
+      target holding `g` (any value of a repeated one) would answer from the
+      table; that is an efficiency, not a correctness, gap.
+    - Ranks and other windows ordered by a scalar of the value (`rank g by
+      (s + 0)`) are not in the suite; the twins for them parse only in the
+      named spelling.
+    - A rowset member keeps its source's METRIC purpose. The relevance fix
+      treats a member that is its own grain as a key; a member at a coarser
+      grain than the rowset still reads as covered by its grain.
 - **Done in 0.3.458: a value window's keys were its operand**, and a group by
   a window's value grouped by those keys (`select l, count(id)` counted by
   `x`; `Windows.regroup_by_value_exact`, `tests/windows/test_window_group_laws.py`).

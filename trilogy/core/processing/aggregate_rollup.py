@@ -51,8 +51,16 @@ def _datasource_has_matching_rollup_aggregate(
     signature = concept.rollup_signature
     if signature is None:
         return False
+    # a stored copy of the value itself is read as the value, never re-summed
     if any(
-        output.rollup_signature == signature for output in datasource.output_concepts
+        output.canonical_address == concept.canonical_address
+        and not datasource.holds_partial(output)
+        for output in datasource.output_concepts
+    ):
+        return False
+    if any(
+        output.rollup_signature == signature and datasource.holds_partial(output)
+        for output in datasource.output_concepts
     ):
         return True
     filtered = concept.filtered_rollup

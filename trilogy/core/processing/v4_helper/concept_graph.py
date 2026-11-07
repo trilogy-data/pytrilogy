@@ -1371,13 +1371,13 @@ def _aggregate_input_grain(
                     or c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
                 )
             ]
-            # A scalar of an inner aggregate's own grain keys is evaluated on
-            # that aggregate's rows; its own (finer) grain would fan them out.
+            # An inner aggregate is read at its own grain, as a bare one is
+            # (`sum(s + 0)` is `sum(s)`), and a scalar of those keys on its
+            # rows; that scalar's own (finer) grain would fan them out.
             inner_grain = _inner_aggregate_grain(arg)
-            on_inner = [c for c in sub_args if _function_of(c, inner_grain)]
-            if on_inner:
+            if inner_grain:
                 input_grain.update(inner_grain)
-                sub_args = [c for c in sub_args if c not in on_inner]
+                sub_args = [c for c in sub_args if not _function_of(c, inner_grain)]
         else:
             continue
         for sub in sub_args:
@@ -1422,9 +1422,15 @@ def _inner_aggregate_grain(arg: BuildConceptArgs) -> set[str]:
 
 
 def _function_of(concept: BuildConcept, keys: set[str]) -> bool:
+    """`concept` is fixed once `keys` are: a key, an aggregate `by` some of
+    them (`SelectGrain.fixed_on_keys`), or a scalar of those."""
     if concept.address in keys or concept.canonical_address in keys:
         return True
-    if concept.derivation != Derivation.BASIC or not keys:
+    if not keys:
+        return False
+    if concept.derivation == Derivation.AGGREGATE:
+        return set(concept.grain.components) <= keys
+    if concept.derivation != Derivation.BASIC:
         return False
     return all(_function_of(c, keys) for c in concept.concept_arguments)
 
