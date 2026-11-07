@@ -4494,13 +4494,16 @@ def _reads_inner_aggregate_rows(
         if c.address in primary_addrs and isinstance(c.lineage, BuildAggregateWrapper)
         for arg in _parent_supplied_args(c, primary_addrs)
     ]
-    return any(a.derivation == Derivation.AGGREGATE for a in args) and all(
-        (
-            set(a.grain.components) <= grain
-            if a.derivation == Derivation.AGGREGATE
-            else _function_of(a, set(grain))
-        )
-        for a in args
+    return any(_scalar_of_aggregate(a) for a in args) and all(
+        _function_of(a, set(grain)) for a in args
+    )
+
+
+def _scalar_of_aggregate(concept: BuildConcept) -> bool:
+    if concept.derivation == Derivation.AGGREGATE:
+        return True
+    return concept.derivation == Derivation.BASIC and any(
+        _scalar_of_aggregate(c) for c in concept.concept_arguments
     )
 
 

@@ -2333,9 +2333,21 @@ class BuildDatasource:
         if signature is None:
             return None
         for column in self.columns:
-            if column.concept.rollup_signature == signature:
+            if column.concept.rollup_signature == signature and self.holds_partial(
+                column.concept
+            ):
                 return column
         return None
+
+    def holds_partial(self, concept: BuildConcept) -> bool:
+        """A column `by` keys the grain does not fall within holds that value
+        once per row, repeated, not a partial a re-aggregation can sum
+        (`SelectGrain.fixed_value_per_row_double_counts`)."""
+        lineage = concept.lineage
+        if not isinstance(lineage, BuildAggregateWrapper) or not lineage.by:
+            return True
+        by = {c.address for c in lineage.by} | {c.canonical_address for c in lineage.by}
+        return self.grain.components <= by
 
     def filtered_column_for(
         self, concept: BuildConcept
@@ -2345,7 +2357,9 @@ class BuildDatasource:
         if filtered is None:
             return None
         for column in self.columns:
-            if column.concept.rollup_signature == filtered[0]:
+            if column.concept.rollup_signature == filtered[0] and self.holds_partial(
+                column.concept
+            ):
                 return column
         return None
 
