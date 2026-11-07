@@ -919,7 +919,11 @@ a design decision or a bug.
   sum(total_price) desc <= 10 select count(order.id)`) had relied on the
   first-argument pin: its select has no keys, so the sum is the total
   (`SelectGrain.bare_empty_grain_is_total`) and every customer ties; it now
-  writes `sum(total_price) by customer`.
+  writes `sum(total_price) by customer`. On main, 144 of 256 cases in
+  `tests/windows/test_window_order_aggregate_laws.py` and 22 of 416 in
+  `tests/windows/test_window_order_expression_laws.py` (a `by g, p` order
+  named or inline, per row, alone or beside `count`; a projected `sum(y)`
+  beside the rank ordered by it; a WHERE gate) answer wrong; none now.
 
 ## Limits
 
