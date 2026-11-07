@@ -84,8 +84,10 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
+    # the rank's count is at the select grain, (language, year)
+    # (`SelectGrain.bare_is_select_grain`), so it ranks the select's own rows
     assert re.search(
-        r"`[a-z]+`\.`github_language` as `github_language`,\s+"
+        r"`[a-z]+`\.`github_language` as `github_language`,(?:\s+`[a-z]+`\.`\w+` as `\w+`,)*\s+"
         r"rank\(\) over \(order by `[a-z]+`\.`_virt_agg_count_\d+` desc \) as `popularity_rank`",
         generated,
     ), generated

@@ -99,6 +99,7 @@ from trilogy.core.models.author import (
     UnionSelectLineage,
     WhereClause,
     WindowItem,
+    raw_select_grain,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -4115,15 +4116,20 @@ class Factory:
 
     def _window_order_by_items(self, order_by: list) -> list:
         """A bare (no ``by``) aggregate in a window's ORDER BY is at the
-        select's grain, like any other (`SelectGrain.bare_is_select_grain`), so it is
-        left bare to resolve there. Under the select's grouping spec it
-        computes in that single ROLLUP/CUBE/GROUPING SETS pass (inferred-key
-        specs stay bare and pick up the resolved select grain plus the mode in
-        ``__build_concept``). Always copy — the OrderItem may belong to a
-        shared authored definition, and an in-place ``by`` leaks across
-        statements."""
+        select's raw grain, like any other (`SelectGrain.bare_is_select_grain`),
+        so it is left bare to resolve there, unless the select grain holds a
+        key computed from such a window (`top_x_by_metric`): that key is read
+        as the window's own keys, or the aggregate would be grouped by itself.
+        Under the select's grouping spec it computes in that single
+        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick
+        up the resolved select grain plus the mode in ``__build_concept``).
+        Always copy — the OrderItem may belong to a shared authored
+        definition, and an in-place ``by`` leaks across statements."""
         spec = self.select_grouping
-        if spec is None or not spec.by:
+        if spec is not None and not spec.by:
+            return list(order_by)
+        raw = self._raw_select_grain() if spec is None else None
+        if spec is None and raw is None:
             return list(order_by)
         out = []
         for x in order_by:
@@ -4133,17 +4139,26 @@ class Factory:
                 and not expr.by
                 and expr.grouping == AggregateGroupingMode.STANDARD
             ):
-                x = OrderItem(
-                    expr=AggregateWrapper(
+                pinned = (
+                    AggregateWrapper(
                         function=expr.function,
                         by=list(spec.by),
                         grouping=spec.mode,
                         grouping_sets=[list(g) for g in spec.grouping_sets],
-                    ),
-                    order=x.order,
+                    )
+                    if spec is not None
+                    else AggregateWrapper(function=expr.function, by=list(raw or []))
                 )
+                x = OrderItem(expr=pinned, order=x.order)
             out.append(x)
         return out
+
+    def _raw_select_grain(self) -> list[ConceptRef] | None:
+        """`raw_select_grain`, when it differs from the select grain."""
+        raw = raw_select_grain(self.grain, self.environment)
+        if raw == list(self.grain.component_order):
+            return None
+        return [c.reference for a in raw if (c := self.environment.concepts.get(a))]
 
     @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
