@@ -125,6 +125,12 @@ from trilogy.core.models.datasource import (
     RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.core.window_order import (
+    pin_order_aggregates,
+    pin_to,
+    pin_to_spec,
+    window_anchors,
+)
 from trilogy.utility import string_to_hash
 
 # TODO: refactor to avoid these
@@ -4113,8 +4119,11 @@ class Factory:
                 out.append(built)
         return out
 
-    def _window_order_by_items(self, order_by: list, anchors: list) -> list:
-        """Resolve bare (no ``by``) aggregates in a window's ORDER BY.
+    def _window_order_by_items(
+        self, window: NumberingWindowItem | NavigationWindowItem, anchors: list
+    ) -> list:
+        """Resolve the bare (no ``by``) aggregates a window's ORDER BY reads,
+        inline, nested in an expression or by name (`window_order`).
 
         Under the select's grouping spec they compute in that single
         ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick up
@@ -4125,35 +4134,23 @@ class Factory:
         Always copy — the OrderItem may belong to a shared authored definition,
         and an in-place ``by`` leaks across statements."""
         spec = self.select_grouping
+        if spec is not None:
+            if not spec.by:
+                return list(window.order_by)
+            pin = pin_to_spec(spec)
+        elif anchors:
+            pin = pin_to(anchors)
+        else:
+            return list(window.order_by)
         out = []
-        for x in order_by:
-            expr = x.expr
-            if (
-                isinstance(expr, AggregateWrapper)
-                and not expr.by
-                and expr.grouping == AggregateGroupingMode.STANDARD
-            ):
-                if spec is not None:
-                    if spec.by:
-                        expr = AggregateWrapper(
-                            function=expr.function,
-                            by=list(spec.by),
-                            grouping=spec.mode,
-                            grouping_sets=[list(g) for g in spec.grouping_sets],
-                        )
-                elif anchors:
-                    expr = AggregateWrapper(function=expr.function, by=list(anchors))
-            if expr is not x.expr:
-                x = OrderItem(expr=expr, order=x.order)
-            out.append(x)
+        for x in window.order_by:
+            expr = pin_order_aggregates(x.expr, pin, self.environment.concepts.get)
+            out.append(x if expr is x.expr else OrderItem(expr=expr, order=x.order))
         return out
 
     @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
-        # An AggregateWrapper with empty `by` inside the order_by needs an
-        # implicit grain — the rank's arguments and partition define the row.
-        anchors = [*base.arguments, *base.over] if base.arguments else []
-        final_by = self._window_order_by_items(base.order_by, anchors)
+        final_by = self._window_order_by_items(base, window_anchors(base))
         return BuildNumberingWindowItem(
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
@@ -4170,7 +4167,7 @@ class Factory:
         anchors = (
             [content, *base.over] if isinstance(content, (ConceptRef, Concept)) else []
         )
-        final_by = self._window_order_by_items(base.order_by, anchors)
+        final_by = self._window_order_by_items(base, anchors)
         return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),

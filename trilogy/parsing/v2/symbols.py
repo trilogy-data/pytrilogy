@@ -51,6 +51,26 @@ def find_concept_literals(element: SyntaxElement) -> list[SyntaxNode]:
     return result
 
 
+def find_order_identifiers(element: SyntaxElement) -> list[SyntaxToken]:
+    """The bare names an ORDER BY term reads (`over (order by s)`): tokens, not
+    CONCEPT_LITERAL nodes, so `find_concept_literals` misses them."""
+    result: list[SyntaxToken] = []
+    stack: list[SyntaxElement] = [element]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, SyntaxNode):
+            stack.extend(node.children)
+        elif node.kind == SyntaxTokenKind.ORDER_IDENTIFIER:
+            result.append(node)
+    return result
+
+
+def _qualified(name: str, namespace: str) -> str:
+    if "." not in name and namespace == DEFAULT_NAMESPACE:
+        return f"{DEFAULT_NAMESPACE}.{name}"
+    return name
+
+
 def find_join_clause_literals(element: SyntaxElement) -> list[SyntaxNode]:
     """Return CONCEPT_LITERAL nodes that appear inside JOIN_CLAUSE subtrees.
 
@@ -82,10 +102,7 @@ def extract_concept_name_from_literal(node: SyntaxNode, namespace: str) -> str:
                 "Concept literal requires a leading identifier token", node
             )
         )
-    name = node.children[0].value
-    if "." not in name and namespace == DEFAULT_NAMESPACE:
-        name = f"{DEFAULT_NAMESPACE}.{name}"
-    return name
+    return _qualified(node.children[0].value, namespace)
 
 
 def find_select_transform_targets(element: SyntaxElement) -> list[str]:
@@ -326,9 +343,15 @@ def extract_dependencies(block: SyntaxNode, environment: Environment) -> list[st
     kind = inner.kind
     namespace = environment.namespace or DEFAULT_NAMESPACE
 
+    order_names: list[str] = []
     if kind == SyntaxNodeKind.CONCEPT_DERIVATION:
         syntax = ConceptDerivationSyntax.from_node(inner)
         literals = find_concept_literals(syntax.source)
+        # a window's `order by s` reads `s` too: hydrate it first
+        order_names = [
+            _qualified(t.value.strip(), namespace)
+            for t in find_order_identifiers(syntax.source)
+        ]
         if isinstance(syntax.name, SyntaxNode):
             literals.extend(find_concept_literals(syntax.name))
     elif kind == SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION:
@@ -357,7 +380,9 @@ def extract_dependencies(block: SyntaxNode, environment: Environment) -> list[st
     else:
         return []
 
-    return [extract_concept_name_from_literal(lit, namespace) for lit in literals]
+    return [
+        extract_concept_name_from_literal(lit, namespace) for lit in literals
+    ] + order_names
 
 
 def topological_sort_plans(

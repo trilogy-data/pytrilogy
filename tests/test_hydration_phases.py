@@ -9,7 +9,7 @@ import pytest
 
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models.author import Concept
+from trilogy.core.models.author import Concept, UndefinedConcept
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
@@ -293,6 +293,22 @@ class TestExtractDependencies:
         block = doc.forms[0]
         deps = extract_dependencies(block, env)
         assert "local.x" in deps
+
+    def test_finds_window_order_identifier(self):
+        doc = parse_syntax("auto r <- rank(g) over (order by s desc);")
+        deps = extract_dependencies(doc.forms[0], Environment())
+        assert {"local.g", "local.s"} <= set(deps)
+
+
+def test_window_hydrates_after_the_name_it_orders_by():
+    env, _ = parse_text(
+        """key id int; property id.g string; property id.p string; property id.y int;
+auto s <- sum(y) by g, p; auto r <- rank(g) over (order by s desc);""",
+        Environment(),
+    )
+    window = env.concepts["local.r"]
+    assert not isinstance(window.lineage.order_by[0].expr, UndefinedConcept)
+    assert window.keys == {"local.g", "local.p"}
 
 
 def _fully_parse(text: str) -> NativeHydrator:
