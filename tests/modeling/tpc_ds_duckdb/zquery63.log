@@ -1,5 +1,5 @@
 query_id = "63"
-gen_length = 2617
+gen_length = 2646
 preql_size = 1382
 comp_size = 1795
 generated_sql = """
@@ -40,6 +40,10 @@ WHERE
 	ELSE null
 	END > 0.1
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     \"cheerful\".\"store_sales_item_manager_id\" asc,
     \"cooperative\".\"avg_monthly_sales\" asc,

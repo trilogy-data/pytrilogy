@@ -1613,7 +1613,7 @@ def test_group_to_grain_is_controlled_by_final_contract():
     )
     grouped_input = GroupNode(
         input_concepts=[customer_id, customer_name],
-        output_concepts=[customer_id, customer_name],
+        output_concepts=[customer_name],
         parents=[source],
         environment=env,
     )
