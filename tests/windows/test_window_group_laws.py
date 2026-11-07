@@ -4,7 +4,7 @@ window beside an aggregate groups the rows by the window's value
 ranks and projecting the rank splits one rank into a group per tuple
 (`Windows.group_by_tuple_splits_value`), and a value window's operand does not
 determine it at all (`Windows.lag_reads_rows_not_values`). Every case runs on
-DuckDB and SQLite, as an `auto` concept and inline, and must agree with the
+DuckDB, SQLite and ClickHouse, as an `auto` concept and inline, and must agree with the
 reference."""
 
 from typing import Any
@@ -18,12 +18,14 @@ from tests.windows.test_window_laws import (
     fixture,
     frame_value,
     make_rows,
+    new_executor,
     over_clause,
     partitions,
     rank_tuples,
+    seeds_for,
     sort_key,
 )
-from trilogy import Dialects, Environment
+from trilogy import Dialects
 
 BY_ID: list[Order] = [("id", False, False)]
 BY_X: list[Order] = [("x", False, False), ("id", True, False)]
@@ -120,10 +122,10 @@ def test_group_by_window_value(
 ) -> None:
     fn, args, partition, order = window
     text = query(window_sql(fn, args, partition, order), select, spelling)
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         window_values(rows, fn, args, partition, order)
-        executor = dialect.default_executor(environment=Environment())
+        executor = new_executor(dialect)
         got = sorted(
             map(tuple, executor.execute_text(fixture(rows) + text)[-1].fetchall()),
             key=repr,
