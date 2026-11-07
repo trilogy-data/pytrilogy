@@ -5107,8 +5107,10 @@ def _group_to_grain_if_required(
     only, but the GroupNode keeps any hidden grain keys the node exposed for
     sibling joins: grouping by them alongside the requested columns preserves
     those keys (and the join handle) without changing the dedup grain.
-    Aggregates/windows already sit at their own grain and are left untouched;
-    a MergeNode resolves its own grouping via `force_group`."""
+    Aggregates already sit at their own grain and are left untouched; a
+    window's rows are its own grain's, which a select of its value beside a
+    coarser column repeats (`select g, rank(x) over (order by g)`). A
+    MergeNode resolves its own grouping via `force_group`."""
     targets = _final_dedup_targets(node, mandatory_list, final_contract, environment)
     return node if targets is None else _dedup_to_targets(node, targets, environment)
 
@@ -5145,7 +5147,10 @@ def _final_dedup_targets(
         for concept in mandatory_list
         if concept.address in final_contract.output_addresses
     ]
-    if isinstance(node, (GroupNode, WindowNode)):
+    if isinstance(node, GroupNode) or (
+        isinstance(node, WindowNode)
+        and any(_reads_aggregate(o) for o in node.output_concepts)
+    ):
         return None
     if node.force_group and not _holds_summary_rows(node, contract_outputs):
         return None
@@ -5180,6 +5185,22 @@ def _final_dedup_targets(
             if any(output_covers(o, m) for m in contract_outputs)
         ]
     return targets
+
+
+def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:
+    """A window ordered by an aggregate that inherits the select's grain gives
+    the select its keys, not itself (`_grain_contribution`), so its rows
+    already sit at the select's grain."""
+    for arg in concept.concept_arguments:
+        if arg.address in seen:
+            continue
+        if isinstance(arg.lineage, BuildAggregateWrapper):
+            if arg.lineage.grain_inherited:
+                return True
+            continue
+        if arg.is_aggregate or _reads_aggregate(arg, seen | {arg.address}):
+            return True
+    return False
 
 
 def _dedup_to_targets(

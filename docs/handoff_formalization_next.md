@@ -28,7 +28,9 @@ value a persisted copy stores; area 3b), and `Cover.lean` §2 extended
 (0.3.450: `agg(x ? c)` read from a stored `agg(x)`; 0.3.452: a condition
 joined onto the summary, priced in the source search; area 1c), and
 `Cover.lean` §6 (0.3.457: a group by an unnested element, and counts by a
-value the summary key relates to; area 1c).
+value the summary key relates to; area 1c), and `Windows.lean` extended
+(0.3.458: grouping by a window's value; 0.3.459: an aggregate a window
+orders by; area 4).
 
 ## The recipe
 
@@ -275,6 +277,39 @@ value the summary key relates to; area 1c).
     - Ablate guards in combination. The `at_own_grain` guard in
       `_relation_rollup_source` ablates clean alone, and is what keeps 15
       cases right once the unnest-root marking is also off.
+
+17. **Lessons from the window-grouping round (`Windows.lean`, 0.3.458).**
+    - A lead that reads like a modelling nit can be a wrong answer one step
+      away. "A value window's keys are its operand" was recorded as why a
+      suite compared sets; grouping by the window (`select l, count(id)`)
+      counted by the operand. Before parking a lead, put the concept in each
+      position a select gives it: alone, beside an aggregate, beside its own
+      inputs.
+    - A substitution that is right for one consumer is wrong for another:
+      a window's keys stand in for it as a join key, never as a group key,
+      unless the map from keys to value is injective
+      (`Windows.group_by_tuple_splits_value`).
+    - A law suite that reuses a cached executor across cases shares its
+      environment: an `auto w` from one case was still defined in the next,
+      and the failures moved with `-n`. Give each case a fresh environment
+      when the query defines concepts.
+
+18. **Lessons from the order-aggregate round (`Windows.lean`, 0.3.459).**
+    - A parse-time rule and the build step it predicts must agree. The
+      grain contribution treated every aggregate under a window as
+      inheriting the select's grain, while the build already pinned a bare
+      order aggregate to the window's anchor; the exemption was written
+      against the parse-time view and kept the old split for shapes the
+      build had fixed. `_pinned_by_window` now names the same condition as
+      `_window_order_by_items`.
+    - A correctness fix can be an efficiency fix: pinning the order
+      aggregate to the select's own groups let the plan read it from the
+      GROUP BY, and a test that pinned the old join (`test_names`) was
+      pinning the wrong answer's plan. Read the SQL a shape test holds
+      before rebaselining it.
+    - An existing law suite's oracle can encode the bug. The rollup suite's
+      window oracle summed per the window content alone ("at the window
+      content's grain"); it now sums per the tuple ranked.
 
 ## Candidate areas
 
@@ -556,11 +591,25 @@ placement); `nulls auto` is the engine's own. Leads left:
   `(c, NULL)` comes back three times. The FINAL dedup skips a GroupNode
   contributor ("aggregates sit at their own grain"). Decide whether the
   select is the distinct tuples, as `select g, x` is.
-- **A value window's keys are its operand.** `lag(x)` gets keys `{x}`, though
-  two rows with the same `x` lag differently; the statement grain of `select
-  lag(x) over (order by id)` is then `{x}` while the rows are per `id`. The
-  law suite compares value windows as sets for this reason. The window's
-  grain (`{id}`) is right; its keys are not.
+- **Done in 0.3.458: a value window's keys were its operand**, and a group by
+  a window's value grouped by those keys (`select l, count(id)` counted by
+  `x`; `Windows.regroup_by_value_exact`, `tests/windows/test_window_group_laws.py`).
+  Done in 0.3.459: a window ordered by a `by`-pinned aggregate, or by a
+  bare one the build pins, groups by its value, and the bare one is pinned
+  to the window's arguments and partition, not its first argument
+  (`Windows.order_aggregate_per_partition`,
+  `tests/windows/test_window_order_aggregate_laws.py`). Left, both still
+  giving the select the window's keys and so splitting a tied rank:
+  - a window ordered by a NAMED aggregate that inherits the select's grain
+    (`auto s <- sum(y); rank(g) over (order by s)`): the build pins only an
+    inline wrapper. Pinning the reference needs a per-window copy of `s`.
+  - an order expression over bare aggregates (`order by sum(y) / count(id)`):
+    `_window_order_by_items` pins only a top-level wrapper. Pinning nested
+    ones changes `test_rank_over_projected_aggregate_ratio_no_recursion`'s
+    grain (`{item, channel}`), which a decision should precede.
+  - `lag`/`lead` ordered by an aggregate navigate the operand's rows, so
+    ties in the aggregate leave their order to the engine; the suite does
+    not cover them.
 - **SQL Server orders by a select alias inside the NULL flag.** T-SQL
   resolves an alias only as a bare ORDER BY term, so `CASE WHEN "alias" IS
   NULL ...` fails where the FINAL orders by a column derived in it. No

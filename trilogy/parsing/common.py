@@ -6,6 +6,7 @@ from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicCo
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
     NULL_INTRODUCING_FUNCTIONS,
+    AggregateGroupingMode,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -747,9 +748,10 @@ def _grain_contribution(
     - ALIAS: a rename of its source — recurse on the source so a window/grouping
       source is substituted the same way it would be if referenced directly
       (else an aliased window enters the grain as itself → build recursion).
-    - WINDOW: contribute the window's keys (partition + anchor), not the
-      row-distinct output whose order_by aggregate would otherwise be grouped by
-      this very output.
+    - WINDOW reading an aggregate: contribute the window's keys, not the
+      output whose order_by aggregate would otherwise be grouped by this very
+      output. Any other window is itself: a select groups by its value, and
+      its keys would group by its inputs (`Windows.regroup_by_value_exact`).
     - BASIC wrapping a window AND referencing `grouping()`: a post-aggregation row
       label, not a grain key; contribute the nested window's partition/anchor keys
       (q70). A window-wrapping CASE without grouping (e.g. `top_x_by_metric`) is a
@@ -773,7 +775,12 @@ def _grain_contribution(
         if source is None or arg.address in _seen:
             return [x]
         return _grain_contribution(source, lookup, environment, _seen | {x.address})
-    if x.derivation == Derivation.WINDOW and x.keys and environment:
+    if (
+        x.derivation == Derivation.WINDOW
+        and x.keys
+        and environment
+        and _reads_aggregate(x, lookup)
+    ):
         return [c for kaddr in x.keys if (c := lookup(kaddr)) is not None]
     if (
         x.derivation == Derivation.BASIC
@@ -787,6 +794,71 @@ def _grain_contribution(
             if (c := lookup(ref.address)) is not None
         ]
     return [x]
+
+
+def _reads_aggregate(
+    x: Concept,
+    lookup: Callable[[str], Concept | None],
+) -> bool:
+    """Whether `x` reads an aggregate that inherits the select's grain, inline
+    or named (a window ordered by `sum(y)`): the select cannot group by `x`.
+    One `by` fixed keys (`sum(y) by g`) is evaluated at its own grain."""
+    seen: set[int] = set()
+    stack: list[Any] = [x.lineage]
+    while stack:
+        node = stack.pop()
+        if node is None or isinstance(node, (str, int, float, bool)):
+            continue
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, (list, tuple)):
+            stack.extend(node)
+        elif isinstance(node, ConceptRef):
+            concept = lookup(node.address)
+            if concept is not None:
+                stack.append(concept.lineage)
+        elif isinstance(node, AggregateWrapper):
+            # an aggregate `by` fixed keys has its own grain, not the select's
+            if not node.by:
+                return True
+        elif (
+            isinstance(node, Function)
+            and node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return True
+        elif isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
+            stack.extend(
+                getattr(node, attr, None) for attr in ("content", "arguments", "over")
+            )
+            stack.extend(
+                o.expr for o in node.order_by if not _pinned_by_window(node, o.expr)
+            )
+        else:
+            stack.extend(
+                getattr(node, attr, None)
+                for attr in (*_SUBEXPR_ATTRS, "over", "order_by")
+            )
+    return False
+
+
+def _pinned_by_window(
+    window: NumberingWindowItem | NavigationWindowItem, expr: Any
+) -> bool:
+    """A bare aggregate a window orders by is evaluated per the tuple the
+    window ranks, not at the select's grain (the build's
+    `_window_order_by_items`)."""
+    anchored = (
+        bool(window.arguments)
+        if isinstance(window, NumberingWindowItem)
+        else isinstance(window.content, (ConceptRef, Concept))
+    )
+    return (
+        anchored
+        and isinstance(expr, AggregateWrapper)
+        and not expr.by
+        and expr.grouping == AggregateGroupingMode.STANDARD
+    )
 
 
 def concepts_to_grain_concepts_ordered(
@@ -1467,6 +1539,14 @@ def _references_grouping(concept: Concept, environment: Environment) -> bool:
     return walk(concept) or _window_internals_reference_grouping(concept.lineage)
 
 
+def _window_order_refs(parent: WindowItem) -> list:
+    refs: list = []
+    for item in parent.order_by or []:
+        relevant, _ = get_relevant_parent_concepts(item.expr)
+        refs += relevant
+    return refs
+
+
 def _numbering_window_to_concept(
     parent: NumberingWindowItem,
     name: str,
@@ -1481,21 +1561,20 @@ def _numbering_window_to_concept(
             return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     arg_addresses = [a.address for a in parent.arguments]
     over_refs = _window_over_refs(list(parent.over))
-    over_addresses = [y.address for y in over_refs]
+    order_refs = _window_order_refs(parent)
+    # the rank of a tuple of its arguments, partition and order columns
+    # (`Windows.group_by_tuple_splits_value`)
+    frame_addresses = [y.address for y in over_refs + order_refs]
     if arg_addresses:
         keys = (
-            Grain.from_concepts(arg_addresses + over_addresses, environment).components
+            Grain.from_concepts(arg_addresses + frame_addresses, environment).components
             or set()
         )
         keys = set(keys) | set(arg_addresses)
     else:
         keys = {f"{namespace}.{name}"}
 
-    grain_components: list = list(over_refs) + list(parent.arguments)
-    if parent.order_by:
-        for item in parent.order_by:
-            relevant, _ = get_relevant_parent_concepts(item.expr)
-            grain_components += relevant
+    grain_components: list = list(over_refs) + list(parent.arguments) + order_refs
     final_grain = (
         Grain.from_concepts(grain_components, environment) if arg_addresses else Grain()
     )
@@ -1579,12 +1658,16 @@ def _navigation_window_to_concept(
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     over_refs = _window_over_refs(list(parent.over))
+    order_refs = _window_order_refs(parent)
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
         local_purpose = Purpose.PROPERTY
+        # an ordered frame reads its neighbours: `lag(x)` is no function of `x`
+        # (`Windows.lag_reads_rows_not_values`)
         keys = Grain.from_concepts(
-            [bcontent.address] + [y.address for y in over_refs], environment
+            [bcontent.address] + [y.address for y in over_refs + order_refs],
+            environment,
         ).components
 
     # A navigation window (lead/lag) emits one value per input row, so its
@@ -1597,11 +1680,6 @@ def _navigation_window_to_concept(
         operand_grain: list = list(bcontent.grain.components)
     else:
         operand_grain = [bcontent.output]
-    order_refs: list = []
-    if parent.order_by:
-        for item in parent.order_by:
-            relevant, _ = get_relevant_parent_concepts(item.expr)
-            order_refs += relevant
     # The row stream is the operand's grain; a partition/order ref the stream
     # does not carry brings its own grain keys, so a frame property over tied
     # values cannot collapse distinct rows. `lag(distinct x)` keys the stream
