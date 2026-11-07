@@ -1263,6 +1263,45 @@ serially on both. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 `test_each_side_of_a_declared_join_is_asked_for_its_own_member` pins the
 split; it fails on `main`, where both edges hold both members.
 
+**Each edge is asked for the grain its parent can carry (part 39).** After
+part 38 every row-stream edge of a consumer still held the same
+`required_grain`, the consumer's whole input grain. Two readers then cut
+each edge's copy back to what its parent can hold: the merge plan
+intersected each side's `contracted` keys with `_widenable` (and what it
+computes off those columns), and `renders` intersected each group's asks
+with `_widenable` again. The contract now asks only that much
+(`join_plan.carryable`). An edge's `required_grain` is the part of the input
+grain its parent can carry, and its `relation_keys` are narrowed the same
+way. The consumer's whole grain moves to `GroupAttrs.input_grain`. The merge
+plan and `renders` read the asks as stated, with no `_widenable` of their
+own. The FINAL condition plan (`_condition_join_plan`), which hands every
+side one set of asks, narrows them per side with the same function.
+
+The consumer-wide readers keep the whole grain. A census over one suite run
+counted 7,682 consumers in 2,753 tests whose input grain holds a key that
+none of their edges can carry. So `needed`, `_joined_on`, the dimension
+projection and `may_project_dimension` read `input_grain`, not the union of
+the edges. Every input grain is set before any edge is narrowed, because
+what a parent can carry reads that parent's own `_joined_on`. The same
+census recomputed `_widenable` where `renders` reads it and compared it
+with the value at contract time. They never differed, so narrowing at the
+contract asks no stage-3 fact. 15,300 edges in 5,925 tests are narrowed.
+
+`test_input_contract_declares_projection_grain_with_barrier_sibling` now
+pins the per-edge grain: a store dimension beside a by-date aggregate is
+asked for `store.id`, not `ride_date`. On `main` it was asked for both.
+`test_no_edge_is_asked_for_a_key_its_parent_cannot_carry` pins the
+relation side: under `subset join rs.oid = order_id`, the extent scan keyed
+by `customer_id` was asked for `order_id`. It held no such column; the
+merge plan's intersection had hidden this.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+`test_assertion_laws::test_check_exact` reorders its generated assertions
+between two runs of this branch, and `test_validate_fix_types` changes its
+statement count from run to run in either direction. The rest is the known
+noise. Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans
+moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1270,13 +1309,12 @@ not built yet:
    joins; `node_joins` are not built from the pairings. A pair with an
    unattributed source now raises (part 37).
 2. The contract's sets are named, and each reader reads the ones it needs
-   (parts 34-36). The merge plan reads them per edge (part 37), and each
-   edge holds its own side of a statement relation (part 38). Every
-   row-stream edge of a consumer still holds the same `required_grain`,
-   though: it is computed once per consumer. Narrowing it per edge has to
-   read what each parent can source; the merge plan still drops what a side
-   cannot widen to (`_widenable`), and that intersection is what a per-edge
-   required grain would replace.
+   (parts 34-36). The merge plan reads them per edge (part 37), each edge
+   holds its own side of a statement relation (part 38), and each edge is
+   asked only for what its parent can carry (part 39). What is left is
+   `projection_grain` and `sourcing_keys`. Both are still computed once per
+   consumer and copied onto every edge, and `_satisfy_parent_projection_contract`
+   still decides at build time which parent can take the projection.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

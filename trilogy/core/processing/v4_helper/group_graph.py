@@ -79,7 +79,13 @@ from .functional_dependency import (
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .join_plan import authored_axes, final_predecessors, merge_axes, row_identity
+from .join_plan import (
+    authored_axes,
+    carryable,
+    final_predecessors,
+    merge_axes,
+    row_identity,
+)
 from .models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -1108,12 +1114,16 @@ def _refresh_input_contracts(
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     grouped_grains: GroupedRowMemo = {}
-    for gid in group_graph.nodes:
-        if gid == FINAL_NODE_ID or gid not in attrs:
-            continue
-        required_grain = _consumer_required_input_grain(
+    consumers = [
+        gid for gid in group_graph.nodes if gid != FINAL_NODE_ID and gid in attrs
+    ]
+    # every grain first: what a parent can carry reads its own input grain
+    for gid in consumers:
+        attrs[gid].input_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid, rows_pair_facts
         )
+    for gid in consumers:
+        input_grain = attrs[gid].input_grain
         # a bridge widens the consumer's sourcing and fixes the projection; no
         # pairing reads it (part 35)
         sourcing_keys = _shared_row_parent_join_keys(
@@ -1138,12 +1148,24 @@ def _refresh_input_contracts(
                 GroupInputContract(
                     parent_group_id=pred,
                     consumer_group_id=gid,
-                    required_grain=frozenset() if is_existence else required_grain,
+                    required_grain=(
+                        frozenset()
+                        if is_existence
+                        else carryable(
+                            group_graph, attrs, pred, input_grain, environment
+                        )
+                    ),
                     relation_keys=(
                         frozenset()
                         if is_existence
-                        else _edge_relation_keys(
-                            relation_keys, attrs[pred], environment
+                        else carryable(
+                            group_graph,
+                            attrs,
+                            pred,
+                            _edge_relation_keys(
+                                relation_keys, attrs[pred], environment
+                            ),
+                            environment,
                         )
                     ),
                     projection_grain=(
@@ -1156,7 +1178,7 @@ def _refresh_input_contracts(
                         else InputChannel.ROW_STREAM
                     ),
                     may_project_dimension=(
-                        bool(required_grain)
+                        bool(input_grain)
                         and not is_existence
                         and attrs[pred].derivation not in GROUPING_DERIVATIONS
                     ),
