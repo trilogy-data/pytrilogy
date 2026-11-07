@@ -3,7 +3,9 @@
     SQLCAP_OUT=<file.jsonl> PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p sqlcap tests ...
 
-One JSON line per test: {nodeid, outcome, sql: [...]}. See README.md.
+One JSON line per test: {nodeid, outcome, sql: [...]}. Under xdist each
+worker writes `<file>.<worker>.jsonl` beside it; `sqldiff.py` reads the set
+back as one capture. See README.md.
 """
 
 from __future__ import annotations
@@ -51,6 +53,12 @@ def pytest_configure(config) -> None:
     global _out
     path = os.environ.get("SQLCAP_OUT")
     if not path:
+        return
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker:
+        path = f"{path}.{worker}.jsonl"
+    elif getattr(config.option, "numprocesses", None):
+        # the xdist controller compiles nothing; its workers write the capture
         return
     # held for the session, closed in pytest_unconfigure
     _out = open(path, "w", encoding="utf-8", newline="\n")  # noqa: SIM115
