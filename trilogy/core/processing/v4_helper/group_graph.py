@@ -1035,23 +1035,39 @@ def _consumer_preserve_keys(
     lineage_parents: dict[str, set[str]],
     axes: frozenset[str],
     environment: BuildEnvironment,
-    grouped_grains: GroupedRowMemo,
 ) -> frozenset[str]:
-    """The keys every row parent of `gid` is asked to keep for the consumer's
-    merge: its required input grain, the shared keys bridging a dimension to
-    the fact rows, the grain of any parent computed off aggregates, the spans
-    of any region domain, and the statement relations tying a rowset to its
-    siblings. Each one shapes suite plans no row assertion catches; see
-    `docs/join_axis_audit_2026_10.md` part 33."""
-    rows = row_parents(group_graph, group_edges, gid)
+    """The keys every row parent of `gid` is asked to carry for the
+    consumer's merge to pair on: its required input grain, the shared keys
+    bridging a dimension to the fact rows, and the statement relations tying
+    a rowset to its siblings. Each shapes suite plans no row assertion
+    catches; see `docs/join_axis_audit_2026_10.md` parts 33 and 34."""
     bridge_keys = _shared_row_parent_join_keys(
         group_graph, group_edges, attrs, gid, key_addresses, lineage_parents, axes
     )
+    relation_keys = _rowset_relation_keys(
+        row_parents(group_graph, group_edges, gid),
+        attrs,
+        environment,
+        attrs[gid].aggregate_input_grain,
+    )
+    return required_grain | bridge_keys | relation_keys
+
+
+def _consumer_sibling_grains(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    grouped_grains: GroupedRowMemo,
+) -> frozenset[str]:
+    """The grains `gid`'s row parents already stand at, which a dimension
+    parent beside them is projected to rather than asked to carry: the grain
+    of any parent computed off aggregates, and the spans of any region
+    domain. No pairing reads them; they only fix the projection (part 34)."""
+    rows = row_parents(group_graph, group_edges, gid)
     # A non-grouping consumer pairing a GROUPING row parent (a population
-    # aggregate at grain G) with row-grain siblings joins them ON G; the
-    # aggregate's value repeats per G-group across the row stream (`sum(z)
-    # by x + w`: the sum CTE pairs to the w rows on x). Declare G so the
-    # sibling projections keep the bridge instead of degrading to 1=1.
+    # aggregate at grain G) with row-grain siblings reads the sibling at G
+    # (`sum(z) by x + w`: the w rows project to x before the sum joins).
     grouping_parent_grain: frozenset[str] = frozenset()
     if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(rows) >= 2:
         grouping_parent_grain = frozenset().union(
@@ -1063,21 +1079,10 @@ def _consumer_preserve_keys(
                 for pred in rows
             )
         )
-    # a region domain among the parents joins the rest on its spans: the
-    # axis every side keeps, whatever the consumer's grain
     domain_spans: frozenset[str] = frozenset().union(
         *(attrs[pred].extent_spans for pred in rows)
     )
-    relation_keys = _rowset_relation_keys(
-        rows, attrs, environment, attrs[gid].aggregate_input_grain
-    )
-    return (
-        required_grain
-        | bridge_keys
-        | grouping_parent_grain
-        | domain_spans
-        | relation_keys
-    )
+    return grouping_parent_grain | domain_spans
 
 
 def _refresh_input_contracts(
@@ -1115,7 +1120,9 @@ def _refresh_input_contracts(
             lineage_parents,
             axes,
             environment,
-            grouped_grains,
+        )
+        projection_grain = preserve_keys | _consumer_sibling_grains(
+            group_graph, group_edges, attrs, gid, grouped_grains
         )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
@@ -1129,6 +1136,9 @@ def _refresh_input_contracts(
                     consumer_group_id=gid,
                     required_grain=frozenset() if is_existence else required_grain,
                     preserve_keys=(frozenset() if is_existence else preserve_keys),
+                    projection_grain=(
+                        frozenset() if is_existence else projection_grain
+                    ),
                     channel=(
                         InputChannel.EXISTENCE
                         if is_existence

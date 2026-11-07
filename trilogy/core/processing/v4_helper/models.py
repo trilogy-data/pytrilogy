@@ -68,6 +68,9 @@ class GroupInputContract:
     consumer_group_id: str
     required_grain: frozenset[str] = frozenset()
     preserve_keys: frozenset[str] = frozenset()
+    # the grain a dimension parent is projected to beside a shaped sibling:
+    # the preserve keys and the grains its siblings' rows already stand at
+    projection_grain: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
     may_project_dimension: bool = False
 

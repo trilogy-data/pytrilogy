@@ -3614,7 +3614,7 @@ def _input_contract_projection_grain(
         if not contract.may_project_dimension:
             continue
         grain |= set(contract.required_grain)
-        grain |= set(contract.preserve_keys)
+        grain |= set(contract.projection_grain)
     return frozenset(grain)
 
 
