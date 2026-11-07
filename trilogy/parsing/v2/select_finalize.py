@@ -111,6 +111,11 @@ def _merged_local_concepts(
     merged: dict[str, Concept] = {}
     for address, concept in context.semantic_state.pending_concepts():
         merged[address] = concept
+    # This select's own outputs shadow an earlier binding of the same name
+    # (`x as n` then `count(y) -> n`), which is still pending in this parse.
+    for item in select.selection:
+        if isinstance(item.content, ConceptTransform):
+            merged[item.content.output.address] = item.content.output
     merged.update(select.local_concepts)
     return merged
 

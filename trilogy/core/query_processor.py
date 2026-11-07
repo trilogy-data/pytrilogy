@@ -1484,6 +1484,7 @@ def _process_chart_layer(
 
     role_map: dict[str, str] = {}
     field_labels: dict[str, str] = {}
+    field_titles: dict[str, str] = {}
     for binding in layer.bindings:
         safe = _binding_safe_address(binding, environment, output_fields)
         if safe not in output_fields:
@@ -1494,6 +1495,8 @@ def _process_chart_layer(
         role_map[binding.role] = safe
         if binding.alias is not None:
             field_labels[safe] = binding.alias
+        if binding.title is not None:
+            field_titles[safe] = binding.title
 
     def _single(role: str) -> str | None:
         return role_map.get(role)
@@ -1504,6 +1507,7 @@ def _process_chart_layer(
         layer_type=layer.layer_type,
         query=select,
         field_labels=field_labels,
+        field_titles=field_titles,
         x_fields=[x_field] if x_field else [],
         y_fields=[y_field] if y_field else [],
         color_field=_single("color"),

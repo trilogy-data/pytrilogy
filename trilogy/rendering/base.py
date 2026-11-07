@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from trilogy.core.statements.execute import ProcessedChartStatement
+from trilogy.core.statements.execute import (
+    ProcessedChartLayer,
+    ProcessedChartStatement,
+)
 
 
 def prettify_label(name: str | None) -> str | None:
@@ -13,6 +16,14 @@ def prettify_label(name: str | None) -> str | None:
     if not name:
         return name
     return name.replace("_", " ").title()
+
+
+def field_title(layer: ProcessedChartLayer, field: str) -> str | None:
+    """Display title for a field: its binding's `title` verbatim, else its
+    `as` alias or the field address, humanized."""
+    if field in layer.field_titles:
+        return layer.field_titles[field]
+    return prettify_label(layer.field_labels.get(field, field))
 
 
 class BaseRenderer(ABC):

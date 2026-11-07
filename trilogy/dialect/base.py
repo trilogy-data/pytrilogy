@@ -3140,11 +3140,10 @@ class BaseDialect:
             rendered_having = self.render_expr(having, cte) if having else None
 
         group_by = self.render_cte_group_by(cte, select_concept_index)
-        # A group formed from no rows (a grand total, or the `()` set of a
-        # rollup/cube) is no row, not one NULL (or 0) row.
-        if _aggregates_rows(cte) and (
-            not group_by or self._grouping_has_empty_set(cte)
-        ):
+        # The `()` set of a rollup/cube formed from no rows is no row. A plain
+        # grand total keeps SQL's one row (0 / NULL / empty array): a report
+        # over an empty rowset still has its totals.
+        if group_by and _aggregates_rows(cte) and self._grouping_has_empty_set(cte):
             rendered_having = " and ".join(
                 ([rendered_having] if rendered_having else []) + ["count(*) > 0"]
             )

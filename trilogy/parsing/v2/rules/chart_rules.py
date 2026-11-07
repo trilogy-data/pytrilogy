@@ -60,7 +60,8 @@ def chart_layer_binding(
         raise fail(node, f"Chart role '{role}' is missing a binding expression")
     expr = hydrate(expr_nodes[0])
     alias = identifiers[1].value if len(identifiers) > 1 else None
-    return ChartLayerBinding(role=role, expr=expr, alias=alias)
+    title = hydrate(expr_nodes[1]) if len(expr_nodes) > 1 else None
+    return ChartLayerBinding(role=role, expr=expr, alias=alias, title=title)
 
 
 def chart_layer_body(

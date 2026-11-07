@@ -834,7 +834,7 @@ chart
   set scale_y: log          -- linear|log|sqrt; applies to continuous value axes
   layer bar (
     x_axis <- region,
-    y_axis <- sum(revenue) as total,   -- computed bindings REQUIRE `as <name>`
+    y_axis <- sum(revenue) as total title 'Revenue ($)',  -- computed bindings REQUIRE `as <name>`; `title` sets the axis title
     color <- channel,                  -- one series per color, with legend
     group <- channel,                  -- grouped (side-by-side) bars; no legend
     annotation <- note                 -- per-mark text label
@@ -854,6 +854,8 @@ chart
   (side-by-side bars, or per-series split on line/point/area), `x_trellis` /
   `y_trellis` (small-multiple columns/rows), `annotation` (text label per
   mark). `geo` is reserved and not yet implemented.
+- **Titles**: axis/legend titles default to the humanized field (or `as`)
+  name; `<role> <- <expr> [as <name>] title '<text>'` sets one verbatim.
 - **`from select ...`** per layer is optional; without it the bindings become
   an implicit select. A bar chart's category order follows the select's
   `ORDER BY`; without one it sorts ascending.
@@ -897,7 +899,9 @@ Exports are themed like reports: per-statement `theme=` wins, else
 
 The `from` clause takes a bare statement — `from chart ...` or
 `from select ...` (no parentheses). `copy into csv|json|parquet ... from
-select ...` exports query data the same way. Prefer `copy into` for
+select ...` exports query data the same way (on DuckDB via `COPY`; on other
+dialects the rows are fetched and written client-side, to local paths only).
+Prefer `copy into` for
 individual image assets; prefer `trilogy render report.md` when you want one
 combined artifact.
 

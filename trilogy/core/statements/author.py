@@ -896,6 +896,7 @@ class ChartLayerBinding:
     role: str
     expr: Expr
     alias: str | None = None
+    title: str | None = None
 
 
 @dataclass

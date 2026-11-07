@@ -8,7 +8,7 @@ from trilogy.core.statements.execute import (
     ProcessedChartLayer,
     ProcessedChartStatement,
 )
-from trilogy.rendering.base import BaseRenderer, prettify_label
+from trilogy.rendering.base import BaseRenderer, field_title
 from trilogy.rendering.rich_types import (
     axis_label_expr,
     currency_symbol,
@@ -91,18 +91,12 @@ class AltairRenderer(BaseRenderer):
         return chart
 
     @staticmethod
-    def _field_title(layer: ProcessedChartLayer, field: str) -> str | None:
-        """Display title for a field: its binding's `as` alias when it has
-        one, else the field address itself, humanized either way."""
-        return prettify_label(layer.field_labels.get(field, field))
-
-    @classmethod
-    def _statement_title(cls, statement: ProcessedChartStatement) -> str | None:
+    def _statement_title(statement: ProcessedChartStatement) -> str | None:
         """A title from the first layer's value-axis field (y, else x)."""
         for layer in statement.layers:
             for fields in (layer.y_fields, layer.x_fields):
                 if fields:
-                    return cls._field_title(layer, fields[0])
+                    return field_title(layer, fields[0])
         return None
 
     def to_spec(
@@ -140,7 +134,11 @@ class AltairRenderer(BaseRenderer):
         data: list[dict],
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        df = self._coerce_temporals(self._coerce_decimals(pd.DataFrame(data)))
+        df = (
+            self._coerce_temporals(self._coerce_decimals(pd.DataFrame(data)))
+            if data
+            else self._empty_frame(layer)
+        )
         builders = {
             ChartType.BAR: self._bar,
             ChartType.BARH: self._bar,
@@ -160,6 +158,28 @@ class AltairRenderer(BaseRenderer):
                 f" Altair renderer. Supported types: {supported}."
             )
         return build(df, layer, scales)
+
+    def _empty_frame(self, layer: ProcessedChartLayer) -> Any:
+        """A zero-row frame typed from the select's output datatypes: Altair
+        infers an encoding type from the data and can't from an untyped empty
+        column, so an empty result would otherwise fail rather than draw empty."""
+        columns = layer.query.output_columns if layer.query else []
+        return pd.DataFrame(
+            {
+                c.safe_address: pd.Series(dtype=self._empty_dtype(c.datatype))
+                for c in columns
+            }
+        )
+
+    def _empty_dtype(self, datatype: Any) -> str:
+        if is_numeric(datatype):
+            return "float64"
+        base = datatype.type if isinstance(datatype, TraitDataType) else datatype
+        if base in self._TEMPORAL_TYPES:
+            return "datetime64[ns]"
+        if base == DataType.BOOL:
+            return "bool"
+        return "string"
 
     def _render_placement(self, placement) -> list[Any]:
         datum_key = "y" if placement.kind == ChartPlaceKind.HLINE else "x"
@@ -248,6 +268,9 @@ class AltairRenderer(BaseRenderer):
                 continue
             field = fields[0]
             field_type = self._field_type(layer, field)
+            if field_type is alt.Undefined and (data is None or field not in data):
+                # nothing to infer from; Altair would raise rather than guess
+                field_type = "nominal"
             sort: Any = alt.Undefined
             axis_kwargs: dict[str, Any] = {}
             datatype = field_datatype(layer, field)
@@ -282,7 +305,7 @@ class AltairRenderer(BaseRenderer):
             )
             encoding[channel] = cls(
                 field,
-                title=self._field_title(layer, field),
+                title=field_title(layer, field),
                 axis=alt.Axis(**axis_kwargs) if axis_kwargs else alt.Undefined,
                 type=field_type,
                 sort=sort,
@@ -291,12 +314,12 @@ class AltairRenderer(BaseRenderer):
         if layer.color_field:
             encoding["color"] = alt.Color(
                 layer.color_field,
-                title=self._field_title(layer, layer.color_field),
+                title=field_title(layer, layer.color_field),
                 scale=self._hex_color_scale(layer, data, layer.color_field),
             )
         if layer.size_field:
             encoding["size"] = alt.Size(
-                layer.size_field, title=self._field_title(layer, layer.size_field)
+                layer.size_field, title=field_title(layer, layer.size_field)
             )
         if layer.group_field:
             # grouped bars sit side by side within each category band; on
@@ -309,19 +332,19 @@ class AltairRenderer(BaseRenderer):
                     "yOffset" if layer.layer_type == ChartType.BARH else "xOffset"
                 )
                 encoding[offset_channel] = offset_cls(
-                    layer.group_field, title=self._field_title(layer, layer.group_field)
+                    layer.group_field, title=field_title(layer, layer.group_field)
                 )
             else:
                 encoding["detail"] = alt.Detail(layer.group_field)
         if layer.x_trellis_field:
             encoding["column"] = alt.Column(
                 layer.x_trellis_field,
-                title=self._field_title(layer, layer.x_trellis_field),
+                title=field_title(layer, layer.x_trellis_field),
             )
         if layer.y_trellis_field:
             encoding["row"] = alt.Row(
                 layer.y_trellis_field,
-                title=self._field_title(layer, layer.y_trellis_field),
+                title=field_title(layer, layer.y_trellis_field),
             )
         if layer.geo_field:
             raise NotImplementedError(
@@ -410,8 +433,23 @@ class AltairRenderer(BaseRenderer):
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
         encoding = self._encode(layer, data=data, scales=scales)
-        chart = alt.Chart(data).mark_line().encode(**encoding)
+        chart = (
+            alt.Chart(data)
+            .mark_line(point=self._has_lone_point(data, layer))
+            .encode(**encoding)
+        )
         return self._with_annotation(chart, data, layer, encoding)
+
+    @staticmethod
+    def _has_lone_point(data: Any, layer: ProcessedChartLayer) -> bool:
+        """Whether any series has a single row: a line needs two points to
+        draw, so such a series would otherwise show nothing at all."""
+        if not len(data):
+            return False
+        series = [f for f in (layer.color_field, layer.group_field) if f and f in data]
+        if not series:
+            return len(data) == 1
+        return bool((data.groupby(series, dropna=False).size() == 1).any())
 
     def _point(
         self,
@@ -505,12 +543,12 @@ class AltairRenderer(BaseRenderer):
             .mark_arc(innerRadius=50, outerRadius=120, strokeWidth=2)
             .encode(
                 theta=alt.Theta(
-                    angle, type="quantitative", title=self._field_title(layer, angle)
+                    angle, type="quantitative", title=field_title(layer, angle)
                 ),
                 color=alt.Color(
                     slices,
                     type="nominal",
-                    title=self._field_title(layer, slices),
+                    title=field_title(layer, slices),
                     scale=self._hex_color_scale(layer, data, slices),
                 ),
                 order=alt.Order(angle, sort="descending"),
@@ -562,7 +600,7 @@ class AltairRenderer(BaseRenderer):
         if not layer.x_fields:
             raise ValueError("A headline chart requires an x_axis binding.")
         field = layer.x_fields[0]
-        title = (self._field_title(layer, field) or field).upper()
+        title = (field_title(layer, field) or field).upper()
         positioned = data.reset_index(drop=True).assign(_headline_pos=range(len(data)))
         count = max(len(positioned), 1)
         font_size = max(22, min(52, round(165 / count)))

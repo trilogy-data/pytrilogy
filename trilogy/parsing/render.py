@@ -1403,6 +1403,8 @@ class Renderer:
         base = f"{arg.role} <- {self.to_string(arg.expr)}"
         if arg.alias:
             base += f" as {arg.alias}"
+        if arg.title is not None:
+            base += f" title {self.to_string(arg.title)}"
         return base
 
     @to_string.register
