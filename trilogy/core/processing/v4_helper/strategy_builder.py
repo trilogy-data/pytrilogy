@@ -5147,9 +5147,8 @@ def _final_dedup_targets(
         for concept in mandatory_list
         if concept.address in final_contract.output_addresses
     ]
-    if isinstance(node, GroupNode) or (
-        isinstance(node, WindowNode)
-        and any(_reads_aggregate(o) for o in node.output_concepts)
+    if isinstance(node, WindowNode) and any(
+        _reads_aggregate(o) for o in node.output_concepts
     ):
         return None
     if node.force_group and not _holds_summary_rows(node, contract_outputs):
@@ -5220,7 +5219,7 @@ def _dedup_to_targets(
     # with SUM rather than dedup it. Exact-grain materialized aggregates never
     # reach here: their scan already matches the target grain, so no group is
     # required.
-    rollup = [o for o in targets if o.is_aggregate and _is_rollable_aggregate(o)]
+    rollup = _stored_partials(node, targets)
     return GroupNode(
         output_concepts=targets,
         input_concepts=targets,
@@ -5231,6 +5230,17 @@ def _dedup_to_targets(
         hidden_concepts=set(node.hidden_concepts) if node.hidden_concepts else None,
         rollup_concepts=rollup or None,
     )
+
+
+def _stored_partials(
+    node: StrategyNode, targets: list[BuildConcept]
+) -> list[BuildConcept]:
+    """The rollable aggregates of `targets` that `node` holds as partials, at a
+    grain finer than their own. One at its own grain is final, a value of its
+    keys, which a coarser dedup groups by and never re-sums
+    (`SelectGrain.by_keys_split_tuple`)."""
+    rollable = [o for o in targets if o.is_aggregate and _is_rollable_aggregate(o)]
+    return pending_rollups(rollable, node.resolve().grain) if rollable else []
 
 
 def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:

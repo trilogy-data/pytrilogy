@@ -163,13 +163,13 @@ def _concept_coverage_addresses(
     # Aggregate by-keys are one-way: rows at the by-grain can be ROLLED UP to
     # produce the aggregate, but the aggregate's grain is coarser. Include them
     # when checking materialization paths; exclude when asking "is upstream
-    # already at this grain" (a regroup is still required). A rowset handle
-    # over an aggregate anchors rows the same way, at the handle's own grain
-    # (`bought.amt` at `{bought.city, bought.ticket, customer.sk}`).
+    # already at this grain": a value of its keys does not determine them
+    # (`SelectGrain.by_keys_split_tuple`). A rowset handle over an aggregate
+    # does anchor its rows, at the handle's own grain (`bought.amt` at
+    # `{bought.city, bought.ticket, customer.sk}`).
     if (
-        include_aggregate_by_keys
-        and (
-            concept.is_aggregate
+        (
+            (include_aggregate_by_keys and concept.is_aggregate)
             or (
                 isinstance(concept.lineage, BuildRowsetItem)
                 and concept.lineage.content.is_aggregate

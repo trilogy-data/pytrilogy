@@ -1,5 +1,5 @@
 query_id = "53"
-gen_length = 2672
+gen_length = 2701
 preql_size = 1408
 comp_size = 1808
 generated_sql = """
@@ -40,6 +40,10 @@ WHERE
 	ELSE null
 	END > 0.1
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     \"cooperative\".\"avg_quarterly_sales\" asc,
     \"cheerful\".\"sum_sales\" asc,

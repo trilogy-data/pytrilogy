@@ -1,12 +1,15 @@
 query_id = "91"
-gen_length = 2533
+gen_length = 2908
 preql_size = 1089
 comp_size = 982
 generated_sql = """
+
+WITH 
+abundant as (
 SELECT
-    \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_ID\" as \"call_center\",
-    \"cs_return_call_center_call_center\".\"CC_NAME\" as \"call_center_name\",
-    \"cs_return_call_center_call_center\".\"CC_MANAGER\" as \"manager\",
+    \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_ID\" as \"cs_return_call_center_id\",
+    \"cs_return_call_center_call_center\".\"CC_MANAGER\" as \"cs_return_call_center_manager\",
+    \"cs_return_call_center_call_center\".\"CC_NAME\" as \"cs_return_call_center_name\",
     sum(\"cs_catalog_returns\".\"CR_NET_LOSS\") as \"returns_loss\"
 FROM
     \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
@@ -24,6 +27,18 @@ GROUP BY
     2,
     3,
     \"cs_return_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\",
-    \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\"
+    \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\")
+SELECT
+    \"abundant\".\"cs_return_call_center_id\" as \"call_center\",
+    \"abundant\".\"cs_return_call_center_name\" as \"call_center_name\",
+    \"abundant\".\"cs_return_call_center_manager\" as \"manager\",
+    \"abundant\".\"returns_loss\" as \"returns_loss\"
+FROM
+    \"abundant\"
+GROUP BY
+    1,
+    2,
+    3,
+    4
 ORDER BY 
-    \"returns_loss\" desc nulls first"""
+    \"abundant\".\"returns_loss\" desc nulls first"""

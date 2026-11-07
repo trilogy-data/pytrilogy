@@ -1,5 +1,5 @@
 query_id = "81"
-gen_length = 7246
+gen_length = 7411
 preql_size = 2098
 comp_size = 1459
 generated_sql = """
@@ -94,6 +94,24 @@ SELECT
 FROM
     \"uneven\"
     INNER JOIN \"young\" on \"uneven\".\"cs_return_customer_sk\" = \"young\".\"cs_return_customer_sk\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    \"uneven\".\"cs_return_customer_sk\"
 ORDER BY 
     \"young\".\"cs_return_customer_id\" asc nulls first,
     \"young\".\"cs_return_customer_salutation\" asc nulls first,

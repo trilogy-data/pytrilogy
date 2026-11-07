@@ -1,11 +1,11 @@
 query_id = "23"
-gen_length = 6012
+gen_length = 6288
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
 
 WITH 
-young as (
+sparkling as (
 SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
@@ -17,45 +17,46 @@ FROM
 WHERE
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 ),
-macho as (
+scrawny as (
 SELECT
-    \"young\".\"sales_billing_customer_sk\" as \"_best_customers_best_customer_id\",
-    sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_overall\"
-FROM
-    \"young\"
-GROUP BY
-    1),
-sparkling as (
-SELECT
-    sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_in_window\"
-FROM
-    \"young\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"young\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    \"young\".\"sales_channel\" = 'STORE' and (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
-
-GROUP BY
-    \"young\".\"sales_billing_customer_sk\"),
-sweltering as (
-SELECT
-    max(\"sparkling\".\"customer_total_in_window\") as \"max_total_cmax\"
+    \"sparkling\".\"sales_billing_customer_sk\" as \"_best_customers_best_customer_id\",
+    sum(\"sparkling\".\"sales_quantity\" * \"sparkling\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
     \"sparkling\"
+GROUP BY
+    1),
+abhorrent as (
+SELECT
+    sum(\"sparkling\".\"sales_quantity\" * \"sparkling\".\"sales_sales_price\") as \"customer_total_in_window\"
+FROM
+    \"sparkling\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sparkling\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sparkling\".\"sales_channel\" = 'STORE' and (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
+
+GROUP BY
+    \"sparkling\".\"sales_billing_customer_sk\"),
+late as (
+SELECT
+    max(\"abhorrent\".\"customer_total_in_window\") as \"max_total_cmax\"
+FROM
+    \"abhorrent\"
 HAVING
     count(*) > 0
 ),
-friendly as (
+kaput as (
 SELECT
-    \"macho\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+    \"scrawny\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
-    \"macho\"
-    INNER JOIN \"sweltering\" on 1=1
+    \"scrawny\"
+    INNER JOIN \"late\" on 1=1
 WHERE
-    \"macho\".\"customer_total_overall\" > 0.5 * \"sweltering\".\"max_total_cmax\"
+    \"scrawny\".\"customer_total_overall\" > 0.5 * \"late\".\"max_total_cmax\"
 ),
 abundant as (
 SELECT
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\"
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    count(\"sales_store_sales_unified\".\"SS_TICKET_NUMBER\") as \"ss_combo_count\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
@@ -70,9 +71,17 @@ HAVING
 ),
 yummy as (
 SELECT
-    \"abundant\".\"sales_item_sk\" as \"frequent_items_frequent_item_id\"
+    \"abundant\".\"sales_item_sk\" as \"_frequent_items_frequent_item_id\"
 FROM
     \"abundant\"
+GROUP BY
+    1,
+    \"abundant\".\"ss_combo_count\"),
+vacuous as (
+SELECT
+    \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+FROM
+    \"yummy\"
 GROUP BY
     1),
 thoughtful as (
@@ -85,7 +94,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from vacuous where vacuous.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from kaput where kaput.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -97,7 +106,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from vacuous where vacuous.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from kaput where kaput.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -109,7 +118,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from vacuous where vacuous.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from kaput where kaput.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 ),
 questionable as (
 SELECT

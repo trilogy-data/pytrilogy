@@ -32,7 +32,9 @@ value the summary key relates to; area 1c), and `Windows.lean` extended
 (0.3.458: grouping by a window's value; 0.3.459: an aggregate a window
 orders by; area 4), and `SelectGrain.lean` (0.3.462: an aggregate with no
 `by` is at the select's raw grain, a window's order included; this corrects
-0.3.459's pin; area 4).
+0.3.459's pin; area 4), and `SelectGrain.lean` extended (0.3.463: a select of
+an aggregate `by` fixed keys groups by its value and returns distinct
+tuples; area 4).
 
 ## The recipe
 
@@ -341,6 +343,29 @@ orders by; area 4), and `SelectGrain.lean` (0.3.462: an aggregate with no
       symptom was a wrong key set three layers away (a join on `g` alone);
       look at the stored lineage before the planner.
 
+20. **Lessons from the fixed-aggregate round (`SelectGrain.lean`, 0.3.463).**
+    - Pair a value with its own twin. `sum(y) by id` over a table unique on
+      `id` is `y`; `select g, s, count(id)` with `s <- y + 0` and with
+      `s <- sum(y) by id` must agree, and they did not. A twin finds the
+      bug without an oracle and points at what differs (here, derivation).
+    - A coverage shortcut that holds for one target can be reached by
+      another. The group check stopped counting `by` keys only when every
+      target column was an aggregate, as if a non-aggregate beside one
+      anchored the rows to its keys; it does not.
+    - Removing a skip exposes what the skip hid. Letting the FINAL dedup a
+      grouped contributor reached `_dedup_to_targets`' re-sum, written for a
+      summary scan's partials, and re-summed a computed count under a HAVING
+      (TPC-DS q23 returned 91 rows for 4). Ask whether the aggregate is a
+      partial at the node's grain (`pending_rollups`) before re-summing it.
+    - Read a size-budget overrun against the rule before rebaselining. Six
+      TPC-DS queries grew a GROUP BY; each drops a key its aggregate is `by`,
+      so the dedup is the distinct-tuple rule, not a regression.
+    - An ablation that writes artifacts can poison the next one. A failing
+      TPC-DS size check restores the committed log, so ablating before
+      committing the rebaseline compared later ablations to the old sizes; a
+      skip for identity dedups looked load-bearing until it was rerun after
+      the commit, and was dropped.
+
 ## Candidate areas
 
 **Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
@@ -616,11 +641,20 @@ placement to a reference over random rows with NULLs and ties, on DuckDB and
 SQLite. `tests/dialect/test_null_order_renderings.py` pins every dialect's
 rendering. A plain direction places NULLs last everywhere (DuckDB's
 placement); `nulls auto` is the engine's own. Leads left:
-- **A select of an aggregate at a finer grain repeats tuples.** `select g,
-  sum(x) by id as s` declares grain `{s, g}` but returns one row per `id`, so
-  `(c, NULL)` comes back three times. The FINAL dedup skips a GroupNode
-  contributor ("aggregates sit at their own grain"). Decide whether the
-  select is the distinct tuples, as `select g, x` is.
+- **Done in 0.3.463: a select of an aggregate at a finer grain** returns the
+  distinct tuples, as `select g, x` does, and a bare aggregate beside it is
+  per that tuple (`SelectGrain.by_keys_split_tuple`,
+  `tests/core/test_fixed_aggregate_select_laws.py`). Leads left:
+  - TPC-DS q23's rowset `select item.sk having ss_combo_count > 4` now
+    groups twice: by `(item.sk, ss_combo_count)`, then by `item.sk`. The
+    first is the FINAL dedup of the rowset keeping the HAVING column; one
+    group would do.
+  - A FINAL dedup keeps the hidden join keys a node exposed (q30 groups by
+    `return_customer.sk`, q79 by `pos_address.sk`, beside the projected
+    columns), so it groups by more than the tuple needs.
+  - The suite covers a value beside dimensions and bare `count`/`sum`; a
+    WHERE or HAVING over the value, and the value inside a rowset, are not
+    in it.
 - **Done in 0.3.458: a value window's keys were its operand**, and a group by
   a window's value grouped by those keys (`select l, count(id)` counted by
   `x`; `Windows.regroup_by_value_exact`, `tests/windows/test_window_group_laws.py`).

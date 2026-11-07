@@ -159,19 +159,12 @@ def check_if_group_required(
         return GroupRequiredResponse(target_grain, comp_grain, False)
     # Expand target via concept-coverage so a MULTISELECT align identity
     # covers its source keys and a comp_grain carrying them does not look like
-    # extra grain. When EVERY target component is itself an aggregate (an
-    # aggregate-of-aggregate distribution: ``count(x) by y`` then ``count(y)``),
-    # exclude aggregate by-keys from coverage: nothing anchors the output to
-    # the by-grain, so an upstream at the by-grain is strictly finer and a
-    # regroup is required.
-    target_has_only_aggregates = bool(target_grain.components) and all(
-        environment.concepts[address].is_aggregate
-        for address in target_grain.components
-    )
+    # extra grain. An aggregate's by-keys are not covered: nothing anchors a
+    # value of them to them, so an upstream at the by-grain is finer and a
+    # regroup is required, whatever else the target holds
+    # (`SelectGrain.by_keys_split_tuple`).
     target_coverage = _grain_coverage_addresses(
-        target_grain,
-        environment,
-        include_aggregate_by_keys=not target_has_only_aggregates,
+        target_grain, environment, include_aggregate_by_keys=False
     )
     # A projected column is constant within its own output row, so it covers
     # itself and determines what it determines, whatever the target grain's

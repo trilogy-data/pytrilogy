@@ -1,4 +1,6 @@
 import Trilogy.Agg
+import Trilogy.Rows
+import Trilogy.Windows
 
 /-!
 # An unspecified aggregate is at the raw select grain
@@ -29,6 +31,14 @@ nor the tuple it ranks.
   select can group by.
 - `bare_within_partition`: when the select grain fixes a window's partition,
   the bare aggregate reads only that partition's rows.
+- An aggregate `by` fixed keys in a select (`select g, sum(y) by id as s`)
+  is a value of its keys (`fixed_on_keys`), and the select's grain is the
+  projected tuple, the value included. A bare aggregate beside it counts the
+  rows of each `(g, s)` tuple, the re-sum of the key groups with that value
+  (`bare_beside_fixed_value`), and each tuple is one row. Its keys refine the
+  tuple (`keys_refine_value`) but do not stand in for it: grouping by them
+  splits a tuple into one row per key (`by_keys_split_tuple`) and repeats it
+  (`fixed_value_rows_distinct`).
 - Two pins Trilogy applied to a window's order aggregate give another value:
   its first argument alone (`first_argument_pin_misreads`), and the tuple
   the window ranks (`window_tuple_pin_misreads`), for a select at a finer
@@ -131,6 +141,59 @@ theorem window_tuple_pin_misreads :
     let tuple : Int × Int × Int → Key := fun r => [r.2.1]
     eval (.by_ tuple) grain y rows (0, 0, 10) = 30 ∧
       eval .bare grain y rows (0, 0, 10) = 10 ∧ eval .bare grain y rows (1, 0, 20) = 20 := by
+  decide
+
+/-! ## An aggregate `by` fixed keys in a select -/
+
+/-- The tuple `select dims, s` projects, `s` an aggregate `by key`. -/
+def fixedTuple (dims key : α → Key) (v : α → Int) (rows : List α) (r : α) : Key :=
+  dims r ++ [eval (.by_ key) dims v rows r]
+
+/-- An aggregate `by key` is a value of `key`. -/
+theorem fixed_on_keys (key grain : α → Key) (v : α → Int) (rows : List α) (r₁ r₂ : α)
+    (h : key r₁ = key r₂) :
+    eval (.by_ key) grain v rows r₁ = eval (.by_ key) grain v rows r₂ := by
+  simp only [eval, Scope.keys, sumPer, h]
+
+/-- Rows sharing the dimensions and the aggregate's keys share the tuple. -/
+theorem keys_refine_value (dims key : α → Key) (v : α → Int) (rows : List α) (r₁ r₂ : α)
+    (hd : dims r₁ = dims r₂) (hk : key r₁ = key r₂) :
+    fixedTuple dims key v rows r₁ = fixedTuple dims key v rows r₂ := by
+  simp only [fixedTuple, hd, fixed_on_keys key dims v rows r₁ r₂ hk]
+
+/-- **A bare count beside a fixed aggregate is per its tuple**: the re-sum,
+over the `(dims, key)` tuples with that value, of their groups. -/
+theorem bare_beside_fixed_value [DecidableEq α] (dims key : α → Key) (v : α → Int)
+    (rows : List α) (ks : List (Key × Key)) (hnd : ks.Nodup)
+    (hcov : ∀ r ∈ rows, (dims r, key r) ∈ ks) (t : Key) :
+    Windows.countBy (fixedTuple dims key v rows) rows t =
+      ((ks.filter fun u => u.1 ++ [sumBy v (slice key u.2 rows)] = t).map
+        (Windows.countBy (fun r => (dims r, key r)) rows)).sum :=
+  Windows.regroup_by_value_exact (fun r => (dims r, key r))
+    (fun u => u.1 ++ [sumBy v (slice key u.2 rows)]) ks hnd rows hcov t
+
+/-- Rows `(id, g, y)` and `select g, sum(y) by id as s, count(id)`. Ids 2 and
+3 share `(c, 0)`, so its count is 2; grouped by `(g, id)`, the aggregate's
+keys in its place, each counts 1. -/
+theorem by_keys_split_tuple :
+    let rows : List (Int × Int × Int) := [(1, 0, 5), (2, 0, 0), (3, 0, 0)]
+    let y : Int × Int × Int → Int := fun r => r.2.2
+    let id : Int × Int × Int → Key := fun r => [r.1]
+    let g : Int × Int × Int → Key := fun r => [r.2.1]
+    let one : Int × Int × Int → Int := fun _ => 1
+    eval .bare (fixedTuple g id y rows) one rows (2, 0, 0) = 2 ∧
+      eval .bare (fun r => g r ++ id r) one rows (2, 0, 0) = 1 := by
+  decide
+
+/-- The same select has two rows, `(c, 5)` and `(c, 0)`; one row per id
+repeats `(c, 0)`. -/
+theorem fixed_value_rows_distinct :
+    let rows : List (Int × Int × Int) := [(1, 0, 5), (2, 0, 0), (3, 0, 0)]
+    let y : Int × Int × Int → Int := fun r => r.2.2
+    let id : Int × Int × Int → Key := fun r => [r.1]
+    let g : Int × Int × Int → Key := fun r => [r.2.1]
+    (dedup (rows.map (fixedTuple g id y rows))).length = 2 ∧
+      (rows.map (fixedTuple g id y rows)).length = 3 := by
   decide
 
 end Trilogy.SelectGrain
