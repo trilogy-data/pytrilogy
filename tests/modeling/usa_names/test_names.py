@@ -202,8 +202,11 @@ order by names.state asc, total_births desc;
         "names.name",
     }, env.concepts["rank_by_births"].keys
 
-    pattern = r'INNER JOIN "(\w+)" on "(\w+)"\."names_name" = "\1"\."names_name" AND "\2"\."names_state" = "\1"\."names_state"'
-    assert re.search(pattern, sql, re.DOTALL) is not None, sql
+    # the rank's sum is per (name, state), the select's own groups: no join
+    # back (`Windows.order_aggregate_per_partition`)
+    assert "JOIN" not in sql, sql
+    assert re.search(r"GROUP BY\s+1,\s+2\)", sql), sql
+    assert 'rank() over (partition by "quizzical"."names_state"' in sql, sql
 
 
 def test_inline_filter_or():

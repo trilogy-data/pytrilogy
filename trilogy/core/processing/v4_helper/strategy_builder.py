@@ -333,8 +333,15 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
     """`copy()` shallow-shares `parents`; this recursively copies the whole
     subtree so the result shares no node object with the original tree."""
     clone = node.copy()
-    clone.parents = [_deep_copy_node(p) for p in node.parents]
+    _replace_parents(clone, [_deep_copy_node(p) for p in node.parents])
     return clone
+
+
+def _replace_parents(node: StrategyNode, parents: list[StrategyNode]) -> None:
+    if isinstance(node, MergeNode):
+        node.replace_parents(parents)
+    else:
+        node.parents = parents
 
 
 class _CleanFeederCache:
@@ -1836,13 +1843,9 @@ def _elide_passthrough_tree(
     if node_id in seen:
         return seen[node_id]
     original = node.parents
-    node.parents = [_elide_passthrough_tree(parent, seen) for parent in original]
-    # a merge's authored joins name its parents; they follow the collapse
-    if isinstance(node, MergeNode) and node.node_joins:
-        swap = {id(old): new for old, new in zip(original, node.parents)}
-        node.node_joins = [
-            join.bind(lambda n: swap.get(id(n), n)) for join in node.node_joins
-        ]
+    _replace_parents(
+        node, [_elide_passthrough_tree(parent, seen) for parent in original]
+    )
     # a resolution stays valid while every parent is the same, still-resolved node
     if any(
         new is not old or new.resolution_cache is None
@@ -3156,7 +3159,10 @@ def _pads_a_value_null_group(
 
 
 def _pair_inside_padding_streams(
-    parents: list[StrategyNode], environment: BuildEnvironment
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    origin: dict[int, str],
+    plan: JoinPlan,
 ) -> list[StrategyNode]:
     """A grouping contributor holding no region pairs with a stream that
     padded one inside its own merge, there and not at FINAL.
@@ -3212,6 +3218,7 @@ def _pair_inside_padding_streams(
             )
             if not in_merge:
                 merge.add_parents([other])
+                _plan_moved_contributor(merge, other, stream, origin, plan)
                 merge.input_concepts = unique(merge.input_concepts + carried, "address")
                 merge.add_output_concepts(carried, rebuild=False)
             for node in reversed(path[:-1]):
@@ -3221,6 +3228,28 @@ def _pair_inside_padding_streams(
                 node.rebuild_cache()
             out.remove(other)
     return out
+
+
+def _plan_moved_contributor(
+    merge: StrategyNode,
+    other: StrategyNode,
+    stream: StrategyNode,
+    origin: dict[int, str],
+    plan: JoinPlan,
+) -> None:
+    """A FINAL contributor moved into `stream`'s merge pairs with the rows
+    there as the FINAL plan pairs it with `stream`."""
+    mine = side_members(other, origin)
+    theirs = side_members(stream, origin)
+    if (
+        not isinstance(merge, MergeNode)
+        or merge.planned_pairs is None
+        or mine is None
+        or theirs is None
+    ):
+        return
+    keys = PlannedPairs({}, plan.pair_keys()).between(mine, theirs)
+    merge.planned_pairs = merge.planned_pairs.joined(id(other), mine, keys)
 
 
 def _raise_if_rowset_islanded(
@@ -5078,8 +5107,10 @@ def _group_to_grain_if_required(
     only, but the GroupNode keeps any hidden grain keys the node exposed for
     sibling joins: grouping by them alongside the requested columns preserves
     those keys (and the join handle) without changing the dedup grain.
-    Aggregates/windows already sit at their own grain and are left untouched;
-    a MergeNode resolves its own grouping via `force_group`."""
+    Aggregates already sit at their own grain and are left untouched; a
+    window's rows are its own grain's, which a select of its value beside a
+    coarser column repeats (`select g, rank(x) over (order by g)`). A
+    MergeNode resolves its own grouping via `force_group`."""
     targets = _final_dedup_targets(node, mandatory_list, final_contract, environment)
     return node if targets is None else _dedup_to_targets(node, targets, environment)
 
@@ -5116,7 +5147,10 @@ def _final_dedup_targets(
         for concept in mandatory_list
         if concept.address in final_contract.output_addresses
     ]
-    if isinstance(node, (GroupNode, WindowNode)):
+    if isinstance(node, GroupNode) or (
+        isinstance(node, WindowNode)
+        and any(_reads_aggregate(o) for o in node.output_concepts)
+    ):
         return None
     if node.force_group and not _holds_summary_rows(node, contract_outputs):
         return None
@@ -5151,6 +5185,22 @@ def _final_dedup_targets(
             if any(output_covers(o, m) for m in contract_outputs)
         ]
     return targets
+
+
+def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:
+    """A window ordered by an aggregate that inherits the select's grain gives
+    the select its keys, not itself (`_grain_contribution`), so its rows
+    already sit at the select's grain."""
+    for arg in concept.concept_arguments:
+        if arg.address in seen:
+            continue
+        if isinstance(arg.lineage, BuildAggregateWrapper):
+            if arg.lineage.grain_inherited:
+                return True
+            continue
+        if arg.is_aggregate or _reads_aggregate(arg, seen | {arg.address}):
+            return True
+    return False
 
 
 def _dedup_to_targets(
@@ -6141,7 +6191,7 @@ def _assemble_final_node(
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
         environment,
     )
-    parents = _pair_inside_padding_streams(parents, environment)
+    parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()

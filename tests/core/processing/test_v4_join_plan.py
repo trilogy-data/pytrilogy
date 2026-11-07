@@ -175,3 +175,15 @@ def test_pair_keys_are_per_pair_with_what_they_imply():
     assert pairs.between(frozenset({"a"}), frozenset({"c"})) == set()
     assert pairs.between(frozenset({"a", "c"}), frozenset({"b"})) == {"k", "n", "j"}
     assert pairs.between(frozenset({"c"}), frozenset({"b", "c"})) == {"j", "m"}
+
+
+def test_planned_pairs_follow_replaced_and_added_parents():
+    pairs = PlannedPairs(
+        {1: frozenset({"a"}), 2: frozenset({"b"})},
+        {frozenset({"a", "b"}): frozenset({"k"})},
+    )
+    assert pairs.rebound({1: 3}).sides == {3: {"a"}, 2: {"b"}}
+    joined = pairs.joined(4, frozenset({"c"}), frozenset({"j"}))
+    assert joined.sides[4] == {"c"}
+    assert joined.between(frozenset({"c"}), frozenset({"a"})) == {"j"}
+    assert joined.between(frozenset({"a"}), frozenset({"b"})) == {"k"}

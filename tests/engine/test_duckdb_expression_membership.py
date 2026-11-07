@@ -1,5 +1,6 @@
 import pytest
 
+from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from trilogy import Dialects
 
 _FIXTURE = """
@@ -144,3 +145,10 @@ def test_filter_value_tested_against_its_own_set(source: str):
         ("C", 30),
         ("g1", None),
     ]
+
+
+def test_membership_set_folded_into_a_joined_side_adds_no_group(monkeypatch):
+    stated = record_planned_sides(monkeypatch)
+    rows = _self_set_rows(_SELF_SET_SOURCES[0], "select g, x where dx in x;")
+    assert rows == [("B", 10), ("C", 30)]
+    assert every_side_planned(stated)

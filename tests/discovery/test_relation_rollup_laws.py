@@ -11,6 +11,7 @@ must answer alike, and the summary must be read wherever no WHERE applies."""
 
 import pytest
 
+from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from tests.unnest.test_unnest_filter_laws import (
     REGIONS,
     Data,
@@ -185,3 +186,13 @@ def test_unique_list_pairs_need_no_distinct(seed, spelling, shape):
     assert '"summary"' in sql and '"trees"' not in sql, sql
     fewer = sql.upper().count("GROUP BY") < plain_sql.upper().count("GROUP BY")
     assert fewer == (spelling != "property"), sql
+
+
+def test_elided_passthrough_keeps_its_merge_planned(monkeypatch):
+    stated = record_planned_sides(monkeypatch)
+    model, value, sizing, _ = SPELLINGS["element"]
+    _rows(
+        _executor(model, random_data(0), sizing),
+        f"select {SHAPES['count'].format(v=value)} where city = 'A';",
+    )
+    assert every_side_planned(stated)

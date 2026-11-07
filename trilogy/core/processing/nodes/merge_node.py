@@ -220,7 +220,12 @@ def _held_groups(
     held: frozenset[str] | None,
     parent: StrategyNode,
     planned: PlannedPairs | None,
+    existence_only: bool,
 ) -> frozenset[str] | None:
+    """What a merged source holds once `parent` is merged into it. A set read
+    only as a subselect holds no rows of the merge, so it adds no group."""
+    if existence_only:
+        return held
     side = planned.sides.get(id(parent)) if planned is not None else None
     return None if held is None or side is None else held | side
 
@@ -254,7 +259,7 @@ def _planned_source_pairs(
             lgroups, rgroups = held[left], held[right]
             out[frozenset({merged[left].identifier, merged[right].identifier})] = (
                 planned.permitted
-                if lgroups is None or rgroups is None
+                if not lgroups or not rgroups
                 else planned.between(lgroups, rgroups)
             )
     return out
@@ -719,12 +724,21 @@ class MergeNode(StrategyNode):
         # identifiers; when their resolved joins came out the same they are one
         # relation and fold like any other identifier match.
         by_shape: dict[tuple, str] = {}
+        # a condition's row argument is read by the row stream like an output
+        merge_output_addresses = {c.address for c in self.output_concepts} | (
+            {c.address for c in self.conditions.row_arguments}
+            if self.conditions
+            else set()
+        )
         for parent, source in zip(self.parents, parent_sources):
             key = source.identifier
             if isinstance(source, QueryDatasource) and key not in merged:
                 key = by_shape.setdefault(source.shape, key)
             held[key] = _held_groups(
-                held.get(key, frozenset()), parent, self.planned_pairs
+                held.get(key, frozenset()),
+                parent,
+                self.planned_pairs,
+                self._existence_only(source, merge_output_addresses),
             )
             if key in merged:
                 logger.info(
@@ -743,12 +757,6 @@ class MergeNode(StrategyNode):
             held = _credit_folded(held, folded)
         final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
-        )
-        # a condition's row argument is read by the row stream like an output
-        merge_output_addresses = {c.address for c in self.output_concepts} | (
-            {c.address for c in self.conditions.row_arguments}
-            if self.conditions
-            else set()
         )
         existence_final = [
             x for x in final_datasets if self._existence_only(x, merge_output_addresses)
@@ -1091,6 +1099,20 @@ class MergeNode(StrategyNode):
             for concept in outputs
             if self.span_scope.held_on(concept.address, bound_partially)
         ]
+
+    def replace_parents(self, parents: list[StrategyNode]) -> None:
+        """Swap in `parents` for the current ones, position by position; the
+        authored joins and the join plan name parents, so they follow."""
+        original, self.parents = self.parents, parents
+        swap = {id(old): new for old, new in zip(original, parents)}
+        if self.node_joins:
+            self.node_joins = [
+                join.bind(lambda n: swap.get(id(n), n)) for join in self.node_joins
+            ]
+        if self.planned_pairs is not None:
+            self.planned_pairs = self.planned_pairs.rebound(
+                {key: id(new) for key, new in swap.items()}
+            )
 
     def copy(self) -> "MergeNode":
         node = type(self)(
