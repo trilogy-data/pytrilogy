@@ -18,6 +18,8 @@ Semantics (see ``trilogy.core.processing.partial_bridging``):
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.processing.v4_helper import strategy_builder
+from trilogy.core.processing.v4_helper.join_plan import JoinPlan
 
 # users: 1 never orders. products: 1 never sold. items redundantly bind
 # ~user_id (the thelook order_items shape).
@@ -370,6 +372,31 @@ def test_forked_with_status(forked):
             (None, None, None, 3, "LATER", None, None),
         ]
     )
+
+
+def test_a_region_domain_with_no_edge_is_asked_to_carry_nothing(forked, monkeypatch):
+    planned: list[tuple[JoinPlan, dict[str, frozenset[str]]]] = []
+    plan_merge = strategy_builder._merge_plan
+
+    def capture(*args, **kwargs) -> JoinPlan | None:
+        plan = plan_merge(*args, **kwargs)
+        if plan is not None:
+            planned.append((plan, args[6]))
+        return plan
+
+    monkeypatch.setattr(strategy_builder, "_merge_plan", capture)
+    forked.generate_sql(
+        "select item_id, order_id, product_id, user_id, order_status, total_qty, "
+        "total_pair_cost;"
+    )
+    unasked = [
+        plan.carry_demands.get(gid, frozenset())
+        for plan, demands in planned
+        for gid in plan.contributors
+        if gid.endswith(":dim:local.order_id") and gid not in demands
+    ]
+    assert unasked
+    assert all("local.order_id" not in carried for carried in unasked)
 
 
 def test_forked_with_status_pinned(forked):

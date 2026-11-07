@@ -13,7 +13,14 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
@@ -3421,7 +3428,7 @@ def _reads_only_values_defined_everywhere(atom: BoolExpr, keyspace: Keyspace) ->
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
-    join_key_addresses: frozenset[str] = frozenset(),
+    carry_demands: Mapping[str, frozenset[str]] | None = None,
     needed: set[str] | None = None,
     group_graph: nx.DiGraph | None = None,
     built: dict[str, StrategyNode] | None = None,
@@ -3465,7 +3472,7 @@ def _pre_merge_parents(
         group_graph,
         candidates,
         needed,
-        join_key_addresses,
+        carry_demands or {},
         environment,
     )
     if plan is not None and origin is not None:
@@ -3523,7 +3530,7 @@ def _merge_plan(
     group_graph: nx.DiGraph | None,
     candidates: Sequence[str],
     needed: set[str] | None,
-    join_key_addresses: frozenset[str],
+    carry_demands: Mapping[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> JoinPlan | None:
     """A consumer's join plan over the groups its row parents came from, with
@@ -3557,7 +3564,7 @@ def _merge_plan(
         environment,
         _required_final_contract(attrs).authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
-        contracted={gid: join_key_addresses for gid in sides},
+        contracted={gid: carry_demands.get(gid, frozenset()) for gid in sides},
     )
 
 
@@ -3618,20 +3625,20 @@ def _input_contract_projection_grain(
     return frozenset(grain)
 
 
-def _input_contract_join_keys(
-    group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
-) -> frozenset[str]:
-    keys: set[str] = set()
-    for contract in group_attrs.input_contracts:
-        if (
-            parent_group_ids is not None
-            and contract.parent_group_id not in parent_group_ids
-        ):
-            continue
-        if contract.channel != InputChannel.ROW_STREAM:
-            continue
-        keys |= set(contract.preserve_keys)
-    return frozenset(keys)
+def _input_contract_join_keys(group_attrs: GroupAttrs) -> frozenset[str]:
+    return frozenset().union(*_input_contract_carry_demands(group_attrs).values())
+
+
+def _input_contract_carry_demands(
+    group_attrs: GroupAttrs,
+) -> dict[str, frozenset[str]]:
+    """What each row parent's edge asks it to carry into the consumer's merge;
+    a group merged below the consumer has no edge to it, and is asked nothing."""
+    return {
+        contract.parent_group_id: contract.preserve_keys
+        for contract in group_attrs.input_contracts
+        if contract.channel == InputChannel.ROW_STREAM
+    }
 
 
 def _input_contract_sourcing_keys(group_attrs: GroupAttrs) -> frozenset[str]:
@@ -6808,7 +6815,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         aggregate_inputs=ctx.folds.aggregate_inputs.get(gid, ()),
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
-    join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
+    carry_demands = _input_contract_carry_demands(a)
     candidates = _bridge_candidates(group_graph, ctx.planned, gid)
     element_filters: list[StrategyNode] = []
     if derivation == Derivation.UNION:
@@ -6882,7 +6889,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 solid = _pre_merge_parents(
                     [p for p in parents if p not in domains and p not in feeders],
                     environment,
-                    join_key_addresses=join_key_addresses,
+                    carry_demands=carry_demands,
                     needed=needed,
                     group_graph=group_graph,
                     built=built,
@@ -6922,7 +6929,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         parents = _pre_merge_parents(
             [p for p in parents if p not in element_filters],
             environment,
-            join_key_addresses=join_key_addresses,
+            carry_demands=carry_demands,
             needed=needed,
             group_graph=group_graph,
             built=built,
@@ -7218,7 +7225,11 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 atoms=[plan_trace.expression(atom) for atom in atoms],
                 preexisting=plan_trace.expression(preexisting),
                 parent_groups=sorted(parent_group_ids),
-                join_keys=sorted(join_key_addresses),
+                join_keys=sorted(
+                    frozenset().union(
+                        *(carry_demands.get(g, frozenset()) for g in parent_group_ids)
+                    )
+                ),
                 span_scope=plan_trace.span_scope(environment.span_scope),
                 node=plan_trace.strategy_node(node),
             ),

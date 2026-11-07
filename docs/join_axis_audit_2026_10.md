@@ -1194,18 +1194,51 @@ all known noise (validation column order, `test_window_laws` ordering, CLI
 and dashboard statement counts, temp-table and GCS hash names). The same 25
 failures as `main`. Corpus: 0 of 205 plans moved.
 
+**Each side reads its own edge (part 37).** After part 36 the merge plan's
+`contracted` still handed every side one set: the union of the consumer's
+row-stream contracts' `preserve_keys`. A side need not be a row parent,
+though. A region domain, an extent or a basic-input ROOT can be merged in
+beside the consumer's row parents with no edge to it, and the union asked
+that side to carry keys too. The plan now reads, per side, the carry demand
+of that side's own edge (`_input_contract_carry_demands`). A side with no
+row-stream edge is asked nothing.
+
+A census over one suite run planned each per-group merge both ways and
+compared the plans. Of 12,549 plans, 39 have a side with no edge, and in 31
+of them that side's carry demand shrinks. In all 12,549 the pairings are the
+same, and no statement's SQL moved, so the widening the union asked of
+those sides never changed what they rendered. Only `needed` still reads the
+union, and that read is consumer-wide by nature: it is what the consumer
+sources, not what a side carries.
+
+`test_a_region_domain_with_no_edge_is_asked_to_carry_nothing` pins the read.
+It fails under the union (`main`). Suite capture against `main`, with the
+worktree path masked: no plan moved. Serially, `test_two_facts_at_one_grain`
+does not move. `test_persisted_value_reads_back` moves between two serial
+runs of `main` too (the column order of the grain check). The rest is the
+known noise. The same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+
+**An unattributed pair is a planner bug.** Part 32 left a merge-wide
+fallback in `_planned_source_pairs`: a pair with a source that holds no
+planned group could pair on anything the merge could. With the fallback
+replaced by a raise, the full suite fails only that fallback's own unit test.
+So it now raises, as the FINAL merge already does for a side the plan never
+elected. `test_an_unattributed_pair_is_a_planner_bug` pins the error.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
-   joins; `node_joins` are not built from the pairings. The merge-wide
-   fallback for a pair with an unattributed parent remains, but no suite
-   merge reaches it (part 32).
-2. The contract's sets are named and each reader reads the ones it needs
-   (parts 34-36). Two readers still read a union: `needed` and the merge
-   plan's `contracted` read `preserve_keys`, `required_grain |
-   relation_keys`. The per-edge carry demand is what replaces that, and it
-   has to reproduce the plans both sets shape, not only the rows.
+   joins; `node_joins` are not built from the pairings. A pair with an
+   unattributed source now raises (part 37).
+2. The contract's sets are named, and each reader reads the ones it needs
+   (parts 34-36). The merge plan reads them per edge (part 37). Every
+   row-stream edge of a consumer still holds the same sets, though:
+   `required_grain` and `relation_keys` are computed once per consumer. A
+   carry demand narrowed to what each edge's pairings need has to be read
+   off what the parent can source, not off its row columns. The customers
+   scan in `_rowset_relation_keys` holds `customer_id` only because it is
+   asked to.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

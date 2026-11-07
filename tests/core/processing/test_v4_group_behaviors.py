@@ -85,6 +85,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _fold_passthrough_parents,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
+    _input_contract_carry_demands,
     _input_contract_join_keys,
     _input_contract_projection_grain,
     _join_elected_bridges,
@@ -482,6 +483,27 @@ def test_relation_keys_are_sourced_and_paired_never_stitched_or_projected():
     assert _input_contract_join_keys(consumer) == contract.preserve_keys
     assert _joined_on(consumer) == {"local.name"}
     assert _input_contract_projection_grain(consumer) == {"local.name"}
+
+
+def test_each_row_parent_reads_its_own_edge_carry_demand():
+    rows = GroupInputContract(
+        parent_group_id="rows",
+        consumer_group_id="consumer",
+        required_grain=frozenset({"local.name"}),
+        relation_keys=frozenset({"local.customer_id"}),
+    )
+    exists = GroupInputContract(
+        parent_group_id="exists",
+        consumer_group_id="consumer",
+        channel=InputChannel.EXISTENCE,
+    )
+    consumer = GroupAttrs(
+        depth_label=DepthLabel.D0,
+        derivation=Derivation.BASIC,
+        input_contracts=(rows, exists),
+    )
+
+    assert _input_contract_carry_demands(consumer) == {"rows": rows.preserve_keys}
 
 
 def test_input_contract_keeps_existence_parent_side_channel():
@@ -1243,7 +1265,7 @@ def test_pre_merge_without_a_plan_widens_no_parent():
     merged = _pre_merge_parents(
         [row_projection, ratio_projection],
         env,
-        join_key_addresses=frozenset({part_name.address}),
+        carry_demands={"ratio": frozenset({part_name.address})},
     )
 
     assert len(merged) == 1
