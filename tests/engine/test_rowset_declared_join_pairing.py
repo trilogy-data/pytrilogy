@@ -11,7 +11,9 @@ and a column on the other.
 import pytest
 
 from tests.helpers.rows import customer_twins, twin_rows
+from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph
+from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.executor import Executor
 
 ROWSET = "with r as select customer_id, status;\n"
@@ -143,4 +145,28 @@ def test_each_side_of_a_declared_join_is_asked_for_its_own_member(
     assert asked == {
         "rowset": {frozenset({"rs.oid"})},
         "root": {frozenset({"local.order_id"})},
+    }
+
+
+def test_a_member_computed_off_a_handle_is_its_rowsets_side() -> None:
+    executor = customer_twins()[0]
+    executor.parse_text(ORDER_ROWSET + "auto next_oid <- rs.oid + 1;")
+    environment = executor.environment.materialize_for_select()
+    keys = frozenset({"local.next_oid", "local.order_id"})
+    rowset = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.ROWSET,
+        primary_members=("rs.oid",),
+    )
+    scan = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.ROOT,
+        output_concepts=("local.customer_id",),
+    )
+
+    assert group_graph._edge_relation_keys(keys, rowset, environment) == {
+        "local.next_oid"
+    }
+    assert group_graph._edge_relation_keys(keys, scan, environment) == {
+        "local.order_id"
     }
