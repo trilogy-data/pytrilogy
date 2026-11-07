@@ -600,15 +600,37 @@ GROUP_STRICT_AGGREGATES: frozenset[FunctionType] = frozenset(
     }
 )
 
+# Function operators whose result is never NULL, regardless of how nullable
+# their arguments are (count of an empty group is 0, grouping flags are 0/1,
+# the clock functions and random() always return a value).
+NEVER_NULL_FUNCTIONS: frozenset[FunctionType] = frozenset(
+    {
+        FunctionType.COUNT,
+        FunctionType.COUNT_DISTINCT,
+        FunctionType.IS_NULL,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
+        FunctionType.CURRENT_DATE,
+        FunctionType.CURRENT_DATETIME,
+        FunctionType.CURRENT_TIMESTAMP,
+        FunctionType.RANDOM,
+    }
+)
+
+# `x / 0` and `x % 0` are NULL on every dialect (`guard_divisor`); a nonzero
+# literal divisor is the one case that cannot be.
+ZERO_DIVISOR_FUNCTIONS: frozenset[FunctionType] = frozenset(
+    {FunctionType.DIVIDE, FunctionType.MOD}
+)
+
 # Functions that can be NULL although every argument is non-null, so the
 # nullability inference may not assume a strict function stays non-null:
-# `x % 0`, an index or key that is absent, the sample statistics of one row,
-# `nullif`. A failed `regexp_extract` is NULL on some dialects. `/ 0` is not
-# here: DuckDB, the reference, gives inf (MySQL and SQLite give NULL).
+# a zero divisor, an index or key that is absent, the sample statistics of
+# one row, `nullif`. A failed `regexp_extract` is NULL on some dialects.
 # formal/Trilogy/NullReject.lean, `Fn.Total`.
 NULL_INTRODUCING_FUNCTIONS: frozenset[FunctionType] = frozenset(
     {
-        FunctionType.MOD,
+        *ZERO_DIVISOR_FUNCTIONS,
         FunctionType.NULLIF,
         FunctionType.INDEX_ACCESS,
         FunctionType.MAP_ACCESS,

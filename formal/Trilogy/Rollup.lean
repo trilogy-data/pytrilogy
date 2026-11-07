@@ -726,9 +726,9 @@ theorem Rollup.avg_of_parts_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup
     · simp [sqlCount_pos_some _ hc, avgOfParts, sqlAvg, hc]
     · cases hsum : sqlSum ((keep g q rows).map v) <;> simp [avgOfParts, sqlAvg, hc]
 
-/-- The guard is needed: BigQuery renders `/` as `coalesce(safe_divide(s, n), 0)`
+/-- The guard is needed: BigQuery rendered `/` as `coalesce(safe_divide(s, n), 0)`
 and Snowflake as `div0(s, n)`, which read a group of only NULL inputs as 0,
-where `AVG` is NULL. -/
+where `AVG` is NULL. Both now divide to NULL (`NullReject.zero_fill_not_strict`). -/
 theorem Rollup.unguarded_quotient_zero_fills :
     let zeroDivide : Option Int → Option Int → Option Int
       | some s, some n => if n = 0 then some 0 else some (s / n)

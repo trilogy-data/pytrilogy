@@ -36,7 +36,7 @@ a design decision or a bug.
 | `Stack.lean` | a partition family stacked into one source: value-set arms, summaries stacked at their grain | `x in S` is the disjunction of `x = a` over `S`, so the cell checker covers families mixing `=` and `in` arms, a per-value arm choice can count a value twice, stacked summaries are exact and repeat no grain value when the grain determines each arm, and repeat one when it does not (checked by `tests/discovery/test_partition_family_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
-| `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
+| `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions; a zero divisor is NULL, so `/` is strict and total only by a nonzero literal (`guarded_div_strict`, `literal_divisor_total`), and a persisted copy that declares nullable every column its write may hold NULL in reads back exactly under `is not null` (`inferred_copy_sound`) (checked by `tests/optimization/test_null_rejection_laws.py`, `tests/core/test_null_function_conformance.py` and `tests/core/test_null_division_laws.py` on DuckDB, SQLite and ClickHouse) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
 | `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal, an identity GROUP BY, a matched outer join, an existence fold, a semi-join into an aggregate; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a FULL join beside a `~` subset; a row-level filter argument beside a gate; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`, `identity_group_exact`, `merged_group_sum_exact`, `matched_left_is_inner`, `existence_fold_exact`, `semi_join_exact`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not; a FULL to a `~` side whose rows all match is the LEFT join (`subset_full_is_left`), and a proof on the key forces no `~` lookup (`key_proof_keeps_lookup_gap`); a row-level argument joins on the key its row determines (`keyed_arg_exact`) (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
@@ -1044,6 +1044,43 @@ a design decision or a bug.
   ClickHouse type cases, and 8 of 12 SQLite remainder cases; none now. The
   scalar suite held on ClickHouse (48 cases).
 
+- **`x / 0` had five answers, and a persisted copy forgot its NULLs**
+  (0.3.467; `NullReject.lean`). A zero divisor gave `inf` or `nan` on DuckDB,
+  `inf`/`nan` or an error on ClickHouse (a float or a decimal), an error on
+  Postgres, NULL on SQLite and MySQL, and 0 on BigQuery and Snowflake. `x / 0`
+  and `x % 0` are now NULL on every dialect: the divisor renders
+  `nullif(y, 0)` unless it is a nonzero literal, and BigQuery renders
+  `safe_divide` (`NullReject.guarded_div_strict`). Following from it:
+  - the nullability inference took `/` as total, so `x / y` of non-null
+    columns was non-null; on SQLite, where `/ 0` was already NULL, a persisted
+    `q <- x / y` read back under `q is not null` kept the NULL row
+    (`NullReject.div_zero_not_total`). `/` and `%` are now
+    `NULL_INTRODUCING_FUNCTIONS`, except by a nonzero literal, which keeps
+    `x / 100` as nullable as `x` (`NullReject.literal_divisor_total`).
+  - BigQuery's `coalesce(safe_divide(x, y), 0)` read a NULL dividend as 0
+    (`NullReject.zero_fill_not_strict`), and Snowflake's `div0` a zero
+    divisor (`NullReject.div0_zero_is_a_value`). Neither has an engine in CI;
+    `tests/dialect/test_function_law_renderings.py` pins the renderings.
+  - BigQuery has no `%` operator; `%` renders `MOD`.
+
+  A persist declared every column of the datasource it creates non-null,
+  whatever the select wrote: a `?` column, a quotient, `x + 1` of a `?` column,
+  `sum(v)` over a `~` join. A read of the copy then dropped `x is not null` and
+  returned the NULL rows, on every engine
+  (`NullReject.undeclared_copy_keeps_null`); on ClickHouse the column was NOT
+  NULL and stored the NULL as 0, so `count(x)` counted it
+  (`NullReject.not_null_column_stores_zero`). A created datasource now binds
+  `?` every column the planned write can hold NULL in (any CTE's nullable
+  columns and the outputs derived from them, `written_nullable`;
+  `NullReject.inferred_copy_sound`), and ClickHouse declares those columns
+  `Nullable` (`ColumnInfo.nullable` now reads the `?`; it read `optional`,
+  which nothing sets).
+
+  On main, 24 of the 32 cases of `tests/core/test_null_division_laws.py`
+  fail: every DuckDB and ClickHouse zero-divisor case, every persisted-copy
+  case on all three engines, the nullability case and the ClickHouse DDL
+  case; none now.
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
@@ -1052,8 +1089,9 @@ Joins appear only through padding and fan-out. Freshness assumes arrivals
 land strictly past the watermark: a late row with a tied or NULL key is
 invisible to the verdict and the refresh alike
 (`Freshness.tie_is_invisible`, `Freshness.null_key_is_invisible`). That is a
-property of `MAX`-based watermarks, not a bug the model can fix. Nullability follows DuckDB: `x / 0` is
-inf there, so `/` is total, though MySQL and SQLite return NULL. The cell checker is proved
+property of `MAX`-based watermarks, not a bug the model can fix. `x / 0`
+and `x % 0` are NULL on every dialect, so `/` is strict and total only by a
+nonzero literal. The cell checker is proved
 exact over integers; the Python twin applies the same cells to dense domains
 without a successor step. Window frames other than the default
 (`rows between ...`), ROLLUP subtotal rows and unions are modelled at the

@@ -41,7 +41,10 @@ outer join pads NULL and a cast keeps NULL on ClickHouse too; the window and
 select-grain law suites now run on chdb; area 5), and `Functions.lean` /
 `Types.lean` extended (0.3.466: the function, scalar and type law suites run
 on chdb; a cast and `round` round half away, `week` is whole spans, and a
-remainder keeps its fraction on ClickHouse and SQLite; area 5).
+remainder keeps its fraction on ClickHouse and SQLite; area 5), and
+`NullReject.lean` extended (0.3.467: `x / 0` and `x % 0` are NULL on every
+dialect, and a persisted copy declares `?` every column its write can hold
+NULL in; areas 3 and 5).
 
 ## The recipe
 
@@ -425,17 +428,44 @@ remainder keeps its fraction on ClickHouse and SQLite; area 5).
       appending `(p,s)` to it is invalid DDL. `NUMERIC_TYPE_NAME` names the
       parametric form separately.
 
+24. **Lessons from the zero-divisor round (`NullReject.lean`, 0.3.467).**
+    - A semantic choice the dialects split on five ways is a correctness bug
+      even where no single engine is wrong: decide it once, render it
+      everywhere, and hold every engine to a Python reference for it.
+    - A dialect's answer feeds the planner's claims. `/` was listed total
+      because DuckDB, the reference, gave `inf`; the strip of `is not null`
+      trusted that claim on SQLite, where it was false.
+    - Follow a value through its lifecycle: a persisted copy is a new
+      datasource whose bindings are claims too. The copy declared every
+      column non-null, so reads of it dropped `is not null` on every engine.
+      Probe `select c where c is not null` and `count(c)` against the copy,
+      for a `?` column, a derivation of one, and an aggregate over a `~`
+      join; and on ClickHouse look at the DDL, which is NOT NULL by default.
+    - chdb's result conversion prints `inf` and `nan` as `None`, so a
+      ClickHouse probe of `x / 0` looks like NULL; `coalesce(x / 0, -1)` or
+      `x / 0 is null` tells them apart.
+
 ## Candidate areas
 
-**Suggested next: the area-5 leads (decimal products, division by zero), the area-1,
+**Suggested next: the area-5 leads (decimal products, the persisted-copy leads), the area-1,
 area-2 and area-4 leads below, or the area-3 leads left.**
 
 ### 5. ClickHouse (chdb in CI; `Padding.lean` done, the function, scalar and type suites run there; leads left)
 
 Every law suite with a DuckDB/SQLite harness that runs a typed fixture now
 runs on chdb. Leads left, probed on chdb 26.9:
-- `7 / 0` is `inf` (it was NULL on older chdb), `0 / 0` is `nan`, and `7 % 0`
-  raises (as on DuckDB): the area-3 division lead applies here too.
+- Done in 0.3.467: `7 / 0`, `0 / 0` and `7 % 0` are NULL here too, and a
+  persisted copy declares `Nullable` the columns its write can hold NULL in.
+  Leads left from that round:
+  - `written_nullable` reads every CTE's nullable set, so a column a later
+    CTE filters `is not null` is still declared `?` in the copy. That is
+    sound but keeps a filter on reads of the copy that a precise answer
+    would strip.
+  - A persist into a datasource the model declares keeps the model's
+    bindings: a declared non-null column the select can write NULL into is
+    not checked at write time. Validation reports it after the fact.
+  - `x / y` with a constant divisor that is not a literal (`x / (4 / 2)`)
+    is nullable; folding constants first would keep it non-null.
 - A product of decimals is `Decimal(18, s1 + s2)` whatever the operands'
   precision, so `n * m` of two `numeric(12,4)` raises `Decimal math overflow`
   above 18 digits although the declared type is `numeric(24,8)`. It is loud,
@@ -675,6 +705,9 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 
 ### 3. Leftover function leads (verified on main after #802)
 
+Done in `NullReject.lean` (0.3.467): `7 / 0` and `7 % 0` are NULL on every
+dialect.
+
 Done in `Scalars.lean` (0.3.447): the month-end clamp, `date_add`'s declared
 type (a whole-day offset of a date is a date; a datetime keeps its type),
 `greatest`/`least` over the present arguments, `log`'s base order, SQLite
@@ -682,7 +715,6 @@ type (a whole-day offset of a date is a date; a datetime keeps its type),
 
 | Lead | DuckDB | SQLite | Notes |
 |---|---|---|---|
-| `7 / 0` | `inf` | `NULL` | BigQuery `COALESCE(SAFE_DIVIDE(..),0)` and Snowflake `DIV0` give `0`. `NullReject` treats `/` as total, which holds on DuckDB only. Decide one semantics. |
 | `date_trunc(t, month)` of a datetime | a timestamp, typed DATE | a date (0.3.447) | DuckDB casts the truncation of a DATETIME back to datetime; comparisons coerce there, so no wrong answer was found, but the value is not its declared type |
 | `null::int` on ClickHouse | | | renders `CAST(NULL, 'Int64')`, which ClickHouse refuses; a NULL literal needs `Nullable(...)` |
 | `split`, `hash(.., md5)` on SQLite | | not functions | raise rather than answer; no portable rendering yet |

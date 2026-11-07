@@ -8,10 +8,14 @@ from trilogy.core.models.core import DataType
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
+    guard_divisor,
     offset_keeps_date,
     render_present_extreme,
     render_true_divide,
     render_unsupported,
+)
+from trilogy.dialect.base import (
+    render_mod as base_render_mod,
 )
 
 MONTH_NAME_CASE = (
@@ -94,8 +98,8 @@ def render_mod(args: list[str], types: list) -> str:
     """`%` casts both sides to an integer (`7.5 % 3` is 1); `mod` keeps the
     fraction, but answers a REAL for integers too."""
     if any(getattr(t, "data_type", t) in FRACTIONAL_TYPES for t in types):
-        return f"mod({args[0]}, {args[1]})"
-    return f"{args[0]} % {args[1]}"
+        return f"mod({args[0]}, {guard_divisor(args[1])})"
+    return base_render_mod(args)
 
 
 MONTH_FACTOR = {"month": 1, "quarter": 3, "year": 12}

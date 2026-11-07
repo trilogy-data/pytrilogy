@@ -141,6 +141,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ColumnInfo,
     ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartStatement,
@@ -677,12 +678,35 @@ def render_prior(args: list[str], types: list[Any]) -> str:
     )
 
 
+def _is_nonzero_literal(arg: str) -> bool:
+    try:
+        value = float(arg.strip().strip("()").strip())
+    except ValueError:
+        return False
+    return value != 0 and math.isfinite(value)
+
+
+def guard_divisor(arg: str) -> str:
+    """A zero divisor makes `/` and `%` NULL on every dialect, as SQLite and
+    BigQuery's `safe_divide` answer; DuckDB and ClickHouse give inf or nan or
+    raise, Postgres raises (formal/Trilogy/NullReject.lean, `guarded_div`)."""
+    return arg if _is_nonzero_literal(arg) else f"nullif({arg}, 0)"
+
+
+def render_divide(args: list[str], types: list | None = None) -> str:
+    return " / ".join([args[0], *(guard_divisor(a) for a in args[1:])])
+
+
+def render_mod(args: list[str], types: list | None = None) -> str:
+    return f"{args[0]} % {guard_divisor(args[1])}"
+
+
 def render_true_divide(float_type: str, args: list[str], types: list) -> str:
     """`/` on an engine that truncates an integer quotient: Trilogy's `/` is
     true division, so the dividend is cast to a float first."""
     if types and all(t.data_type in (DataType.INTEGER, DataType.BIGINT) for t in types):
-        return " / ".join([f"cast({args[0]} as {float_type})", *args[1:]])
-    return " / ".join(args)
+        return render_divide([f"cast({args[0]} as {float_type})", *args[1:]])
+    return render_divide(args)
 
 
 def render_log(args: list[str], types: list) -> str:
@@ -806,12 +830,12 @@ FUNCTION_MAP = {
     FunctionType.ADD: lambda x, types: " + ".join(x),
     FunctionType.ABS: lambda x, types: f"abs({x[0]})",
     FunctionType.SUBTRACT: lambda x, types: " - ".join(x),
-    FunctionType.DIVIDE: lambda x, types: " / ".join(x),
+    FunctionType.DIVIDE: render_divide,
     FunctionType.MULTIPLY: lambda x, types: " * ".join(x),
     FunctionType.ROUND: lambda x, types: f"round({x[0]},{x[1]})",
     FunctionType.FLOOR: lambda x, types: f"floor({x[0]})",
     FunctionType.CEIL: lambda x, types: f"ceil({x[0]})",
-    FunctionType.MOD: lambda x, types: f"{x[0]} % {x[1]}",
+    FunctionType.MOD: render_mod,
     # `**` is DuckDB's alone; SQLite, Postgres and SQL Server reject it
     FunctionType.POWER: lambda x, types: f"power({x[0]}, {x[1]})",
     FunctionType.SQRT: lambda x, types: f"sqrt({x[0]})",
@@ -3772,6 +3796,9 @@ class BaseDialect:
             )
         return ""
 
+    def render_column_type(self, column: ColumnInfo, target: CreateTableInfo) -> str:
+        return self.render_expr(column.type)
+
     def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
     ) -> list[str]:
@@ -3780,7 +3807,7 @@ class BaseDialect:
         type_map = {}
         description_map = {}
         for c in target.columns:
-            type_map[c.name] = self.render_expr(c.type)
+            type_map[c.name] = self.render_column_type(c, target)
             description_map[c.name] = (
                 self.render_string_literal(c.description) if c.description else ""
             )

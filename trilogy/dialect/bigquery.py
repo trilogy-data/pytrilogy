@@ -24,6 +24,7 @@ from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
     array_element_type,
+    guard_divisor,
     is_array_arg,
     render_present_extreme,
     render_unsupported,
@@ -145,7 +146,10 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"EXTRACT(ISOWEEK from {x[0]})",
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
-    FunctionType.DIVIDE: lambda x, types: f"COALESCE(SAFE_DIVIDE({x[0]},{x[1]}),0)",
+    # NULL on a zero divisor and on a NULL operand, as `/` is everywhere
+    FunctionType.DIVIDE: lambda x, types: f"SAFE_DIVIDE({x[0]}, {x[1]})",
+    # GoogleSQL has no `%` operator
+    FunctionType.MOD: lambda x, types: f"MOD({x[0]}, {guard_divisor(x[1])})",
     FunctionType.DATE_ADD: lambda x, types: f"DATE_ADD({x[0]}, INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATE_SUB({x[0]}, INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_PART: lambda x, types: f"EXTRACT({transform_date_part(x[1])} FROM {x[0]})",
