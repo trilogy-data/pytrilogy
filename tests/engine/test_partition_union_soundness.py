@@ -2,7 +2,9 @@
 partition the discriminator's domain (`formal/Trilogy/Sourcing.lean`): every
 value, NULL included, in exactly one arm."""
 
+import random
 from datetime import date, datetime
+from itertools import combinations
 
 import pytest
 
@@ -201,6 +203,44 @@ def test_exact_covers_pick_one_copy_of_a_duplicate_arm():
     assert exact_covers([[True, True], [False, True]]) == [(1,)]
     assert exact_covers([[True, False], [False, False]]) == []
     assert len(exact_covers([[True] * 100])) == MAX_EXACT_COVERS
+
+
+def test_exact_covers_give_up_on_an_unclaimed_cell_at_once():
+    cells = 60
+    doubled = [[c // 2 == row for c in range(2 * cells)] for row in range(cells)]
+    assert len(exact_covers(doubled)) == MAX_EXACT_COVERS
+    assert exact_covers(doubled + [[False] * (2 * cells)]) == []
+    assert exact_covers([[False] * (2 * cells)] + doubled) == []
+
+
+def test_exact_covers_give_up_on_overlapping_arms_at_once():
+    cells = 200
+    doubled = [
+        [c // 2 == row for c in range(2 * cells)] + [False] * 2 for row in range(cells)
+    ]
+    blank = [False] * (2 * cells)
+    overlap = [blank + [True, False], blank + [True, True], blank + [False, True]]
+    assert exact_covers(doubled + overlap) == []
+    assert len(exact_covers(doubled + overlap[:2])) == MAX_EXACT_COVERS
+
+
+def test_exact_covers_match_brute_force():
+    rng = random.Random(7)
+    for _ in range(500):
+        rows, cols = rng.randint(1, 6), rng.randint(1, 8)
+        matrix = [[rng.random() < 0.4 for _ in range(cols)] for _ in range(rows)]
+        for r in matrix:
+            r.extend(r[: cols // 2])
+        claiming = [c for c in range(len(matrix[0])) if any(r[c] for r in matrix)]
+        expected = {
+            subset
+            for size in range(1, len(claiming) + 1)
+            for subset in combinations(claiming, size)
+            if all(sum(r[c] for c in subset) == 1 for r in matrix)
+        }
+        found = exact_covers(matrix)
+        assert len(found) == len(set(found))
+        assert {tuple(sorted(c)) for c in found} == expected
 
 
 def test_string_cells_are_literals_and_everything_else():
