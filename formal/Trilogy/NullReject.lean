@@ -368,7 +368,7 @@ theorem mod_zero_not_total : ¬ modFn.Total := by
   intro h
   exact h rfl (some 1) (some 0) (by simp) (by simp) (by simp [modFn])
 
-/-! ## A zero divisor, and a persisted copy of a nullable column (0.3.467)
+/-! ## A zero divisor, and a persisted copy of a nullable column (0.3.469)
 
 `x / 0` and `x % 0` are NULL on every dialect: the renderings divide by
 `nullif(y, 0)` (BigQuery by `safe_divide`). DuckDB and ClickHouse answered `inf`

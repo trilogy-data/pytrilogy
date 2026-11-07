@@ -1045,7 +1045,7 @@ a design decision or a bug.
   scalar suite held on ClickHouse (48 cases).
 
 - **`x / 0` had five answers, and a persisted copy forgot its NULLs**
-  (0.3.467; `NullReject.lean`). A zero divisor gave `inf` or `nan` on DuckDB,
+  (0.3.469; `NullReject.lean`). A zero divisor gave `inf` or `nan` on DuckDB,
   `inf`/`nan` or an error on ClickHouse (a float or a decimal), an error on
   Postgres, NULL on SQLite and MySQL, and 0 on BigQuery and Snowflake. `x / 0`
   and `x % 0` are now NULL on every dialect: the divisor renders

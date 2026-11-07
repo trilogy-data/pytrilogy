@@ -149,7 +149,13 @@ from .group_graph import (
     trace_group_graph,
 )
 from .history import V4History
-from .join_plan import JoinPlan, carries, elect_bridges, plan_final_join
+from .join_plan import (
+    JoinPlan,
+    carries,
+    carryable,
+    elect_bridges,
+    plan_final_join,
+)
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
@@ -3620,13 +3626,18 @@ def _input_contract_projection_grain(
             continue
         if not contract.may_project_dimension:
             continue
-        grain |= set(contract.required_grain)
+        grain |= set(group_attrs.input_grain)
         grain |= set(contract.projection_grain)
     return frozenset(grain)
 
 
 def _input_contract_join_keys(group_attrs: GroupAttrs) -> frozenset[str]:
-    return frozenset().union(*_input_contract_carry_demands(group_attrs).values())
+    """What a consumer sources: its input grain, whether or not a parent can
+    carry each key, and each edge's side of its statement relations."""
+    demands = _input_contract_carry_demands(group_attrs)
+    return frozenset().union(
+        group_attrs.input_grain if demands else frozenset(), *demands.values()
+    )
 
 
 def _input_contract_carry_demands(
@@ -5863,7 +5874,10 @@ def _condition_join_plan(
         mandatory,
         environment,
         _required_final_contract(attrs).authored_axes,
-        contracted={side: asks for side in (*cover, *extras)},
+        contracted={
+            side: carryable(group_graph, attrs, side, asks, environment)
+            for side in (*cover, *extras)
+        },
         extras=extras,
     )
 

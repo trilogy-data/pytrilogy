@@ -79,7 +79,13 @@ from .functional_dependency import (
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .join_plan import authored_axes, final_predecessors, merge_axes, row_identity
+from .join_plan import (
+    authored_axes,
+    carryable,
+    final_predecessors,
+    merge_axes,
+    row_identity,
+)
 from .models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -906,14 +912,9 @@ def _rowset_relation_keys(
     (`_aggregate_axis_members`)."""
     if len(row_parents) < 2:
         return frozenset()
-    rowsets = {
-        concept.lineage.rowset.name
-        for pred in row_parents
-        if attrs[pred].derivation == Derivation.ROWSET
-        for addr in attrs[pred].members
-        if (concept := environment.concepts.get(addr)) is not None
-        and isinstance(concept.lineage, BuildRowsetItem)
-    }
+    rowsets = frozenset().union(
+        *(_group_rowsets(attrs[pred], environment) for pred in row_parents)
+    )
     if not rowsets:
         return frozenset()
     statement = _statement_scoped_relation_members(environment)
@@ -933,6 +934,56 @@ def _rowset_relation_keys(
         ):
             keys |= relation
     return frozenset(keys)
+
+
+def _group_rowsets(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
+    """The rowsets a ROWSET group reads out; empty for any other group."""
+    if group.derivation != Derivation.ROWSET:
+        return frozenset()
+    return frozenset(
+        concept.lineage.rowset.name
+        for addr in group.members
+        if (concept := environment.concepts.get(addr)) is not None
+        and isinstance(concept.lineage, BuildRowsetItem)
+    )
+
+
+def _lineage_rowsets(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    """The rowsets whose handles `address` is computed off (`b.oid + 1` reads
+    `b`); empty for a concept no rowset feeds."""
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return frozenset()
+    if isinstance(concept.lineage, BuildRowsetItem):
+        return frozenset({concept.lineage.rowset.name})
+    return frozenset().union(
+        *(
+            _lineage_rowsets(arg.address, environment)
+            for arg in concept.lineage.concept_arguments
+        )
+    )
+
+
+def _edge_relation_keys(
+    relation_keys: frozenset[str],
+    parent: GroupAttrs,
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The side of a consumer's statement relations one row parent sources: a
+    rowset its own handles, any other parent the members no rowset feeds
+    (`subset join rs2.cid = customer_id` asks the rowset for `rs2.cid` and the
+    customers scan for `customer_id`). A member it already outputs it carries
+    either way."""
+    own = _group_rowsets(parent, environment)
+    return frozenset(
+        key
+        for key in relation_keys
+        if key in parent.output_concepts
+        or (
+            (rowsets := _lineage_rowsets(key, environment)) <= own
+            and bool(rowsets) == bool(own)
+        )
+    )
 
 
 GroupedRowMemo = dict[str, tuple[frozenset[str], bool] | None]
@@ -1063,12 +1114,16 @@ def _refresh_input_contracts(
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     grouped_grains: GroupedRowMemo = {}
-    for gid in group_graph.nodes:
-        if gid == FINAL_NODE_ID or gid not in attrs:
-            continue
-        required_grain = _consumer_required_input_grain(
+    consumers = [
+        gid for gid in group_graph.nodes if gid != FINAL_NODE_ID and gid in attrs
+    ]
+    # every grain first: what a parent can carry reads its own input grain
+    for gid in consumers:
+        attrs[gid].input_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid, rows_pair_facts
         )
+    for gid in consumers:
+        input_grain = attrs[gid].input_grain
         # a bridge widens the consumer's sourcing and fixes the projection; no
         # pairing reads it (part 35)
         sourcing_keys = _shared_row_parent_join_keys(
@@ -1093,8 +1148,26 @@ def _refresh_input_contracts(
                 GroupInputContract(
                     parent_group_id=pred,
                     consumer_group_id=gid,
-                    required_grain=frozenset() if is_existence else required_grain,
-                    relation_keys=frozenset() if is_existence else relation_keys,
+                    required_grain=(
+                        frozenset()
+                        if is_existence
+                        else carryable(
+                            group_graph, attrs, pred, input_grain, environment
+                        )
+                    ),
+                    relation_keys=(
+                        frozenset()
+                        if is_existence
+                        else carryable(
+                            group_graph,
+                            attrs,
+                            pred,
+                            _edge_relation_keys(
+                                relation_keys, attrs[pred], environment
+                            ),
+                            environment,
+                        )
+                    ),
                     projection_grain=(
                         frozenset() if is_existence else projection_grain
                     ),
@@ -1105,7 +1178,7 @@ def _refresh_input_contracts(
                         else InputChannel.ROW_STREAM
                     ),
                     may_project_dimension=(
-                        bool(required_grain)
+                        bool(input_grain)
                         and not is_existence
                         and attrs[pred].derivation not in GROUPING_DERIVATIONS
                     ),

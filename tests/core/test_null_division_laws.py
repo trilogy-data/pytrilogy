@@ -1,5 +1,5 @@
 """A zero divisor and a persisted copy of a nullable column
-(formal/Trilogy/NullReject.lean, 0.3.467), on DuckDB, SQLite and ClickHouse
+(formal/Trilogy/NullReject.lean, 0.3.469), on DuckDB, SQLite and ClickHouse
 through chdb where it installs, against a Python reference.
 
 - `x / 0` and `x % 0` are NULL, as a NULL operand is (`guarded_div_strict`),

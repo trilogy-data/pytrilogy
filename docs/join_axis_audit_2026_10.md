@@ -1225,6 +1225,83 @@ replaced by a raise, the full suite fails only that fallback's own unit test.
 So it now raises, as the FINAL merge already does for a side the plan never
 elected. `test_an_unattributed_pair_is_a_planner_bug` pins the error.
 
+**Each edge is asked for its own side of a relation (part 38).** After
+part 37 the merge plan read each side's own edge, but every edge of a
+consumer still held the same `relation_keys`: every member of each statement
+relation tying a rowset row parent to its siblings. Under `subset join rs.oid
+= order_id` the orders scan was asked for `rs.oid` and the rowset for
+`order_id`. A rowset handle is a column of its own boundary, so the scan held
+it only because it was asked to: it rendered `order_id` a second time, as
+`rs_oid`.
+
+Now each edge holds the side of the relation its parent sources
+(`_edge_relation_keys`): a rowset parent the members its own handles compute
+(`_lineage_rowsets`), any other row parent the members no rowset feeds, and
+either one a member it already outputs (a ROOT that carries `sr_data.item_sk`
+under a declared join in q29 keeps it). Every relation member still lands on
+some edge, so `needed`, the union over the edges, does not change.
+
+A census over one suite run recorded each consumer with relation keys: 32
+tests, every member assigned to the edge holding its side, the presence-probe
+rowsets of `test_multi_probe_coalescing` included (their members carry the
+handle).
+
+Suite capture against `main`, with the worktree path masked, serially where
+xdist made a file move between runs: 37 statements in 10 rowset test files
+moved, and nothing else beyond the known noise. In 36 of them the CTE and
+join counts are the same and the SQL is shorter: the root side no longer
+projects the handle as a duplicate column. The 37th,
+`test_rowset_alias_collision_distinct_aggregates`, scans `facts` once
+instead of twice, and gains one projection CTE (4 to 5) with the same three
+joins. The rows asserted are the same. q29 and q64 move under xdist only.
+Full suite: the same 25 failures as `main` (credential-gated BigQuery,
+Snowflake, GCS and NCAA tests, plus
+`the_look::test_wrapped_aggregate_with_dependent_by_grain`); `main` also
+failed two `test_q04_generation_determinism` cases under `-n 4`, which pass
+serially on both. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
+
+`test_each_side_of_a_declared_join_is_asked_for_its_own_member` pins the
+split; it fails on `main`, where both edges hold both members.
+
+**Each edge is asked for the grain its parent can carry (part 39).** After
+part 38 every row-stream edge of a consumer still held the same
+`required_grain`, the consumer's whole input grain. Two readers then cut
+each edge's copy back to what its parent can hold: the merge plan
+intersected each side's `contracted` keys with `_widenable` (and what it
+computes off those columns), and `renders` intersected each group's asks
+with `_widenable` again. The contract now asks only that much
+(`join_plan.carryable`). An edge's `required_grain` is the part of the input
+grain its parent can carry, and its `relation_keys` are narrowed the same
+way. The consumer's whole grain moves to `GroupAttrs.input_grain`. The merge
+plan and `renders` read the asks as stated, with no `_widenable` of their
+own. The FINAL condition plan (`_condition_join_plan`), which hands every
+side one set of asks, narrows them per side with the same function.
+
+The consumer-wide readers keep the whole grain. A census over one suite run
+counted 7,682 consumers in 2,753 tests whose input grain holds a key that
+none of their edges can carry. So `needed`, `_joined_on`, the dimension
+projection and `may_project_dimension` read `input_grain`, not the union of
+the edges. Every input grain is set before any edge is narrowed, because
+what a parent can carry reads that parent's own `_joined_on`. The same
+census recomputed `_widenable` where `renders` reads it and compared it
+with the value at contract time. They never differed, so narrowing at the
+contract asks no stage-3 fact. 15,300 edges in 5,925 tests are narrowed.
+
+`test_input_contract_declares_projection_grain_with_barrier_sibling` now
+pins the per-edge grain: a store dimension beside a by-date aggregate is
+asked for `store.id`, not `ride_date`. On `main` it was asked for both.
+`test_no_edge_is_asked_for_a_key_its_parent_cannot_carry` pins the
+relation side: under `subset join rs.oid = order_id`, the extent scan keyed
+by `customer_id` was asked for `order_id`. It held no such column; the
+merge plan's intersection had hidden this.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+`test_assertion_laws::test_check_exact` reorders its generated assertions
+between two runs of this branch, and `test_validate_fix_types` changes its
+statement count from run to run in either direction. The rest is the known
+noise. Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans
+moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1232,13 +1309,12 @@ not built yet:
    joins; `node_joins` are not built from the pairings. A pair with an
    unattributed source now raises (part 37).
 2. The contract's sets are named, and each reader reads the ones it needs
-   (parts 34-36). The merge plan reads them per edge (part 37). Every
-   row-stream edge of a consumer still holds the same sets, though:
-   `required_grain` and `relation_keys` are computed once per consumer. A
-   carry demand narrowed to what each edge's pairings need has to be read
-   off what the parent can source, not off its row columns. The customers
-   scan in `_rowset_relation_keys` holds `customer_id` only because it is
-   asked to.
+   (parts 34-36). The merge plan reads them per edge (part 37), each edge
+   holds its own side of a statement relation (part 38), and each edge is
+   asked only for what its parent can carry (part 39). What is left is
+   `projection_grain` and `sourcing_keys`. Both are still computed once per
+   consumer and copied onto every edge, and `_satisfy_parent_projection_contract`
+   still decides at build time which parent can take the projection.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

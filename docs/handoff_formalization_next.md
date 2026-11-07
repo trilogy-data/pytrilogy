@@ -42,7 +42,7 @@ select-grain law suites now run on chdb; area 5), and `Functions.lean` /
 `Types.lean` extended (0.3.466: the function, scalar and type law suites run
 on chdb; a cast and `round` round half away, `week` is whole spans, and a
 remainder keeps its fraction on ClickHouse and SQLite; area 5), and
-`NullReject.lean` extended (0.3.467: `x / 0` and `x % 0` are NULL on every
+`NullReject.lean` extended (0.3.469: `x / 0` and `x % 0` are NULL on every
 dialect, and a persisted copy declares `?` every column its write can hold
 NULL in; areas 3 and 5).
 
@@ -428,7 +428,7 @@ NULL in; areas 3 and 5).
       appending `(p,s)` to it is invalid DDL. `NUMERIC_TYPE_NAME` names the
       parametric form separately.
 
-24. **Lessons from the zero-divisor round (`NullReject.lean`, 0.3.467).**
+24. **Lessons from the zero-divisor round (`NullReject.lean`, 0.3.469).**
     - A semantic choice the dialects split on five ways is a correctness bug
       even where no single engine is wrong: decide it once, render it
       everywhere, and hold every engine to a Python reference for it.
@@ -454,7 +454,7 @@ area-2 and area-4 leads below, or the area-3 leads left.**
 
 Every law suite with a DuckDB/SQLite harness that runs a typed fixture now
 runs on chdb. Leads left, probed on chdb 26.9:
-- Done in 0.3.467: `7 / 0`, `0 / 0` and `7 % 0` are NULL here too, and a
+- Done in 0.3.469: `7 / 0`, `0 / 0` and `7 % 0` are NULL here too, and a
   persisted copy declares `Nullable` the columns its write can hold NULL in.
   Leads left from that round:
   - `written_nullable` reads every CTE's nullable set, so a column a later
@@ -705,7 +705,7 @@ WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
 
 ### 3. Leftover function leads (verified on main after #802)
 
-Done in `NullReject.lean` (0.3.467): `7 / 0` and `7 % 0` are NULL on every
+Done in `NullReject.lean` (0.3.469): `7 / 0` and `7 % 0` are NULL on every
 dialect.
 
 Done in `Scalars.lean` (0.3.447): the month-end clamp, `date_add`'s declared

@@ -359,8 +359,13 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
     )
     assert dim_contract.channel == InputChannel.ROW_STREAM
     assert dim_contract.may_project_dimension is True
-    assert dim_contract.required_grain == {store_id.address, ride_date.address}
-    assert dim_contract.preserve_keys == {store_id.address, ride_date.address}
+    assert attrs["consumer"].input_grain == {store_id.address, ride_date.address}
+    assert dim_contract.required_grain == {store_id.address}
+    assert dim_contract.preserve_keys == {store_id.address}
+    assert _input_contract_join_keys(attrs["consumer"]) == {
+        store_id.address,
+        ride_date.address,
+    }
 
 
 def test_input_contract_declares_shared_row_parent_join_key():
@@ -477,6 +482,7 @@ def test_relation_keys_are_sourced_and_paired_never_stitched_or_projected():
         depth_label=DepthLabel.D0,
         derivation=Derivation.BASIC,
         input_contracts=(contract,),
+        input_grain=frozenset({"local.name"}),
     )
 
     assert contract.preserve_keys == {"local.name", "local.customer_id"}
@@ -1551,6 +1557,7 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         depth_label=DepthLabel.D0,
         derivation=Derivation.BASIC,
         grain_components=frozenset({store_id.address}),
+        input_grain=frozenset({store_id.address}),
         input_contracts=(
             GroupInputContract(
                 parent_group_id="dim",
