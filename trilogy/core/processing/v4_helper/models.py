@@ -66,10 +66,14 @@ class GroupInputContract:
 
     parent_group_id: str
     consumer_group_id: str
+    # the consumer's input grain: what every row parent carries, renders and
+    # is stitched on
     required_grain: frozenset[str] = frozenset()
-    preserve_keys: frozenset[str] = frozenset()
-    # the grain a dimension parent is projected to beside a shaped sibling:
-    # the preserve and sourcing keys, and the grains its siblings' rows
+    # the statement relations tying a rowset parent to its siblings: the
+    # consumer sources and pairs on them, and no side is asked to render them
+    relation_keys: frozenset[str] = frozenset()
+    # what a dimension parent is projected to beside a shaped sibling, beyond
+    # the required grain: the sourcing keys and the grains its siblings' rows
     # already stand at
     projection_grain: frozenset[str] = frozenset()
     # the keys bridging a dimension to the fact rows: the consumer sources its
@@ -77,6 +81,11 @@ class GroupInputContract:
     sourcing_keys: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
     may_project_dimension: bool = False
+
+    @property
+    def preserve_keys(self) -> frozenset[str]:
+        """The carry demand a consumer's sourcing and merge plan read."""
+        return self.required_grain | self.relation_keys
 
 
 @dataclass(frozen=True)

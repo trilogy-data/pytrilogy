@@ -68,7 +68,7 @@ from trilogy.core.processing.v4_helper.group_rules import (
     partition_roots,
 )
 from trilogy.core.processing.v4_helper.history import V4History
-from trilogy.core.processing.v4_helper.join_plan import plan_final_join
+from trilogy.core.processing.v4_helper.join_plan import _joined_on, plan_final_join
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -85,6 +85,8 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _fold_passthrough_parents,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
+    _input_contract_join_keys,
+    _input_contract_projection_grain,
     _join_elected_bridges,
     _parent_nodes_for,
     _pre_merge_parents,
@@ -460,6 +462,26 @@ def test_sibling_grains_fix_the_projection_not_the_carry_demand():
     for contract in attrs["consumer"].input_contracts:
         assert "local.order_id" in contract.projection_grain
         assert "local.order_id" not in contract.preserve_keys
+
+
+def test_relation_keys_are_sourced_and_paired_never_stitched_or_projected():
+    contract = GroupInputContract(
+        parent_group_id="rowset",
+        consumer_group_id="consumer",
+        required_grain=frozenset({"local.name"}),
+        relation_keys=frozenset({"local.customer_id"}),
+        may_project_dimension=True,
+    )
+    consumer = GroupAttrs(
+        depth_label=DepthLabel.D0,
+        derivation=Derivation.BASIC,
+        input_contracts=(contract,),
+    )
+
+    assert contract.preserve_keys == {"local.name", "local.customer_id"}
+    assert _input_contract_join_keys(consumer) == contract.preserve_keys
+    assert _joined_on(consumer) == {"local.name"}
+    assert _input_contract_projection_grain(consumer) == {"local.name"}
 
 
 def test_input_contract_keeps_existence_parent_side_channel():
@@ -1512,7 +1534,6 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
                 parent_group_id="dim",
                 consumer_group_id="consumer",
                 required_grain=frozenset({store_id.address}),
-                preserve_keys=frozenset({store_id.address}),
                 channel=InputChannel.ROW_STREAM,
                 may_project_dimension=True,
             ),

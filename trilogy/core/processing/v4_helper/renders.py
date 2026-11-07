@@ -38,7 +38,7 @@ def renders(
     asked: dict[str, set[str]] = defaultdict(set)
     for group in attrs.values():
         for contract in group.input_contracts:
-            asked[contract.parent_group_id] |= contract.preserve_keys
+            asked[contract.parent_group_id] |= contract.required_grain
     return {
         gid: _renders(group_graph, group_edges, attrs, gid, asked[gid], environment)
         - dropped.get(gid, frozenset())
@@ -56,7 +56,7 @@ def _renders(
     environment: BuildEnvironment,
 ) -> frozenset[str]:
     """A one-value group renders its value. Otherwise a group renders what it
-    exposes, and each preserve key a reader asks that it can hold; a rowset
+    exposes, and each key of a reader's required grain that it can hold; a rowset
     handle or relation member only under a name it reads (an aggregate by
     `kb` over side a's rows renders the axis as `ka`)."""
     group = attrs[gid]

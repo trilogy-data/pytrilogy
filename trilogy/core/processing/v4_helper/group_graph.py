@@ -38,7 +38,6 @@ from trilogy.core.models.build_environment import (
 )
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
-from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -847,7 +846,6 @@ def _shared_row_parent_join_keys(
     gid: str,
     key_addresses: frozenset[str],
     lineage_parents: dict[str, set[str]],
-    axes: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     """Keys carried by >=2 row-stream parents of `gid` that bridge a fixed-grain
     dimension CTE to the fact scan: the join key their merge must use. A
@@ -862,12 +860,8 @@ def _shared_row_parent_join_keys(
     any parent as that parent's own grain. A grain-owning parent is the
     canonical dimension at the key and folds with the others, and a key
     unrelated to the grouping grain is co-carried by plain projections of a
-    common scan; declaring either as a preserve_key over-constrains
-    sourcing.
-
-    A merged attribute (`axes`) is the exception: a scalar of it
-    (`coalesce(a.year, b.year)`) is grained on the attribute itself, and that
-    is the only column it shares with the row stream."""
+    common scan; declaring either as a sourcing key over-constrains
+    sourcing."""
     if attrs[gid].derivation not in _ROW_JOIN_CONSUMER_DERIVATIONS:
         return frozenset()
     rows = row_parents(group_graph, group_edges, gid)
@@ -881,10 +875,7 @@ def _shared_row_parent_join_keys(
     counts: dict[str, int] = defaultdict(int)
     grain_owners: set[str] = set()
     for pred in rows:
-        carried = set(attrs[pred].output_concepts) | (
-            set(attrs[pred].grain_components) & axes
-        )
-        for addr in carried:
+        for addr in attrs[pred].output_concepts:
             counts[addr] += 1
             if addr in attrs[pred].grain_components:
                 grain_owners.add(addr)
@@ -893,7 +884,8 @@ def _shared_row_parent_join_keys(
         for addr, n in counts.items()
         if n >= 2
         and addr in grain_ancestors
-        and (addr in axes or (addr in key_addresses and addr not in grain_owners))
+        and addr in key_addresses
+        and addr not in grain_owners
     )
 
 
@@ -1025,29 +1017,6 @@ def _walk_grouped_rows(
     )
 
 
-def _consumer_preserve_keys(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    required_grain: frozenset[str],
-    axis_bridges: frozenset[str],
-    environment: BuildEnvironment,
-) -> frozenset[str]:
-    """The keys every row parent of `gid` is asked to carry for the
-    consumer's merge to pair on: its required input grain, the merged
-    attributes bridging a scalar of one to the row stream, and the statement
-    relations tying a rowset to its siblings. Each shapes suite plans no row
-    assertion catches; see `docs/join_axis_audit_2026_10.md` parts 33-35."""
-    relation_keys = _rowset_relation_keys(
-        row_parents(group_graph, group_edges, gid),
-        attrs,
-        environment,
-        attrs[gid].aggregate_input_grain,
-    )
-    return required_grain | axis_bridges | relation_keys
-
-
 def _consumer_sibling_grains(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1092,11 +1061,6 @@ def _refresh_input_contracts(
     key_addresses = frozenset(
         a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
     )
-    axes = frozenset(
-        a.address
-        for a in concept_attrs.values()
-        if is_join_key_group(a.address, environment)
-    )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     grouped_grains: GroupedRowMemo = {}
     for gid in group_graph.nodes:
@@ -1105,27 +1069,19 @@ def _refresh_input_contracts(
         required_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid, rows_pair_facts
         )
-        bridges = _shared_row_parent_join_keys(
-            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents, axes
+        # a bridge widens the consumer's sourcing and fixes the projection; no
+        # pairing reads it (part 35)
+        sourcing_keys = _shared_row_parent_join_keys(
+            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
-        # a KEY bridge widens the consumer's sourcing and fixes the projection;
-        # no pairing reads it (part 35)
-        sourcing_keys = bridges - axes
-        preserve_keys = _consumer_preserve_keys(
-            group_graph,
-            group_edges,
+        relation_keys = _rowset_relation_keys(
+            row_parents(group_graph, group_edges, gid),
             attrs,
-            gid,
-            required_grain,
-            bridges & axes,
             environment,
+            attrs[gid].aggregate_input_grain,
         )
-        projection_grain = (
-            preserve_keys
-            | sourcing_keys
-            | _consumer_sibling_grains(
-                group_graph, group_edges, attrs, gid, grouped_grains
-            )
+        projection_grain = sourcing_keys | _consumer_sibling_grains(
+            group_graph, group_edges, attrs, gid, grouped_grains
         )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
@@ -1138,7 +1094,7 @@ def _refresh_input_contracts(
                     parent_group_id=pred,
                     consumer_group_id=gid,
                     required_grain=frozenset() if is_existence else required_grain,
-                    preserve_keys=(frozenset() if is_existence else preserve_keys),
+                    relation_keys=frozenset() if is_existence else relation_keys,
                     projection_grain=(
                         frozenset() if is_existence else projection_grain
                     ),
