@@ -580,11 +580,11 @@ def _domain_spans(
 
 
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
-    """The keys a row stream's inputs are stitched on, as its input contracts
-    declare them: its rows hold them (`sale_recency` over a by-customer
+    """The keys a row stream's inputs are stitched on, its input contracts'
+    required grain: its rows hold them (`sale_recency` over a by-customer
     aggregate and a sale's date holds `customer.sk` and `sale_date.sk`)."""
     return frozenset().union(
-        *(contract.preserve_keys for contract in group.input_contracts)
+        *(contract.required_grain for contract in group.input_contracts)
     )
 
 

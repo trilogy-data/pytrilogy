@@ -1145,6 +1145,55 @@ builds: it fails with the sourcing keys dropped. Suite capture against `main`:
 and GROUP BY order, GCS hash names). Same 25 failures as `main`. Corpus: 0 of
 205 plans moved.
 
+**Each reader reads its own set (part 36).** After part 35 the carry demand
+was still a union of three sets, `required_grain | relation_keys | axis
+bridges`, and all five readers read all of it: `needed` (N), the merge plan's
+`contracted` (C), `renders`'s asks (R), `_joined_on` (J) and the projection
+(P). Two measurements place each set.
+
+First, a census over one suite run. At each reader it records, per set, the
+keys that set adds that nothing else the reader holds already supplies. Where
+that is empty for every statement, dropping the set from that reader cannot
+move a plan. Three cells are empty: the required grain adds nothing to P
+(which reads `required_grain` directly), the axis bridges add nothing to J,
+and the relation keys add something to J in 5 tests only.
+
+Second, each nonempty cell was dropped and the files of the tests the census
+names were recompiled serially against a serial baseline of the same files.
+Under xdist those files move between runs (a statement captured 1 or 4 times,
+dashboard statement counts), so the serial pairing is what makes the diff
+readable.
+
+| set | N | C | R | J | P |
+|---|---|---|---|---|---|
+| required grain | | | | 26 plans move, 2 tests fail | adds nothing |
+| relation keys | 4 rowset tests fail | rowset pairings move | none | none | none |
+| axis bridges | none | none | none | adds nothing | none |
+
+The required grain's N, C and R cells were not dropped; it is the input
+grain itself. Two joint drops confirm the singles: the axis bridges dropped
+from every reader at once move nothing, nor do the relation keys dropped from
+R, J and P together. (The remaining lines in both are TPC-DS tests whose one
+statement is captured 1 or 4 times.)
+
+So the contract says which reader reads what:
+
+- `GroupInputContract.preserve_keys` is no longer a field. It is a property,
+  `required_grain | relation_keys`, read only by `needed` and the merge plan.
+- `renders` asks and `_joined_on` reads only the `required_grain`.
+- `projection_grain` is `sourcing_keys` and the sibling grains; the projection
+  reads it beside `required_grain`, as before.
+- The axis-bridge branch of `_shared_row_parent_join_keys` is deleted.
+  `test_merged_derived_bridge_*` and `test_merged_key_reads_summary`, where the
+  census saw it add keys, pass with and without it, with the same SQL.
+
+`test_relation_keys_are_sourced_and_paired_never_stitched_or_projected` pins
+the reader split; it fails on `main`, where `_joined_on` and the projection
+read the relation keys. Suite capture against `main`: 57 statements moved,
+all known noise (validation column order, `test_window_laws` ordering, CLI
+and dashboard statement counts, temp-table and GCS hash names). The same 25
+failures as `main`. Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1152,13 +1201,11 @@ not built yet:
    joins; `node_joins` are not built from the pairings. The merge-wide
    fallback for a pair with an unattributed parent remains, but no suite
    merge reaches it (part 32).
-2. `GroupInputContract.preserve_keys` is still a union, of
-   `required_grain`, `relation_keys` and the axis bridges, built in
-   `_consumer_preserve_keys`. The sibling grains are the contract's
-   `projection_grain` (part 34) and the KEY bridges its `sourcing_keys`
-   (part 35). The per-edge carry demand has to reproduce the plans each set
-   shapes, not only the rows. The axis bridges shape no suite plan anyone has
-   reproduced, so nothing holds them yet.
+2. The contract's sets are named and each reader reads the ones it needs
+   (parts 34-36). Two readers still read a union: `needed` and the merge
+   plan's `contracted` read `preserve_keys`, `required_grain |
+   relation_keys`. The per-edge carry demand is what replaces that, and it
+   has to reproduce the plans both sets shape, not only the rows.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
