@@ -472,8 +472,20 @@ def create_datasource_node(
             or (x.address in output_addresses and x.is_aggregate)
         ):
             all_inputs.append(x)
+    # An aggregate column the scan's own WHERE reads (`where n > 0`) stays an
+    # input: dropped, the filter renders the column's lineage over rows the
+    # scan never reads.
+    filter_addresses = (
+        {c.address for c in routed_conditions.concept_arguments}
+        if routed_conditions
+        else set()
+    )
     all_inputs = [
-        c for c in all_inputs if not c.is_aggregate or c.address in output_addresses
+        c
+        for c in all_inputs
+        if not c.is_aggregate
+        or c.address in output_addresses
+        or c.address in filter_addresses
     ]
 
     satisfies_conditions = not datasource_has_filter_sensitive_aggregate(
