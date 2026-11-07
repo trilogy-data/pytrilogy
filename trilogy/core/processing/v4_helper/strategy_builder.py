@@ -5159,10 +5159,15 @@ def _final_dedup_targets(
 
 
 def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:
-    """A window ordered by an aggregate gives a select its keys, not itself
-    (`_grain_contribution`), so its rows already sit at the select's grain."""
+    """A window ordered by an aggregate that inherits the select's grain gives
+    the select its keys, not itself (`_grain_contribution`), so its rows
+    already sit at the select's grain."""
     for arg in concept.concept_arguments:
         if arg.address in seen:
+            continue
+        if isinstance(arg.lineage, BuildAggregateWrapper):
+            if arg.lineage.grain_inherited:
+                return True
             continue
         if arg.is_aggregate or _reads_aggregate(arg, seen | {arg.address}):
             return True
