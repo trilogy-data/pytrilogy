@@ -5198,11 +5198,7 @@ def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) 
             if arg.lineage.grain_inherited:
                 return True
             continue
-        # a scalar over aggregates (`sum(y) / count(id)`) inherits the grain
-        # only through one of them
-        if arg.derivation != Derivation.BASIC and arg.is_aggregate:
-            return True
-        if _reads_aggregate(arg, seen | {arg.address}):
+        if arg.is_aggregate or _reads_aggregate(arg, seen | {arg.address}):
             return True
     return False
 

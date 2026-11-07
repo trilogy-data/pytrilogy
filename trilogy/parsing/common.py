@@ -821,9 +821,6 @@ def _reads_aggregate(
             # an aggregate `by` fixed keys has its own grain, not the select's
             if not node.by:
                 return True
-        elif isinstance(node, Function) and node.operator == FunctionType.GROUP:
-            # `group x by k` is evaluated at `k`, like `sum(x) by k`
-            continue
         elif (
             isinstance(node, Function)
             and node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value

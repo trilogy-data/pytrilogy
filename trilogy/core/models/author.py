@@ -2557,7 +2557,6 @@ def reads_bare_aggregate(
         if (
             concept is None
             or expr.address in _seen
-            or concept.derivation == Derivation.ROWSET
             or concept.lineage is None
             or isinstance(concept.lineage, (WindowItem, RowsetItem))
         ):
