@@ -30,7 +30,7 @@ joined onto the summary, priced in the source search; area 1c), and
 `Cover.lean` §6 (0.3.457: a group by an unnested element, and counts by a
 value the summary key relates to; area 1c), and `Windows.lean` extended
 (0.3.458: grouping by a window's value; 0.3.459: an aggregate a window
-orders by; area 4), and `SelectGrain.lean` (0.3.461: an aggregate with no
+orders by; area 4), and `SelectGrain.lean` (0.3.462: an aggregate with no
 `by` is at the select's raw grain, a window's order included; this corrects
 0.3.459's pin; area 4).
 
@@ -313,7 +313,7 @@ orders by; area 4), and `SelectGrain.lean` (0.3.461: an aggregate with no
       window oracle summed per the window content alone ("at the window
       content's grain"); it now sums per the tuple ranked.
 
-19. **Lessons from the select-grain round (`SelectGrain.lean`, 0.3.461).**
+19. **Lessons from the select-grain round (`SelectGrain.lean`, 0.3.462).**
     - Check a "bug" against the language's own rule before fixing it. An
       aggregate with no `by` is at the select's raw grain, always. 0.3.459
       read a window's order aggregate as needing a grain of its own and
@@ -624,7 +624,7 @@ placement); `nulls auto` is the engine's own. Leads left:
 - **Done in 0.3.458: a value window's keys were its operand**, and a group by
   a window's value grouped by those keys (`select l, count(id)` counted by
   `x`; `Windows.regroup_by_value_exact`, `tests/windows/test_window_group_laws.py`).
-  Done in 0.3.459 and corrected in 0.3.461: a window ordered by an
+  Done in 0.3.459 and corrected in 0.3.462: a window ordered by an
   aggregate `by` fixed keys groups by its value; one ordered by an aggregate
   with no `by` reads it at the select grain (`SelectGrain.bare_is_select_grain`),
   gives the select its keys, and is keyed on the select grain

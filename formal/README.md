@@ -899,7 +899,7 @@ a design decision or a bug.
   tuple the window ranks, which is the select grain only when the select is
   no finer: under `select g, p, rank(g) over (order by sum(y))` it ranked by
   the total per `g` while `sum(y)` projected beside it was per `(g, p)`
-  (`SelectGrain.window_tuple_pin_misreads`). 0.3.461 removes the pin: the
+  (`SelectGrain.window_tuple_pin_misreads`). 0.3.462 removes the pin: the
   aggregate resolves at the select grain like any other, nested in an
   expression, in a CASE or behind a name alike
   (`SelectGrain.bare_expression_on_grain`). A window ordered by one is then a
