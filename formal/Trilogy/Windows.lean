@@ -28,7 +28,12 @@ every row that holds the tuple. An aggregate window with no order
 - `order_aggregate_per_partition`: a bare aggregate a window orders by is
   evaluated per the tuple the window ranks, its arguments and partition; per
   its first argument alone it reads every partition's rows
-  (`anchor_sum_crosses_partitions`).
+  (`anchor_sum_crosses_partitions`). The pin reaches every bare aggregate
+  in the order expression, inline or named, so the order is a function of
+  the tuple (`pinned_expression_of_tuple`); evaluated at the select's grain
+  it ranked one argument twice (`select_grain_order_splits_rank`), and keys
+  missing the order's `by` fanned the read-back out
+  (`order_keys_dropped_fans_out`).
 
 ORDER BY names a direction and a NULL placement. A plain direction places
 NULLs last, DuckDB's placement; `nulls auto` leaves it to the engine. Engines
@@ -241,6 +246,54 @@ theorem anchor_sum_crosses_partitions :
     let perPG (g0 : Nat) :=
       sumWhere (fun r => decide (r.1 = 1) && decide (r.2.1 = g0)) y rows
     perG 0 = perG 1 ∧ perPG 0 < perPG 1 := by decide
+
+/-! ### Wherever the aggregate sits, and however it is spelled
+
+The pin is not a rule about a top-level wrapper. An order expression over
+bare aggregates (`sum(y) / count(id)`) pins each of them to the window's
+tuple, and so is a function of that tuple (`pinned_expression_of_tuple`); a
+named aggregate (`auto s <- sum(y); ... order by s`) means what its inline
+spelling means. A name the select itself defines keeps the one value it
+projects there. Trilogy pinned only a top-level inline wrapper: a nested or
+named one took the select's grain, and under `select g, p, r` the rank of
+`g` took a value per `(g, p)` (`select_grain_order_splits_rank`).
+
+The window's keys are the keys its order value is a function of. A named
+aggregate `by g, p` read as `{g}` alone — the parser hydrated the window
+before the name it orders by — joined each row to every rank of its `g`
+(`order_keys_dropped_fans_out`). -/
+
+/-- The sum of `y` over the rows sharing `r`'s tuple `t`. -/
+def perTuple {α τ : Type} [DecidableEq τ] (t : α → τ) (y : α → Nat) (rows : List α)
+    (r : α) : Nat :=
+  sumWhere (fun s => decide (t s = t r)) y rows
+
+/-- **An expression over aggregates pinned to the tuple is a function of the
+tuple**: rows sharing it order, and so rank, alike. -/
+theorem pinned_expression_of_tuple {α τ β : Type} [DecidableEq τ] (t : α → τ)
+    (y z : α → Nat) (rows : List α) (F : Nat → Nat → β) (r₁ r₂ : α)
+    (h : t r₁ = t r₂) :
+    F (perTuple t y rows r₁) (perTuple t z rows r₁) =
+      F (perTuple t y rows r₂) (perTuple t z rows r₂) := by
+  simp only [perTuple, h]
+
+/-- Rows `(p, g, y)`: `a` is 10 under `P` and 20 under `Q`. Ranking `g` by the
+sum per `(g, p)` (the select's grain) ranks one `g` twice, 2 and 3; per `g`,
+as the window's tuple, `a` and `b` both total 30. -/
+theorem select_grain_order_splits_rank :
+    let rows : List (Nat × Nat × Nat) := [(0, 0, 10), (1, 0, 20), (0, 1, 5), (1, 1, 25)]
+    let y : Nat × Nat × Nat → Nat := fun r => r.2.2
+    let perPG := perTuple (fun r : Nat × Nat × Nat => (r.1, r.2.1)) y rows
+    let perG := perTuple (fun r : Nat × Nat × Nat => r.2.1) y rows
+    let values := rows.map perPG
+    rankD 30 values (perPG (0, 0, 10)) ≠ rankD 30 values (perPG (1, 0, 20)) ∧
+      perG (0, 0, 10) = perG (0, 1, 5) := by decide
+
+/-- Ranks per `(g, p)` read back on `g` alone: each of four rows meets both
+ranks of its `g`. -/
+theorem order_keys_dropped_fans_out :
+    let ranks : List (Nat × Nat) := [(0, 2), (0, 3), (1, 1), (1, 4)]
+    (lookup [0, 0, 1, 1] ranks).length = 8 := by decide
 
 /-! ## Where NULLs sort -/
 

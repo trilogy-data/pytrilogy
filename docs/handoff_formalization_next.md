@@ -30,7 +30,8 @@ joined onto the summary, priced in the source search; area 1c), and
 `Cover.lean` §6 (0.3.457: a group by an unnested element, and counts by a
 value the summary key relates to; area 1c), and `Windows.lean` extended
 (0.3.458: grouping by a window's value; 0.3.459: an aggregate a window
-orders by; area 4).
+orders by; 0.3.460: wherever that aggregate sits and however it is named;
+area 4).
 
 ## The recipe
 
@@ -310,6 +311,29 @@ orders by; area 4).
     - An existing law suite's oracle can encode the bug. The rollup suite's
       window oracle summed per the window content alone ("at the window
       content's grain"); it now sums per the tuple ranked.
+
+19. **Lessons from the order-expression round (`Windows.lean`, 0.3.460).**
+    - Probe a rule in every spelling of its input, not just the one it was
+      written for. Pairing each order with its named twin (`order by sum(y)`
+      vs `auto s <- sum(y); order by s`) over six selects found nine
+      disagreements in one 30-line script; the fix for the top-level wrapper
+      had left nested, named and CASE-guarded aggregates on the old grain.
+    - Make the parse-time view and the build read one rewrite rather than
+      two predicates that are meant to agree. `_reads_aggregate` now walks
+      the order `window_order.pin_order_aggregates` returns, so the grain
+      rule cannot drift from the build again (lesson 18).
+    - A parser that hydrates in dependency order is only as right as its
+      dependency scan. `extract_dependencies` read CONCEPT_LITERAL nodes,
+      and a bare name in `over (order by s)` is an ORDER_IDENTIFIER token,
+      so the window could hydrate first and keep an `UndefinedConcept`. The
+      symptom was a wrong key set three layers away (a join on `g` alone);
+      look at the stored lineage before the planner.
+    - A named spelling can carry a meaning the inline one cannot. A name the
+      select itself defines (`select sum(y) as s, rank(g) over (order by
+      s)`) is a value the user sees on the row; reading it as its inline
+      spelling would rank by a different `s` than the one projected beside
+      it. That shape keeps main's answer, and `ConceptSource.SELECT` is what
+      tells the two apart.
 
 ## Candidate areas
 
@@ -600,13 +624,22 @@ placement); `nulls auto` is the engine's own. Leads left:
   (`Windows.order_aggregate_per_partition`,
   `tests/windows/test_window_order_aggregate_laws.py`). Left, both still
   giving the select the window's keys and so splitting a tied rank:
-  - a window ordered by a NAMED aggregate that inherits the select's grain
-    (`auto s <- sum(y); rank(g) over (order by s)`): the build pins only an
-    inline wrapper. Pinning the reference needs a per-window copy of `s`.
-  - an order expression over bare aggregates (`order by sum(y) / count(id)`):
-    `_window_order_by_items` pins only a top-level wrapper. Pinning nested
-    ones changes `test_rank_over_projected_aggregate_ratio_no_recursion`'s
-    grain (`{item, channel}`), which a decision should precede.
+  Done in 0.3.460: a nested, CASE-guarded or named (outside the select)
+  bare aggregate is pinned too, and a window's keys include the `by` of a
+  named aggregate it orders by (`Windows.pinned_expression_of_tuple`,
+  `tests/windows/test_window_order_expression_laws.py`). The ratio test
+  now groups by `{item, rank_a}`, the rank's value. Left:
+  - a window ordered by an aggregate `by` keys finer than its arguments
+    (`rank(g) over (order by sum(y) by g, p)`) ranks the `(g, p)` tuples, so
+    two `p` of one `g` with the same sum count twice under `rank`. The suite
+    holds that reading (the window's grain is the keys its order value is a
+    function of); ranking the distinct `(g, s)` values instead would need
+    `_window_rows_at_grain` to drop a passthrough finer than the window's
+    grain and join it back.
+  - a name the select defines and a window orders by keeps the select's
+    value (`test_select_output_keeps_its_projected_value`), so `rank(g)` is
+    then a value per the select's grain, not per `g`. Decide whether that
+    should warn.
   - `lag`/`lead` ordered by an aggregate navigate the operand's rows, so
     ties in the aggregate leave their order to the engine; the suite does
     not cover them.
