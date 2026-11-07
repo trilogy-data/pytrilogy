@@ -269,12 +269,22 @@ def _condition_literal(value: Any) -> Any:
     return _NO_LITERAL
 
 
-def _is_nonzero_number(value: Any) -> bool:
-    """A literal divisor `/` and `%` cannot be NULL by."""
-    while isinstance(value, Parenthetical):
-        value = value.content
-    if isinstance(value, Function) and value.operator == FunctionType.CONSTANT:
-        value = value.arguments[0] if len(value.arguments) == 1 else None
+def _is_nonzero_number(value: Any, environment: Environment) -> bool:
+    """A literal divisor, or a constant concept holding one, that `/` and `%`
+    cannot be NULL by."""
+    while True:
+        if (
+            isinstance(value, Function)
+            and value.operator in (FunctionType.PARENTHETICAL, FunctionType.CONSTANT)
+            and len(value.arguments) == 1
+        ):
+            value = value.arguments[0]
+        elif (
+            concept := _resolve_concept(value, environment)
+        ) is not None and concept.derivation == Derivation.CONSTANT:
+            value = concept.lineage
+        else:
+            break
     if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return False
     return value != 0 and math.isfinite(value)
@@ -382,7 +392,7 @@ def _function_is_nullable(fn: Function, environment: Environment) -> bool:
     if op in NEVER_NULL_FUNCTIONS:
         return False
     if op in ZERO_DIVISOR_FUNCTIONS and all(
-        _is_nonzero_number(a) for a in arguments[1:]
+        _is_nonzero_number(a, environment) for a in arguments[1:]
     ):
         return _expr_is_nullable(arguments[0], environment)
     if op in NULL_INTRODUCING_FUNCTIONS:

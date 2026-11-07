@@ -180,13 +180,40 @@ def test_nullability_of_a_quotient() -> None:
     env = Environment()
     env.parse("""key id int; property id.x int; property id.y int;
         auto q <- x / y; auto m <- x % y; auto lit <- x / 4; auto neg <- x / -2.5;
-        auto zero <- x / 0; auto rem <- x % 3; auto half <- x / (4 / 2);""")
+        auto zero <- x / 0; auto rem <- x % 3; auto half <- x / (4 / 2);
+        auto paren <- x / (4); const two <- 2; auto named <- x / two;
+        const none <- 0; auto by_none <- x / none;""")
+    names = ("q", "m", "lit", "neg", "zero", "rem", "half", "paren", "named", "by_none")
     nullable = {
-        name
-        for name in ("q", "m", "lit", "neg", "zero", "rem", "half")
-        if Modifier.NULLABLE in env.concepts[name].modifiers
+        name for name in names if Modifier.NULLABLE in env.concepts[name].modifiers
     }
-    assert nullable == {"q", "m", "zero", "half"}
+    assert nullable == {"q", "m", "zero", "half", "by_none"}
+
+
+def test_union_copy_keeps_only_its_arms_nulls() -> None:
+    executor = new_executor(Dialects.DUCK_DB)
+    executor.execute_raw_sql(
+        "create table a (id int, r varchar, x int);"
+        " insert into a values (1, 'a', NULL), (2, 'a', 3);"
+        " create table b (id int, r varchar, x int); insert into b values (3, 'b', 4);"
+    )
+    executor.parse_text(
+        """key id int; property id.r enum<string>['a', 'b'];
+        property id.x int;
+        partial datasource a (id: id, r: r, x: ?x) grain (id) complete where r = 'a' address a;
+        partial datasource b (id: id, r: r, x: ?x) grain (id) complete where r = 'b' address b;"""
+    )
+    executor.execute_text("persist ab into ab from select id, r, x;")
+    columns = executor.environment.datasources["ab"].columns
+    assert {c.alias: c.is_nullable for c in columns} == {
+        "id": False,
+        "r": False,
+        "x": True,
+    }
+    assert _select(executor, "select id, x where x is not null order by id asc;") == [
+        (2, 3),
+        (3, 4),
+    ]
 
 
 COPIED = {

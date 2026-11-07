@@ -1319,9 +1319,12 @@ def written_nullable(select: ProcessedQuery) -> set[str]:
     NULL (its outer joins' padding included) and an output derived from one,
     such as `sum(v)` over a padded `v`."""
     nullable: set[str] = set()
-    for cte in select.ctes:
+    stack = list(select.ctes)
+    while stack:
+        cte = stack.pop()
         if isinstance(cte, UnionCTE):
-            nullable |= {c.address for c in cte.output_columns}
+            # a union holds NULL where an arm does
+            stack.extend(cte.internal_ctes)
             continue
         nullable |= {c.address for c in cte.nullable_concepts}
     memo: dict[str, bool] = {}
