@@ -36,3 +36,6 @@ reason = "The select drops a key its aggregate is `by`, so two key tuples can sh
 
 ["tpc_ds_duckdb/zquery91.log"]
 reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery04.log"]
+reason = "Each ratio divides by nullif(divisor, 0): a zero divisor is NULL on every dialect (formal/Trilogy/NullReject.lean, guarded_div_strict)"
