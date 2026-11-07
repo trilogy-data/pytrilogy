@@ -906,14 +906,9 @@ def _rowset_relation_keys(
     (`_aggregate_axis_members`)."""
     if len(row_parents) < 2:
         return frozenset()
-    rowsets = {
-        concept.lineage.rowset.name
-        for pred in row_parents
-        if attrs[pred].derivation == Derivation.ROWSET
-        for addr in attrs[pred].members
-        if (concept := environment.concepts.get(addr)) is not None
-        and isinstance(concept.lineage, BuildRowsetItem)
-    }
+    rowsets = frozenset().union(
+        *(_group_rowsets(attrs[pred], environment) for pred in row_parents)
+    )
     if not rowsets:
         return frozenset()
     statement = _statement_scoped_relation_members(environment)
@@ -933,6 +928,56 @@ def _rowset_relation_keys(
         ):
             keys |= relation
     return frozenset(keys)
+
+
+def _group_rowsets(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
+    """The rowsets a ROWSET group reads out; empty for any other group."""
+    if group.derivation != Derivation.ROWSET:
+        return frozenset()
+    return frozenset(
+        concept.lineage.rowset.name
+        for addr in group.members
+        if (concept := environment.concepts.get(addr)) is not None
+        and isinstance(concept.lineage, BuildRowsetItem)
+    )
+
+
+def _lineage_rowsets(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    """The rowsets whose handles `address` is computed off (`b.oid + 1` reads
+    `b`); empty for a concept no rowset feeds."""
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return frozenset()
+    if isinstance(concept.lineage, BuildRowsetItem):
+        return frozenset({concept.lineage.rowset.name})
+    return frozenset().union(
+        *(
+            _lineage_rowsets(arg.address, environment)
+            for arg in concept.lineage.concept_arguments
+        )
+    )
+
+
+def _edge_relation_keys(
+    relation_keys: frozenset[str],
+    parent: GroupAttrs,
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The side of a consumer's statement relations one row parent sources: a
+    rowset its own handles, any other parent the members no rowset feeds
+    (`subset join rs2.cid = customer_id` asks the rowset for `rs2.cid` and the
+    customers scan for `customer_id`). A member it already outputs it carries
+    either way."""
+    own = _group_rowsets(parent, environment)
+    return frozenset(
+        key
+        for key in relation_keys
+        if key in parent.output_concepts
+        or (
+            (rowsets := _lineage_rowsets(key, environment)) <= own
+            and bool(rowsets) == bool(own)
+        )
+    )
 
 
 GroupedRowMemo = dict[str, tuple[frozenset[str], bool] | None]
@@ -1094,7 +1139,13 @@ def _refresh_input_contracts(
                     parent_group_id=pred,
                     consumer_group_id=gid,
                     required_grain=frozenset() if is_existence else required_grain,
-                    relation_keys=frozenset() if is_existence else relation_keys,
+                    relation_keys=(
+                        frozenset()
+                        if is_existence
+                        else _edge_relation_keys(
+                            relation_keys, attrs[pred], environment
+                        )
+                    ),
                     projection_grain=(
                         frozenset() if is_existence else projection_grain
                     ),

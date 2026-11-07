@@ -69,8 +69,9 @@ class GroupInputContract:
     # the consumer's input grain: what every row parent carries, renders and
     # is stitched on
     required_grain: frozenset[str] = frozenset()
-    # the statement relations tying a rowset parent to its siblings: the
-    # consumer sources and pairs on them, and no side is asked to render them
+    # this parent's side of the statement relations tying a rowset parent to
+    # its siblings: the consumer sources and pairs on them, and no side is
+    # asked to render them
     relation_keys: frozenset[str] = frozenset()
     # what a dimension parent is projected to beside a shaped sibling, beyond
     # the required grain: the sourcing keys and the grains its siblings' rows
