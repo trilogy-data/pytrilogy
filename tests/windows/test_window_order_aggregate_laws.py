@@ -7,7 +7,7 @@ pinned to the window's first argument it read every partition's
 (`Windows.anchor_sum_crosses_partitions`). An aggregate `by` fixed keys is the
 same in every select (`SelectGrain.specified_ignores_select`), so the window
 is a value the select groups by (`Windows.group_by_tuple_splits_value`). Every
-case runs on DuckDB and SQLite, as an `auto` concept and inline, and must agree
+case runs on DuckDB, SQLite and ClickHouse, as an `auto` concept and inline, and must agree
 with the reference."""
 
 import random
@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
-from tests.windows.test_window_laws import DIALECTS, literal
-from trilogy import Dialects, Environment
+from tests.windows.test_window_laws import DIALECTS, literal, new_executor, seeds_for
+from trilogy import Dialects
 
 SEEDS = range(4)
 FUNCTIONS = ("rank", "dense_rank")
@@ -234,9 +234,9 @@ def test_window_ordered_by_aggregate(
     spelling: str,
 ) -> None:
     text = query(fn, aggregate, partition, select, spelling)
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
-        executor = dialect.default_executor(environment=Environment())
+        executor = new_executor(dialect)
         got = sorted(
             map(tuple, executor.execute_text(fixture(rows) + text)[-1].fetchall()),
             key=repr,

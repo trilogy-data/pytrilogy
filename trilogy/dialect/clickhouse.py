@@ -1,9 +1,17 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from trilogy.core.enums import FunctionType, UnnestMode
+from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode, WindowType
 from trilogy.core.models.core import DataType, MapWrapper
-from trilogy.dialect.base import BaseDialect, array_element_type, is_array_arg
+from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.dialect.base import (
+    INLINE_SAFE_PARAM_DATATYPES,
+    NAVIGATION_WINDOW_FUNCTION_MAP,
+    BaseDialect,
+    array_element_type,
+    is_array_arg,
+    navigation_window_factory,
+)
 from trilogy.dialect.common import CONCAT_COALESCE_LOWER, sunday_first_from_iso
 
 
@@ -16,7 +24,19 @@ def date_part(expr: str, part: str) -> str:
 
 
 if TYPE_CHECKING:
-    from trilogy.core.models.execute import CTE, UnionCTE
+    from trilogy.core.statements.execute import ProcessedQuery
+
+OUTER_JOINS = (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL)
+
+
+def pads_outer_rows(ctes: "list[CTE | UnionCTE]") -> bool:
+    for cte in ctes:
+        if isinstance(cte, UnionCTE):
+            if pads_outer_rows(cte.internal_ctes):
+                return True
+        elif any(isinstance(j, Join) and j.join_type in OUTER_JOINS for j in cte.joins):
+            return True
+    return False
 
 
 def _ch_struct(args, types):
@@ -31,6 +51,40 @@ def _ch_struct(args, types):
     ]
     fields = ", ".join(f"{n} {t}" for n, t in zip(names, type_strs))
     return f"cast(tuple({', '.join(values)}), 'Tuple({fields})')"
+
+
+# ClickHouse types are NOT NULL unless wrapped in Nullable, which these refuse
+UNWRAPPABLE_TYPES = (DataType.ARRAY, DataType.MAP, DataType.STRUCT)
+
+
+def render_cast(args: list[str], types: list) -> str:
+    """A cast keeps NULL: CAST to a bare type raises on one."""
+    target = args[1]
+    target_type = getattr(types[-1], "data_type", types[-1]) if types else None
+    if target_type not in UNWRAPPABLE_TYPES and not target.startswith("Nullable("):
+        target = f"Nullable({target})"
+    return f"CAST({args[0]} AS {target})"
+
+
+def null_safe_join_key(
+    lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
+) -> str:
+    # ClickHouse finds no join key in the `a = b or (a is null and b is null)`
+    # expansion and refuses the join; `<=>` is its null-safe equality
+    if Modifier.NULLABLE in modifiers:
+        return f"({lval} <=> {rval})"
+    return f"{lval} = {rval}"
+
+
+def nullable_navigation(name: str) -> Callable[[str, str, str, int | None], str]:
+    """`lag`/`lead` past the partition's edge return the operand type's
+    default (0, '') when the operand is NOT NULL; NULL everywhere else."""
+    render = navigation_window_factory(name)
+
+    def wrapped(concept: str, window: str, sort: str, offset: int | None = None):
+        return render(f"toNullable({concept})", window, sort, offset)
+
+    return wrapped
 
 
 def array_to_string(args, types):
@@ -126,6 +180,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_DIFF: lambda x, types: f"dateDiff('{x[2]}', {x[0]}, {x[1]})",
     FunctionType.WEEK: lambda x, types: f"toISOWeek({x[0]})",
     # casts
+    FunctionType.CAST: lambda x, types: render_cast(x, types),
     FunctionType.DATE: lambda x, types: f"toDate({x[0]})",
     FunctionType.DATETIME: lambda x, types: f"toDateTime64({x[0]}, 3)",
     FunctionType.TIMESTAMP: lambda x, types: f"toDateTime64({x[0]}, 3)",
@@ -207,6 +262,20 @@ class ClickhouseDialect(BaseDialect):
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         **DB_COLUMN_TYPE_MAP,
     }
+    # a bound date is sent as a string, which ClickHouse does not coerce in
+    # most functions (date_trunc, date arithmetic); render it as a typed literal
+    INLINE_PARAM_DATATYPES: ClassVar[frozenset[DataType]] = (
+        INLINE_SAFE_PARAM_DATATYPES
+        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
+    )
+    NULL_WRAPPER = staticmethod(null_safe_join_key)
+    NAVIGATION_WINDOW_FUNCTION_MAP: ClassVar[
+        dict[WindowType, Callable[[str, str, str, int | None], str]]
+    ] = {
+        **NAVIGATION_WINDOW_FUNCTION_MAP,
+        WindowType.LAG: nullable_navigation("lag"),
+        WindowType.LEAD: nullable_navigation("lead"),
+    }
     QUOTE_CHARACTER = "`"
     SUPPORTS_QUALIFY = True
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode
@@ -216,6 +285,13 @@ class ClickhouseDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
     TRANSACTIONAL_DDL = False
+
+    def render_settings(self, query: "ProcessedQuery") -> str:
+        """An outer join pads with each type's default (0, '') unless
+        join_use_nulls is set; the padded side is NULL everywhere else."""
+        if pads_outer_rows(query.ctes):
+            return "\nSETTINGS join_use_nulls = 1"
+        return ""
 
     def normalize_db_type(self, db_type: str) -> DataType:
         # DateTime64(3, 'UTC'): a zone argument is what makes the column an instant

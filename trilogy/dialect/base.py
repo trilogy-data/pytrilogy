@@ -1026,6 +1026,8 @@ class BaseDialect:
     RECURSIVE_KEYWORD = "RECURSIVE"
     QUOTE_CTE_NAMES = False
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
+    # datatypes a constant renders inline rather than binding as a parameter
+    INLINE_PARAM_DATATYPES: ClassVar[frozenset[DataType]] = INLINE_SAFE_PARAM_DATATYPES
     COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
         COMPLEX_DATATYPE_MAP
     )
@@ -1989,7 +1991,7 @@ class BaseDialect:
             and c.lineage.operator == FunctionType.CONSTANT
             and self.rendering.parameters is True
             and c.datatype.data_type != DataType.MAP
-            and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+            and c.datatype.data_type not in self.INLINE_PARAM_DATATYPES
             and _constant_bindable(c.lineage)
         )
 
@@ -1997,7 +1999,7 @@ class BaseDialect:
         """Whether a parameterized reference binds (``:name``) or inlines its
         value; small datatypes round-trip cleanly and are always inlined."""
         return bool(self.rendering.parameters) and (
-            e.concept.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+            e.concept.datatype.data_type not in self.INLINE_PARAM_DATATYPES
         )
 
     def render_comparison(
@@ -3605,7 +3607,7 @@ class BaseDialect:
         select = self.render_sql_template(
             recursive=recursive,
             output=None,
-            full_select=compiled_ctes[-1].statement,
+            full_select=compiled_ctes[-1].statement + self.render_settings(query),
             ctes=compiled_ctes[:-1],
         )
         return [
@@ -3942,13 +3944,18 @@ class BaseDialect:
                 )
         return [self.compile_statement(query)]
 
+    def render_settings(self, query: ProcessedQuery) -> str:
+        """Engine settings a statement needs for its rows to mean what the
+        query says, appended after its final select."""
+        return ""
+
     def _render_query(self, query, output: str | None) -> str:
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
         compiled_ctes = self.generate_ctes(query)
         final = self.render_sql_template(
             recursive=recursive,
             output=output,
-            full_select=compiled_ctes[-1].statement,
+            full_select=compiled_ctes[-1].statement + self.render_settings(query),
             ctes=compiled_ctes[:-1],
         )
 

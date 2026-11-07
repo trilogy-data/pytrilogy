@@ -6,7 +6,7 @@ what it projects (`Rows.lean`), whatever grain the aggregate was computed at
 it is at the select grain, the value included
 (`SelectGrain.bare_beside_fixed_value`). Reading the aggregate's keys in its
 place splits a select-grain tuple into one row per key
-(`SelectGrain.by_keys_split_tuple`). Every case runs on DuckDB and SQLite, as
+(`SelectGrain.by_keys_split_tuple`). Every case runs on DuckDB, SQLite and ClickHouse, as
 an `auto` concept and inline, and must agree with the reference."""
 
 import random
@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from tests.windows.test_window_laws import DIALECTS, literal
-from trilogy import Dialects, Environment
+from tests.windows.test_window_laws import DIALECTS, literal, new_executor, seeds_for
+from trilogy import Dialects
 
 SEEDS = range(4)
 # name -> (spelling, function, operand, keys)
@@ -132,9 +132,9 @@ def test_select_of_fixed_aggregate(
     spelling: str,
 ) -> None:
     text = query(fixed, dims, measure, spelling)
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
-        executor = dialect.default_executor(environment=Environment())
+        executor = new_executor(dialect)
         got = sorted(
             map(tuple, executor.execute_text(fixture(rows) + text)[-1].fetchall()),
             key=repr,

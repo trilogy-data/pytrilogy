@@ -11,19 +11,25 @@ aggregate `by` its partition, and an empty `over ()` is the total
 A plain ORDER BY direction sorts NULLs last on every engine, `nulls first`
 first, and `nulls auto` as the engine does (`Windows.render_places`). SQLite
 sorts an unplaced NULL first (`Windows.bare_direction_misplaces`), so every
-case runs on DuckDB and SQLite and must agree with the reference."""
+case runs on DuckDB, SQLite and ClickHouse (chdb, where it installs) and must
+agree with the reference. ClickHouse also pads `lag`/`lead` with NULL past a
+partition's edge (`Padding.lean`)."""
 
+import importlib.util
 import random
 from typing import Any
 
 import pytest
 
 from trilogy import Dialects, Environment, parse
+from trilogy.dialect.config import ClickhouseConfig
 from trilogy.executor import Executor
 
 SEEDS = range(4)
 COLS = ["id", "g", "x"]
-DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE]
+# chdb has no Windows wheel
+CHDB = [Dialects.CLICKHOUSE] if importlib.util.find_spec("chdb") else []
+DIALECTS = [Dialects.DUCK_DB, Dialects.SQLITE, *CHDB]
 # (column, descending, nulls first)
 Order = tuple[str, bool, bool]
 SPELL = {
@@ -49,7 +55,12 @@ def make_rows(seed: int) -> list[dict[str, Any]]:
 
 
 def literal(value: Any, cast: str) -> str:
-    return f"cast(null as {cast})" if value is None else repr(value)
+    """A typed NULL every engine reads, ClickHouse included: its `cast(null as
+    T)` raises, as T is NOT NULL there."""
+    if value is None:
+        zero = "''" if cast == "varchar" else "0"
+        return f"nullif({zero}, {zero})"
+    return repr(value)
 
 
 def fixture(rows: list[dict[str, Any]]) -> str:
@@ -68,9 +79,22 @@ datasource t (id: id, g: g, x: x) grain (id) query '''
 """
 
 
+def seeds_for(dialect: Dialects, seeds: range) -> range:
+    """ClickHouse holds the same laws on fewer seeds, to keep CI time down."""
+    return seeds[:1] if dialect == Dialects.CLICKHOUSE else seeds
+
+
+def new_executor(dialect: Dialects) -> Executor:
+    if dialect == Dialects.CLICKHOUSE:
+        return dialect.default_executor(
+            environment=Environment(), conf=ClickhouseConfig(mode="chdb")
+        )
+    return dialect.default_executor(environment=Environment())
+
+
 def executor(dialect: Dialects, seed: int) -> Executor:
     if (dialect, seed) not in _EXECUTORS:
-        ex = dialect.default_executor(environment=Environment())
+        ex = new_executor(dialect)
         ex.execute_text(fixture(make_rows(seed)))
         _EXECUTORS[(dialect, seed)] = ex
     return _EXECUTORS[(dialect, seed)]
@@ -197,7 +221,7 @@ def test_numbering_window_ranks_its_grain(
     window = f"{fn}({', '.join(args)}) {over_clause(partition, [order])}"
     query = f"select {', '.join(selected)}, {window} as r;"
     grain = sorted(set(args) | set(partition) | {order[0]}, key=COLS.index)
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         ranks = rank_tuples(rows, grain, partition, [order], fn == "dense_rank")
         for row in rows:
@@ -244,7 +268,7 @@ def test_value_window_reads_each_row(
 ) -> None:
     window = f"{fn}({operand}) {over_clause(partition, order)}"
     query = f"select {', '.join([*selected, f'{window} as r'])};"
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         for members in partitions(rows, partition):
             members.sort(key=lambda r: sort_key(r, order))
@@ -266,7 +290,7 @@ def test_value_window_reads_each_row(
 )
 def test_order_by_places_nulls_as_asked(dialect: Dialects, order: list[Order]) -> None:
     query = f"select id, {order[0][0]} order by {order_clause(order)}, id asc;"
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = sorted(make_rows(seed), key=lambda r: (sort_key(r, order), r["id"]))
         expected = [(r["id"], r[order[0][0]]) for r in rows]
         assert fetch(dialect, seed, query) == expected, (seed, query)
