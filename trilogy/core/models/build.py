@@ -125,12 +125,6 @@ from trilogy.core.models.datasource import (
     RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.window_order import (
-    pin_order_aggregates,
-    pin_to,
-    pin_to_spec,
-    window_anchors,
-)
 from trilogy.utility import string_to_hash
 
 # TODO: refactor to avoid these
@@ -4119,38 +4113,41 @@ class Factory:
                 out.append(built)
         return out
 
-    def _window_order_by_items(
-        self, window: NumberingWindowItem | NavigationWindowItem, anchors: list
-    ) -> list:
-        """Resolve the bare (no ``by``) aggregates a window's ORDER BY reads,
-        inline, nested in an expression or by name (`window_order`).
-
-        Under the select's grouping spec they compute in that single
-        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick up
-        the resolved select grain plus the mode in ``__build_concept``);
-        otherwise the tuple the window ranks (its arguments and partition)
-        defines the implicit grain: a sum per argument alone would add up
-        rows of every partition (`Windows.order_aggregate_per_partition`).
-        Always copy — the OrderItem may belong to a shared authored definition,
-        and an in-place ``by`` leaks across statements."""
+    def _window_order_by_items(self, order_by: list) -> list:
+        """A bare (no ``by``) aggregate in a window's ORDER BY is at the
+        select's grain, like any other (`SelectGrain.bare_is_select_grain`), so it is
+        left bare to resolve there. Under the select's grouping spec it
+        computes in that single ROLLUP/CUBE/GROUPING SETS pass (inferred-key
+        specs stay bare and pick up the resolved select grain plus the mode in
+        ``__build_concept``). Always copy — the OrderItem may belong to a
+        shared authored definition, and an in-place ``by`` leaks across
+        statements."""
         spec = self.select_grouping
-        if spec is not None:
-            if not spec.by:
-                return list(window.order_by)
-            pin = pin_to_spec(spec)
-        elif anchors:
-            pin = pin_to(anchors)
-        else:
-            return list(window.order_by)
+        if spec is None or not spec.by:
+            return list(order_by)
         out = []
-        for x in window.order_by:
-            expr = pin_order_aggregates(x.expr, pin, self.environment.concepts.get)
-            out.append(x if expr is x.expr else OrderItem(expr=expr, order=x.order))
+        for x in order_by:
+            expr = x.expr
+            if (
+                isinstance(expr, AggregateWrapper)
+                and not expr.by
+                and expr.grouping == AggregateGroupingMode.STANDARD
+            ):
+                x = OrderItem(
+                    expr=AggregateWrapper(
+                        function=expr.function,
+                        by=list(spec.by),
+                        grouping=spec.mode,
+                        grouping_sets=[list(g) for g in spec.grouping_sets],
+                    ),
+                    order=x.order,
+                )
+            out.append(x)
         return out
 
     @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
-        final_by = self._window_order_by_items(base, window_anchors(base))
+        final_by = self._window_order_by_items(base.order_by)
         return BuildNumberingWindowItem(
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
@@ -4164,10 +4161,7 @@ class Factory:
         validation = requires_concept_nesting(base.content)
         if validation:
             content, _ = self.instantiate_concept(validation)
-        anchors = (
-            [content, *base.over] if isinstance(content, (ConceptRef, Concept)) else []
-        )
-        final_by = self._window_order_by_items(base, anchors)
+        final_by = self._window_order_by_items(base.order_by)
         return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),

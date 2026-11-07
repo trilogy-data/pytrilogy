@@ -931,9 +931,8 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     # also projected, with a partition key not in the projection, used to push
     # the window output into the select grain. The abstract sums then resolved
     # their `by` against that grain — grouping by the rank, whose order_by
-    # rebuilt the sums — a build-time RecursionError. The sums the rank orders
-    # by are pinned to its tuple (item, channel), so the select groups by the
-    # rank's value (`Windows.regroup_by_value_exact`).
+    # rebuilt the sums — a build-time RecursionError. The grain must instead use
+    # the window's keys (item, channel).
     query = """
     import all_sales as s;
     where s.return_amount > 10000
@@ -949,7 +948,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
     env = Environment(working_path=working_path)
     _, statements = parse_text(query, env)
     select_grain = statements[-1].grain
-    assert select_grain.components == {"s.item.id", "local.rank_a"}, select_grain
+    assert select_grain.components == {"s.item.id", "s.channel"}, select_grain
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert re.search(r"rank\(\) over \(partition by", sql), sql
 

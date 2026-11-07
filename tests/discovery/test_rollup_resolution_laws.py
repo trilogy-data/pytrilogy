@@ -667,9 +667,11 @@ def test_window_orders_by_aggregate_at_its_own_grain(
     inner = (
         expression if scoped is None else f"{expression} by {', '.join(scoped) or '*'}"
     )
-    # an unscoped aggregate under a window is per the tuple it ranks
-    # (`Windows.order_aggregate_per_partition`)
-    by_keys = ["species", *over] if scoped is None else scoped
+    # an unscoped aggregate under a window is at the select grain: the
+    # selected keys and the window's (`SelectGrain.bare_is_select_grain`)
+    by_keys = (
+        list(dict.fromkeys([*keys, "species", *over])) if scoped is None else scoped
+    )
     call = _window_call(window, "species", over, inner, _window_grain(over, by_keys))
     query = (
         f"select {', '.join(keys)}, {call} as w"

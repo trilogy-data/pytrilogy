@@ -1437,6 +1437,16 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             )
             final_grain = grain
             keys = set(grain.components)
+        elif isinstance(
+            new_lineage, (NumberingWindowItem, NavigationWindowItem)
+        ) and _window_reads_select_grain(self, environment):
+            # ordered by an aggregate with no `by`, the window reads values
+            # at the select grain (`SelectGrain.bare_expression_on_grain`):
+            # it is one value per select-grain tuple, not per its arguments
+            final_grain = grain
+            keys = set(keys or ()) | {
+                c.address for c in _grain_concept_refs(grain, environment)
+            }
         elif self.derivation == Derivation.BASIC:
             assert new_lineage
             by_refs, has_by_aggregate = _aggregate_by_grain_refs(
@@ -2523,6 +2533,14 @@ def _by_item_with_reference_replacement(item, replacements):
     if isinstance(item, ReferenceReplaceable):
         return item.with_reference_replacement(replacements)
     return item
+
+
+def _window_reads_select_grain(concept: Concept, environment: Environment) -> bool:
+    """A window that reads an aggregate with no `by`, which is evaluated at
+    the select grain wherever it appears (`SelectGrain.bare_is_select_grain`)."""
+    from trilogy.parsing.common import _reads_aggregate
+
+    return _reads_aggregate(concept, environment.concepts.get)
 
 
 def _grain_concept_refs(grain: Grain, environment: Environment) -> list[ConceptRef]:

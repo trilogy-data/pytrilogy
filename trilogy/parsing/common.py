@@ -66,7 +66,6 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import SelectStatement
-from trilogy.core.window_order import pin_order_aggregates, pin_to, window_anchors
 from trilogy.parsing.helpers import Meta
 from trilogy.utility import string_to_hash, unique
 
@@ -822,25 +821,14 @@ def _reads_aggregate(
             # an aggregate `by` fixed keys has its own grain, not the select's
             if not node.by:
                 return True
+        elif isinstance(node, Function) and node.operator == FunctionType.GROUP:
+            # `group x by k` is evaluated at `k`, like `sum(x) by k`
+            continue
         elif (
             isinstance(node, Function)
             and node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
-        elif isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
-            stack.extend(
-                getattr(node, attr, None) for attr in ("content", "arguments", "over")
-            )
-            # the build pins the order's bare aggregates to the window's tuple
-            anchors = window_anchors(node)
-            stack.extend(
-                (
-                    pin_order_aggregates(o.expr, pin_to(anchors), lookup)
-                    if anchors
-                    else o.expr
-                )
-                for o in node.order_by
-            )
         else:
             stack.extend(
                 getattr(node, attr, None)
