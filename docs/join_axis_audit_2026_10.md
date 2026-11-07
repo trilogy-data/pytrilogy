@@ -1218,13 +1218,19 @@ does not move. `test_persisted_value_reads_back` moves between two serial
 runs of `main` too (the column order of the grain check). The rest is the
 known noise. The same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 
+**An unattributed pair is a planner bug.** Part 32 left a merge-wide
+fallback in `_planned_source_pairs`: a pair with a source that holds no
+planned group could pair on anything the merge could. With the fallback
+replaced by a raise, the full suite fails only that fallback's own unit test.
+So it now raises, as the FINAL merge already does for a side the plan never
+elected. `test_an_unattributed_pair_is_a_planner_bug` pins the error.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
-   joins; `node_joins` are not built from the pairings. The merge-wide
-   fallback for a pair with an unattributed parent remains, but no suite
-   merge reaches it (part 32).
+   joins; `node_joins` are not built from the pairings. A pair with an
+   unattributed source now raises (part 37).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37). Every
    row-stream edge of a consumer still holds the same sets, though:

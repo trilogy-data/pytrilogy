@@ -247,20 +247,24 @@ def _planned_source_pairs(
     held: dict[str, frozenset[str] | None],
     planned: PlannedPairs | None,
 ) -> dict[frozenset[str], frozenset[str]] | None:
-    """What each two joined sources may pair on, by identifier. A pair with a
-    side the plan does not name may pair on anything the merge may. An
-    existence-only source is no side: it is read as a subselect, never paired."""
+    """What each two joined sources may pair on, by identifier. Every joined
+    source holds planned groups: one the plan does not name is a planner bug.
+    An existence-only source is no side: it is read as a subselect, never
+    paired."""
     if planned is None:
         return None
+    unattributed = sorted(key for key in merged if not held[key])
+    if len(merged) > 1 and unattributed:
+        raise ValueError(
+            f"Merge sources {unattributed} hold no planned group, so their "
+            "join keys are unplanned. This is a planner bug."
+        )
     out: dict[frozenset[str], frozenset[str]] = {}
     keys = sorted(merged)
     for i, left in enumerate(keys):
         for right in keys[i + 1 :]:
-            lgroups, rgroups = held[left], held[right]
             out[frozenset({merged[left].identifier, merged[right].identifier})] = (
-                planned.permitted
-                if not lgroups or not rgroups
-                else planned.between(lgroups, rgroups)
+                planned.between(held[left] or frozenset(), held[right] or frozenset())
             )
     return out
 
