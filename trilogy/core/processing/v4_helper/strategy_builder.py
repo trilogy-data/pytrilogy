@@ -3634,6 +3634,16 @@ def _input_contract_join_keys(
     return frozenset(keys)
 
 
+def _input_contract_sourcing_keys(group_attrs: GroupAttrs) -> frozenset[str]:
+    return frozenset().union(
+        *(
+            contract.sourcing_keys
+            for contract in group_attrs.input_contracts
+            if contract.channel == InputChannel.ROW_STREAM
+        )
+    )
+
+
 def _apply_input_contracts(
     parent_builds: list[ParentBuild],
     group_attrs: GroupAttrs,
@@ -6769,7 +6779,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         _one_entity_beside_paired_facts(a.primary_members, environment)
     )
     needed |= (
-        set(_input_contract_join_keys(a))
+        set(_input_contract_join_keys(a) | _input_contract_sourcing_keys(a))
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )

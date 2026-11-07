@@ -1031,26 +1031,21 @@ def _consumer_preserve_keys(
     attrs: dict[str, GroupAttrs],
     gid: str,
     required_grain: frozenset[str],
-    key_addresses: frozenset[str],
-    lineage_parents: dict[str, set[str]],
-    axes: frozenset[str],
+    axis_bridges: frozenset[str],
     environment: BuildEnvironment,
 ) -> frozenset[str]:
     """The keys every row parent of `gid` is asked to carry for the
-    consumer's merge to pair on: its required input grain, the shared keys
-    bridging a dimension to the fact rows, and the statement relations tying
-    a rowset to its siblings. Each shapes suite plans no row assertion
-    catches; see `docs/join_axis_audit_2026_10.md` parts 33 and 34."""
-    bridge_keys = _shared_row_parent_join_keys(
-        group_graph, group_edges, attrs, gid, key_addresses, lineage_parents, axes
-    )
+    consumer's merge to pair on: its required input grain, the merged
+    attributes bridging a scalar of one to the row stream, and the statement
+    relations tying a rowset to its siblings. Each shapes suite plans no row
+    assertion catches; see `docs/join_axis_audit_2026_10.md` parts 33-35."""
     relation_keys = _rowset_relation_keys(
         row_parents(group_graph, group_edges, gid),
         attrs,
         environment,
         attrs[gid].aggregate_input_grain,
     )
-    return required_grain | bridge_keys | relation_keys
+    return required_grain | axis_bridges | relation_keys
 
 
 def _consumer_sibling_grains(
@@ -1110,19 +1105,27 @@ def _refresh_input_contracts(
         required_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid, rows_pair_facts
         )
+        bridges = _shared_row_parent_join_keys(
+            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents, axes
+        )
+        # a KEY bridge widens the consumer's sourcing and fixes the projection;
+        # no pairing reads it (part 35)
+        sourcing_keys = bridges - axes
         preserve_keys = _consumer_preserve_keys(
             group_graph,
             group_edges,
             attrs,
             gid,
             required_grain,
-            key_addresses,
-            lineage_parents,
-            axes,
+            bridges & axes,
             environment,
         )
-        projection_grain = preserve_keys | _consumer_sibling_grains(
-            group_graph, group_edges, attrs, gid, grouped_grains
+        projection_grain = (
+            preserve_keys
+            | sourcing_keys
+            | _consumer_sibling_grains(
+                group_graph, group_edges, attrs, gid, grouped_grains
+            )
         )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
@@ -1139,6 +1142,7 @@ def _refresh_input_contracts(
                     projection_grain=(
                         frozenset() if is_existence else projection_grain
                     ),
+                    sourcing_keys=frozenset() if is_existence else sourcing_keys,
                     channel=(
                         InputChannel.EXISTENCE
                         if is_existence

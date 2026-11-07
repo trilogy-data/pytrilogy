@@ -363,8 +363,9 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
 def test_input_contract_declares_shared_row_parent_join_key():
     """Two row parents of a joining consumer share a KEY output (`order`) that is
     the lineage source of the consumer's grouping grain (`top_orders <- order`):
-    it is declared a preserved join key so the parent merge joins on it instead
-    of ON 1=1 (top_x_by_metric)."""
+    it is declared a sourcing key so both parents are read and projected with it
+    and the merge joins on it instead of ON 1=1 (top_x_by_metric). No pairing
+    reads it, so it is no carry demand."""
     group_graph = nx.DiGraph()
     group_edges: EdgeMap = {}
     attrs = {
@@ -417,13 +418,15 @@ def test_input_contract_declares_shared_row_parent_join_key():
     )
 
     for contract in attrs["consumer"].input_contracts:
-        assert "local.order" in contract.preserve_keys
+        assert "local.order" in contract.sourcing_keys
+        assert "local.order" in contract.projection_grain
+        assert "local.order" not in contract.preserve_keys
     # `amount` is a shared-but-non-key measure (only on the fact side anyway):
     # never a bridge key. `top_orders` is not shared by both parents.
     fact_contract = next(
         c for c in attrs["consumer"].input_contracts if c.parent_group_id == "fact"
     )
-    assert "local.amount" not in fact_contract.preserve_keys
+    assert "local.amount" not in fact_contract.sourcing_keys
 
 
 def test_sibling_grains_fix_the_projection_not_the_carry_demand():
