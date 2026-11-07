@@ -66,12 +66,12 @@ class GroupInputContract:
 
     parent_group_id: str
     consumer_group_id: str
-    # the consumer's input grain: what every row parent carries, renders and
-    # is stitched on
+    # of the consumer's input grain (`GroupAttrs.input_grain`), what this
+    # parent can carry: it renders them and the merge plan pairs it on them
     required_grain: frozenset[str] = frozenset()
     # this parent's side of the statement relations tying a rowset parent to
-    # its siblings: the consumer sources and pairs on them, and no side is
-    # asked to render them
+    # its siblings, as far as it can carry it: the consumer sources and pairs
+    # on them, and no side is asked to render them
     relation_keys: frozenset[str] = frozenset()
     # what a dimension parent is projected to beside a shaped sibling, beyond
     # the required grain: the sourcing keys and the grains its siblings' rows
@@ -257,6 +257,9 @@ class GroupAttrs(_HeldKeys):
     reason: RootReason | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
+    # the grain this group's row parents are stitched on; each edge holds the
+    # part its parent can carry (`GroupInputContract.required_grain`)
+    input_grain: frozenset[str] = frozenset()
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()

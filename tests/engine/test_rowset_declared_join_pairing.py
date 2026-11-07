@@ -13,6 +13,7 @@ import pytest
 from tests.helpers.rows import customer_twins, twin_rows
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph
+from trilogy.core.processing.v4_helper.join_plan import carryable
 from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.executor import Executor
 
@@ -170,3 +171,43 @@ def test_a_member_computed_off_a_handle_is_its_rowsets_side() -> None:
     assert group_graph._edge_relation_keys(keys, scan, environment) == {
         "local.order_id"
     }
+
+
+def test_no_edge_is_asked_for_a_key_its_parent_cannot_carry(
+    twins: tuple[Executor, Executor], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uncarried: list[tuple[str, frozenset[str]]] = []
+    refresh = group_graph._refresh_input_contracts
+
+    def capture(
+        group_graph_,
+        group_edges,
+        attrs,
+        concept_attrs,
+        concept_edges,
+        environment,
+        *rest,
+    ) -> None:
+        refresh(
+            group_graph_,
+            group_edges,
+            attrs,
+            concept_attrs,
+            concept_edges,
+            environment,
+            *rest,
+        )
+        for group in attrs.values():
+            for contract in group.input_contracts:
+                pid = contract.parent_group_id
+                keys = contract.preserve_keys
+                held = carryable(group_graph_, attrs, pid, keys, environment)
+                if held != keys:
+                    uncarried.append((pid, keys - held))
+
+    monkeypatch.setattr(group_graph, "_refresh_input_contracts", capture)
+    twins[0].generate_sql(
+        ORDER_ROWSET
+        + "select customer_id, count(rs.oid) as n subset join rs.oid = order_id;"
+    )
+    assert uncarried == []

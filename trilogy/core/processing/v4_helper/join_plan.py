@@ -26,7 +26,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase, _statement_scoped_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .functional_dependency import build_fd_closure, build_fd_determines_all
-from .models import GroupAttrs
+from .models import GroupAttrs, InputChannel
 
 
 class PairingKind(Enum):
@@ -567,6 +567,21 @@ def _widenable(
     return _determined(held, environment)
 
 
+def carryable(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    keys: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """Of `keys`, what `gid` can be asked to carry: what it can be widened to
+    (`_widenable`) and what it computes off those columns (`subset join
+    b.oid + 1 = a.oid` on the side holding `b.oid`). Each side is asked only
+    this, so the merge plan and `renders` read the ask as stated."""
+    widenable = _widenable(group_graph, attrs, gid, environment)
+    return keys & (widenable | _renderable(widenable, keys, environment))
+
+
 def _domain_spans(
     group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
 ) -> frozenset[str] | None:
@@ -580,12 +595,11 @@ def _domain_spans(
 
 
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
-    """The keys a row stream's inputs are stitched on, its input contracts'
-    required grain: its rows hold them (`sale_recency` over a by-customer
-    aggregate and a sale's date holds `customer.sk` and `sale_date.sk`)."""
-    return frozenset().union(
-        *(contract.required_grain for contract in group.input_contracts)
-    )
+    """The keys a row stream's inputs are stitched on, its input grain: its
+    rows hold them (`sale_recency` over a by-customer aggregate and a sale's
+    date holds `customer.sk` and `sale_date.sk`)."""
+    rows = any(c.channel == InputChannel.ROW_STREAM for c in group.input_contracts)
+    return group.input_grain if rows else frozenset()
 
 
 def carries(
@@ -813,7 +827,8 @@ def plan_final_join(
     A `split` contributor is joined as several projections of its own rows,
     which pair on anything they both hold: that is the one relation, never a
     key to carry. `contracted` are the keys a consumer's input contracts ask
-    each contributor to carry (a per-group merge's `preserve_keys`). `extras`
+    each contributor to carry (a per-group merge's `preserve_keys`), each
+    already narrowed to what that contributor can carry (`carryable`). `extras`
     join beside the cover supplying nothing (bridges, filter-argument
     producers): they pair, but fix no grain and ask no ROOT to carry a key."""
     supplying = tuple(cover)
@@ -846,10 +861,7 @@ def plan_final_join(
         if attrs[gid].derivation == Derivation.ROOT
     }
     for gid, keys in (contracted or {}).items():
-        widenable = _widenable(group_graph, attrs, gid, environment)
-        carry_demands[gid] = carry_demands.get(gid, frozenset()) | (
-            keys & (widenable | _renderable(widenable, keys, environment))
-        )
+        carry_demands[gid] = carry_demands.get(gid, frozenset()) | keys
     # A row stream is identified by the grain keys its rows turn out to hold
     # (`sale_recency` at customer and sale date holds both off its inputs);
     # settled before what each side is widened to is read off the identities.
