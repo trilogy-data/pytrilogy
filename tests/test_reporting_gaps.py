@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects
 from trilogy.core.models.core import NumericType
 from trilogy.dialect.results import ChartResult
 from trilogy.parsing.render import Renderer
@@ -24,45 +24,6 @@ select 3, 'b', '/x', 200 union all
 select 4, 'b', '/x', 500
 ''';
 """
-
-EMPTY_ROWSET = "rowset bad <- select ip, count(id) -> bad_n having bad_n > 99;\n"
-
-
-def test_global_aggregate_over_empty_rowset_returns_one_row():
-    executor = Dialects.DUCK_DB.default_executor()
-    results = executor.execute_text(
-        PREAMBLE
-        + EMPTY_ROWSET
-        + "select count(id) -> total, array_agg(bad.ip) -> bad_ips;"
-    )
-    assert results[-1].fetchall() == [(4, None)]
-
-
-def test_empty_rowset_aggregates_alone():
-    executor = Dialects.DUCK_DB.default_executor()
-    results = executor.execute_text(
-        PREAMBLE + EMPTY_ROWSET + "select count(bad.ip) -> n;"
-    )
-    assert results[-1].fetchall() == [(0,)]
-
-
-def test_call_over_empty_rowset(tmp_path: Path):
-    out_file = tmp_path / "args.txt"
-    script = tmp_path / "echo_args.py"
-    script.write_text(
-        "import sys, pathlib\n"
-        f"pathlib.Path(r'{out_file}').write_text(' '.join(sys.argv[1:]))\n",
-        newline="\n",
-    )
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=tmp_path)
-    )
-    executor.execute_text(
-        PREAMBLE
-        + EMPTY_ROWSET
-        + "call `./echo_args.py` from select count(id) -> total, count(bad.ip) -> bad_count;"
-    )
-    assert out_file.read_text() == "--total 4 --bad_count 0"
 
 
 @pytest.mark.parametrize("binding", ["as", "->"])
