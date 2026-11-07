@@ -24,6 +24,7 @@ from tests.windows.test_window_order_aggregate_laws import (
     total,
 )
 from trilogy import Dialects, Environment
+from trilogy.core.models.author import window_orders_by_bare_aggregate
 
 SEEDS = range(4)
 FUNCTIONS = ("rank", "dense_rank")
@@ -205,3 +206,21 @@ def test_window_in_where_reads_the_select_grain(
             )
         )
         assert fetch(dialect, fixture(rows) + text) == expected, (seed, text)
+
+
+@pytest.mark.parametrize(
+    "order, bare",
+    [
+        ("(sum(y))", True),
+        ("(sum(y) by g)", False),
+        ("group(t) by g", False),
+        ("case when sum(y) > 2 then 1 else 0 end", True),
+    ],
+)
+def test_window_orders_by_bare_aggregate(order: str, bare: bool) -> None:
+    env = Environment()
+    env.parse(
+        fixture(make_rows(0))
+        + f"auto t <- sum(y); auto w <- rank(g) over (order by {order} desc);"
+    )
+    assert window_orders_by_bare_aggregate(env.concepts["w"].lineage, env) is bare
