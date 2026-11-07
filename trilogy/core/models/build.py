@@ -99,6 +99,7 @@ from trilogy.core.models.author import (
     UnionSelectLineage,
     WhereClause,
     WindowItem,
+    raw_select_grain,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -4113,18 +4114,23 @@ class Factory:
                 out.append(built)
         return out
 
-    def _window_order_by_items(self, order_by: list, anchors: list) -> list:
-        """Resolve bare (no ``by``) aggregates in a window's ORDER BY.
-
-        Under the select's grouping spec they compute in that single
-        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick up
-        the resolved select grain plus the mode in ``__build_concept``);
-        otherwise the tuple the window ranks (its arguments and partition)
-        defines the implicit grain: a sum per argument alone would add up
-        rows of every partition (`Windows.order_aggregate_per_partition`).
-        Always copy — the OrderItem may belong to a shared authored definition,
-        and an in-place ``by`` leaks across statements."""
+    def _window_order_by_items(self, order_by: list) -> list:
+        """A bare (no ``by``) aggregate in a window's ORDER BY is at the
+        select's raw grain, like any other (`SelectGrain.bare_is_select_grain`),
+        so it is left bare to resolve there, unless the select grain holds a
+        key computed from such a window (`top_x_by_metric`): that key is read
+        as the window's own keys, or the aggregate would be grouped by itself.
+        Under the select's grouping spec it computes in that single
+        ROLLUP/CUBE/GROUPING SETS pass (inferred-key specs stay bare and pick
+        up the resolved select grain plus the mode in ``__build_concept``).
+        Always copy — the OrderItem may belong to a shared authored
+        definition, and an in-place ``by`` leaks across statements."""
         spec = self.select_grouping
+        if spec is not None and not spec.by:
+            return list(order_by)
+        raw = self._raw_select_grain() if spec is None else None
+        if spec is None and raw is None:
+            return list(order_by)
         out = []
         for x in order_by:
             expr = x.expr
@@ -4133,27 +4139,30 @@ class Factory:
                 and not expr.by
                 and expr.grouping == AggregateGroupingMode.STANDARD
             ):
-                if spec is not None:
-                    if spec.by:
-                        expr = AggregateWrapper(
-                            function=expr.function,
-                            by=list(spec.by),
-                            grouping=spec.mode,
-                            grouping_sets=[list(g) for g in spec.grouping_sets],
-                        )
-                elif anchors:
-                    expr = AggregateWrapper(function=expr.function, by=list(anchors))
-            if expr is not x.expr:
-                x = OrderItem(expr=expr, order=x.order)
+                pinned = (
+                    AggregateWrapper(
+                        function=expr.function,
+                        by=list(spec.by),
+                        grouping=spec.mode,
+                        grouping_sets=[list(g) for g in spec.grouping_sets],
+                    )
+                    if spec is not None
+                    else AggregateWrapper(function=expr.function, by=list(raw or []))
+                )
+                x = OrderItem(expr=pinned, order=x.order)
             out.append(x)
         return out
 
+    def _raw_select_grain(self) -> list[ConceptRef] | None:
+        """`raw_select_grain`, when it differs from the select grain."""
+        raw = raw_select_grain(self.grain, self.environment)
+        if raw == list(self.grain.component_order):
+            return None
+        return [c.reference for a in raw if (c := self.environment.concepts.get(a))]
+
     @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
-        # An AggregateWrapper with empty `by` inside the order_by needs an
-        # implicit grain — the rank's arguments and partition define the row.
-        anchors = [*base.arguments, *base.over] if base.arguments else []
-        final_by = self._window_order_by_items(base.order_by, anchors)
+        final_by = self._window_order_by_items(base.order_by)
         return BuildNumberingWindowItem(
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
@@ -4167,10 +4176,7 @@ class Factory:
         validation = requires_concept_nesting(base.content)
         if validation:
             content, _ = self.instantiate_concept(validation)
-        anchors = (
-            [content, *base.over] if isinstance(content, (ConceptRef, Concept)) else []
-        )
-        final_by = self._window_order_by_items(base.order_by, anchors)
+        final_by = self._window_order_by_items(base.order_by)
         return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),

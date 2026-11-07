@@ -6,7 +6,6 @@ from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicCo
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
     NULL_INTRODUCING_FUNCTIONS,
-    AggregateGroupingMode,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -827,38 +826,12 @@ def _reads_aggregate(
             and node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
-        elif isinstance(node, (NumberingWindowItem, NavigationWindowItem)):
-            stack.extend(
-                getattr(node, attr, None) for attr in ("content", "arguments", "over")
-            )
-            stack.extend(
-                o.expr for o in node.order_by if not _pinned_by_window(node, o.expr)
-            )
         else:
             stack.extend(
                 getattr(node, attr, None)
                 for attr in (*_SUBEXPR_ATTRS, "over", "order_by")
             )
     return False
-
-
-def _pinned_by_window(
-    window: NumberingWindowItem | NavigationWindowItem, expr: Any
-) -> bool:
-    """A bare aggregate a window orders by is evaluated per the tuple the
-    window ranks, not at the select's grain (the build's
-    `_window_order_by_items`)."""
-    anchored = (
-        bool(window.arguments)
-        if isinstance(window, NumberingWindowItem)
-        else isinstance(window.content, (ConceptRef, Concept))
-    )
-    return (
-        anchored
-        and isinstance(expr, AggregateWrapper)
-        and not expr.by
-        and expr.grouping == AggregateGroupingMode.STANDARD
-    )
 
 
 def concepts_to_grain_concepts_ordered(
@@ -1539,11 +1512,35 @@ def _references_grouping(concept: Concept, environment: Environment) -> bool:
     return walk(concept) or _window_internals_reference_grouping(concept.lineage)
 
 
-def _window_order_refs(parent: WindowItem) -> list:
+def _order_value_keys(
+    ref: ConceptRef, environment: Environment, seen: frozenset[str] = frozenset()
+) -> list:
+    """What a window ordered by `ref` is a function of: an aggregate `by`
+    fixed keys gives those keys, named or inline (`sum(y) by g, p` is a value
+    per `(g, p)`), and a scalar of one gives its inputs' keys."""
+    concept = environment.concepts.get(ref.address)
+    if concept is None or ref.address in seen or concept.lineage is None:
+        return [ref]
+    lineage = concept.lineage
+    if isinstance(lineage, AggregateWrapper):
+        return list(lineage.by) if lineage.by else [ref]
+    if concept.derivation != Derivation.BASIC:
+        return [ref]
+    relevant, _ = get_relevant_parent_concepts(lineage)
+    keys = [
+        k
+        for r in relevant
+        for k in _order_value_keys(r, environment, seen | {ref.address})
+    ]
+    reads_by = any(k.address not in {r.address for r in relevant} for k in keys)
+    return keys if reads_by else [ref]
+
+
+def _window_order_refs(parent: WindowItem, environment: Environment) -> list:
     refs: list = []
     for item in parent.order_by or []:
         relevant, _ = get_relevant_parent_concepts(item.expr)
-        refs += relevant
+        refs += [k for r in relevant for k in _order_value_keys(r, environment)]
     return refs
 
 
@@ -1561,7 +1558,7 @@ def _numbering_window_to_concept(
             return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     arg_addresses = [a.address for a in parent.arguments]
     over_refs = _window_over_refs(list(parent.over))
-    order_refs = _window_order_refs(parent)
+    order_refs = _window_order_refs(parent, environment)
     # the rank of a tuple of its arguments, partition and order columns
     # (`Windows.group_by_tuple_splits_value`)
     frame_addresses = [y.address for y in over_refs + order_refs]
@@ -1658,7 +1655,7 @@ def _navigation_window_to_concept(
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     over_refs = _window_over_refs(list(parent.over))
-    order_refs = _window_order_refs(parent)
+    order_refs = _window_order_refs(parent, environment)
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:

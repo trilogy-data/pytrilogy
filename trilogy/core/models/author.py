@@ -1437,6 +1437,18 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             )
             final_grain = grain
             keys = set(grain.components)
+        elif (
+            raw := _window_select_grain(new_lineage, keys, grain, environment)
+        ) is not None:
+            # ordered by an aggregate with no `by`, the window reads values
+            # at the select grain (`SelectGrain.bare_expression_on_grain`):
+            # it is one value per select-grain tuple, not per its arguments
+            final_grain = Grain(
+                components=set(raw),
+                component_order=raw,
+                where_clause=grain.where_clause,
+            )
+            keys = set(keys or ()) | set(raw)
         elif self.derivation == Derivation.BASIC:
             assert new_lineage
             by_refs, has_by_aggregate = _aggregate_by_grain_refs(
@@ -2523,6 +2535,102 @@ def _by_item_with_reference_replacement(item, replacements):
     if isinstance(item, ReferenceReplaceable):
         return item.with_reference_replacement(replacements)
     return item
+
+
+def reads_bare_aggregate(
+    expr: Any, environment: Environment, _seen: frozenset[str] = frozenset()
+) -> bool:
+    """Whether `expr` reads an aggregate with no `by`, which is evaluated at the
+    select grain wherever it appears (`SelectGrain.bare_is_select_grain`). One
+    `by` fixed keys, a `group ... by`, and a rowset's output (aggregated in the
+    rowset's own select) are not."""
+    if isinstance(expr, AggregateWrapper):
+        return not expr.by and expr.grouping == AggregateGroupingMode.STANDARD
+    if isinstance(expr, Function):
+        if expr.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return True
+        if expr.operator == FunctionType.GROUP:
+            return False
+        return any(reads_bare_aggregate(a, environment, _seen) for a in expr.arguments)
+    if isinstance(expr, (ConceptRef, Concept)):
+        concept = environment.concepts.get(expr.address)
+        if (
+            concept is None
+            or expr.address in _seen
+            or concept.lineage is None
+            or isinstance(concept.lineage, (WindowItem, RowsetItem))
+        ):
+            return False
+        return reads_bare_aggregate(
+            concept.lineage, environment, _seen | {expr.address}
+        )
+    if isinstance(expr, FunctionCallWrapper):
+        return reads_bare_aggregate(expr.content, environment, _seen)
+    if isinstance(expr, Parenthetical):
+        return reads_bare_aggregate(expr.content, environment, _seen)
+    if isinstance(expr, (Comparison, Conditional)):
+        return reads_bare_aggregate(
+            expr.left, environment, _seen
+        ) or reads_bare_aggregate(expr.right, environment, _seen)
+    if isinstance(expr, (CaseWhen, CaseSimpleWhen, CaseElse)):
+        return any(
+            reads_bare_aggregate(getattr(expr, a, None), environment, _seen)
+            for a in ("comparison", "value_expr", "expr")
+        )
+    return False
+
+
+def window_orders_by_bare_aggregate(window: Any, environment: Environment) -> bool:
+    """A window ordered by an aggregate with no `by`: its order is read at the
+    select grain, so the window is a value per select-grain tuple."""
+    return isinstance(window, (NumberingWindowItem, NavigationWindowItem)) and any(
+        reads_bare_aggregate(o.expr, environment) for o in window.order_by
+    )
+
+
+def _window_select_grain(
+    lineage: Any, keys: set[str] | None, grain: Grain, environment: Environment
+) -> list[str] | None:
+    """The raw select grain a window ordered by a bare aggregate is keyed on,
+    when its own keys do not already hold it."""
+    if not window_orders_by_bare_aggregate(lineage, environment):
+        return None
+    # a ROLLUP's grouping() flags mark its rows; they are not dimensions
+    raw = [
+        a
+        for a in raw_select_grain(grain, environment)
+        if (c := environment.concepts.get(a)) is not None
+        and c.derivation != Derivation.AGGREGATE
+    ]
+    return None if set(raw) <= set(keys or ()) else raw
+
+
+def raw_select_grain(grain: Grain, environment: Environment) -> list[str]:
+    """The grain an aggregate with no `by` is evaluated at: the select grain,
+    with each key computed from a window ordered by such an aggregate
+    (`top_x_by_metric`'s bucket) read as that window's own keys, since the
+    aggregate cannot be grouped by a value computed from it."""
+    from trilogy.parsing.common import (
+        _gather_nested_windows,
+        _nested_window_grain_refs,
+    )
+
+    out: list[str] = []
+    for address in grain.component_order:
+        concept = environment.concepts.get(address)
+        lineage = concept.lineage if concept is not None else None
+        if lineage is not None and any(
+            window_orders_by_bare_aggregate(w, environment)
+            for w in _gather_nested_windows(lineage)
+        ):
+            out.extend(
+                r.address
+                for r in _nested_window_grain_refs(lineage)
+                if r.address != address
+            )
+        else:
+            out.append(address)
+    return list(dict.fromkeys(out))
 
 
 def _grain_concept_refs(grain: Grain, environment: Environment) -> list[ConceptRef]:

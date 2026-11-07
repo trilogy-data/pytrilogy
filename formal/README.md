@@ -43,7 +43,8 @@ a design decision or a bug.
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 | `Cover.lean` | which queries a count summary covers: targets and conditions that are functions of its key, filtered and distinct counts, totals beside a target, existence, relations keyed on the grain | a target is any function of the key under any spelling (a rename, a scalar of a stored column, a column listed twice), `count(x ? c)` is the re-sum of the groups `c` keeps, and `sum`/`min`/`max(x ? c)` the re-aggregate of `agg(x) by G, cols(c)` over them (`filtered_sum_exact`, `filtered_min_exact`, `filtered_max_exact`), which needs the count's `coalesce` (`uncoalesced_case_count_null`) and the condition's columns in the partial's key (`partial_off_condition_misreads`), or joined onto the summary's rows by a functional lookup before any re-sum that drops their key (`joined_case_exact`, `resum_then_case_exact`; `joined_fanout_double_counts`, `case_above_coarser_grouping_misreads`), in either spelling `agg(x ? c)` or `agg(case when c then x end)`, `count_distinct(k)` is `count(k)` where every row holds its own `k`, a total and a per-target count are independent re-sums, a complete summary proves which key values exist, a count by a value the key relates to re-sums the related groups, which is the summary over the DISTINCT `(key, value)` pairs (`distinct_pairs_resum_exact`, `relation_resum_count_exact`), and re-summing relation pairs double counts, including the pairs a list repeating a value expands to (`collapsed_fanout_double_counts`, `repeated_element_counts_once`), which a list declared `::unique` cannot do (`unique_list_pairs_are_distinct`) (checked by `tests/discovery/test_summary_cover_laws.py`, `tests/discovery/test_filtered_rollup_laws.py`, `tests/discovery/test_relation_rollup_laws.py` and the grouped cases of `tests/unnest/test_unnest_filter_laws.py`) |
-| `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, the rendering places NULLs as asked on every engine, grouping by a window's value is the re-sum of its tuple's groups, never one group per tuple, and a bare aggregate a window orders by is evaluated per the tuple it ranks, over its partition's rows alone (checked by `tests/windows/test_window_laws.py`, `tests/windows/test_window_group_laws.py` and `tests/windows/test_window_order_aggregate_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
+| `SelectGrain.lean` | an aggregate with no `by` against one `by` fixed keys, wherever it appears | an unspecified aggregate is the aggregate `by` the select's raw grain (`bare_is_select_grain`), so it and any scalar over it are functions of that grain (`bare_on_grain`, `bare_expression_on_grain`), and in a select with no keys it is the total (`bare_empty_grain_is_total`); one `by` fixed keys is the same in every select (`specified_ignores_select`); a grain holding a window's partition reads the partition's rows alone (`bare_within_partition`); pinning a window's order aggregate to its first argument or to the tuple it ranks gives another value (`first_argument_pin_misreads`, `window_tuple_pin_misreads`) (checked by `tests/windows/test_window_order_aggregate_laws.py`, `tests/windows/test_window_order_expression_laws.py` and the window cases of `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Windows.lean` | what a window ranks and where ORDER BY sorts NULLs: a rank over the distinct tuples of its grain, the read-back onto rows, an empty `over ()`, per-engine NULL placement and its rendering | a rank over a grain's distinct values depends only on which values occur, a stream rank is right when it holds each value once and counts repeats otherwise, a read-back from a table unique on its key keeps one row per row, `over ()` is the total, the rendering places NULLs as asked on every engine, grouping by a window's value is the re-sum of its tuple's groups, never one group per tuple, and an aggregate a window orders by with no `by` is at the select grain, which, when it holds the partition, reads the partition's rows alone (checked by `tests/windows/test_window_laws.py`, `tests/windows/test_window_group_laws.py`, `tests/windows/test_window_order_aggregate_laws.py` and `tests/windows/test_window_order_expression_laws.py` on DuckDB and SQLite, and `tests/dialect/test_null_order_renderings.py`) |
 | `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
 | `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB and SQLite, `tests/dialect/test_scalar_law_renderings.py`, and chdb) |
 | `Types.lean` | the declared type of an expression as the column a persisted copy is stored in | a sum holds in the join of its operands' types and a product in the sum of their scales (`add_preserved`, `mul_preserved`), a remainder in its dividend's type (`rem_preserved`), `greatest` / `least` in the join of all arguments (`pick_preserved`); no decimal scale holds a quotient (`third_has_no_scale`), and a 4-byte float does not hold a double (`single_misses_double`) (checked by `tests/core/test_type_materialization_laws.py` on DuckDB and SQLite, and `tests/dialect/test_type_law_renderings.py`) |
@@ -887,28 +888,42 @@ a design decision or a bug.
   partition column or beside the operand, as an `auto` and inline) answer
   wrong; none now.
 
-- **A window's order aggregate summed every partition, and a window ordered
-  by an aggregate still split its group** (`Windows.lean`, an aggregate a
-  window orders by). `rank(g) over (partition by p order by sum(y))` summed
-  `y` per `g` over every partition, so inside `p` it ranked by `g`'s total
-  across all of them (`Windows.anchor_sum_crosses_partitions`): the build
-  pinned a bare order aggregate to the rank's first argument alone. It is now
-  pinned to the tuple the window ranks, its arguments and partition
-  (`Windows.order_aggregate_per_partition`). That is also the select's own
-  groups in the usual `select p, g, sum(y), rank(g) over (partition by p
-  order by sum(y))`, so the plan reads the rank's sum from the select's
-  GROUP BY instead of a second aggregate per `g` joined back
-  (`usa_names::test_row_number_proper_join`, five CTEs to one). And the
-  0.3.458 exemption that kept a window ordered by an aggregate giving the
-  select its keys applied to every aggregate; it now applies only to one
-  that inherits the select's grain. A rank ordered by `sum(y) by g`, or by a
-  bare `sum(y)` the window pins, is a value the select groups by: with `b`
-  and `c` tied, `select r, count(id)` returned rank 2 twice, once per `g`
-  (`Windows.group_by_tuple_splits_value`). On main, 216 of 256 cases in
-  `tests/windows/test_window_order_aggregate_laws.py` (`rank`/`dense_rank`
-  ordered by `sum`/`count`/`max` inline or by a named `sum ... by` the
-  tuple, partitioned or not, selected beside their arguments, alone, or
-  beside `count`/`sum`, as an `auto` and inline) answer wrong; none now.
+- **A window's order aggregate was given a grain of its own** (`SelectGrain.lean`,
+  `Windows.lean`, an aggregate a window orders by). An aggregate with no `by`
+  is at the select's raw grain wherever it appears, exactly as if written
+  `by` it (`SelectGrain.bare_is_select_grain`). The build pinned one in a
+  window's ORDER BY to the window's first argument, so `rank(g) over
+  (partition by p order by sum(y))` in `select p, g, ...` summed `y` per `g`
+  over every partition (`SelectGrain.first_argument_pin_misreads`,
+  `Windows.anchor_sum_crosses_partitions`). 0.3.459 moved the pin to the
+  tuple the window ranks, which is the select grain only when the select is
+  no finer: under `select g, p, rank(g) over (order by sum(y))` it ranked by
+  the total per `g` while `sum(y)` projected beside it was per `(g, p)`
+  (`SelectGrain.window_tuple_pin_misreads`). 0.3.462 removes the pin: the
+  aggregate resolves at the select grain like any other, nested in an
+  expression, in a CASE or behind a name alike
+  (`SelectGrain.bare_expression_on_grain`). A window ordered by one is then a
+  value per select-grain tuple, and its keys are the select grain: with only
+  its arguments as keys, the summary plan joined `select city, species,
+  rank(species) over (order by count(tree_id))` back on `species` and gave a
+  species in two cities both ranks. A window ordered by an aggregate `by`
+  fixed keys (or a `group ... by`) is the same in every select
+  (`SelectGrain.specified_ignores_select`) and stays a value the select
+  groups by (0.3.459). Its keys include those `by` keys, named or inline: the
+  v2 parser did not count a bare name in `over (order by s)` as a dependency,
+  so the window hydrated before `s <- sum(y) by g, p` and kept an
+  `UndefinedConcept`, its keys came out `{g}`, and `select id, r` gave a row
+  up to three ranks (`Windows.order_keys_dropped_fans_out`). The 0.3.459
+  suite and the rollup suite's window oracle had encoded the tuple pin; both
+  now state the select grain. TPC-H `adhoc03` (`where rank customer by
+  sum(total_price) desc <= 10 select count(order.id)`) had relied on the
+  first-argument pin: its select has no keys, so the sum is the total
+  (`SelectGrain.bare_empty_grain_is_total`) and every customer ties; it now
+  writes `sum(total_price) by customer`. On main, 144 of 256 cases in
+  `tests/windows/test_window_order_aggregate_laws.py` and 22 of 416 in
+  `tests/windows/test_window_order_expression_laws.py` (a `by g, p` order
+  named or inline, per row, alone or beside `count`; a projected `sum(y)`
+  beside the rank ordered by it; a WHERE gate) answer wrong; none now.
 
 ## Limits
 

@@ -1,13 +1,17 @@
-"""`formal/Trilogy/Windows.lean`, "An aggregate a window orders by": a bare
-aggregate in a window's order is evaluated per the tuple the window ranks, its
-arguments and partition (`Windows.order_aggregate_per_partition`); per its
-first argument alone it read every partition's rows
-(`Windows.anchor_sum_crosses_partitions`). A window ordered by an aggregate is
-still a value a select groups by, so two arguments that tie are one group
-(`Windows.group_by_tuple_splits_value`). Every case runs on DuckDB and SQLite,
-as an `auto` concept and inline, and must agree with the reference."""
+"""`formal/Trilogy/SelectGrain.lean`, `Windows.lean` "An aggregate a window
+orders by": an aggregate with no `by` in a window's order is at the select's
+raw grain, as if written `by` it (`SelectGrain.bare_is_select_grain`), and the
+window gives that grain its keys. When the grain holds the partition the sum
+reads only the partition's rows (`Windows.order_aggregate_per_partition`);
+pinned to the window's first argument it read every partition's
+(`Windows.anchor_sum_crosses_partitions`). An aggregate `by` fixed keys is the
+same in every select (`SelectGrain.specified_ignores_select`), so the window
+is a value the select groups by (`Windows.group_by_tuple_splits_value`). Every
+case runs on DuckDB and SQLite, as an `auto` concept and inline, and must agree
+with the reference."""
 
 import random
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import pytest
@@ -99,22 +103,18 @@ def desc_nulls_last(value: Any) -> tuple:
     return (1, ()) if value is None else (0, -value)
 
 
-def window_values(
-    rows: list[dict[str, Any]], fn: str, aggregate: str, partition: tuple[str, ...]
-) -> None:
-    """Rank each `(g, *partition)` tuple within its partition by the aggregate
-    over that tuple's rows (`Windows.order_aggregate_per_partition`)."""
-    _, agg_fn, operand = AGGREGATES[aggregate]
-    tuples: dict[tuple, list[Any]] = {}
-    for row in rows:
-        tuples.setdefault((row["g"], *(row[c] for c in partition)), []).append(
-            row[operand]
-        )
-    keyed = {t: aggregate_value(agg_fn, values) for t, values in tuples.items()}
+Rows = list[dict[str, Any]]
+
+
+def rank_ordered(
+    keyed: dict[tuple, Any], fn: str, partition_of: Callable[[tuple], tuple]
+) -> dict[tuple, int]:
+    """`Windows.rankD`: rank the distinct tuples within their partition, by
+    their order value descending, NULLs last."""
     groups: dict[tuple, list[tuple]] = {}
     for t in keyed:
-        groups.setdefault(t[1:], []).append(t)
-    value: dict[tuple, Any] = {}
+        groups.setdefault(partition_of(t), []).append(t)
+    value: dict[tuple, int] = {}
     for members in groups.values():
         members.sort(key=lambda t: desc_nulls_last(keyed[t]))
         rank = dense = 0
@@ -122,28 +122,95 @@ def window_values(
             if i == 0 or keyed[t] != keyed[members[i - 1]]:
                 rank, dense = i + 1, dense + 1
             value[t] = dense if fn == "dense_rank" else rank
+    return value
+
+
+def group_rows(rows: Rows, cols: Sequence[str]) -> dict[tuple, Rows]:
+    groups: dict[tuple, Rows] = {}
     for row in rows:
-        row["w"] = value[(row["g"], *(row[c] for c in partition))]
+        groups.setdefault(tuple(row[c] for c in cols), []).append(row)
+    return groups
+
+
+def total(name: str, members: Rows) -> Any:
+    operand = "id" if name == "count" else "y"
+    return aggregate_value(name, [r[operand] for r in members])
+
+
+def select_grain_reference(
+    rows: Rows,
+    fn: str,
+    order: Callable[[Rows], Any],
+    partition: tuple[str, ...],
+    dims: Sequence[str],
+    measure: str | None,
+) -> list[tuple]:
+    """`select <dims>, w[, measure]` with `w <- fn(g) over (partition by ...
+    order by <bare aggregates>)`. A bare aggregate is at the select grain
+    (`SelectGrain.bare_is_select_grain`); the window gives that grain its
+    keys, `g` and the partition. The window ranks the select-grain tuples
+    within their partition, exactly as for `by <select grain>`, and each is
+    one row."""
+    grain = list(dict.fromkeys(["g", *partition, *dims]))
+    groups = group_rows(rows, grain)
+    value = {t: order(m) for t, m in groups.items()}
+    ranks = rank_ordered(
+        value, fn, lambda t: tuple(t[grain.index(c)] for c in partition)
+    )
+    out = []
+    for t, members in groups.items():
+        w = ranks[t]
+        row = [*(t[grain.index(c)] for c in dims), w]
+        if measure:
+            row.append(total(measure, members))
+        out.append(tuple(row))
+    return sorted(out, key=repr)
+
+
+def specified_reference(
+    rows: Rows,
+    fn: str,
+    order: Callable[[Rows], Any],
+    keys: Sequence[str],
+    partition: tuple[str, ...],
+    dims: Sequence[str],
+    measure: str | None,
+) -> list[tuple]:
+    """The same select with the order aggregate `by keys`: it is the same in
+    every select (`SelectGrain.specified_ignores_select`), so the window is a
+    value of `keys`, ranking their tuples within its partition, and the
+    select groups by it."""
+    per_key = {t: order(m) for t, m in group_rows(rows, keys).items()}
+    ranks = rank_ordered(
+        per_key, fn, lambda t: tuple(t[keys.index(c)] for c in partition)
+    )
+    for row in rows:
+        row["w"] = ranks[tuple(row[c] for c in keys)]
+    out = []
+    for t, members in group_rows(rows, [*dims, "w"]).items():
+        out.append((*t, total(measure, members)) if measure else t)
+    return sorted(set(out), key=repr)
+
+
+SELECT_SHAPES: dict[str, tuple[tuple[str, ...], str | None]] = {
+    "alone": ((), None),
+    "count": ((), "count"),
+    "sum": ((), "sum"),
+}
 
 
 def reference(
-    rows: list[dict[str, Any]], partition: tuple[str, ...], select: str
+    rows: Rows, fn: str, aggregate: str, partition: tuple[str, ...], select: str
 ) -> list[tuple]:
-    if select == "dims":
-        return sorted(
-            {(r["g"], *(r[c] for c in partition), r["w"]) for r in rows}, key=repr
-        )
-    if select == "alone":
-        return sorted({(r["w"],) for r in rows}, key=repr)
-    groups: dict[Any, list[dict[str, Any]]] = {}
-    for row in rows:
-        groups.setdefault(row["w"], []).append(row)
-    if select == "count":
-        return sorted(((w, len(m)) for w, m in groups.items()), key=repr)
-    return sorted(
-        ((w, aggregate_value("sum", [r["y"] for r in m])) for w, m in groups.items()),
-        key=repr,
+    _, agg_fn, _ = AGGREGATES[aggregate]
+    dims, measure = (
+        (("g", *partition), None) if select == "dims" else SELECT_SHAPES[select]
     )
+    order = lambda m: total(agg_fn, m)
+    if aggregate == "named":
+        keys = ["g", *partition]
+        return specified_reference(rows, fn, order, keys, partition, dims, measure)
+    return select_grain_reference(rows, fn, order, partition, dims, measure)
 
 
 CASES = [
@@ -169,10 +236,12 @@ def test_window_ordered_by_aggregate(
     text = query(fn, aggregate, partition, select, spelling)
     for seed in SEEDS:
         rows = make_rows(seed)
-        window_values(rows, fn, aggregate, partition)
         executor = dialect.default_executor(environment=Environment())
         got = sorted(
             map(tuple, executor.execute_text(fixture(rows) + text)[-1].fetchall()),
             key=repr,
         )
-        assert got == reference(rows, partition, select), (seed, text)
+        assert got == reference(rows, fn, aggregate, partition, select), (
+            seed,
+            text,
+        )

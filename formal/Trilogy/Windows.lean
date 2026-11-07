@@ -25,10 +25,13 @@ every row that holds the tuple. An aggregate window with no order
   value. Grouping by the tuple and projecting the value splits a value into
   a group per tuple (`group_by_tuple_splits_value`), and a value window is
   no function of its operand (`lag_reads_rows_not_values`).
-- `order_aggregate_per_partition`: a bare aggregate a window orders by is
-  evaluated per the tuple the window ranks, its arguments and partition; per
-  its first argument alone it reads every partition's rows
-  (`anchor_sum_crosses_partitions`).
+- An aggregate a window orders by: one with no `by` is at the select's raw
+  grain, like any other (`SelectGrain.bare_is_select_grain`). When that grain
+  holds the partition it reads only the partition's rows
+  (`order_aggregate_per_partition`); pinned to the window's first argument
+  it read every partition's (`anchor_sum_crosses_partitions`). One `by`
+  fixed keys makes the window a value of those keys, so the window's keys
+  must hold them or the read-back fans out (`order_keys_dropped_fans_out`).
 
 ORDER BY names a direction and a NULL placement. A plain direction places
 NULLs last, DuckDB's placement; `nulls auto` leaves it to the engine. Engines
@@ -205,22 +208,27 @@ theorem lag_reads_rows_not_values :
 
 /-! ## An aggregate a window orders by
 
-`rank(g) over (partition by p order by sum(y))` ranks each `g` within its
-partition by the sum of `y` over the rows of that `(p, g)`. A bare aggregate in
-a window's order is evaluated per the tuple the window ranks, its arguments
-and partition (`order_aggregate_per_partition`: the sum per tuple is the sum
-per argument over the partition's rows alone). Trilogy summed per argument
-alone, over every partition's rows, so `b` tied `a` inside a partition where
-it led (`anchor_sum_crosses_partitions`). And a window ordered by an aggregate
-is still a value the select groups by: its ties are one group, not one per
-tuple (`group_by_tuple_splits_value` again). -/
+`rank(g) over (partition by p order by sum(y))` orders by `sum(y)` at the
+select's grain, as if it were written `sum(y) by <select grain>`
+(`SelectGrain.bare_is_select_grain`; the window does not give it a grain of
+its own). In `select p, g, ...` that grain is `(p, g)`, so the sum reads only
+the rows of partition `p` (`order_aggregate_per_partition`). Trilogy pinned
+it to the window's first argument, summing over every partition, so `b` tied
+`a` inside a partition where it led (`anchor_sum_crosses_partitions`); 0.3.459
+pinned it to the tuple the window ranks instead, which is the select grain
+only when the select is no finer (`SelectGrain.window_tuple_pin_misreads`).
+
+A window ordered by an aggregate `by` fixed keys (`sum(y) by g, p`) is a value
+of those keys. Its keys must include them: read as `{g}` alone — the parser
+hydrated the window before the name it orders by — each row met every rank of
+its `g` (`order_keys_dropped_fans_out`). -/
 
 /-- The sum of `y` over the rows `keep` holds. -/
 def sumWhere {α : Type} (keep : α → Bool) (y : α → Nat) (rows : List α) : Nat :=
   ((rows.filter keep).map y).sum
 
-/-- **The aggregate per window tuple is the aggregate over its partition's
-rows**: summing per `(p, g)` reads exactly the rows of partition `p`. -/
+/-- **Grouped by a grain holding the partition, the aggregate reads only the
+partition's rows**: summing per `(p, g)` reads exactly the rows of `p`. -/
 theorem order_aggregate_per_partition {α π γ : Type} [DecidableEq π] [DecidableEq γ]
     (p : α → π) (g : α → γ) (y : α → Nat) (rows : List α) (p0 : π) (g0 : γ) :
     sumWhere (fun r => decide (p r = p0) && decide (g r = g0)) y rows =
@@ -241,6 +249,12 @@ theorem anchor_sum_crosses_partitions :
     let perPG (g0 : Nat) :=
       sumWhere (fun r => decide (r.1 = 1) && decide (r.2.1 = g0)) y rows
     perG 0 = perG 1 ∧ perPG 0 < perPG 1 := by decide
+
+/-- Ranks per `(g, p)` read back on `g` alone: each of four rows meets both
+ranks of its `g`. -/
+theorem order_keys_dropped_fans_out :
+    let ranks : List (Nat × Nat) := [(0, 2), (0, 3), (1, 1), (1, 4)]
+    (lookup [0, 0, 1, 1] ranks).length = 8 := by decide
 
 /-! ## Where NULLs sort -/
 
