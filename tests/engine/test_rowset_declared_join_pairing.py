@@ -11,6 +11,9 @@ and a column on the other.
 import pytest
 
 from tests.helpers.rows import customer_twins, twin_rows
+from trilogy.core.enums import Derivation
+from trilogy.core.processing.v4_helper import group_graph
+from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.executor import Executor
 
 ROWSET = "with r as select customer_id, status;\n"
@@ -118,3 +121,52 @@ def test_filtered_rowset_keeps_the_superset_rows_it_misses(
     twins: tuple[Executor, Executor], query: str, expected: list[tuple]
 ) -> None:
     assert twin_rows(*twins, FILTERED + query) == expected
+
+
+def test_each_side_of_a_declared_join_is_asked_for_its_own_member(
+    twins: tuple[Executor, Executor], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: dict[str, set[frozenset[str]]] = {}
+    refresh = group_graph._refresh_input_contracts
+
+    def capture(group_graph_, group_edges, attrs, *args, **kwargs) -> None:
+        refresh(group_graph_, group_edges, attrs, *args, **kwargs)
+        for group in attrs.values():
+            for contract in group.input_contracts:
+                if contract.relation_keys:
+                    side = attrs[contract.parent_group_id].derivation.value
+                    asked.setdefault(side, set()).add(contract.relation_keys)
+
+    monkeypatch.setattr(group_graph, "_refresh_input_contracts", capture)
+    twins[0].generate_sql(
+        ORDER_ROWSET
+        + "select customer_id, count(rs.oid) as n subset join rs.oid = order_id;"
+    )
+    assert asked == {
+        "rowset": {frozenset({"rs.oid"})},
+        "root": {frozenset({"local.order_id"})},
+    }
+
+
+def test_a_member_computed_off_a_handle_is_its_rowsets_side() -> None:
+    executor = customer_twins()[0]
+    executor.parse_text(ORDER_ROWSET + "auto next_oid <- rs.oid + 1;")
+    environment = executor.environment.materialize_for_select()
+    keys = frozenset({"local.next_oid", "local.order_id"})
+    rowset = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.ROWSET,
+        primary_members=("rs.oid",),
+    )
+    scan = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.ROOT,
+        output_concepts=("local.customer_id",),
+    )
+
+    assert group_graph._edge_relation_keys(keys, rowset, environment) == {
+        "local.next_oid"
+    }
+    assert group_graph._edge_relation_keys(keys, scan, environment) == {
+        "local.order_id"
+    }
