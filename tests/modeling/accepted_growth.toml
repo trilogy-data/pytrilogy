@@ -15,3 +15,24 @@ reason = "Sales and returns roll up as separate union arms: a return lands on it
 
 ["tpc_ds_duckdb/zquery24.log"]
 reason = "Query gained the reference's ORDER BY; it compared unordered rows by position"
+
+["tpc_ds_duckdb/zquery23.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery30.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery30.alt.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery65.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery79.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery81.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+
+["tpc_ds_duckdb/zquery91.log"]
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
