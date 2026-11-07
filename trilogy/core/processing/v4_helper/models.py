@@ -73,13 +73,6 @@ class GroupInputContract:
     # its siblings, as far as it can carry it: the consumer sources and pairs
     # on them, and no side is asked to render them
     relation_keys: frozenset[str] = frozenset()
-    # what a dimension parent is projected to beside a shaped sibling, beyond
-    # the required grain: the sourcing keys and the grains its siblings' rows
-    # already stand at
-    projection_grain: frozenset[str] = frozenset()
-    # the keys bridging a dimension to the fact rows: the consumer sources its
-    # row parents with them, and no pairing reads them
-    sourcing_keys: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
     may_project_dimension: bool = False
 
@@ -260,6 +253,13 @@ class GroupAttrs(_HeldKeys):
     # the grain this group's row parents are stitched on; each edge holds the
     # part its parent can carry (`GroupInputContract.required_grain`)
     input_grain: frozenset[str] = frozenset()
+    # the keys bridging a dimension to the fact rows: this group sources its
+    # row parents with them, and no pairing reads them
+    sourcing_keys: frozenset[str] = frozenset()
+    # what a dimension parent is projected to beside a shaped sibling, beyond
+    # the input grain: the sourcing keys and the grains its siblings' rows
+    # already stand at
+    projection_grain: frozenset[str] = frozenset()
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()

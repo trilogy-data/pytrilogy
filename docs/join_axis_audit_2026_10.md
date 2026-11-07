@@ -1302,6 +1302,50 @@ statement count from run to run in either direction. The rest is the known
 noise. Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans
 moved. Fuzzer: 522 of 522.
 
+**The projection and sourcing sets are the consumer's (part 40).** After
+part 39 every row-stream edge still held the same `projection_grain` and
+`sourcing_keys`, computed once per consumer. No reader reads them per edge:
+`needed` unions `sourcing_keys` over the edges, and the projection reads
+`input_grain | projection_grain` once any present edge has
+`may_project_dimension` set. Both now live on `GroupAttrs`, beside
+`input_grain`. The edge keeps what is its own: its `required_grain`, its
+`relation_keys`, its channel and `may_project_dimension`, which gates the
+projection. `sourcing_keys` needs two row parents, so a consumer with none has
+an empty set, as the union over no edges was.
+
+Which parent takes the projection is still decided at build time.
+`_satisfy_parent_projection_contract` projects no parent that holds a shape
+barrier as built (a GroupNode, a WindowNode or a forced group), and projects
+nothing unless some parent holds one. A census over one suite run recorded,
+at every projection that ran, each parent's `may_project_dimension` beside
+its built barrier: 22,551 parent reads in 5,236 tests.
+
+| `may_project_dimension` | barrier as built | parents |
+|---|---|---|
+| false | yes | 10,041 |
+| true | no | 10,859 |
+| true | yes | 1,634 |
+| no edge | no / yes | 16 / 1 |
+
+The build never projects a parent the flag refuses: every one holds a
+barrier. The flag admits 1,634 parents in 791 tests that the build refuses: rowset
+reads (595), basic groups over a grouped parent (566), ROOT scans that render
+grouped (437), filters (34) and unnests (2). Stage 2 cannot say that yet, so
+the barrier check stays. The 17 reads with no edge are a ROOT merged in below
+the consumer (a basic-input or extent root) and one unit test.
+
+`test_projection_grain_is_the_consumers_and_gated_by_its_present_edges` pins
+the read: the grain is the consumer's, and a merge whose only present parent
+may not take the projection gets none.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+Of the 79 statements that moved, the ones off the known-noise list were
+re-captured serially. `test_mock_composite_grain_fills_combination_space`
+changes its column order between two runs of this branch, and four more move
+between two runs of `main`. The BigQuery temp table's name hashes the
+worktree path. Full suite: the same 25 failures as `main`. Corpus: 0 of 205
+plans moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1311,10 +1355,13 @@ not built yet:
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
-   asked only for what its parent can carry (part 39). What is left is
-   `projection_grain` and `sourcing_keys`. Both are still computed once per
-   consumer and copied onto every edge, and `_satisfy_parent_projection_contract`
-   still decides at build time which parent can take the projection.
+   asked only for what its parent can carry (part 39). `projection_grain` and
+   `sourcing_keys` are the consumer's, not copied onto every edge (part 40).
+   What is left is which parent takes the projection:
+   `_satisfy_parent_projection_contract` still reads each built parent for a
+   shape barrier. Stage 2's `may_project_dimension` admits 1,634 parents the
+   build refuses; a group's barrier (a grouped ROOT render, a rowset read, a
+   basic group over a grouped parent) has to be a stage-2 fact first.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
