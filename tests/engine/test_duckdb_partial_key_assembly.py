@@ -871,6 +871,16 @@ def test_composite_grain_families_with_by_span_aggregate():
     ]
 
 
+def test_by_span_aggregate_never_rejoins_the_line_rows():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE + _COMPOSITE_STATUS)
+    query = (
+        "select order_id, line_no, product_id, user_id, line_status, sum(qty) as total"
+    )
+    sql = executor.generate_sql(query + _COMPOSITE_ORDER)[-1]
+    assert '."line_no" = ' not in sql
+
+
 def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
     query = """select order_id, user_id, order_status
         order by order_id asc nulls last, user_id asc nulls last;"""

@@ -20,6 +20,12 @@ CTE_DEF = re.compile(r"^(\w+) as \($", re.MULTILINE)
 
 NOISE = [
     (re.compile(r"pytest-\d+"), "pytest-N"),
+    (re.compile(r"popen-gw\d+"), "popen-gwN"),
+    # tmp_path's own index under a worker's directory
+    (re.compile(r"(popen-gwN[\\/]+\w+?)\d+\b"), r"\1N"),
+    (re.compile(r"\.[0-9a-f]{8}\.tmp\b"), ".X.tmp"),
+    (re.compile(r"_trilogy_stage_[0-9a-f]{8}\b"), "_trilogy_stage_X"),
+    (re.compile(r"\b(mock_\w+?)_[0-9a-f]{12}\b"), r"\1_X"),
     (re.compile(r"tmp[a-z0-9_]{8}"), "tmpX"),
     (re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?"), "TS"),
     (
@@ -32,15 +38,27 @@ NOISE = [
 ]
 
 
+def captures(path: str) -> list[Path]:
+    """A capture file, or the per-worker files an xdist run wrote beside it."""
+    p = Path(path)
+    if p.exists():
+        return [p]
+    return sorted(p.parent.glob(f"{p.name}.*.jsonl"))
+
+
 def load(path: str) -> dict[str, tuple[str, list[str]]]:
     """key -> (outcome, statements)"""
-    p = Path(path)
-    if p.suffix == ".jsonl":
+    files = captures(path)
+    if not files:
+        raise SystemExit(f"no capture at {path}")
+    if files[0].suffix == ".jsonl":
         out: dict[str, tuple[str, list[str]]] = {}
-        for line in p.read_text(encoding="utf-8").splitlines():
-            r = json.loads(line)
-            out[r["nodeid"]] = (r["outcome"], r["sql"])
+        for f in files:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                r = json.loads(line)
+                out[r["nodeid"]] = (r["outcome"], r["sql"])
         return out
+    p = files[0]
     corpus = json.loads(p.read_text(encoding="utf-8"))
     return {k: ("compiled", [v]) for k, v in corpus.items()}
 

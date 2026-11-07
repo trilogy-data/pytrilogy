@@ -153,3 +153,14 @@ def test_the_predictions_select(data_dir: Path):
     assert rounded(planned(data_dir, f"select tid, {columns}")) == rounded(
         oracle(data_dir, columns)
     )
+
+
+@pytest.mark.parametrize("column", ["age", "f_b", "f_scale", "f_xmax", "pred"])
+def test_fit_column_times_a_row_value_derives_the_class_once(
+    data_dir: Path, column: str
+):
+    env = Environment(working_path=data_dir)
+    env.parse(MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = executor.generate_sql(f"select tid, {column} * x -> v order by tid asc;")[-1]
+    assert sql.count("'conifer'") == 1

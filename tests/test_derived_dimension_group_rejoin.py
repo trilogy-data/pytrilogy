@@ -137,3 +137,15 @@ auto division_n <- count(x) by division;
         (3, "Gymnosperm", 1),
         (4, "Angiosperm", 3),
     ]
+
+
+@pytest.mark.parametrize("column", ["a_cls", "b_cls", "fallback", "gated", "ratio"])
+@pytest.mark.parametrize("cls", ["form", "species_and_form"])
+def test_row_value_beside_class_aggregate_derives_the_class_once(
+    data_dir: Path, cls: str, column: str
+):
+    env = Environment(working_path=data_dir)
+    env.parse(MODEL.format(cls=CLASSES[cls]))
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = executor.generate_sql(f"select tid, {column} * x -> v order by tid asc;")[-1]
+    assert sql.count("'conifer'") == 1
