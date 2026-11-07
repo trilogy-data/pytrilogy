@@ -1120,6 +1120,31 @@ other 18 are two shapes:
 
 Corpus: 0 of 205 plans moved.
 
+**A KEY bridge is a sourcing key, not a carry demand (part 35).** Part 34
+left `bridge_keys` unplaced: its only guard asserted on the contract. Run the
+same way, dropped and then added back to one reader at a time, its two
+branches split. The KEY branch (a shared key that is a lineage ancestor of the
+consumer's grain) moved 4 suite plans, the USSFO and USSTO city builds: without
+it the dedup merge pairs `friendly` and `uneven` on 41 `_virt_filter_` columns
+instead of carrying `ussfo_source`, 27 CTEs to 26 and 15% more SQL. Only the
+`needed` a consumer adds to its sourcing restores them; the merge plan's
+`contracted`, `renders`'s asks and `_joined_on` do not. With the bridge in
+`needed` alone, `test_full_join_issue_2` goes back from 6 CTEs to 7, and the
+projection reader restores it. The axes branch (a merged attribute a scalar
+is grained on) moved no plan: the one test that moved,
+`test_declared_join_beside_a_property_of_the_superset_key`, moves between two
+runs of `main` too.
+
+So a KEY bridge is read by the sourcing and the projection, and by no
+pairing. It moves to `GroupInputContract.sourcing_keys`, which `needed` reads
+(`_input_contract_sourcing_keys`) and `projection_grain` includes. The carry
+demand, `preserve_keys`, is `required_grain | relation_keys` plus the axis
+bridges. `test_city_build_never_pairs_on_filter_columns` guards the city
+builds: it fails with the sourcing keys dropped. Suite capture against `main`:
+16 statements moved, all of them the known noise (statement counts, column
+and GROUP BY order, GCS hash names). Same 25 failures as `main`. Corpus: 0 of
+205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1127,13 +1152,13 @@ not built yet:
    joins; `node_joins` are not built from the pairings. The merge-wide
    fallback for a pair with an unattributed parent remains, but no suite
    merge reaches it (part 32).
-2. `GroupInputContract.preserve_keys` is still a union, now of three sets
-   (`required_grain`, `bridge_keys`, `relation_keys`), built in
-   `_consumer_preserve_keys`. The other two are the contract's
-   `projection_grain` (part 34). Each shapes some suite plan, and each is held
-   by a test (part 33). The per-edge carry demand has to reproduce those
-   plans, not only the rows. Which key reader `bridge_keys` shapes plans
-   through is not yet isolated: its only guard asserts on the contract.
+2. `GroupInputContract.preserve_keys` is still a union, of
+   `required_grain`, `relation_keys` and the axis bridges, built in
+   `_consumer_preserve_keys`. The sibling grains are the contract's
+   `projection_grain` (part 34) and the KEY bridges its `sourcing_keys`
+   (part 35). The per-edge carry demand has to reproduce the plans each set
+   shapes, not only the rows. The axis bridges shape no suite plan anyone has
+   reproduced, so nothing holds them yet.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,19 @@ def test_city_build_plans(city: str, tmp_path: Path) -> None:
     assert executor.update_datasource(
         executor.environment.datasources[target], dry_run=True
     )
+
+
+@pytest.mark.parametrize("city", ["USSFO", "USSTO"])
+def test_city_build_never_pairs_on_filter_columns(city: str, tmp_path: Path) -> None:
+    entrypoint, target = harness.CITY_BUILDS[city]
+    executor = harness.build_executor(
+        entrypoint, tmp_path, [f"{city.lower()}_tree_info"]
+    )
+    sql = executor.update_datasource(
+        executor.environment.datasources[target], dry_run=True
+    )
+    assert sql
+    assert not re.search(r'"_virt_filter_\w+" is not distinct from', sql)
 
 
 @pytest.mark.parametrize("city", harness.CITY_BUILDS)

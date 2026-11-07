@@ -69,8 +69,12 @@ class GroupInputContract:
     required_grain: frozenset[str] = frozenset()
     preserve_keys: frozenset[str] = frozenset()
     # the grain a dimension parent is projected to beside a shaped sibling:
-    # the preserve keys and the grains its siblings' rows already stand at
+    # the preserve and sourcing keys, and the grains its siblings' rows
+    # already stand at
     projection_grain: frozenset[str] = frozenset()
+    # the keys bridging a dimension to the fact rows: the consumer sources its
+    # row parents with them, and no pairing reads them
+    sourcing_keys: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
     may_project_dimension: bool = False
 
