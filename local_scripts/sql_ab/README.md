@@ -7,7 +7,7 @@ which plans changed, including the ones no test asserts a shape for.
 | oracle | covers | cost |
 |---|---|---|
 | `corpus_sql.py` | every SELECT of the `.preql` files you glob (202 statements over `tests/modeling`, `tests/engine`, `tests/complex`, `tests/discovery`) | 20s |
-| `sqlcap.py` | every statement any test compiles, per test id (about 8,500) | one suite run, 20 min |
+| `sqlcap.py` | every statement any test compiles, per test id (about 31,800) | one suite run, 20 min; 7 min under `-n 4` |
 
 The base is a detached worktree, never a stash or a checkout in the shared
 tree. The main tree's venv python runs it: the Rust extension is in
@@ -30,6 +30,13 @@ SQLCAP_OUT=/tmp/base.jsonl PYTHONPATH=../pytrilogy/local_scripts/sql_ab \
 git checkout --detach <branch sha>   # and run again with SQLCAP_OUT=/tmp/new.jsonl
 ```
 
+Under xdist (`-n 4`) each worker writes `<SQLCAP_OUT>.gwN.jsonl` beside the
+named path, and `sqldiff.py` given the named path reads them as one capture.
+
+The corpus is a small sample: it is blind to plans only the suite compiles.
+Dropping one of the five `preserve_keys` sources (join-axis audit, part 33)
+moved 0 corpus statements and well over a hundred suite ones.
+
 If the base predates `local_scripts/sql_ab`, run the scripts from the main
 tree's copy by path; they import `trilogy` from cwd.
 
@@ -49,6 +56,9 @@ Some tests move between two runs of the same code. Known ones:
   `test_ingest`, `test_validate_agent`, and `test_trilogy`'s parallel and
   dry-run tests, which compile a varying number of statements.
 - `tests/test_mocking.py::test_mock_composite_grain_fills_combination_space`.
+- `tests/core/validation/test_validation_laws.py::test_grain_check_exact` and
+  `tests/scripts/test_ingest.py::test_ingest_output_round_trips`: column order
+  of the grain check.
 
 Run a moved test twice on one tree before reading it as a plan change.
 

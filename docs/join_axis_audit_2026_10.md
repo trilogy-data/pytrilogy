@@ -1055,6 +1055,34 @@ Over `tests/` with the probe attached, the one pair left with an
 unattributed side is `test_unattributed_pair_reads_every_key_the_merge_may_pair_on`,
 the unit test of that fallback. Corpus: 0 of 205 plans moved.
 
+**Each preserve-key source shapes a plan (part 33).** §6 makes
+`GroupInputContract.preserve_keys` the plan's carry demand, per edge. Before
+replacing the union of five sets, each set was dropped in turn, and the SQL
+of every statement the suite compiles (31,785 captured, `sqlcap` under
+xdist) was diffed against `main`. The 209-statement corpus moved in none of
+these runs, so it cannot gate this change. All five sets shape plans:
+
+| set dropped | suite tests failing | plans moved | how |
+|---|---|---|---|
+| `required_grain` | (the contract's own grain; not dropped) | | |
+| `bridge_keys` (KEY branch) | its unit test | USSFO city build, +15% SQL | carries 164 more `_virt_filter_` columns past the dedup CTE |
+| `bridge_keys` (axes branch) | none | none on a targeted rerun | one full run moved the class-rejoin plans; it did not reproduce |
+| `grouping_parent_grain` | none | 41 class-rejoin and fit-chain plans | the class CASE is re-derived in the aggregate (fit chain: 1 → 10 times) |
+| `domain_spans` | none | partial-key assembly; two gcat plans shrink | the fact rows are FULL-joined back on `order_id, line_no` |
+| `relation_keys` | 4 `union join` rowset tests | | wrong rows |
+
+None of these moves broke a row assertion, which is why no test held them
+until now. Three guards now do: `test_row_value_beside_class_aggregate_derives_the_class_once`,
+`test_fit_column_times_a_row_value_derives_the_class_once`
+(`grouping_parent_grain`) and `test_by_span_aggregate_never_rejoins_the_line_rows`
+(`domain_spans`). Each fails with its set dropped and passes with it. The KEY
+branch of `bridge_keys` keeps its unit test, and `relation_keys` keeps the
+rowset tests. The union is now computed in one place,
+`_consumer_preserve_keys`, which is the seam the per-edge carry demand
+replaces. `sqlcap` writes one file per xdist worker and `sqldiff` reads
+them back as one capture, which takes the suite oracle from 20 minutes to 7
+on four workers. Corpus: 0 of 209 plans moved; suite capture: 0 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1062,7 +1090,10 @@ not built yet:
    joins; `node_joins` are not built from the pairings. The merge-wide
    fallback for a pair with an unattributed parent remains, but no suite
    merge reaches it (part 32).
-2. `GroupInputContract.preserve_keys` is still the union of five sets.
+2. `GroupInputContract.preserve_keys` is still the union of five sets, now
+   built in `_consumer_preserve_keys`. Every set shapes some suite plan, and
+   each is held by a test (part 33). The per-edge carry demand has to
+   reproduce those plans, not only the rows.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
