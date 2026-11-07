@@ -178,3 +178,30 @@ def test_window_orders_by_the_projected_aggregate(dialect: Dialects, fn: str) ->
             rows, fn, lambda m: total("sum", m), (), ("g", "p"), "sum"
         )
         assert fetch(dialect, fixture(rows) + text) == expected, (seed, text)
+
+
+@pytest.mark.parametrize("dialect", DIALECTS, ids=lambda d: d.value)
+@pytest.mark.parametrize("dims", [(), ("g",)], ids=["grand_total", "by_g"])
+def test_window_in_where_reads_the_select_grain(
+    dialect: Dialects, dims: tuple[str, ...]
+) -> None:
+    """In a WHERE too: with no keys selected the order's `sum(y)` is the grand
+    total, every `g` ties and every row passes; with `g` selected it is per
+    `g`, as `sum(y) by g` is."""
+    cols = ", ".join([*dims, "count(id) as c"])
+    text = f"where rank(g) over (order by sum(y) desc) <= 1 select {cols};"
+    for seed in SEEDS:
+        rows = make_rows(seed)
+        ranks = specified_reference(
+            rows, "rank", lambda m: total("sum", m), ["g"], (), ("g",), None
+        )
+        top = {g for g, w in ranks if w == 1}
+        kept = rows if not dims else [r for r in rows if r["g"] in top]
+        expected = (
+            [(len(kept),)]
+            if not dims
+            else sorted(
+                {(g, sum(1 for r in kept if r["g"] == g)) for g in top}, key=repr
+            )
+        )
+        assert fetch(dialect, fixture(rows) + text) == expected, (seed, text)

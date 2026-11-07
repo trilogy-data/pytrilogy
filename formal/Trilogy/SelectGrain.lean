@@ -16,6 +16,14 @@ nor the tuple it ranks.
   (`bare_on_grain`), and so is any scalar expression over it
   (`bare_expression_on_grain`), which is what makes a window ordered by it a
   value per select-grain tuple.
+- `bare_empty_grain_is_total`: in a select with no keys (only aggregates
+  projected) it is the total over every row, a WHERE's window included, so a
+  rank ordered by it ties everything; the per-argument rank is written
+  `sum(y) by <argument>`.
+- The select grain read here is the raw one: a key computed from a window
+  ordered by such an aggregate (a `top_x_by_metric` bucket) is read as that
+  window's own keys, since the aggregate cannot be grouped by a value
+  computed from it (`Windows.regroup_by_value_exact` re-sums the buckets).
 - `specified_ignores_select`: an aggregate `by` fixed keys is the same in any
   select, so a window ordered by one is a value of those keys, a value a
   select can group by.
@@ -74,6 +82,12 @@ theorem bare_expression_on_grain {β : Type} (grain : α → Key) (v w : α → 
     F (eval .bare grain v rows r₁) (eval .bare grain w rows r₁) =
       F (eval .bare grain v rows r₂) (eval .bare grain w rows r₂) := by
   rw [bare_on_grain grain v rows r₁ r₂ h, bare_on_grain grain w rows r₁ r₂ h]
+
+/-- In a select with no keys the unspecified aggregate is the total. -/
+theorem bare_empty_grain_is_total (v : α → Int) (rows : List α) (r : α) :
+    eval .bare (fun _ => []) v rows r = sumBy v rows := by
+  simp only [eval, Scope.keys, sumPer, slice, decide_true]
+  rw [List.filter_eq_self.mpr (by simp)]
 
 /-- **An aggregate `by` fixed keys is the same in every select.** -/
 theorem specified_ignores_select (key grain grain' : α → Key) (v : α → Int)

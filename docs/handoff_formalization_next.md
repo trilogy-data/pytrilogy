@@ -634,6 +634,11 @@ placement); `nulls auto` is the engine's own. Leads left:
     the window's keys as its grain, so ranks repeat once per tuple. That is
     the select-grain rule followed through; decide whether such a select
     should warn, as the finer-grain lead above asks.
+  - a window ordered by a bare aggregate in a select with no keys (only
+    aggregates projected, often a WHERE gate such as TPC-H `adhoc03`) orders
+    by the grand total, so every row ties
+    (`SelectGrain.bare_empty_grain_is_total`). That is the rule; a warning
+    that names `by <argument>` would catch the likely intent.
   - a window ranks the tuples of its grain, so `rank(g) over (order by
     sum(y))` under `select g, p` counts two `p` of one `g` that tie twice;
     the suites hold that reading, the same as `order by sum(y) by g, p`.
