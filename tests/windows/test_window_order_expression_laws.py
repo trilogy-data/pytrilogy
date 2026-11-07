@@ -6,7 +6,7 @@ name, so any of them is a function of the select grain
 spelling does. An aggregate `by` fixed keys is the same in every select
 (`SelectGrain.specified_ignores_select`): a window ordered by one is a value of
 those keys, and its keys hold them or the read-back fans out
-(`Windows.order_keys_dropped_fans_out`). Every case runs on DuckDB and SQLite,
+(`Windows.order_keys_dropped_fans_out`). Every case runs on DuckDB, SQLite and ClickHouse,
 as an `auto` concept and inline, and must agree with the reference."""
 
 from collections.abc import Callable
@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tests.windows.test_window_laws import DIALECTS
+from tests.windows.test_window_laws import DIALECTS, new_executor, seeds_for
 from tests.windows.test_window_order_aggregate_laws import (
     Rows,
     fixture,
@@ -92,7 +92,7 @@ def query(
 
 
 def fetch(dialect: Dialects, text: str) -> list[tuple]:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
     return sorted(map(tuple, executor.execute_text(text)[-1].fetchall()), key=repr)
 
 
@@ -119,7 +119,7 @@ def test_window_order_expression_is_at_select_grain(
 ) -> None:
     text = query(fn, order, partition, select, spelling)
     dims, measure = SELECTS[select]
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         expected = select_grain_reference(
             rows,
@@ -160,7 +160,7 @@ def test_window_keys_include_order_by_keys(
         f"{defined} auto w <- {fn}(g) over (order by {order} desc); "
         f"select {', '.join(cols)};"
     )
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         expected = specified_reference(
             rows, fn, lambda m: total("sum", m), ["g", "p"], (), dims, measure
@@ -173,7 +173,7 @@ def test_window_keys_include_order_by_keys(
 def test_window_orders_by_the_projected_aggregate(dialect: Dialects, fn: str) -> None:
     """`sum(y)` projected and ordered by is one value, at the select grain."""
     text = f"select g, p, {fn}(g) over (order by sum(y) desc) as w, sum(y) as s;"
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         expected = select_grain_reference(
             rows, fn, lambda m: total("sum", m), (), ("g", "p"), "sum"
@@ -191,7 +191,7 @@ def test_window_in_where_reads_the_select_grain(
     `g`, as `sum(y) by g` is."""
     cols = ", ".join([*dims, "count(id) as c"])
     text = f"where rank(g) over (order by sum(y) desc) <= 1 select {cols};"
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         ranks = specified_reference(
             rows, "rank", lambda m: total("sum", m), ["g"], (), ("g",), None

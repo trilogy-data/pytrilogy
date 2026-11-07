@@ -14,7 +14,7 @@ value and is read once per key:
   read back is the value, not a partial to re-sum, and a stored partial beside
   it still answers the totals.
 
-Every case runs on DuckDB and SQLite (persistence on DuckDB) and must agree
+Every case runs on DuckDB, SQLite and ClickHouse (persistence on DuckDB) and must agree
 with the reference."""
 
 import itertools
@@ -33,7 +33,7 @@ from tests.core.test_fixed_aggregate_select_laws import (
     group_rows,
     make_rows,
 )
-from tests.windows.test_window_laws import DIALECTS
+from tests.windows.test_window_laws import DIALECTS, new_executor, seeds_for
 from trilogy import Dialects, Environment
 from trilogy.core.enums import ValidationScope
 from trilogy.core.validation.environment import validate_environment
@@ -77,7 +77,7 @@ def normalized(rows: list) -> list[tuple]:
 
 
 def run(dialect: Dialects, rows: Rows, text: str) -> list[tuple]:
-    executor = dialect.default_executor(environment=Environment())
+    executor = new_executor(dialect)
     return normalized(executor.execute_text(fixture(rows) + text)[-1].fetchall())
 
 
@@ -168,7 +168,7 @@ def test_filtered_and_wrapped_value(
     inline: bool,
 ) -> None:
     text = filtered_query(fixed, dims, measure, filt, wrap, inline)
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         inner = filtered_reference(rows, fixed, dims, measure, filt)
         expected = normalized(wrapped_reference(inner, dims, wrap))
@@ -209,7 +209,7 @@ def test_aggregate_of_value(
     expression = expression.replace("{F}", FIXED[fixed][0])
     outputs = ", ".join([*dims, f"{fn}({expression}) as m"])
     text = f"auto s <- {FIXED[fixed][0]}; {definitions} select {outputs};"
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         expected = of_value_reference(rows, fixed, dims, fn)
         assert run(dialect, rows, text) == expected, (seed, text)
@@ -224,7 +224,7 @@ def test_rowset_member_is_outer_key(dialect: Dialects, fixed: str) -> None:
         f"auto s <- {FIXED[fixed][0]}; rowset r <- select s as v; "
         "select r.v, count(r.v) as m;"
     )
-    for seed in SEEDS:
+    for seed in seeds_for(dialect, SEEDS):
         rows = make_rows(seed)
         values = {r["s"] for r in svalued(rows, fixed)}
         expected = normalized([(v, 0 if v is None else 1) for v in values])

@@ -48,6 +48,7 @@ a design decision or a bug.
 | `SetOps.lean` | the `except` / `intersect` TVFs against `not in` | a value is in `A except B` iff it is in `A` and matches nothing in `B` by NULL-safe equality, `intersect` likewise, three arms fold left, and `not in` drops a NULL that `except` keeps (checked by `tests/setops/test_setops_laws.py` on DuckDB and SQLite) |
 | `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB and SQLite, `tests/dialect/test_scalar_law_renderings.py`, and chdb) |
 | `Types.lean` | the declared type of an expression as the column a persisted copy is stored in | a sum holds in the join of its operands' types and a product in the sum of their scales (`add_preserved`, `mul_preserved`), a remainder in its dividend's type (`rem_preserved`), `greatest` / `least` in the join of all arguments (`pick_preserved`); no decimal scale holds a quotient (`third_has_no_scale`), and a 4-byte float does not hold a double (`single_misses_double`) (checked by `tests/core/test_type_materialization_laws.py` on DuckDB and SQLite, and `tests/dialect/test_type_law_renderings.py`) |
+| `Padding.lean` | what an outer join puts in a row it could not match, and what a cast does to NULL | a NULL pad leaves `count` and `sum` of a right column equal to those over the matches (`null_pad_count_eq_matches`, `null_pad_sum_eq_matches`); a `0` pad counts an unmatched row and is the `max` of negative values (`default_pad_counts_unmatched`, `default_pad_max_raises`); a cast is strict (`cast_keeps_null`) (checked by `tests/engine/test_clickhouse_null_laws.py`, and by the window and select-grain law suites, which now run on ClickHouse through chdb beside DuckDB and SQLite) |
 
 ## What it found
 
@@ -984,6 +985,31 @@ a design decision or a bug.
   four spellings, all 8 rowset members, 39 of 64 persist round trips); none
   now. WHERE and HAVING over the value, and rowsets of it, held on main
   (0 of 1,920).
+
+- **ClickHouse read a NULL as its type's default** (`Padding.lean`;
+  `tests/engine/test_clickhouse_null_laws.py`). ClickHouse types are NOT
+  NULL unless wrapped in `Nullable`, and its defaults fill a missing value
+  with `0` or `''`. Running the window and select-grain law suites on chdb
+  found five places the dialect let that through:
+  - An outer join padded with `0`: `select id, count(oid)` counted 1 order
+    for a customer with none, and `max(amt)` over negative amounts was 0
+    (`Padding.default_pad_counts_unmatched`, `Padding.default_pad_max_raises`).
+    A statement with an outer join now ends `SETTINGS join_use_nulls = 1`
+    (`ClickhouseDialect.render_settings`), which also reaches its CTEs.
+  - `lag`/`lead` past a partition's edge returned `0` for a NOT NULL
+    operand; the operand is now `toNullable` (36 window cases).
+  - `x::int` raised on any NULL, as `CAST(x AS Int64)` targets a NOT NULL
+    type; a scalar cast now targets `Nullable(T)` (`Padding.cast_keeps_null`).
+  - A NULL-safe join key `a = b or (a is null and b is null)` has no join
+    key ClickHouse can find, so it refused every join on a nullable key
+    (12 select-grain cases, 70 window-group cases); it now renders `a <=> b`.
+  - A `date`/`datetime` constant was bound as a parameter, which reaches
+    ClickHouse as a string: `date_trunc(t, month)` raised. Those types now
+    render as typed literals (`INLINE_PARAM_DATATYPES`).
+
+  On main, 132 ClickHouse cases fail across the suites (14 of 28 in the
+  NULL suite, 36 window, 70 window-group, 12 fixed-aggregate); none now.
+  The window-order and fixed-value lifecycle suites held on ClickHouse.
 
 ## Limits
 

@@ -36,7 +36,9 @@ orders by; area 4), and `SelectGrain.lean` (0.3.462: an aggregate with no
 an aggregate `by` fixed keys groups by its value and returns distinct
 tuples; area 4), and `SelectGrain.lean` extended again (0.3.464: an
 aggregate of a fixed value, a rowset member of one, and a persisted copy of
-one read the value once per key; area 4).
+one read the value once per key; area 4), and `Padding.lean` (0.3.465: an
+outer join pads NULL and a cast keeps NULL on ClickHouse too; the window and
+select-grain law suites now run on chdb; area 5).
 
 ## The recipe
 
@@ -389,10 +391,43 @@ one read the value once per key; area 4).
     - Helper names collide in `strategy_builder.py` (a second
       `_reads_aggregate` silently shadowed the first); grep before naming.
 
+22. **Lessons from the ClickHouse NULL round (`Padding.lean`, 0.3.465).**
+    - Run the law suites on every engine CI has, not only the two they were
+      written for. chdb is in CI on Linux; adding it to the window and
+      select-grain suites found five dialect bugs no DuckDB/SQLite probe could,
+      and the area-4 leads this round set out to probe (windows ordered by a
+      scalar of a fixed value in every spelling, a rowset member at a coarser
+      grain) held on main (0 of ~800).
+    - An engine whose types are NOT NULL by default reads NULL as a value in
+      many places: an outer join's pad, `lag` past an edge, a cast. Diff a
+      left join's padded row first; `count` of the right key is the probe.
+    - Raw SQL in a fixture is part of the harness's portability:
+      `cast(null as varchar)` raises on ClickHouse, `nullif('', '')` does not.
+    - A ClickHouse statement setting placed after the final select applies to
+      its CTEs and to the select of an `INSERT`; one setting per statement is
+      enough for a padded join anywhere in it.
+    - Time the new dialect's share of a suite before adding it to CI: chdb
+      runs the select-grain fixtures slower than DuckDB, so ClickHouse runs
+      the first seed only (`seeds_for`).
+
 ## Candidate areas
 
-**Suggested next: the area-1, area-2 and area-4 leads below, or the area-3
-leads left.**
+**Suggested next: area 5 (the function suites on ClickHouse), the area-1,
+area-2 and area-4 leads below, or the area-3 leads left.**
+
+### 5. ClickHouse (chdb in CI; `Padding.lean` done, leads left)
+
+The window and select-grain law suites run on ClickHouse; the function,
+scalar and type law suites do not: their harnesses key DDL and casts per
+dialect and raise `KeyError` for ClickHouse, so a run of them there says
+nothing yet. Give them a ClickHouse DDL/literal map first. Probed directly on
+chdb, and leads until held to a reference:
+- `round` of a float rounds half to even (`round(2.5)` is 2,
+  `round(toDecimal64(2.5, 4))` is 3), and `CAST(2.7 AS Int64)` truncates to
+  2; the function law is half away from zero (`test_cast_to_int_is_round`).
+- `7 / 0` is NULL (as on SQLite) and `7 % 0` raises (as on DuckDB): the
+  area-3 division lead applies here too.
+- `lag`/`lead` of an array operand would fail `toNullable`; no suite covers it.
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
