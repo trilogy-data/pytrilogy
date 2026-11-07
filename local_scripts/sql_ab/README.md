@@ -59,6 +59,11 @@ Some tests move between two runs of the same code. Known ones:
 - `tests/core/validation/test_validation_laws.py::test_grain_check_exact` and
   `tests/scripts/test_ingest.py::test_ingest_output_round_trips`: column order
   of the grain check.
+- `tests/windows/test_window_laws.py` and
+  `tests/engine/test_rowset_declared_join_pairing.py`: GROUP BY and column
+  order under xdist.
+- `tests/modeling/tree_reporting/test_dashboard_queries.py::test_dashboard_served_from`:
+  the number of statements a worker compiles.
 
 Run a moved test twice on one tree before reading it as a plan change.
 

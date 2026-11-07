@@ -21,6 +21,8 @@ CTE_DEF = re.compile(r"^(\w+) as \($", re.MULTILINE)
 NOISE = [
     (re.compile(r"pytest-\d+"), "pytest-N"),
     (re.compile(r"popen-gw\d+"), "popen-gwN"),
+    # tmp_path's own index under a worker's directory
+    (re.compile(r"(popen-gwN[\\/]+\w+?)\d+\b"), r"\1N"),
     (re.compile(r"\.[0-9a-f]{8}\.tmp\b"), ".X.tmp"),
     (re.compile(r"_trilogy_stage_[0-9a-f]{8}\b"), "_trilogy_stage_X"),
     (re.compile(r"\b(mock_\w+?)_[0-9a-f]{12}\b"), r"\1_X"),

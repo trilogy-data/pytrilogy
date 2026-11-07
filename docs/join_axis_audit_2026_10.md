@@ -1081,7 +1081,8 @@ rowset tests. The union is now computed in one place,
 `_consumer_preserve_keys`, which is the seam the per-edge carry demand
 replaces. `sqlcap` writes one file per xdist worker and `sqldiff` reads
 them back as one capture, which takes the suite oracle from 20 minutes to 7
-on four workers. Corpus: 0 of 209 plans moved; suite capture: 0 plans moved.
+on four workers. Corpus: 0 of 209 plans moved. Suite capture: no plan moved; the only
+diffs are column and GROUP BY order.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
