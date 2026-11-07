@@ -144,6 +144,32 @@ class PlannedPairs:
         """Everything the merge may pair on, across all of its sides."""
         return frozenset().union(*self.keys.values())
 
+    def rebound(self, ids: Mapping[int, int]) -> PlannedPairs:
+        """The plan over parents replaced by others: `ids` maps a replaced
+        parent's id to its replacement's."""
+        return replace(
+            self, sides={ids.get(key, key): side for key, side in self.sides.items()}
+        )
+
+    def joined(
+        self, key: int, side: frozenset[str], keys: frozenset[str]
+    ) -> PlannedPairs:
+        """The plan with one more parent, holding `side`, paired with every
+        planned group on `keys`."""
+        others = frozenset().union(*self.sides.values()) - side
+        return PlannedPairs(
+            {**self.sides, key: side},
+            {
+                **self.keys,
+                **{
+                    frozenset({a, b}): self.keys.get(frozenset({a, b}), frozenset())
+                    | keys
+                    for a in side
+                    for b in others
+                },
+            },
+        )
+
     def between(self, left: frozenset[str], right: frozenset[str]) -> frozenset[str]:
         return frozenset().union(
             *(

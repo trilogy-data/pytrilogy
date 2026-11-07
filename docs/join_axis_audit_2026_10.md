@@ -1027,13 +1027,41 @@ set in `where dx in x`) built as a GroupNode that `origin` does not name.
 These are real joined sides, so they keep the merge-wide keys. Corpus: 0 of
 205 plans moved.
 
+**Every joined side is planned (part 32).** The part 31 probe counted
+merges, not shapes. Re-run per joined pair, over the same four directories
+(11,758 planned merges), it found 218 pairs with an unattributed side, in 4
+tests. None was an aggregate `origin` fails to name. Each was a plan that
+lost track of a parent after the merge was built:
+
+- *A rewrite swapped the parents.* `_elide_passthrough_tree` (and
+  `_deep_copy_node`) replace a merge's parents after `PlannedPairs` keyed its
+  sides by parent identity, so a collapsed ROOT scan beside an unnest was no
+  side. 200 of the 218 (`test_relation_reads_the_summary`). The authored
+  `node_joins` already followed the swap. `MergeNode.replace_parents` now
+  moves both, and the plan is rebound (`PlannedPairs.rebound`).
+- *A membership set folded into a joined side.* The set `where dx in x`
+  reads is an existence parent. Resolve folded it into the `g, x` group it
+  duplicates, and `_credit_folded` read the set's missing side as an
+  unattributed survivor. A source that is existence-only for the merge now
+  adds no group to what its merged source holds (`_held_groups`).
+- *A contributor moved below FINAL.* `_pair_inside_padding_streams` moves a
+  FINAL contributor (`sum(target) by bucket as t`, `sum(amount) by pstatus`)
+  into the merge where a stream padded a `?` key, after that merge was
+  planned. It now enters the plan as a side with its own group, paired with
+  the merge's groups on what the FINAL plan pairs it with the stream on
+  (`PlannedPairs.joined`).
+
+Over `tests/` with the probe attached, the one pair left with an
+unattributed side is `test_unattributed_pair_reads_every_key_the_merge_may_pair_on`,
+the unit test of that fallback. Corpus: 0 of 205 plans moved.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
-   joins; `node_joins` are not built from the pairings. A pair with an
-   unattributed parent is still stated with the merge-wide keys: 18 of 9,943
-   in the part 31 probe, each a condition aggregate built outside `origin`.
+   joins; `node_joins` are not built from the pairings. The merge-wide
+   fallback for a pair with an unattributed parent remains, but no suite
+   merge reaches it (part 32).
 2. `GroupInputContract.preserve_keys` is still the union of five sets.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
