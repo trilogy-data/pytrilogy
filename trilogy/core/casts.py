@@ -25,21 +25,31 @@ def text_to_bool(value: str) -> bool:
 
 
 # A string reads as a number when, between whitespace, it is a signed decimal
-# with an optional exponent; as a date when it is `YYYY-MM-DD` naming a real
-# day, optionally followed by a time of day. Any other string has no reading
-# and casts to NULL (formal/Trilogy/Casts.lean, `read_number_exact`). The
-# patterns are POSIX/RE2 and need no backslash or brace, so every dialect's
-# string literal and parameter syntax holds them as written.
+# with an optional exponent (a float also reads `inf`, `infinity` and `nan`);
+# as a date when it is a year, then a month and a day of one or two digits
+# split by `-` or `/`, naming a real day, optionally followed by a time of day.
+# Any other string has no reading and casts to NULL
+# (formal/Trilogy/Readings.lean, `read_number_exact`). The patterns are
+# POSIX/RE2 and need no backslash or brace, so every dialect's string literal
+# and parameter syntax holds them as written.
 SPACE = " \t\n\r"
-NUMBER_PATTERN = (
-    "^[[:space:]]*[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?[[:space:]]*$"
-)
-DATE_PATTERN = (
-    "^[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
-    "([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$"
-)
-_NUMBER = re.compile(NUMBER_PATTERN.replace("[[:space:]]", "[ \t\n\r]"))
-_DATE = re.compile(DATE_PATTERN.replace("[[:space:]]", "[ \t\n\r]"))
+_S = "[[:space:]]*"
+NUMERAL = "[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?"
+FLOAT_SPECIAL = "[+-]?[iI][nN][fF]([iI][nN][iI][tT][yY])?|[nN][aA][nN]"
+DAY = "[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)"
+CLOCK = "[ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?"
+NUMBER_PATTERN = f"^{_S}{NUMERAL}{_S}$"
+FLOAT_PATTERN = f"^{_S}({NUMERAL}|{FLOAT_SPECIAL}){_S}$"
+DATE_PATTERN = f"^{_S}{DAY}({CLOCK})?{_S}$"
+POSITIVE_INFINITY = ("inf", "+inf", "infinity", "+infinity")
+NEGATIVE_INFINITY = ("-inf", "-infinity")
+
+
+def _python(pattern: str) -> re.Pattern:
+    return re.compile(pattern.replace("[[:space:]]", "[ \t\n\r]"))
+
+
+_NUMBER, _FLOAT, _DATE = map(_python, (NUMBER_PATTERN, FLOAT_PATTERN, DATE_PATTERN))
 
 
 def text_to_number(value: str) -> Decimal | None:
@@ -64,15 +74,17 @@ def text_to_decimal(value: str, scale: int) -> Decimal | None:
 
 
 def text_to_float(value: str) -> float | None:
-    number = text_to_number(value)
-    return None if number is None else float(number)
+    if not _FLOAT.fullmatch(value):
+        return None
+    return float(value.strip(SPACE))
 
 
 def text_to_date(value: str) -> date | None:
     if not _DATE.fullmatch(value):
         return None
+    year, month, day = re.split("[-/ T]", value.strip(SPACE))[:3]
     try:
-        return date.fromisoformat(value.strip(SPACE)[:10])
+        return date(int(year), int(month), int(day))
     except ValueError:
         return None
 
@@ -91,6 +103,7 @@ NUMBER_READ_TARGETS = frozenset(
     }
 )
 TEXT_READ_TARGETS = NUMBER_READ_TARGETS | {DataType.DATE}
+FLOAT_READ_TARGETS = frozenset({DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER})
 
 
 def base_type(datatype: Any) -> Any:

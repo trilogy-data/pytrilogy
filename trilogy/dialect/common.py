@@ -5,6 +5,8 @@ from trilogy.constants import PRESENCE_MARKER_PREFIX
 from trilogy.core.casts import (
     DATE_PATTERN,
     FALSE_TEXT,
+    FLOAT_PATTERN,
+    FLOAT_READ_TARGETS,
     NUMBER_PATTERN,
     TEXT_READ_TARGETS,
     TRUE_TEXT,
@@ -484,7 +486,10 @@ def reads_text(types: list) -> bool:
 
 
 def read_pattern(types: list) -> str:
-    return DATE_PATTERN if cast_kind(types)[1] == DataType.DATE else NUMBER_PATTERN
+    target = cast_kind(types)[1]
+    if target == DataType.DATE:
+        return DATE_PATTERN
+    return FLOAT_PATTERN if target in FLOAT_READ_TARGETS else NUMBER_PATTERN
 
 
 def guarded_read(matches: str, read: str) -> str:

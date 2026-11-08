@@ -5,9 +5,12 @@ import Trilogy.Functions
 
 A string cast to a number reads, between whitespace, a signed decimal with an
 optional exponent (`trilogy.core.casts.NUMBER_PATTERN`); an integer rounds that
-value half away from zero and a decimal rescales it the same way. A string
-cast to a date reads `YYYY-MM-DD` naming a real day, with an optional time of
-day. Every other string has no reading and casts to NULL, on every dialect.
+value half away from zero and a decimal rescales it the same way, and a float
+also reads `inf`, `infinity` and `nan`. A string cast to a date reads a year,
+then a month and a day of one or two digits split by `-` or `/` (DuckDB's
+reading, which TPC-DS's `'1980/5/3'` birth dates rely on), naming a real day,
+with an optional time of day; the guard compares the zero-padded day. Every
+other string has no reading and casts to NULL, on every dialect.
 
 Laws:
 - `glob_number_exact` (bounded): SQLite has no regular expressions; the
@@ -38,6 +41,8 @@ Counterexamples, one per bug fixed in 0.3.473:
   and ClickHouse, and `'2020-13-01'` was 1970-01-01 on ClickHouse
   (`clickhouse_month_thirteen_is_epoch`).
 - `sqlite_julian_day`: SQLite's `date('1.5')` is a Julian day number.
+- `sqlite_text_infinity_is_zero`: a folded infinite float rendered
+  `CAST('inf' AS REAL)`, which SQLite reads as 0; it renders `9e999` there.
 - `null_free_claim_drops_match`: a set of reads was claimed NULL-free, so
   `x in S` rendered as plain equality and dropped a NULL probe that matches
   the NULL member by identity.
@@ -209,6 +214,9 @@ theorem clickhouse_refuses_space :
 def duckdbCast (s : List C) (v : Int) : Out := if accepts s then .val v else .error
 
 theorem duckdb_raises : reference [.x] 0 = .null ∧ duckdbCast [.x] 0 = .error := by decide
+
+/-- SQLite's CAST of the text `'inf'`: no digit first, so 0. -/
+theorem sqlite_text_infinity_is_zero : sqlitePrefixInt [.x, .x, .x] = 0 := by decide
 
 /-! ## Truncation then rounding -/
 

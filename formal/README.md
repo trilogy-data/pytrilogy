@@ -1228,10 +1228,16 @@ a design decision or a bug.
   (`trilogy.core.casts.text_to_number`, `text_to_date`) is rendered now: a
   pattern guard (`regexp_full_match`, `match`, `REGEXP`, and on SQLite a
   conjunction of GLOBs, `Readings.glob_number_exact`) around the engine's own
-  read, and NULL for a string with no reading, a bool spelling included. The
+  read, and NULL for a string with no reading, a bool spelling included. A
+  date is DuckDB's `YYYY-M-D` or `YYYY/M/D` with an optional time, as
+  TPC-DS's `'1980/5/3'::date` birth dates need; a float also reads `inf` and
+  `nan`. The guard reads its operand as text, since a `string` concept can be
+  bound to a column the engine holds as a date (TPC-DS's `_date_string`). The
   parser's fold of a literal reads the same way (`'1.5'::int` and
   `'1e3'::int` raised a Python `ValueError`) and still refuses a literal with
-  no reading.
+  no reading. A folded infinite float rendered `CAST('inf' AS REAL)`, which
+  SQLite reads as 0 (`Readings.sqlite_text_infinity_is_zero`); it renders
+  `9e999` there.
 
   The cast was listed NULL-strict and not NULL-introducing, so a persisted
   copy of `s::int` declared its column non-null and `x in S` over a set of

@@ -522,6 +522,16 @@ NULL-introducing, and ClickHouse membership keeps NULL identity; area 9).
       (`test_membership_is_identity`) so the fix is held on its own.
     - DuckDB's `TRY_CAST(... AS DATE)` accepts trailing whitespace after a
       date but not after a time; trim before the read, not only in the guard.
+    - Run the modeling suites before choosing a grammar. The first grammar
+      was strict `YYYY-MM-DD`; TPC-DS builds birth dates as `'1980/5/3'`,
+      binds a physical DATE column to a `string` concept, and renders
+      non-finite floats as `'inf'::float`. Each broke only there, and each is
+      a reading real models rely on: widen the reference to it, then hold
+      every engine to the wider one.
+    - A read guard costs SQL size wherever the planner inlines the cast:
+      TPC-DS q99 reads `date.date` sixteen times. Measure the growth with
+      the guard replaced by the bare cast before raising a size gate; here
+      every query matched or beat its old size without it.
 
 ## Candidate areas
 
@@ -563,6 +573,14 @@ identity over nullable and NULL-free sets, and literal folds to
   in the pattern.
 - **ClickHouse dates before 1970.** The read goes through `Date32` and
   casts to `Date`, whose range is 1970-2149; the suite stays inside it.
+  DuckDB also reads two- and five-digit years, `24:00:00`, zones and `BC`,
+  which the reference refuses.
+- **NaN.** SQLite has no NaN, so `'nan'::float` is NULL there; DuckDB
+  orders NaN above every number (`nan > 0` is TRUE) and ClickHouse does not.
+  MySQL has no infinity, so its float read takes numerals only.
+- **SQL size.** The DuckDB guard is ~360 characters and is repeated at every
+  inlined read; a model that binds a typed column to a `string` concept pays
+  it for nothing. Declaring the binding's real type avoids it.
 - **Unicode digits and whitespace.** The pattern's digits are ASCII and its
   whitespace POSIX `[[:space:]]` (which includes `\v` and `\f`, which the
   Python reference does not strip); DuckDB's TRY_CAST of `'١٢'` is NULL as

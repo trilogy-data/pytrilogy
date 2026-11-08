@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from trilogy.core.casts import DATE_PATTERN, NUMBER_PATTERN
+from trilogy.core.casts import DATE_PATTERN, FLOAT_PATTERN, NUMBER_PATTERN
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -100,26 +100,32 @@ def round_half_away(value: str, digits: str, value_type: Any) -> str:
 def read_text(value: str, target: str, target_type: Any) -> str:
     """A string as a number: read exactly at 18 digits, which truncates only
     digits past any half-away tie, then rounded to the target. As a date: the
-    day only if `toDate32` gives it back, as it rolls '2020-02-30' into March
-    and '2020-13-01' to 1970."""
+    zero-padded day, only if `toDate32` gives it back, as it rolls
+    '2020-02-30' into March and '2020-13-01' to 1970."""
+    value = f"toString({value})"
     text = f"replaceRegexpAll({value}, '^[[:space:]]+|[[:space:]]+$', '')"
     if data_type(target_type) == DataType.DATE:
-        day = f"substring({text}, 1, 10)"
+        parts = f"splitByRegexp('[-/ T]', {text})"
+        day = (
+            f"concat({parts}[1], '-', leftPad({parts}[2], 2, '0'), '-',"
+            f" leftPad({parts}[3], 2, '0'))"
+        )
         return guarded_read(
             f"match({value}, '{DATE_PATTERN}')"
             f" AND toString(toDate32OrNull({day})) = {day}",
             f"CAST(toDate32OrNull({day}) AS Nullable(Date))",
         )
     if data_type(target_type) in FLOAT_TYPES:
-        read = f"toFloat64OrNull({text})"
-    else:
-        scale = target_type.scale if isinstance(target_type, NumericType) else 0
-        if target.startswith("Nullable("):
-            target = target[len("Nullable(") : -1]
-        read = (
-            f"accurateCastOrNull(round(toDecimal128OrNull({text}, 18), {scale}),"
-            f" '{target}')"
+        return guarded_read(
+            f"match({value}, '{FLOAT_PATTERN}')", f"toFloat64OrNull({text})"
         )
+    scale = target_type.scale if isinstance(target_type, NumericType) else 0
+    if target.startswith("Nullable("):
+        target = target[len("Nullable(") : -1]
+    read = (
+        f"accurateCastOrNull(round(toDecimal128OrNull({text}, 18), {scale}),"
+        f" '{target}')"
+    )
     return guarded_read(f"match({value}, '{NUMBER_PATTERN}')", read)
 
 

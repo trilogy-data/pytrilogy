@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 1941
+gen_length = 3801
 preql_size = 852
 comp_size = 1014
 generated_sql = """
@@ -7,11 +7,11 @@ SELECT
     \"inventory_warehouse_warehouse\".\"w_warehouse_name\" as \"inventory_warehouse_name\",
     \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_id\",
     sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
+	WHEN CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
+	WHEN CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
@@ -20,7 +20,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"inventory_warehouse_inventory\".\"inv_item_sk\" = \"inventory_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inventory_warehouse_warehouse\" on \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" = \"inventory_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    cast(\"inventory_date_date\".\"D_DATE\" as date) BETWEEN date '2000-02-10' AND date '2000-04-10' and \"inventory_item_items\".\"I_CURRENT_PRICE\" BETWEEN 0.99 AND 1.49
+    CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN date '2000-02-10' AND date '2000-04-10' and \"inventory_item_items\".\"I_CURRENT_PRICE\" BETWEEN 0.99 AND 1.49
 
 GROUP BY
     1,
@@ -28,13 +28,13 @@ GROUP BY
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
+	WHEN CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN (sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
+	WHEN CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0) / nullif(sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
+	WHEN CASE WHEN regexp_full_match(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"inventory_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END), 0)
 	ELSE null

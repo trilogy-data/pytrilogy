@@ -1,5 +1,5 @@
 query_id = "32"
-gen_length = 1228
+gen_length = 1838
 preql_size = 361
 comp_size = 527
 generated_sql = """
@@ -13,7 +13,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"sale_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sale_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
+    CASE WHEN regexp_full_match(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :start_date AND :end_date
 
 GROUP BY
     1),
@@ -26,7 +26,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sale_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sale_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date and \"item_items\".\"I_MANUFACT_ID\" = 48
+    CASE WHEN regexp_full_match(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :start_date AND :end_date and \"item_items\".\"I_MANUFACT_ID\" = 48
 )
 SELECT
     sum(\"cheerful\".\"discount_amount\") as \"total_discount\"

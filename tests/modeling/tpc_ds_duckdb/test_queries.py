@@ -294,8 +294,9 @@ def test_twenty(engine):
 
 def test_twenty_one(engine):
     query = run_query(engine, 21)
-    # size gating
-    assert len(query) < 3000, query
+    # each read of `date.date` (a string binding cast to a date) carries the
+    # string-read guard, ~360 chars (formal/Trilogy/Readings.lean)
+    assert len(query) < 4000, query
 
 
 def test_twenty_two(engine):
@@ -678,7 +679,9 @@ def test_seventy_seven(engine):
     # 9195 with the TVF-arm identity layers folded (the unbound-rowset guard's
     # identity carve-out); regressing past ~300 chars of headroom means the
     # `SELECT x as x` layers rematerialized.
-    assert len(query) < 9500, query
+    # each read of `date.date` (a string binding cast to a date) carries the
+    # string-read guard, ~360 chars (formal/Trilogy/Readings.lean)
+    assert len(query) < 10800, query
 
 
 def test_seventy_eight(engine):
@@ -692,8 +695,9 @@ def test_seventy_nine(engine):
 
 def test_eighty(engine):
     query = run_query(engine, 80)
-    # size gating
-    assert len(query) < 8000, query
+    # each read of `date.date` (a string binding cast to a date) carries the
+    # string-read guard, ~360 chars (formal/Trilogy/Readings.lean)
+    assert len(query) < 9000, query
 
 
 def test_eighty_one(engine):
@@ -813,7 +817,9 @@ def test_ninety_eight(engine):
 
 def test_ninety_nine(engine):
     query = run_query(engine, 99, sql_override=True)
-    assert len(query) < 4000, query
+    # each read of `date.date` (a string binding cast to a date) carries the
+    # string-read guard, ~360 chars (formal/Trilogy/Readings.lean)
+    assert len(query) < 7600, query
 
 
 def run_adhoc(number: int, text: str | None = None):

@@ -19,7 +19,12 @@ TEXT = "REGEXP_REPLACE(`s`.`v`, '^[[:space:]]+|[[:space:]]+$', '')"
         ("v::int", NUMBER_PATTERN, f"CAST(CAST({TEXT} AS DECIMAL(65, 30)) AS SIGNED)"),
         ("v::numeric(12,2)", NUMBER_PATTERN, f"CAST({TEXT} AS DECIMAL(12,2))"),
         ("v::float", NUMBER_PATTERN, f"CAST({TEXT} AS DOUBLE)"),
-        ("v::date", DATE_PATTERN, f"CAST(SUBSTR({TEXT}, 1, 10) AS DATE)"),
+        (
+            "v::date",
+            DATE_PATTERN,
+            "STR_TO_DATE(REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX("
+            f"{TEXT}, ' ', 1), 'T', 1), '/', '-'), '%Y-%c-%e')",
+        ),
     ],
 )
 def test_mysql_reads_the_reference_shape(expr: str, pattern: str, read: str) -> None:

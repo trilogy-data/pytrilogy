@@ -1,5 +1,5 @@
 query_id = "92"
-gen_length = 1334
+gen_length = 1950
 preql_size = 454
 comp_size = 555
 generated_sql = """
@@ -13,7 +13,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_sale_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
+    CASE WHEN regexp_full_match(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :start_date AND :end_date
 
 GROUP BY
     1),
@@ -26,7 +26,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_sale_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date and \"ws_item_items\".\"I_MANUFACT_ID\" = 350
+    CASE WHEN regexp_full_match(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :start_date AND :end_date and \"ws_item_items\".\"I_MANUFACT_ID\" = 350
 )
 SELECT
     sum(\"cheerful\".\"ws_ext_discount_amount\") as \"excess_discount_amount\"
