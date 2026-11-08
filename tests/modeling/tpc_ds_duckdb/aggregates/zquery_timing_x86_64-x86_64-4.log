@@ -1,4 +1,4 @@
 [query_03]
-parse_time = 0.050785
-exec_time = 0.009059
-comp_time = 0.046787
+parse_time = 0.146822
+exec_time = 0.054336
+comp_time = 0.098329

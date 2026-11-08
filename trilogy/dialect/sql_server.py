@@ -11,10 +11,16 @@ from trilogy.core.statements.execute import (
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
+    render_ln_log,
     render_true_divide,
     render_unsupported,
 )
-from trilogy.dialect.common import render_window_substring
+from trilogy.dialect.common import (
+    bool_from_text,
+    cast_kind,
+    render_window_substring,
+    text_from_bool,
+)
 from trilogy.utility import string_to_hash
 
 
@@ -28,6 +34,11 @@ def render_contains(args: list[str]) -> str:
 
 
 def render_cast(args: list[str], types: list) -> str:
+    source, target = cast_kind(types)
+    if source == DataType.BOOL and target == DataType.STRING:
+        return text_from_bool(args[0])
+    if source == DataType.STRING and target == DataType.BOOL:
+        return bool_from_text(args[0], "CAST(1 AS bit)", "CAST(0 AS bit)")
     # a fraction cast to an integer truncates here; other engines round it
     if types[0].data_type in (
         DataType.FLOAT,
@@ -70,10 +81,8 @@ FUNCTION_MAP = {
     FunctionType.STRPOS: lambda x, types: render_strpos(x),
     # POWER returns its first argument's type: POWER(2, -1) is 0
     FunctionType.POWER: lambda x, types: f"POWER(CAST({x[0]} AS FLOAT), {x[1]})",
-    # T-SQL has no `ln`; its two-argument LOG takes the base second
-    FunctionType.LOG: lambda x, types: (
-        f"LOG10({x[0]})" if x[1] in ("10", "10.0") else f"LOG({x[0]}, {x[1]})"
-    ),
+    # T-SQL has no `ln`: a one-argument LOG is the natural log
+    FunctionType.LOG: lambda x, types: render_ln_log("LOG", x),
     FunctionType.CAST: lambda x, types: render_cast(x, types),
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.DAY_OF_WEEK: lambda x, types: f"({DAY_OF_WEEK.format(expr=x[0])})",
@@ -98,6 +107,15 @@ class SqlServerDialect(BaseDialect):
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
+    }
+    # T-SQL has no `string`, `bool`, `double` or `timestamptz`
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        DataType.STRING: "NVARCHAR(MAX)",
+        DataType.BYTES: "VARBINARY(MAX)",
+        DataType.BOOL: "BIT",
+        DataType.DOUBLE: "FLOAT",
+        DataType.TIMESTAMP: "DATETIMEOFFSET",
     }
     QUOTE_CHARACTER = '"'
     ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")

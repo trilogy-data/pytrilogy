@@ -34,7 +34,11 @@ from trilogy.dialect.base import null_wrapper as base_null_wrapper
 from trilogy.dialect.bigquery_engine import BigQueryConnection
 from trilogy.dialect.bigquery_persist import expiration_option
 from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
-from trilogy.dialect.common import CONCAT_COALESCE_UPPER, SQL_STANDARD_EXTRACT
+from trilogy.dialect.common import (
+    CONCAT_COALESCE_UPPER,
+    SQL_STANDARD_EXTRACT,
+    render_text_bool_cast,
+)
 
 if TYPE_CHECKING:
     from trilogy.executor import Executor
@@ -179,6 +183,7 @@ FUNCTION_MAP = {
     FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
     # ARRAY_TO_STRING omits NULL elements when no null_text is given.
     **CONCAT_COALESCE_UPPER,
+    FunctionType.CAST: render_text_bool_cast,
     FunctionType.CONCAT_WS: lambda x, types: (
         f"ARRAY_TO_STRING([{', '.join(x[1:])}], {x[0]})"
     ),

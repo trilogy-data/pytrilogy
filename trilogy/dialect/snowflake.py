@@ -7,6 +7,7 @@ from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
     is_array_arg,
+    render_ln_log,
     render_present_extreme,
 )
 from trilogy.dialect.common import (
@@ -37,8 +38,8 @@ FUNCTION_MAP = {
     ),
     # there is no STRPOS; POSITION takes the needle first
     FunctionType.STRPOS: lambda x, types: f"POSITION({x[1]}, {x[0]})",
-    # LOG takes the base first; there is no LOG10
-    FunctionType.LOG: lambda x, types: f"LOG({x[1]}, {x[0]})",
+    # there is no LOG10, and LOG(1, x) raises: change the base over LN
+    FunctionType.LOG: lambda x, types: render_ln_log("LN", x),
     FunctionType.GREATEST: render_present_extreme("GREATEST"),
     FunctionType.LEAST: render_present_extreme("LEAST"),
     FunctionType.BIT_AND: lambda x, types: f"BITAND({x[0]}, {x[1]})",

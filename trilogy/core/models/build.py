@@ -2712,6 +2712,35 @@ def _bare_constant(expr: Any) -> Any:
     return expr
 
 
+_LITERAL_COMPARISONS: list[tuple[ComparisonOperator, Callable[[Any, Any], bool]]] = [
+    (ComparisonOperator.EQ, lambda a, b: a == b),
+    (ComparisonOperator.NE, lambda a, b: a != b),
+    (ComparisonOperator.LT, lambda a, b: a < b),
+    (ComparisonOperator.LTE, lambda a, b: a <= b),
+    (ComparisonOperator.GT, lambda a, b: a > b),
+    (ComparisonOperator.GTE, lambda a, b: a >= b),
+]
+
+
+def _fold_literal_comparison(
+    left: Any, operator: ComparisonOperator, right: Any
+) -> bool | None:
+    """Two literals compared at build time, as the engine compares them: a
+    NULL operand makes `=` and the orders UNKNOWN, which is left to the engine
+    (formal/Trilogy/Casts.lean, `fold_null_unknown`); None when not folded."""
+    if operator == ComparisonOperator.IS:
+        return left is right
+    if operator == ComparisonOperator.IS_NOT:
+        return left is not right
+    compare = next((f for op, f in _LITERAL_COMPARISONS if op == operator), None)
+    if compare is None or left is None or right is None:
+        return None
+    try:
+        return compare(left, right)
+    except TypeError:
+        return None
+
+
 def is_constant(x):
     return isinstance(
         x, (str, int, float, bool, MagicConstants, BuildParamaterizedConceptReference)
@@ -3475,6 +3504,9 @@ class Factory:
                 case_args.append(arg)
             if len(case_args) == 1 and isinstance(case_args[0], BuildCaseElse):
                 return _bare_constant(case_args[0].expr)
+            if not case_args:
+                # every WHEN folded false and there is no ELSE
+                return MagicConstants.NULL
             farguments = case_args
 
         new = BuildFunction(
@@ -4440,23 +4472,9 @@ class Factory:
         if is_constant(left) and is_constant(right):
             lval = materialize_constant(left)
             rval = materialize_constant(right)
-            if base.operator == ComparisonOperator.EQ:
-                return lval == rval
-            elif base.operator == ComparisonOperator.NE:
-                return lval != rval
-            elif base.operator == ComparisonOperator.LT:
-                return lval < rval
-            elif base.operator == ComparisonOperator.LTE:
-                return lval <= rval
-            elif base.operator == ComparisonOperator.GT:
-                return lval > rval
-            elif base.operator == ComparisonOperator.GTE:
-                return lval >= rval
-            elif base.operator == ComparisonOperator.IS:
-                return lval is rval
-            elif base.operator == ComparisonOperator.IS_NOT:
-                return lval is not rval
-
+            folded = _fold_literal_comparison(lval, base.operator, rval)
+            if folded is not None:
+                return folded
         return BuildComparison(
             left=left,
             right=right,

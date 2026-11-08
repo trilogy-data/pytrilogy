@@ -30,18 +30,27 @@ def render(
 @pytest.mark.parametrize(
     "dialect, ten, other",
     [
-        (BaseDialect, "log10(x)", "(ln(x) / ln(b))"),
-        (PostgresDialect, "log10(x)", "(ln(x) / ln(b))"),
-        (MySQLDialect, "log10(x)", "(ln(x) / ln(b))"),
-        (BigqueryDialect, "log10(x)", "(ln(x) / ln(b))"),
-        (PrestoDialect, "log10(x)", "(ln(x) / ln(b))"),
-        (SnowflakeDialect, "LOG(10, x)", "LOG(b, x)"),
-        (SqlServerDialect, "LOG10(x)", "LOG(x, b)"),
+        (BaseDialect, "log10(x)", "(ln(x) / nullif(ln(b), 0))"),
+        (PostgresDialect, "log10(x)", "(ln(x) / nullif(ln(b), 0))"),
+        (MySQLDialect, "log10(x)", "(ln(x) / nullif(ln(b), 0))"),
+        (BigqueryDialect, "log10(x)", "(ln(x) / nullif(ln(b), 0))"),
+        (PrestoDialect, "log10(x)", "(ln(x) / nullif(ln(b), 0))"),
+        (SnowflakeDialect, "(LN(x) / nullif(LN(10), 0))", "(LN(x) / nullif(LN(b), 0))"),
+        (
+            SqlServerDialect,
+            "(LOG(x) / nullif(LOG(10), 0))",
+            "(LOG(x) / nullif(LOG(b), 0))",
+        ),
     ],
 )
 def test_log_base_is_second(dialect, ten: str, other: str) -> None:
-    assert render(dialect, F.LOG, ["x", "10"], []) == ten
-    assert render(dialect, F.LOG, ["x", "b"], []) == other
+    def guarded(s: str) -> str:
+        return s.replace("(x)", "(CASE WHEN x > 0 THEN x END)").replace(
+            "(b)", "(CASE WHEN b > 0 THEN b END)"
+        )
+
+    assert render(dialect, F.LOG, ["x", "10"], []) == guarded(ten)
+    assert render(dialect, F.LOG, ["x", "b"], []) == guarded(other)
 
 
 @pytest.mark.parametrize(
@@ -102,7 +111,9 @@ def test_log_accepts_a_fractional_base() -> None:
     env = Environment()
     env.parse("key x float; auto l <- log(x, 2.5); auto t <- log(x, 10.0);")
     assert env.concepts["l"].datatype == DataType.FLOAT
-    assert render(BaseDialect, F.LOG, ["x", "10.0"], []) == "log10(x)"
+    assert render(BaseDialect, F.LOG, ["x", "10.0"], []) == (
+        "log10(CASE WHEN x > 0 THEN x END)"
+    )
 
 
 def test_sqlite_offset_rejects_a_non_calendar_unit() -> None:

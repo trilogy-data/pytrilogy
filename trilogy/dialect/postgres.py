@@ -109,6 +109,10 @@ class PostgresDialect(BaseDialect):
     }
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
+        # there is no `string`, `bytes` or `double`
+        DataType.STRING: "text",
+        DataType.BYTES: "bytea",
+        DataType.DOUBLE: "double precision",
         DataType.DATETIME: "timestamp",
     }
     QUOTE_CHARACTER = '"'

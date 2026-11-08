@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode, WindowType
 from trilogy.core.models.author import get_basic_type
-from trilogy.core.models.core import DataType, MapWrapper
+from trilogy.core.models.core import DataType, MapWrapper, NumericType
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.statements.execute import ColumnInfo, CreateTableInfo
 from trilogy.dialect.base import (
@@ -12,8 +12,10 @@ from trilogy.dialect.base import (
     BaseDialect,
     array_element_type,
     guard_divisor,
+    in_domain,
     is_array_arg,
     navigation_window_factory,
+    render_log,
 )
 from trilogy.dialect.common import (
     CONCAT_COALESCE_LOWER,
@@ -85,7 +87,8 @@ def round_half_away(value: str, digits: str, value_type: Any) -> str:
 
 def render_cast(args: list[str], types: list) -> str:
     """A cast keeps NULL: CAST to a bare type raises on one. A fraction cast
-    to an integer rounds, as `round` does; ClickHouse truncates it."""
+    to an integer or a decimal of a smaller scale rounds half away, as `round`
+    does; ClickHouse truncates it."""
     value, target = args
     target_type = data_type(types[-1]) if types else None
     if target_type not in UNWRAPPABLE_TYPES and not target.startswith("Nullable("):
@@ -96,6 +99,12 @@ def render_cast(args: list[str], types: list) -> str:
         and data_type(types[0]) in (*FLOAT_TYPES, DataType.NUMERIC)
     ):
         value = round_half_away(value, "0", types[0])
+    elif (
+        len(types) == 2
+        and isinstance(types[1], NumericType)
+        and data_type(types[0]) in (*FLOAT_TYPES, DataType.NUMERIC)
+    ):
+        value = round_half_away(value, str(types[1].scale), types[0])
     return f"CAST({value} AS {target})"
 
 
@@ -184,13 +193,11 @@ def regexp_extract(args: list[str], types: list) -> str:
     return f"regexpExtract({args[0]}, {args[1]}, {args[2]})"
 
 
-def _ch_log(args):
+def _ch_log(args, types):
     base = str(args[1]).strip()
-    if base in ("10", "10.0"):
-        return f"log10({args[0]})"
     if base in ("2", "2.0"):
-        return f"log2({args[0]})"
-    return f"(ln({args[0]}) / ln({args[1]}))"
+        return f"log2({in_domain(args[0], strict=True)})"
+    return render_log(args, types)
 
 
 def _ch_hash(val, hash_type):
@@ -217,7 +224,7 @@ FUNCTION_MAP = {
     # math
     FunctionType.POWER: lambda x, types: f"pow({x[0]}, {x[1]})",
     FunctionType.RANDOM: lambda x, types: "randCanonical()",
-    FunctionType.LOG: lambda x, types: _ch_log(x),
+    FunctionType.LOG: _ch_log,
     FunctionType.MOD: render_mod,
     FunctionType.ROUND: lambda x, types: round_half_away(
         x[0], x[1], types[0] if types else None

@@ -170,19 +170,21 @@ def test_clickhouse_dialect_alias():
 def test_ch_log_base_10():
     from trilogy.dialect.clickhouse import _ch_log
 
-    assert _ch_log(["x", "10"]) == "log10(x)"
+    assert _ch_log(["x", "10"], []) == "log10(CASE WHEN x > 0 THEN x END)"
 
 
 def test_ch_log_base_2():
     from trilogy.dialect.clickhouse import _ch_log
 
-    assert _ch_log(["x", "2"]) == "log2(x)"
+    assert _ch_log(["x", "2"], []) == "log2(CASE WHEN x > 0 THEN x END)"
 
 
 def test_ch_log_arbitrary_base():
     from trilogy.dialect.clickhouse import _ch_log
 
-    assert _ch_log(["x", "3"]) == "(ln(x) / ln(3))"
+    assert (
+        _ch_log(["x", "3"], []) == "(ln(CASE WHEN x > 0 THEN x END) / nullif(ln(3), 0))"
+    )
 
 
 def test_ch_hash_supported_types():
