@@ -3615,20 +3615,14 @@ def _contains_shape_barrier(node: StrategyNode) -> bool:
 def _input_contract_projection_grain(
     group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
 ) -> frozenset[str]:
-    grain: set[str] = set()
-    for contract in group_attrs.input_contracts:
-        if (
-            parent_group_ids is not None
-            and contract.parent_group_id not in parent_group_ids
-        ):
-            continue
-        if contract.channel != InputChannel.ROW_STREAM:
-            continue
-        if not contract.may_project_dimension:
-            continue
-        grain |= set(group_attrs.input_grain)
-        grain |= set(contract.projection_grain)
-    return frozenset(grain)
+    """The consumer's projection grain, once any present row parent may take it."""
+    if any(
+        contract.may_project_dimension
+        and (parent_group_ids is None or contract.parent_group_id in parent_group_ids)
+        for contract in group_attrs.input_contracts
+    ):
+        return group_attrs.input_grain | group_attrs.projection_grain
+    return frozenset()
 
 
 def _input_contract_join_keys(group_attrs: GroupAttrs) -> frozenset[str]:
@@ -3650,16 +3644,6 @@ def _input_contract_carry_demands(
         for contract in group_attrs.input_contracts
         if contract.channel == InputChannel.ROW_STREAM
     }
-
-
-def _input_contract_sourcing_keys(group_attrs: GroupAttrs) -> frozenset[str]:
-    return frozenset().union(
-        *(
-            contract.sourcing_keys
-            for contract in group_attrs.input_contracts
-            if contract.channel == InputChannel.ROW_STREAM
-        )
-    )
 
 
 def _apply_input_contracts(
@@ -6803,7 +6787,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         _one_entity_beside_paired_facts(a.primary_members, environment)
     )
     needed |= (
-        set(_input_contract_join_keys(a) | _input_contract_sourcing_keys(a))
+        set(_input_contract_join_keys(a) | a.sourcing_keys)
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )

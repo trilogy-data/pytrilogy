@@ -425,16 +425,13 @@ def test_input_contract_declares_shared_row_parent_join_key():
         BuildEnvironment(),
     )
 
+    assert "local.order" in attrs["consumer"].sourcing_keys
+    assert "local.order" in attrs["consumer"].projection_grain
     for contract in attrs["consumer"].input_contracts:
-        assert "local.order" in contract.sourcing_keys
-        assert "local.order" in contract.projection_grain
         assert "local.order" not in contract.preserve_keys
     # `amount` is a shared-but-non-key measure (only on the fact side anyway):
     # never a bridge key. `top_orders` is not shared by both parents.
-    fact_contract = next(
-        c for c in attrs["consumer"].input_contracts if c.parent_group_id == "fact"
-    )
-    assert "local.amount" not in fact_contract.sourcing_keys
+    assert "local.amount" not in attrs["consumer"].sourcing_keys
 
 
 def test_sibling_grains_fix_the_projection_not_the_carry_demand():
@@ -465,8 +462,8 @@ def test_sibling_grains_fix_the_projection_not_the_carry_demand():
         group_graph, group_edges, attrs, {}, {}, BuildEnvironment()
     )
 
+    assert "local.order_id" in attrs["consumer"].projection_grain
     for contract in attrs["consumer"].input_contracts:
-        assert "local.order_id" in contract.projection_grain
         assert "local.order_id" not in contract.preserve_keys
 
 
@@ -489,6 +486,34 @@ def test_relation_keys_are_sourced_and_paired_never_stitched_or_projected():
     assert _input_contract_join_keys(consumer) == contract.preserve_keys
     assert _joined_on(consumer) == {"local.name"}
     assert _input_contract_projection_grain(consumer) == {"local.name"}
+
+
+def test_projection_grain_is_the_consumers_and_gated_by_its_present_edges():
+    dim = GroupInputContract(
+        parent_group_id="dim",
+        consumer_group_id="consumer",
+        required_grain=frozenset({"local.store_id"}),
+        may_project_dimension=True,
+    )
+    agg = GroupInputContract(
+        parent_group_id="agg",
+        consumer_group_id="consumer",
+        required_grain=frozenset({"local.ride_date"}),
+    )
+    consumer = GroupAttrs(
+        depth_label=DepthLabel.D0,
+        derivation=Derivation.AGGREGATE,
+        input_contracts=(dim, agg),
+        input_grain=frozenset({"local.store_id", "local.ride_date"}),
+        projection_grain=frozenset({"local.order_id"}),
+    )
+
+    assert _input_contract_projection_grain(consumer, {"dim", "agg"}) == {
+        "local.store_id",
+        "local.ride_date",
+        "local.order_id",
+    }
+    assert _input_contract_projection_grain(consumer, {"agg"}) == set()
 
 
 def test_each_row_parent_reads_its_own_edge_carry_demand():

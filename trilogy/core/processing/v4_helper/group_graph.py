@@ -1129,13 +1129,14 @@ def _refresh_input_contracts(
         sourcing_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
+        attrs[gid].sourcing_keys = sourcing_keys
         relation_keys = _rowset_relation_keys(
             row_parents(group_graph, group_edges, gid),
             attrs,
             environment,
             attrs[gid].aggregate_input_grain,
         )
-        projection_grain = sourcing_keys | _consumer_sibling_grains(
+        attrs[gid].projection_grain = sourcing_keys | _consumer_sibling_grains(
             group_graph, group_edges, attrs, gid, grouped_grains
         )
         contracts: list[GroupInputContract] = []
@@ -1168,10 +1169,6 @@ def _refresh_input_contracts(
                             environment,
                         )
                     ),
-                    projection_grain=(
-                        frozenset() if is_existence else projection_grain
-                    ),
-                    sourcing_keys=frozenset() if is_existence else sourcing_keys,
                     channel=(
                         InputChannel.EXISTENCE
                         if is_existence
