@@ -59,6 +59,7 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
 from trilogy.core.processing.v4_helper.group_graph import (
     _add_final_node,
     _refresh_input_contracts,
+    _refresh_shapes_rows,
     _virtual_filter_scoped_columns,
 )
 from trilogy.core.processing.v4_helper.group_rules import (
@@ -80,8 +81,10 @@ from trilogy.core.processing.v4_helper.models import (
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
+    _bridges_shaped_rows,
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
+    _final_parent_shaped,
     _fold_passthrough_parents,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
@@ -2035,3 +2038,78 @@ def test_side_members_reads_the_groups_a_merge_below_joins():
     assert side_members(wrap(a), origin) == {"a"}
     assert side_members(merge(a, wrap(b)), origin) == {"a", "b"}
     assert side_members(merge(a, stray), origin) is None
+
+
+def test_a_condition_aggregate_does_not_shape_the_rows_it_filters():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    add_edge(group_graph, group_edges, "agg", "filtered", EdgeKind.CONSTRAINT)
+    add_edge(group_graph, group_edges, "agg", "derived", EdgeKind.LINEAGE)
+    attrs = {
+        "agg": GroupAttrs(depth_label=DepthLabel.D1, derivation=Derivation.AGGREGATE),
+        "filtered": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+        "derived": GroupAttrs(depth_label=DepthLabel.STAR, derivation=Derivation.BASIC),
+    }
+
+    _refresh_shapes_rows(group_graph, group_edges, attrs, BuildEnvironment())
+
+    assert attrs["agg"].shapes_rows
+    assert attrs["derived"].shapes_rows
+    assert not attrs["filtered"].shapes_rows
+
+
+def test_a_final_contributor_is_shaped_by_its_group_or_its_final_projection():
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+
+    def scan() -> StrategyNode:
+        return StrategyNode(input_concepts=[], output_concepts=[key], environment=env)
+
+    aggregate, root, projected_root = scan(), scan(), scan()
+    wrap = GroupNode(
+        input_concepts=[key],
+        output_concepts=[key],
+        parents=[projected_root],
+        environment=env,
+    )
+    origin = {id(aggregate): "agg", id(root): "root", id(wrap): "root"}
+    attrs = {
+        "agg": GroupAttrs(
+            depth_label=DepthLabel.D1,
+            derivation=Derivation.AGGREGATE,
+            shapes_rows=True,
+        ),
+        "root": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+    }
+
+    assert _final_parent_shaped(aggregate, origin, attrs, set())
+    assert not _final_parent_shaped(root, origin, attrs, set())
+    assert not _final_parent_shaped(wrap, origin, attrs, set())
+    assert _final_parent_shaped(wrap, origin, attrs, {id(wrap)})
+
+
+def test_a_shaped_bridge_shapes_the_rows_its_consumer_merges():
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+    dim, bridge = (
+        StrategyNode(input_concepts=[], output_concepts=[key], environment=env)
+        for _ in range(2)
+    )
+    merged = MergeNode(
+        input_concepts=[key],
+        output_concepts=[key],
+        parents=[dim, bridge],
+        environment=env,
+    )
+    origin = {id(dim): "dim", id(bridge): "rowset"}
+    attrs = {
+        "dim": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+        "rowset": GroupAttrs(
+            depth_label=DepthLabel.D1, derivation=Derivation.ROWSET, shapes_rows=True
+        ),
+    }
+
+    assert _bridges_shaped_rows([merged], origin, attrs, {"dim"})
+    assert not _bridges_shaped_rows([merged], origin, attrs, {"dim", "rowset"})
+    attrs["rowset"].shapes_rows = False
+    assert not _bridges_shaped_rows([merged], origin, attrs, {"dim"})

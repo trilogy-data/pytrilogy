@@ -1390,6 +1390,63 @@ What moved is the known noise and the grain check's column order
 cases, the same reorder as `test_grain_check_exact`). Full suite: the same
 25 failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**Which FINAL contributor is shaped is a stage-2 fact too (part 42).** The
+FINAL merge was the last caller that walked its built parents for a
+GroupNode, a WindowNode or a forced group (`_contains_shape_barrier`, now
+gone). It reads what the per-group merge reads, through `_final_parent_shaped`:
+the contributor's group is `shapes_rows`, or it renders grouped
+(`_renders_grouped`), or the FINAL projected it itself. The last is the
+FINAL's own decision: `_resourced_root_contributor` now returns the source
+beside its wraps, and a wrap that is not the source is a ROOT the FINAL
+grouped to its merge grain. Two stage-2 gaps the census found are closed:
+
+- `shapes_rows` follows LINEAGE edges only. A condition an aggregate answers
+  (`where count(order_id) by cust_id > 1`) reaches the ROOT it filters over a
+  CONSTRAINT edge; it removes rows and does not shape them. Before this, 83
+  FINAL reads of plain ROOT scans in 19 tests were marked shaped that way.
+- A bridge a group's merge plan elects joins that bridge's rows into the
+  group (`_bridges_shaped_rows`). In q64 the dimension BASIC over four ROOT
+  dims pairs them through the `union join` to the `agg_99` rowset, so its
+  rows are that rowset's. Without this the FINAL projected it to the merge
+  grain and q64 lost rows.
+
+A census over one suite run recorded both answers at every FINAL merge with
+more than one contributor: 21,647 parent reads in 4,181 tests.
+
+| built barrier | stage-2 read | parents |
+|---|---|---|
+| no | no | 11,031 |
+| yes | yes | 10,303 |
+| yes | no | 313 |
+| no | yes | 0 |
+
+584 of the agreeing reads are ROOTs the FINAL projected itself. Of the 313
+disagreements, 291 (53 tests) are ROOT scans built as an INNER join to the
+condition aggregate that filters them: the built read counted the join as a
+shape, and none of them moves a plan. 14 (7 tests) are ROOTs the FINAL
+re-sourced or rewrapped where a rowset or subset join reads them. 6 are a one-row scalar subquery
+rowset whose body is a constant select, 1 is a non-correlated subselect and 1
+is a ROOT in `test_window_clone`.
+
+Four plans moved, all in the 14, all smaller, and every one in a test that
+checks rows. A rowset full-joined to a dimension key
+(`test_scoped_join::test_rowset_full_join_to_complete_dimension_key_yields_all_rows`)
+no longer joins the rowset twice: 5 CTEs to 4, 4 joins to 3. The same shape
+drops a CTE and a join in `test_rowset_cross_datasource_outer_read`
+(`full_k_aw`, and its matrix case) and in both statements of
+`test_rowset_body_limit::test_full_readback_row_identical_under_narrowing`.
+
+`test_a_condition_aggregate_does_not_shape_the_rows_it_filters`,
+`test_a_final_contributor_is_shaped_by_its_group_or_its_final_projection`
+and `test_a_shaped_bridge_shapes_the_rows_its_consumer_merges` pin the three
+reads.
+
+Suite capture against `main`: the four plans above moved. Everything else
+that moved is on the known-noise list or compiles identically run alone
+(`test_validate_fix_types` and thelook `test_one` compiled fewer duplicate
+statements under xdist). Full suite: the same 25 failures as `main`. Corpus:
+0 of 205 plans moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1401,11 +1458,14 @@ not built yet:
    holds its own side of a statement relation (part 38), and each edge is
    asked only for what its parent can carry (part 39). `projection_grain` and
    `sourcing_keys` are the consumer's, not copied onto every edge (part 40).
-   A per-group parent's shape is the stage-2 `shapes_rows` (part 41). What
-   is left of which parent takes the projection: a ROOT rendered grouped
-   (`_renders_grouped`) is still read off the built node, the shapes a
-   condition carries into a scan are not in `shapes_rows` (45 reads, none
-   moving a plan), and the FINAL merge still walks its built parents.
+   A per-group parent's shape is the stage-2 `shapes_rows` (part 41), and
+   so is a FINAL contributor's (part 42). What is left of which parent takes
+   the projection: a ROOT rendered grouped (`_renders_grouped`) is still read
+   off the built node, a bridge's shape is recorded on its consumer only at
+   build time and does not reach the consumer's readers through
+   `_refresh_shapes_rows`, and the shapes a condition carries into a scan
+   are not in `shapes_rows` (45 per-group reads in part 41, none moving a
+   plan).
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
