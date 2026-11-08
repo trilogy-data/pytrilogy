@@ -1243,8 +1243,8 @@ a design decision or a bug.
   NULL `i` and `not in` kept it. ClickHouse renders an uncorrelated `IN`
   with an explicit NULL-member check now.
 
-  On main, 73 of the 90 cases `tests/core/test_text_read_laws.py` ran before
-  the membership-identity cases were added fail; none now.
+  On main, 76 of the 102 cases `tests/core/test_text_read_laws.py` runs
+  fail; none now.
 
 ## Limits
 
