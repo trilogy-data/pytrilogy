@@ -1,5 +1,5 @@
 query_id = "91"
-gen_length = 2908
+gen_length = 2919
 preql_size = 1089
 comp_size = 982
 generated_sql = """
@@ -20,7 +20,7 @@ FROM
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_return_customer_current_household_demographics_household_demographics\" on \"cs_return_customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"cs_return_customer_current_household_demographics_household_demographics\".\"HD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"call_center\" as \"cs_return_call_center_call_center\" on \"cs_catalog_returns\".\"CR_CALL_CENTER_SK\" = \"cs_return_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
-    \"cs_return_date_date\".\"D_YEAR\" = 1998 and \"cs_return_date_date\".\"D_MOY\" = 11 and ( ( \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cs_return_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cs_return_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and \"cs_return_customer_current_household_demographics_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' and \"cs_return_customer_current_address_customer_address\".\"CA_GMT_OFFSET\" = -7
+    \"cs_return_date_date\".\"D_YEAR\" = 1998 and \"cs_return_date_date\".\"D_MOY\" = 11 and ( ( \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cs_return_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cs_return_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cs_return_customer_current_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and \"cs_return_customer_current_household_demographics_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' ESCAPE '\\' and \"cs_return_customer_current_address_customer_address\".\"CA_GMT_OFFSET\" = -7
 
 GROUP BY
     1,

@@ -445,7 +445,7 @@ SELECT
 FROM
     "raw_titanic" as "raw_data"
 WHERE
-    "raw_data"."name" like '%a%'
+    "raw_data"."name" like '%a%' ESCAPE '\\'
 
 ORDER BY 
     "raw_data"."name" asc""".strip()

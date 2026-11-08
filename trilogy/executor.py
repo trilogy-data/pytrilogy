@@ -1829,9 +1829,14 @@ class Executor:
         if variables:
             # Supplied bindings stand in for hydration: the markers need not
             # name concepts at all, so do not try to resolve them.
-            return self._execute_with_retry(escape_literal_colons(command), variables)
+            return self._execute_with_retry(self._escape_colons(command), variables)
         return self._execute_with_retry(
             *self.prepare_sql(command, local_concepts=local_concepts)
+        )
+
+    def _escape_colons(self, command: str) -> str:
+        return escape_literal_colons(
+            command, self.generator.STRING_LITERAL_BACKSLASH_ESCAPES
         )
 
     def prepare_sql(
@@ -1845,7 +1850,7 @@ class Executor:
         same way whichever path ends up running it."""
         from sqlalchemy import text
 
-        command = escape_literal_colons(command)
+        command = self._escape_colons(command)
         params = text(command).compile().params
         if not params:
             return command, None

@@ -58,6 +58,16 @@ def _coerce_value(ch_type: str, value: Any) -> Any:
     return coercer(value) if coercer else value
 
 
+def _escape_backslashes(value: Any) -> Any:
+    """The parameters are inlined by SQLAlchemy's generic compiler, which only
+    doubles quotes; ClickHouse also reads a backslash as an escape."""
+    if isinstance(value, str):
+        return value.replace("\\", "\\\\")
+    if isinstance(value, (list, tuple)):
+        return type(value)(_escape_backslashes(v) for v in value)
+    return value
+
+
 class ChdbConnection(NonTransactionalConnection):
     def __init__(self, path: str | None):
         self._path = path
@@ -77,6 +87,8 @@ class ChdbConnection(NonTransactionalConnection):
     def execute(
         self, statement: str | TextClause, parameters: Any | None = None
     ) -> ResultProtocol:
+        if parameters:
+            parameters = {k: _escape_backslashes(v) for k, v in parameters.items()}
         sql = statement_to_sql(statement, parameters)
         # Use JSON format so we get both column metadata and row data.
         raw = self._get_session().query(sql, "JSON")

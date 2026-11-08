@@ -244,6 +244,10 @@ class BigqueryDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = "`"
+    ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
+    # LIKE escapes with a backslash natively and takes no ESCAPE clause
+    LIKE_ESCAPE_CLAUSE = False
+    STRING_LITERAL_BACKSLASH_ESCAPES = True
     NULL_WRAPPER = staticmethod(null_wrapper)
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST

@@ -1,10 +1,10 @@
 query_id = "14"
-gen_length = 518
+gen_length = 529
 preql_size = 189
 comp_size = 363
 generated_sql = """
 SELECT
-    ( 100.0 * sum(CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) ) / nullif(sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")), 0) as \"promo_revenue\"
+    ( 100.0 * sum(CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' ESCAPE '\\' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) ) / nullif(sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")), 0) as \"promo_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"part\" as \"part_part\" on \"lineitem\".\"l_partkey\" = \"part_part\".\"p_partkey\"

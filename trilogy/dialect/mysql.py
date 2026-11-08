@@ -108,7 +108,7 @@ FUNCTION_MAP = {
     FunctionType.BOOL_OR: lambda x, types: f"MAX(CAST({x[0]} AS UNSIGNED))",
     FunctionType.BOOL_AND: lambda x, types: f"MIN(CAST({x[0]} AS UNSIGNED))",
     FunctionType.STRPOS: lambda x, types: f"LOCATE({x[1]}, {x[0]})",
-    FunctionType.CONTAINS: lambda x, types: f"(LOCATE({x[1]}, {x[0]}) > 0)",
+    FunctionType.CONTAINS: lambda x, types: f"(LOCATE(LOWER({x[1]}), LOWER({x[0]})) > 0)",
     **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_STRICT: lambda x, types: f"CONCAT({', '.join(x)})",
     FunctionType.CAST: lambda x, types: render_cast(x),
@@ -155,6 +155,7 @@ class MySQLDialect(BaseDialect):
     NULL_SORT = NullSort.SMALLEST
     NULLS_ORDER_SYNTAX = False
     ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
+    STRING_LITERAL_BACKSLASH_ESCAPES = True
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,

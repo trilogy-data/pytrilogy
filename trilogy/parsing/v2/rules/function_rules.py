@@ -51,7 +51,7 @@ from trilogy.core.models.core import (
     NumericType,
     arg_to_datatype,
 )
-from trilogy.parsing.common import arbitrary_to_concept
+from trilogy.parsing.common import arbitrary_to_concept, like_or_equality
 from trilogy.parsing.v2.rules.conditional_rules import negate_two_valued
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -256,7 +256,7 @@ def like_comparison(
         if node.kind == SyntaxNodeKind.ILIKE
         else ComparisonOperator.LIKE
     )
-    return Comparison(left=args[0], right=args[1], operator=operator)
+    return like_or_equality(args[0], args[1], operator)
 
 
 # --- Aggregate handlers ---

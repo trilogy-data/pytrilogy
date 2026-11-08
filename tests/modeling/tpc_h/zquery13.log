@@ -1,5 +1,5 @@
 query_id = "13"
-gen_length = 634
+gen_length = 645
 preql_size = 286
 comp_size = 365
 generated_sql = """
@@ -11,7 +11,7 @@ SELECT
     count(\"orders_orders\".\"o_orderkey\") as \"orders_per_customer\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
-    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\" and \"orders_orders\".\"o_comment\" not like '%special%requests%'
+    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\" and \"orders_orders\".\"o_comment\" not like '%special%requests%' ESCAPE '\\'
 GROUP BY
     1)
 SELECT

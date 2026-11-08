@@ -49,6 +49,7 @@ a design decision or a bug.
 | `Scalars.lean` | calendar offsets, the type of a date offset, `greatest` / `least`, `log` | `date_add` by months clamps to the month's last day, so `date_diff` counts back the offset and the day is a real day (`add_months_diff`, `add_months_valid`); a whole-day offset of a date compares as a date under text and coerced comparison alike (`typed_eq_agrees`); each argument falling back to the others makes a NULL-propagating extreme skip NULLs (`fallback_greatest_exact`); `log(x, b)` takes the base second (`base_first_misreads`) (checked by `tests/core/test_scalar_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_scalar_law_renderings.py`) |
 | `Types.lean` | the declared type of an expression as the column a persisted copy is stored in | a sum holds in the join of its operands' types and a product in the sum of their scales (`add_preserved`, `mul_preserved`), a remainder in its dividend's type (`rem_preserved`), `greatest` / `least` in the join of all arguments (`pick_preserved`); no decimal scale holds a quotient (`third_has_no_scale`), and a 4-byte float does not hold a double (`single_misses_double`); a remainder of the integer parts or of a decimal's unscaled integer drops the fraction (`integer_rem_drops_fraction`) and `x - m * trunc(x / m)` keeps it (`rem_by_trunc`) (checked by `tests/core/test_type_materialization_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_type_law_renderings.py`) |
 | `Padding.lean` | what an outer join puts in a row it could not match, and what a cast does to NULL | a NULL pad leaves `count` and `sum` of a right column equal to those over the matches (`null_pad_count_eq_matches`, `null_pad_sum_eq_matches`); a `0` pad counts an unmatched row and is the `max` of negative values (`default_pad_counts_unmatched`, `default_pad_max_raises`); a cast is strict (`cast_keeps_null`) (checked by `tests/engine/test_clickhouse_null_laws.py`, and by the window and select-grain law suites, which now run on ClickHouse through chdb beside DuckDB and SQLite) |
+| `StringMatch.lean` | the `like` pattern language, `ilike`, `contains`, and a string literal as each dialect reads it | a pattern with its specials escaped matches exactly its string (`escaped_literal_exact`), so every literal pattern means the same under any LIKE; a pattern with no wildcard is its string's equality (`exact_pattern_is_eq`); SQLite's GLOB over the translated pattern is the case-sensitive match (`glob_sound`); `contains` is a case-folded infix (`contains_is_folded_infix`); ClickHouse's rewrite of a computed pattern (`ch_strip_sound`) and its doubled-backslash literal (`ch_literal_roundtrip`) read back the pattern and the string; a match is NULL on a NULL operand (`like_strict`) (checked by `tests/core/test_string_match_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_match_renderings.py`) |
 
 ## What it found
 
@@ -1080,6 +1081,54 @@ a design decision or a bug.
   fail: every DuckDB and ClickHouse zero-divisor case, every persisted-copy
   case on all three engines, the nullability case and the ClickHouse DDL
   case; none now.
+
+- **`like`, `ilike` and `contains` meant different things per engine, and a
+  ClickHouse string lost its backslashes** (0.3.470; `StringMatch.lean`).
+  `trilogy/core/like_patterns.py` now states one pattern language: `%`, `_`,
+  and a backslash that makes the next character literal. `like` keeps case,
+  `ilike` folds it, `contains` is a case-folded substring test, and a NULL
+  operand gives NULL. Every dialect renders that:
+  - SQLite's LIKE folds ASCII case, so `v like 'A%'` matched `abc`
+    (`StringMatch.sqlite_like_folds_case`). `like` renders `GLOB` there: a
+    literal pattern is translated at compile time (`to_glob`,
+    `StringMatch.glob_sound`), a computed one by a `replace` chain.
+  - DuckDB and SQLite had no LIKE escape, ClickHouse, Postgres, MySQL and
+    BigQuery escape with a backslash, so `a\%c` matched `a\xc` on one engine
+    and `a%c` on the other (`StringMatch.unescaped_wildcard_matches_more`).
+    Every dialect that takes one renders `ESCAPE '\'`, and a literal pattern is
+    written with its specials escaped (`canonical`,
+    `StringMatch.escaped_literal_exact`; on SQL Server `[` too). ClickHouse
+    keeps the backslash before an ordinary character
+    (`StringMatch.clickhouse_keeps_ordinary_escape`), so a computed pattern is
+    rewritten there (`StringMatch.ch_strip_sound`).
+  - `ilike` rendered verbatim on BigQuery, SQL Server, Presto and Trino, which
+    have no ILIKE; it is `lower(x) like lower(p)` there.
+  - `contains(s, t)` was case-insensitive on DuckDB, SQLite and BigQuery,
+    case-sensitive on ClickHouse (`StringMatch.clickhouse_contains_keeps_case`)
+    and Snowflake, and `CONTAINS(s, t)`, not a substring function, on Postgres,
+    SQL Server, Presto and Trino. Each now folds case
+    (`StringMatch.contains_is_folded_infix`); SQL Server, whose `CHARINDEX`
+    finds no empty needle, matches `'%' + escaped(t) + '%'`.
+  - ClickHouse reads a backslash in a string literal as an escape, and its
+    renderer and chdb's parameter inlining wrote one undoubled: `where v =
+    'a\b'` matched nothing, `'\x'` failed to parse, and a persisted `'\n'` was
+    stored as a newline (`StringMatch.backslash_literal_halved`). Both now
+    double it (`StringMatch.ch_literal_roundtrip`).
+  - The executor's colon escaping read `\'` as an escaped quote on every
+    dialect, so `ESCAPE '\'` on DuckDB or SQLite swallowed the next bind
+    parameter. It reads a backslash as plain on standard-SQL dialects
+    (`STRING_LITERAL_BACKSLASH_ESCAPES`).
+
+  A pattern with no wildcard is that string's equality
+  (`StringMatch.exact_pattern_is_eq`), and the parser now plans it as one:
+  `city like 'Boston'` read the whole table beside a partition whose
+  `complete where` is `city = 'Boston'`, and now reads the partition.
+
+  On main, 25 of the 45 cases `tests/core/test_string_match_laws.py` runs
+  fail: every literal and computed-pattern case on all three engines, the
+  ClickHouse `contains` case, SQLite's NULL case, the three equality-planning
+  cases, the persisted copy on all three engines and three ClickHouse literal
+  cases; none now.
 
 ## Limits
 

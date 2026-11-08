@@ -24,6 +24,8 @@ LITERAL_COLON_ESCAPE = "\\:"
 # pair (escape-char dialects such as BigQuery/Snowflake emit \' and \\). One
 # left unterminated runs to the end of the statement.
 _STRING_LITERAL = re.compile(r"'(?:[^'\\]|''|\\.)*(?:'|\\?$)", re.DOTALL)
+# Standard SQL: a backslash is a plain character, so `'\'` is a whole literal.
+_STANDARD_STRING_LITERAL = re.compile(r"'(?:[^']|'')*(?:'|$)", re.DOTALL)
 # Inside one: a backslash pair is kept as is, so an already-escaped colon (or a
 # colon behind an escaped backslash) is never touched; a bare colon is escaped.
 _LITERAL_COLON = re.compile(r"\\.|:", re.DOTALL)
@@ -36,7 +38,7 @@ def _escape_colons_in_literal(match: re.Match[str]) -> str:
     )
 
 
-def escape_literal_colons(sql: str) -> str:
+def escape_literal_colons(sql: str, backslash_escapes: bool = True) -> str:
     """Escape `:` as LITERAL_COLON_ESCAPE inside single-quoted string literals.
 
     Colons outside literals are left alone and still bind as parameters. This
@@ -44,7 +46,8 @@ def escape_literal_colons(sql: str) -> str:
     loop, and a statement with no colon (or no literal) returns untouched."""
     if ":" not in sql or "'" not in sql:
         return sql
-    return _STRING_LITERAL.sub(_escape_colons_in_literal, sql)
+    pattern = _STRING_LITERAL if backslash_escapes else _STANDARD_STRING_LITERAL
+    return pattern.sub(_escape_colons_in_literal, sql)
 
 
 def unescape_literal_colons(sql: str) -> str:

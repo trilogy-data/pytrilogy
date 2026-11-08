@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
+from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -53,6 +54,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UnsupportedDialectFeature
 from trilogy.core.internal import DEFAULT_CONCEPTS
+from trilogy.core.like_patterns import ESCAPE, canonical
 from trilogy.core.models.author import ArgBinding, arg_to_datatype, get_basic_type
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -185,6 +187,14 @@ class TableColumn:
     trilogy_type: DataType
     is_nullable: bool = True
     comment: str | None = None
+
+
+LIKE_OPERATORS = (
+    ComparisonOperator.LIKE,
+    ComparisonOperator.NOT_LIKE,
+    ComparisonOperator.ILIKE,
+    ComparisonOperator.NOT_ILIKE,
+)
 
 
 def nullable_from_str(value: object) -> bool:
@@ -867,7 +877,12 @@ FUNCTION_MAP = {
     FunctionType.LOWER: lambda x, types: f"LOWER({x[0]}) ",
     FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
     FunctionType.STRPOS: lambda x, types: f"STRPOS({x[0]},{x[1]})",
-    FunctionType.CONTAINS: lambda x, types: f"CONTAINS({x[0]},{x[1]})",
+    # a substring test ignores case on every dialect; array membership is exact
+    FunctionType.CONTAINS: lambda x, types: (
+        f"CONTAINS({x[0]},{x[1]})"
+        if is_array_arg(types)
+        else f"(strpos(lower({x[0]}), lower({x[1]})) > 0)"
+    ),
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_CONTAINS({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: f"REGEXP_EXTRACT({x[0]},{x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x, types: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
@@ -1117,6 +1132,13 @@ class BaseDialect:
     COLUMN_NOT_FOUND_PATTERN: str | None = None
     # (lower, like, not) spellings for dialects without native ILIKE
     ILIKE_AS_LOWER_LIKE: tuple[str, str, str] | None = None
+    # `like` patterns escape with a backslash (trilogy.core.like_patterns);
+    # dialects whose LIKE does so natively and takes no ESCAPE clause opt out.
+    LIKE_ESCAPE_CLAUSE = True
+    # whether a backslash escapes the next character inside a string literal
+    STRING_LITERAL_BACKSLASH_ESCAPES = False
+    # pattern characters, beyond `%` and `_`, a dialect's LIKE reads specially
+    LIKE_SPECIAL_CHARACTERS = ""
     # A source that exists but cannot be parsed - a truncated or half-uploaded
     # object, the usual shape of a publish that died mid-write. Distinct from
     # not-found: the state probes report it loudly and treat the asset as
@@ -2039,42 +2061,48 @@ class BaseDialect:
     ) -> str:
         """Default rendering for a binary comparison. Dialects override when an
         operator needs translation."""
+        render = partial(
+            self.render_expr,
+            cte=cte,
+            raise_invalid=raise_invalid,
+            materialized_addresses=materialized_addresses,
+        )
+        if operator in LIKE_OPERATORS:
+            return self.render_like(render(left), right, operator, render)
+        return f"{render(left)} {operator.value} {render(right)}"
+
+    def render_like_pattern(self, pattern, render: Callable[[Any], str]) -> str:
+        """A literal pattern is written with every literal special escaped, so
+        it means the same under any LIKE; a computed one is passed as is."""
+        if isinstance(pattern, str):
+            return self.render_string_literal(
+                canonical(pattern, "%_" + ESCAPE + self.LIKE_SPECIAL_CHARACTERS)
+            )
+        return render(pattern)
+
+    def like_escape(self) -> str:
+        if not self.LIKE_ESCAPE_CLAUSE:
+            return ""
+        return f" ESCAPE {self.render_string_literal(ESCAPE)}"
+
+    def render_like(
+        self,
+        left_sql: str,
+        pattern,
+        operator: ComparisonOperator,
+        render: Callable[[Any], str],
+    ) -> str:
+        right_sql = self.render_like_pattern(pattern, render)
+        escape = self.like_escape()
         if self.ILIKE_AS_LOWER_LIKE and operator in (
             ComparisonOperator.ILIKE,
             ComparisonOperator.NOT_ILIKE,
         ):
-            return self.render_ilike_as_lower_like(
-                left, right, operator, cte, raise_invalid, materialized_addresses
-            )
-        return f"{self.render_expr(left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
-
-    def render_ilike_as_lower_like(
-        self,
-        left,
-        right,
-        operator: ComparisonOperator,
-        cte: CTE | UnionCTE | None,
-        raise_invalid: bool,
-        materialized_addresses: set[str] | None,
-    ) -> str:
-        """Emulate ``ILIKE`` on dialects without it via case-folded ``LIKE``;
-        the keyword spellings are the dialect's."""
-        assert self.ILIKE_AS_LOWER_LIKE is not None
-        lower, like, negate = self.ILIKE_AS_LOWER_LIKE
-        left_sql = self.render_expr(
-            left,
-            cte=cte,
-            raise_invalid=raise_invalid,
-            materialized_addresses=materialized_addresses,
-        )
-        right_sql = self.render_expr(
-            right,
-            cte=cte,
-            raise_invalid=raise_invalid,
-            materialized_addresses=materialized_addresses,
-        )
-        prefix = negate if operator == ComparisonOperator.NOT_ILIKE else ""
-        return f"({prefix}{lower}({left_sql}) {like} {lower}({right_sql}))"
+            # emulate ILIKE by a case-folded LIKE; the spellings are the dialect's
+            lower, like, negate = self.ILIKE_AS_LOWER_LIKE
+            prefix = negate if operator == ComparisonOperator.NOT_ILIKE else ""
+            return f"({prefix}{lower}({left_sql}) {like} {lower}({right_sql}){escape})"
+        return f"{left_sql} {operator.value} {right_sql}{escape}"
 
     def _common_existence_source(
         self,

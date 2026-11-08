@@ -20,6 +20,7 @@ from trilogy.core.models.core import (
     list_to_wrapper,
     tuple_to_wrapper,
 )
+from trilogy.parsing.common import like_or_equality
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -200,7 +201,7 @@ def sum_operator(
         # machinery the same way other null-propagating comparisons do.
         like_op = _LIKE_OPERATORS.get(op)
         if like_op is not None:
-            result = Comparison(left=result, right=right, operator=like_op)
+            result = like_or_equality(result, right, like_op)
             continue
         operator = {
             "+": FunctionType.ADD,

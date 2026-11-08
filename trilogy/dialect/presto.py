@@ -57,6 +57,7 @@ class PrestoDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = '"'
+    ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
 
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,

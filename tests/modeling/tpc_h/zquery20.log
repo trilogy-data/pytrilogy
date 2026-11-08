@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 2008
+gen_length = 2019
 preql_size = 456
 comp_size = 908
 generated_sql = """
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
-    \"part_part\".\"p_name\" like 'forest%' and UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'CANADA'
+    \"part_part\".\"p_name\" like 'forest%' ESCAPE '\\' and UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'CANADA'
 ),
 cheerful as (
 SELECT
