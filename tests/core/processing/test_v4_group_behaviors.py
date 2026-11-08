@@ -1558,11 +1558,23 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         output_concepts=[store_id, daily_rides],
         environment=env,
     )
-    aggregate_parent.force_group = True
     parent_builds = [
         ParentBuild("dim", dim_parent),
         ParentBuild("agg", aggregate_parent),
     ]
+    attrs = {
+        "dim": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROOT,
+            grain_components=frozenset({store_id.address}),
+        ),
+        "agg": GroupAttrs(
+            depth_label=DepthLabel.D1,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({store_id.address}),
+            shapes_rows=True,
+        ),
+    }
     no_contract_attrs = GroupAttrs(
         depth_label=DepthLabel.D0,
         derivation=Derivation.BASIC,
@@ -1571,6 +1583,7 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
 
     projected = _apply_input_contracts(
         parent_builds,
+        attrs,
         no_contract_attrs,
         needed={station_name.address},
         environment=env,
@@ -1596,6 +1609,7 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
 
     projected = _apply_input_contracts(
         parent_builds,
+        attrs,
         contracted_attrs,
         needed={station_name.address},
         environment=env,
@@ -1606,6 +1620,72 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         store_id.address,
         station_name.address,
     }
+
+
+def test_a_parent_whose_stage_two_rows_are_shaped_is_never_projected():
+
+    env = BuildEnvironment()
+    store_id = _build_concept("store.id", Purpose.KEY)
+    station_name = _build_concept(
+        "station.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={store_id.address},
+        keys={store_id.address},
+    )
+    for concept in (store_id, station_name):
+        env.concepts[concept.address] = concept
+        env.canonical_concepts[concept.canonical_address] = concept
+    dim_parent = SelectNode(
+        input_concepts=[store_id, station_name],
+        output_concepts=[store_id, station_name],
+        parents=[
+            StrategyNode(
+                input_concepts=[],
+                output_concepts=[store_id, station_name],
+                environment=env,
+            )
+        ],
+        environment=env,
+    )
+    rowset_read = StrategyNode(
+        input_concepts=[], output_concepts=[store_id], environment=env
+    )
+    attrs = {
+        gid: GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.BASIC,
+            grain_components=frozenset({store_id.address}),
+            shapes_rows=gid == "over_rowset",
+        )
+        for gid in ("dim", "over_rowset")
+    }
+    consumer = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.BASIC,
+        grain_components=frozenset({store_id.address}),
+        input_grain=frozenset({store_id.address}),
+        input_contracts=tuple(
+            GroupInputContract(
+                parent_group_id=gid,
+                consumer_group_id="consumer",
+                required_grain=frozenset({store_id.address}),
+                may_project_dimension=True,
+            )
+            for gid in attrs
+        ),
+    )
+
+    projected = _apply_input_contracts(
+        [ParentBuild("dim", dim_parent), ParentBuild("over_rowset", rowset_read)],
+        attrs,
+        consumer,
+        needed={station_name.address},
+        environment=env,
+    )
+
+    assert isinstance(projected[0], GroupNode)
+    assert projected[1] is rowset_read
 
 
 def test_final_hides_only_non_mandatory_grain_keys():

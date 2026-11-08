@@ -1346,6 +1346,50 @@ between two runs of `main`. The BigQuery temp table's name hashes the
 worktree path. Full suite: the same 25 failures as `main`. Corpus: 0 of 205
 plans moved. Fuzzer: 522 of 522.
 
+**Whether a per-group parent's rows are shaped is a stage-2 fact (part 41).**
+After part 40 `_satisfy_parent_projection_contract` still walked each built
+parent for a GroupNode, a WindowNode or a forced group, both to decide whether
+any sibling was shaped and to skip the parents that were. A group now carries
+`GroupAttrs.shapes_rows`, set once over the group graph in topological order
+(`_refresh_shapes_rows`): the group aggregates or windows, it is a rowset
+boundary whose body does (any of the rowset's columns crosses a grouping
+derivation), or a group below it is shaped. A per-group merge reads that
+fact, and one build fact beside it: `_renders_grouped`, a forced group in the
+parent as built, the ROOT deduplicated at its datasource that stage 2 does
+not choose. The FINAL merge still reads the built parents.
+
+A census over one suite run recorded both answers at every per-group
+projection with a projection grain: 29,719 parent reads in 4,766 tests.
+
+| built barrier | stage-2 read | parents |
+|---|---|---|
+| no | no | 17,969 |
+| yes | yes | 11,703 |
+| yes | no | 45 |
+| no | yes | 2 |
+
+Of the 11,703 agreeing barriers, 864 hold a forced group; the rest are named
+by `shapes_rows` alone. The 45 the stage-2 read misses, in 27 tests, are
+shapes a condition carries into a scan rather than lineage: an existence
+set's dedup (a GroupNode over a ROWSET or FILTER feeder, `then where` stages,
+q14, q23), an aggregate a WHERE reads off a derived grain, and a window or
+constant group behind a merged derived bridge. The other 2 are ROOT scans in
+one test (`test_aggregate_by_a_derived_grain_in_where`): a shaped group is
+among their graph predecessors, and the build renders them plain. None of
+the 47 moves a plan in the suite capture.
+
+`test_a_parent_whose_stage_two_rows_are_shaped_is_never_projected` pins the
+read: a sibling whose built node holds no barrier but whose group is shaped
+is not projected, and still licenses projecting its dimension sibling.
+`test_parent_projection_uses_declared_contract_not_shape_barrier` now reads
+the aggregate's shape off its group, not a forced group on its node.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise and the grain check's column order
+(`test_fixed_value_lifecycle_laws::test_persisted_value_reads_back`, nine
+cases, the same reorder as `test_grain_check_exact`). Full suite: the same
+25 failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1357,11 +1401,11 @@ not built yet:
    holds its own side of a statement relation (part 38), and each edge is
    asked only for what its parent can carry (part 39). `projection_grain` and
    `sourcing_keys` are the consumer's, not copied onto every edge (part 40).
-   What is left is which parent takes the projection:
-   `_satisfy_parent_projection_contract` still reads each built parent for a
-   shape barrier. Stage 2's `may_project_dimension` admits 1,634 parents the
-   build refuses; a group's barrier (a grouped ROOT render, a rowset read, a
-   basic group over a grouped parent) has to be a stage-2 fact first.
+   A per-group parent's shape is the stage-2 `shapes_rows` (part 41). What
+   is left of which parent takes the projection: a ROOT rendered grouped
+   (`_renders_grouped`) is still read off the built node, the shapes a
+   condition carries into a scan are not in `shapes_rows` (45 reads, none
+   moving a plan), and the FINAL merge still walks its built parents.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

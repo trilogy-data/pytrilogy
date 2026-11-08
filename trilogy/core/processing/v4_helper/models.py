@@ -260,6 +260,9 @@ class GroupAttrs(_HeldKeys):
     # the input grain: the sourcing keys and the grains its siblings' rows
     # already stand at
     projection_grain: frozenset[str] = frozenset()
+    # a grouping stage shapes this group's rows: its own, a rowset body's it
+    # reads out, or a group's below it. Never projected to a sibling's grain.
+    shapes_rows: bool = False
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()
