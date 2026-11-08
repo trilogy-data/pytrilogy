@@ -29,7 +29,7 @@ from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.optimizations.existence_having_fold import FoldExistenceIntoAggregate
 from trilogy.core.optimizations.identity_group import DropIdentityGroup
 from trilogy.core.optimizations.semi_join_pushdown import PushSemiJoinIntoAggregate
-from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
+from trilogy.core.optimizations.strip_redundant_not_null import tautological_not_null
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
 )
@@ -376,7 +376,7 @@ def _strip_candidates(processed: ProcessedQuery) -> list[tuple[CTE, str]]:
             continue
         for atom in and_atoms(cte.condition):
             concept = _not_null_concept(atom)
-            if concept is None or not redundant_not_null(cte, atom):
+            if concept is None or not tautological_not_null(cte, atom):
                 continue
             if any(c.address == concept.address for c in cte.output_columns):
                 out.append((cte, concept.address))

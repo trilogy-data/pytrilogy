@@ -27,7 +27,8 @@ or FULL join can pad that side back (`ss.customer.sk is not null` beside
 
 And an atom is tautological beside a sibling of the same AND that rejects NULL
 in that column (`v = 'b' and v is not null`): the sibling reads the column as
-the atom does, and keeps no row where it is NULL.
+the atom does, and keeps no row where it is NULL. That judges an atom by other
+atoms, so it is a gated remover, not a fact remover (`atom_contract`).
 """
 
 from __future__ import annotations
@@ -138,8 +139,6 @@ class _NotNullFacts:
             return None
         if _read_off_rejected_side(self.cte, concept.address, self.rejected):
             return f"{concept.address} IS NOT NULL is an INNER key"
-        if not concept.equivalent_addresses.isdisjoint(self.sibling_proven):
-            return f"{concept.address} IS NOT NULL beside a sibling rejecting NULL"
         if (
             concept.derivation == Derivation.ROOT
             and not concept.equivalent_addresses.isdisjoint(self.output)
@@ -148,12 +147,26 @@ class _NotNullFacts:
             return f"dropping tautological {concept.address} IS NOT NULL"
         return None
 
+    def beside_sibling(self, atom: Any) -> str | None:
+        """Why `atom` is an `X IS NOT NULL` a sibling atom already implies."""
+        concept = _not_null_concept(atom)
+        if concept is None or concept.equivalent_addresses.isdisjoint(
+            self.sibling_proven
+        ):
+            return None
+        return f"{concept.address} IS NOT NULL beside a sibling rejecting NULL"
 
-@register_remover("strip_redundant_not_null", facts_only=True)
+
+def tautological_not_null(cte: CTE, atom: Any) -> bool:
+    return _NotNullFacts(cte).redundant(atom) is not None
+
+
+@register_remover("strip_redundant_not_null", facts=tautological_not_null)
 def redundant_not_null(cte: CTE, atom: Any) -> bool:
     """Whether `atom` would be stripped from `cte`'s WHERE: a rule adding it
     there would only be undone."""
-    return _NotNullFacts(cte).redundant(atom) is not None
+    facts = _NotNullFacts(cte)
+    return (facts.redundant(atom) or facts.beside_sibling(atom)) is not None
 
 
 class StripRedundantNotNull(OptimizationRule):
@@ -165,7 +178,7 @@ class StripRedundantNotNull(OptimizationRule):
         facts = _NotNullFacts(cte)
         survivors: list = []
         for atom in and_atoms(cte.condition):
-            reason = facts.redundant(atom)
+            reason = facts.redundant(atom) or facts.beside_sibling(atom)
             if reason is None:
                 survivors.append(atom)
             else:

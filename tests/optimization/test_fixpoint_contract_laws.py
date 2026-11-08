@@ -48,7 +48,7 @@ def _ungate(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_fact_removers_are_driver_phases():
     phases = {phase.name for phase in build_optimization_rule_plan()}
     assert set(REMOVERS) <= phases
-    assert FACT_REMOVERS == {"strip_redundant_not_null"}
+    assert set(FACT_REMOVERS) == {"strip_redundant_not_null"}
 
 
 def test_contract_holds():
