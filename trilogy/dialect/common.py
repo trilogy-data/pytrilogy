@@ -2,7 +2,13 @@ from collections.abc import Callable
 from typing import Any
 
 from trilogy.constants import PRESENCE_MARKER_PREFIX
-from trilogy.core.casts import FALSE_TEXT, TRUE_TEXT
+from trilogy.core.casts import (
+    DATE_PATTERN,
+    FALSE_TEXT,
+    NUMBER_PATTERN,
+    TEXT_READ_TARGETS,
+    TRUE_TEXT,
+)
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode
 from trilogy.core.models.build import (
@@ -470,6 +476,22 @@ def cast_kind(types: list) -> tuple[Any, Any]:
     if len(types) != 2:
         return None, None
     return tuple(getattr(t, "data_type", t) for t in types)  # type: ignore[return-value]
+
+
+def reads_text(types: list) -> bool:
+    source, target = cast_kind(types)
+    return source == DataType.STRING and target in TEXT_READ_TARGETS
+
+
+def read_pattern(types: list) -> str:
+    return DATE_PATTERN if cast_kind(types)[1] == DataType.DATE else NUMBER_PATTERN
+
+
+def guarded_read(matches: str, read: str) -> str:
+    """The engine's own reading, kept only where the string has the reference's
+    shape: every engine reads more spellings than the reference (DuckDB '1_000',
+    ClickHouse 'on', SQLite any numeric prefix)."""
+    return f"CASE WHEN {matches} THEN {read} END"
 
 
 def render_text_bool_cast(args: list[str], types: list) -> str:

@@ -18,7 +18,13 @@ from trilogy.dialect.base import (
 from trilogy.dialect.base import (
     render_mod as base_render_mod,
 )
-from trilogy.dialect.common import bool_from_text, cast_kind, text_from_bool
+from trilogy.dialect.common import (
+    bool_from_text,
+    cast_kind,
+    guarded_read,
+    reads_text,
+    text_from_bool,
+)
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -82,8 +88,70 @@ TEMPORAL_CASTS = {
 }
 
 
+def trimmed(value: str) -> str:
+    return f"trim({value}, ' ' || char(9) || char(10) || char(13))"
+
+
+def is_number(text: str) -> str:
+    """`NUMBER_PATTERN` as GLOBs over the trimmed text: one sign, then digits
+    with at most one '.', then at most one exponent whose sign follows its
+    'e' (formal/Trilogy/Readings.lean, `glob_number_exact`)."""
+    rest = f"lower(ltrim({text}, '+-'))"
+    return " AND ".join(
+        [
+            f"{text} NOT GLOB '[+-][+-]*'",
+            f"{rest} NOT GLOB '*[^0-9.e+-]*'",
+            f"{rest} NOT GLOB '*e*e*'",
+            f"{rest} NOT GLOB '*.*.*'",
+            f"{rest} NOT GLOB '*e*.*'",
+            f"{rest} NOT GLOB '*[^e][+-]*'",
+            f"({rest} GLOB '[0-9]*' OR {rest} GLOB '.[0-9]*')",
+            f"{rest} NOT GLOB '*e'",
+            f"{rest} NOT GLOB '*e[+-]'",
+        ]
+    )
+
+
+def is_date(text: str) -> str:
+    """`DATE_PATTERN` as GLOBs; `date()` rolls '2020-02-30' into March, so the
+    day must read back as written."""
+    day, time = f"substr({text}, 1, 10)", f"substr({text}, 11)"
+    clock = "[0-5][0-9]:[0-5][0-9]"
+    return (
+        f"{day} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        f" AND date({day}) = {day}"
+        f" AND ({time} = ''"
+        f" OR ({time} GLOB '[ T][01][0-9]:{clock}*' OR {time} GLOB '[ T]2[0-3]:{clock}*')"
+        f" AND (length({time}) = 9 OR substr({time}, 10) GLOB '.[0-9]*'"
+        f" AND substr({time}, 11) NOT GLOB '*[^0-9]*'))"
+    )
+
+
+def read_text(value: str, target: str, target_type: Any) -> str:
+    """A string with no reading is NULL; CAST reads any numeric prefix ('abc'
+    is 0, '1e3' as an INTEGER is 1) and `date()` a number as a Julian day."""
+    text = trimmed(value)
+    base = getattr(target_type, "data_type", target_type)
+    if base == DataType.DATE:
+        return guarded_read(is_date(text), f"date(substr({text}, 1, 10))")
+    number = f"CAST({text} AS REAL)"
+    if isinstance(target_type, NumericType):
+        read = f"round({number}, {target_type.scale})"
+    elif base in INTEGER_TYPES:
+        # a REAL holds an integer exactly only to 2^53
+        read = (
+            f"CASE WHEN {text} GLOB '*[.eE]*' THEN CAST(round({number}) AS INTEGER)"
+            f" ELSE CAST({text} AS INTEGER) END"
+        )
+    else:
+        read = number
+    return guarded_read(is_number(text), read)
+
+
 def render_cast(args: list[str], types: list) -> str:
     source, target = cast_kind(types)
+    if reads_text(types):
+        return read_text(args[0], args[1], types[-1])
     if source == DataType.BOOL and target == DataType.STRING:
         return text_from_bool(args[0])
     if target == DataType.BOOL:
