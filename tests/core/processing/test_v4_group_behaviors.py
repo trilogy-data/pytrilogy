@@ -61,6 +61,7 @@ from trilogy.core.processing.v4_helper.group_graph import (
     _refresh_input_contracts,
     _refresh_shapes_rows,
     _virtual_filter_scoped_columns,
+    shape_through_bridges,
 )
 from trilogy.core.processing.v4_helper.group_rules import (
     partition_aggregates,
@@ -81,7 +82,6 @@ from trilogy.core.processing.v4_helper.models import (
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
-    _bridges_shaped_rows,
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
     _final_parent_shaped,
@@ -92,6 +92,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _input_contract_join_keys,
     _input_contract_projection_grain,
     _join_elected_bridges,
+    _merge_sides,
     _parent_nodes_for,
     _pre_merge_parents,
     _required_final_contract,
@@ -2088,28 +2089,80 @@ def test_a_final_contributor_is_shaped_by_its_group_or_its_final_projection():
     assert _final_parent_shaped(wrap, origin, attrs, {id(wrap)})
 
 
-def test_a_shaped_bridge_shapes_the_rows_its_consumer_merges():
-    env = BuildEnvironment()
-    key = _build_concept("item.id", Purpose.KEY)
-    dim, bridge = (
-        StrategyNode(input_concepts=[], output_concepts=[key], environment=env)
-        for _ in range(2)
-    )
-    merged = MergeNode(
-        input_concepts=[key],
-        output_concepts=[key],
-        parents=[dim, bridge],
-        environment=env,
-    )
-    origin = {id(dim): "dim", id(bridge): "rowset"}
+def test_a_shaped_bridge_shapes_its_consumer_and_the_consumers_readers():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    add_edge(group_graph, group_edges, "dim", "basic", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "basic", "reader", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "dim", "other", EdgeKind.LINEAGE)
+    group_graph.add_node("rowset")
     attrs = {
-        "dim": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
         "rowset": GroupAttrs(
             depth_label=DepthLabel.D1, derivation=Derivation.ROWSET, shapes_rows=True
         ),
+        "dim": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+        "basic": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            bridges=("rowset",),
+        ),
+        "reader": GroupAttrs(depth_label=DepthLabel.STAR, derivation=Derivation.BASIC),
+        "other": GroupAttrs(depth_label=DepthLabel.STAR, derivation=Derivation.BASIC),
+    }
+    order = ["rowset", "dim", "basic", "reader", "other"]
+
+    shape_through_bridges(group_graph, group_edges, attrs, order)
+
+    assert attrs["basic"].shapes_rows
+    assert attrs["reader"].shapes_rows
+    assert not attrs["dim"].shapes_rows
+    assert not attrs["other"].shapes_rows
+
+
+def test_an_unshaped_bridge_shapes_nothing():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    add_edge(group_graph, group_edges, "dim", "basic", EdgeKind.LINEAGE)
+    group_graph.add_node("bridge")
+    attrs = {
+        "bridge": GroupAttrs(depth_label=DepthLabel.STAR, derivation=Derivation.BASIC),
+        "dim": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+        "basic": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            bridges=("bridge",),
+        ),
     }
 
-    assert _bridges_shaped_rows([merged], origin, attrs, {"dim"})
-    assert not _bridges_shaped_rows([merged], origin, attrs, {"dim", "rowset"})
-    attrs["rowset"].shapes_rows = False
-    assert not _bridges_shaped_rows([merged], origin, attrs, {"dim"})
+    shape_through_bridges(group_graph, group_edges, attrs, ["bridge", "dim", "basic"])
+
+    assert not attrs["basic"].shapes_rows
+
+
+def test_a_merge_side_covered_by_its_descendant_is_not_a_side():
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    add_edge(group_graph, group_edges, "root", "agg", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "root", "basic", EdgeKind.LINEAGE)
+    add_edge(group_graph, group_edges, "agg", "basic", EdgeKind.LINEAGE)
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROOT,
+            output_concepts=("local.id", "local.zone"),
+        ),
+        "agg": GroupAttrs(
+            depth_label=DepthLabel.D1,
+            derivation=Derivation.AGGREGATE,
+            output_concepts=("local.id", "local.total"),
+        ),
+        "basic": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            input_concepts=("local.id", "local.total"),
+        ),
+    }
+
+    assert _merge_sides(group_graph, group_edges, attrs, "basic") == ["agg"]
+    attrs["basic"].input_concepts = ("local.id", "local.total", "local.zone")
+    assert _merge_sides(group_graph, group_edges, attrs, "basic") == ["root", "agg"]

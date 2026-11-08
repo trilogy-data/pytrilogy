@@ -263,6 +263,9 @@ class GroupAttrs(_HeldKeys):
     # a grouping stage shapes this group's rows: its own, a rowset body's it
     # reads out, or a group's below it. Never projected to a sibling's grain.
     shapes_rows: bool = False
+    # the groups this group's merge plan elects to bridge its row parents
+    # (`join_plan.elect_bridges`), decided before the build
+    bridges: tuple[str, ...] = ()
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()

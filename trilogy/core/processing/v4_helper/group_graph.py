@@ -1152,6 +1152,25 @@ def _refresh_shapes_rows(
         )
 
 
+def shape_through_bridges(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    order: Sequence[str],
+) -> None:
+    """A group whose merge plan elects a shaped bridge holds that bridge's
+    rows (q64: a rowset across a `union join`), and so does every group its
+    rows flow to. `order` is the build order, which puts a bridge before its
+    consumer though no edge does."""
+    bridged: set[str] = set()
+    for gid in (g for g in order if g in attrs):
+        if any(b in attrs and attrs[b].shapes_rows for b in attrs[gid].bridges) or (
+            bridged & set(lineage_predecessors(group_graph, group_edges, gid))
+        ):
+            bridged.add(gid)
+            attrs[gid].shapes_rows = True
+
+
 def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
