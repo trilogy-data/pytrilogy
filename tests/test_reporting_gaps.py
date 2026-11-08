@@ -1,11 +1,22 @@
+import datetime
 import json
+import uuid
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.models.core import NumericType
+from trilogy.core.enums import ChartType, IOType
+from trilogy.core.models.core import DataType, NumericType
+from trilogy.core.models.datasource import Address
+from trilogy.core.statements.execute import (
+    ProcessedChartLayer,
+    ProcessedChartStatement,
+    ProcessedCopyStatement,
+)
 from trilogy.dialect.results import ChartResult
+from trilogy.execution.client_copy import write_rows
 from trilogy.parsing.render import Renderer
 from trilogy.rendering.rich_types import is_numeric
 
@@ -215,3 +226,88 @@ def test_client_side_copy_rejects_remote(tmp_path: Path):
         executor.execute_text(
             PREAMBLE + "copy into csv 's3://bucket/out.csv' from select ip;"
         )
+
+
+def _sqlite_copy_statement(tmp_path: Path, fmt: str = "csv"):
+    executor = Dialects.SQLITE.default_executor()
+    statement = executor.parse_text(
+        PREAMBLE + f"copy into {fmt} '{tmp_path / ('out.' + fmt)}' from select ip;"
+    )[-1]
+    assert isinstance(statement, ProcessedCopyStatement)
+    return executor, statement
+
+
+def test_client_side_copy_runs_verify_on_the_staged_file(tmp_path: Path):
+    executor, statement = _sqlite_copy_statement(tmp_path)
+    seen: list[str] = []
+    executor._execute_copy(statement, verify=seen.append)
+    assert len(seen) == 1
+    assert (tmp_path / "out.csv").read_text() == "ip\na\nb\n"
+
+
+def test_client_side_copy_rejects_append(tmp_path: Path):
+    executor, statement = _sqlite_copy_statement(tmp_path)
+    statement.append_to = Address(location=str(tmp_path / "out.csv"))
+    with pytest.raises(NotImplementedError, match="Appending"):
+        executor._execute_copy(statement, verify=None)
+
+
+def test_write_rows_serializes_rich_values(tmp_path: Path):
+    target = tmp_path / "out.json"
+    row = [
+        Decimal("1.5"),
+        datetime.date(2026, 1, 2),
+        datetime.time(3, 4),
+        b"\x01",
+        uuid.UUID(int=1),
+    ]
+    write_rows(str(target), IOType.JSON, ["d", "day", "t", "b", "u"], [row])
+    assert json.loads(target.read_text()) == [
+        {
+            "d": 1.5,
+            "day": "2026-01-02",
+            "t": "03:04:00",
+            "b": "01",
+            "u": str(uuid.UUID(int=1)),
+        }
+    ]
+
+
+def test_write_rows_csv_lowercases_booleans(tmp_path: Path):
+    target = tmp_path / "out.csv"
+    write_rows(str(target), IOType.CSV, ["flag", "n"], [[True, 1], [False, None]])
+    assert target.read_text() == "flag,n\ntrue,1\nfalse,\n"
+
+
+def test_write_rows_rejects_image_types(tmp_path: Path):
+    with pytest.raises(NotImplementedError):
+        write_rows(str(tmp_path / "out.png"), IOType.PNG, [], [])
+
+
+@pytest.mark.parametrize(
+    "datatype, dtype",
+    [
+        (DataType.DATE, "datetime64[ns]"),
+        (DataType.BOOL, "bool"),
+        (DataType.STRING, "string"),
+        (DataType.INTEGER, "float64"),
+    ],
+)
+def test_empty_frame_dtypes(datatype: DataType, dtype: str):
+    pytest.importorskip("altair")
+    from trilogy.rendering.altair_renderer import AltairRenderer
+
+    assert AltairRenderer()._empty_dtype(datatype) == dtype
+
+
+def test_untyped_field_without_data_is_nominal():
+    pytest.importorskip("altair")
+    from trilogy.rendering.altair_renderer import AltairRenderer
+
+    layer = ProcessedChartLayer(
+        layer_type=ChartType.BAR, x_fields=["x"], y_fields=["y"]
+    )
+    spec = AltairRenderer().render(ProcessedChartStatement(layers=[layer]), [[]])
+    encoding = spec.to_dict()["encoding"]
+    assert encoding["x"]["type"] == "nominal"
+    assert encoding["y"]["type"] == "nominal"

@@ -1268,10 +1268,7 @@ class Executor:
                 f" dialect {self.dialect}; write to a local path."
             )
         result = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
-        if result is None:
-            raise ValueError(
-                f"copy into '{query.target}': select returned no result set"
-            )
+        assert result is not None, "a select always returns a result set"
         columns = list(result.keys())
         rows = result.fetchall()
         storage = query.datasource.storage if query.datasource else None
