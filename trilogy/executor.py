@@ -1190,6 +1190,11 @@ class Executor:
     ) -> ResultProtocol | None:
         """Write the copy through a staged path; ``verify`` sees the staged
         file before it replaces the target, and a raise there discards it."""
+        native = self.dialect == Dialects.DUCK_DB
+        if not native and query.append_to is not None:
+            raise NotImplementedError(
+                f"Appending to a file is not supported for dialect {self.dialect}"
+            )
         sql = self._build_aliased_copy_sql(query)
         target = self._resolve_copy_target(query.target)
         if query.append_to is not None:
@@ -1210,7 +1215,9 @@ class Executor:
             from trilogy.execution.write_order import sorted_rows_sql
 
             sql = sorted_rows_sql(self, datasource, sql)
-        if self.dialect == Dialects.DUCK_DB:
+        if not native:
+            self._copy_client_side(sql, target, query, verify)
+        else:
             # Check for GCS write credentials if target is a GCS path
             if target.startswith(("gcs://", "gs://")):
                 from trilogy.dialect.duckdb import check_gcs_write_credentials
@@ -1239,14 +1246,36 @@ class Executor:
                     if verify is not None:
                         verify(staged)
             self._drop_external_file_cache()
-        else:
-            raise NotImplementedError(
-                f"COPY statement not supported for dialect {self.dialect}"
-            )
         return MockResult(
             [{"query": self.generator.compile_statement(query)}],
             ["query"],
         )
+
+    def _copy_client_side(
+        self,
+        sql: str,
+        target: str,
+        query: ProcessedCopyStatement,
+        verify: Callable[[str], None] | None,
+    ) -> None:
+        """A dialect with no `COPY` to a file: fetch the rows and write the
+        file here, through the same staged swap."""
+        from trilogy.execution.client_copy import write_rows
+
+        if is_remote_target(target):
+            raise NotImplementedError(
+                f"copy into a remote target ({target}) is not supported for"
+                f" dialect {self.dialect}; write to a local path."
+            )
+        result = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
+        assert result is not None, "a select always returns a result set"
+        columns = list(result.keys())
+        rows = result.fetchall()
+        storage = query.datasource.storage if query.datasource else None
+        with staged_write(target, self._swap_staging_root()) as staged:
+            write_rows(staged, query.target_type, columns, rows, storage)
+            if verify is not None:
+                verify(staged)
 
     def _local_staging_root(self) -> str:
         root = self._swap_staging_root()

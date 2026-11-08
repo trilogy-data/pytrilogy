@@ -9,7 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from trilogy.core.models.core import DataType, TraitDataType
+from trilogy.core.models.core import DataType, NumericType, TraitDataType
 
 # Currency trait -> display symbol/prefix. Unlisted currencies render plain.
 CURRENCY_SYMBOLS: dict[str, str] = {
@@ -56,7 +56,8 @@ def _traits(datatype: Any) -> list[str]:
 
 
 def _base_type(datatype: Any) -> Any:
-    return datatype.type if isinstance(datatype, TraitDataType) else datatype
+    base = datatype.type if isinstance(datatype, TraitDataType) else datatype
+    return DataType.NUMERIC if isinstance(base, NumericType) else base
 
 
 def _is_number(value: Any) -> bool:

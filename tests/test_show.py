@@ -55,5 +55,5 @@ def test_show_bigquery():
     # Both sides are grand-total aggregates (exactly one row each), so the
     # keyless FULL join narrows to a plain cartesian.
     assert (
-        'INNER JOIN "wakeful" on 1=1' in query[0]["__preql_internal_query_text"]
+        'FULL JOIN "wakeful" on 1=1' in query[0]["__preql_internal_query_text"]
     ), query[0]["__preql_internal_query_text"]

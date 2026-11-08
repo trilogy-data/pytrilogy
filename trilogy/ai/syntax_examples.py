@@ -184,6 +184,8 @@ chart layer bar ( x_axis <- enroll.department, y_axis <- sum(enroll.credits) as 
 # A COMPUTED binding must be aliased: `y_axis <- sum(enroll.credits) as credits`.
 # A bare concept reference needs no alias (`x_axis <- enroll.department`) but may
 # take one as a display label. `y_axis <- sum(...)` with no `as` is a parse error.
+# `title '...'` after a binding sets its axis/legend title verbatim:
+# `y_axis <- sum(enroll.credits) as credits title 'Credits Earned'`.
 #
 # GRAIN: every binding is a select column, so binding a FINER concept to any
 # role (color, group, annotation, ...) refines the grain and splits the marks -

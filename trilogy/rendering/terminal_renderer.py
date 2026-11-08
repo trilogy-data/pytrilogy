@@ -6,7 +6,7 @@ from trilogy.core.statements.execute import (
     ProcessedChartLayer,
     ProcessedChartStatement,
 )
-from trilogy.rendering.base import BaseRenderer, prettify_label
+from trilogy.rendering.base import BaseRenderer, field_title
 
 try:
     import plotext as plt
@@ -112,8 +112,8 @@ class TerminalRenderer(BaseRenderer):
         if not x or not y:
             return
         plt.bar([row.get(x) for row in data], [row.get(y) for row in data])
-        plt.xlabel(prettify_label(x))
-        plt.ylabel(prettify_label(y))
+        plt.xlabel(field_title(layer, x))
+        plt.ylabel(field_title(layer, y))
 
     def _barh(self, data: list[dict], layer: ProcessedChartLayer) -> None:
         x = layer.x_fields[0] if layer.x_fields else None
@@ -126,8 +126,8 @@ class TerminalRenderer(BaseRenderer):
             [row.get(x) for row in rev],
             orientation="horizontal",
         )
-        plt.xlabel(prettify_label(x))
-        plt.ylabel(prettify_label(y))
+        plt.xlabel(field_title(layer, x))
+        plt.ylabel(field_title(layer, y))
 
     def _line(self, data: list[dict], layer: ProcessedChartLayer) -> None:
         x = layer.x_fields[0] if layer.x_fields else None
@@ -137,14 +137,14 @@ class TerminalRenderer(BaseRenderer):
         plot_xs, x_labels = self._resolve_axis(data, x, layer)
         for y in ys:
             plot_ys, y_labels = self._resolve_axis(data, y, layer)
-            plt.plot(plot_xs, plot_ys, label=prettify_label(y))
+            plt.plot(plot_xs, plot_ys, label=field_title(layer, y))
             if y_labels is not None and len(ys) == 1:
                 plt.yticks(plot_ys, y_labels)
         if x_labels is not None:
             plt.xticks(plot_xs, x_labels)
-        plt.xlabel(prettify_label(x))
+        plt.xlabel(field_title(layer, x))
         if len(ys) == 1:
-            plt.ylabel(prettify_label(ys[0]))
+            plt.ylabel(field_title(layer, ys[0]))
 
     def _point(self, data: list[dict], layer: ProcessedChartLayer) -> None:
         x = layer.x_fields[0] if layer.x_fields else None
@@ -158,8 +158,8 @@ class TerminalRenderer(BaseRenderer):
             plt.xticks(plot_xs, x_labels)
         if y_labels is not None:
             plt.yticks(plot_ys, y_labels)
-        plt.xlabel(prettify_label(x))
-        plt.ylabel(prettify_label(y))
+        plt.xlabel(field_title(layer, x))
+        plt.ylabel(field_title(layer, y))
 
     def _area(self, data: list[dict], layer: ProcessedChartLayer) -> None:
         x = layer.x_fields[0] if layer.x_fields else None
@@ -173,8 +173,8 @@ class TerminalRenderer(BaseRenderer):
             plt.xticks(plot_xs, x_labels)
         if y_labels is not None:
             plt.yticks(plot_ys, y_labels)
-        plt.xlabel(prettify_label(x))
-        plt.ylabel(prettify_label(y))
+        plt.xlabel(field_title(layer, x))
+        plt.ylabel(field_title(layer, y))
 
     @staticmethod
     def _resolve_axis(
