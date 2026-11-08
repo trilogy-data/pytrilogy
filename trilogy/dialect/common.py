@@ -1,6 +1,8 @@
 from collections.abc import Callable
+from typing import Any
 
 from trilogy.constants import PRESENCE_MARKER_PREFIX
+from trilogy.core.casts import FALSE_TEXT, TRUE_TEXT
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode
 from trilogy.core.models.build import (
@@ -11,6 +13,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildParamaterizedConceptReference,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
     ConceptPair,
@@ -440,3 +443,38 @@ def render_window_substring(
     first = f"CASE WHEN {low} < 1 THEN 1 ELSE {low} END"
     taken = f"{high} - {first}"
     return f"{name}({s}, {first}, CASE WHEN {taken} < 0 THEN 0 ELSE {taken} END)"
+
+
+def _text_list(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+def bool_from_text(value: str, true: str = "TRUE", false: str = "FALSE") -> str:
+    """A string as a bool, read as `trilogy.core.casts.text_to_bool` reads it
+    (DuckDB's spellings); SQLite reads 'true' as 0, BigQuery and Presto refuse
+    't' and 'yes'. A string with no reading is NULL."""
+    folded = f"lower({value})"
+    return (
+        f"CASE WHEN {folded} IN ({_text_list(TRUE_TEXT)}) THEN {true}"
+        f" WHEN {folded} IN ({_text_list(FALSE_TEXT)}) THEN {false} END"
+    )
+
+
+def text_from_bool(value: str) -> str:
+    """'true' / 'false' where a bool is stored as 1 / 0 and casts to '1'."""
+    return f"CASE {value} WHEN 1 THEN 'true' WHEN 0 THEN 'false' END"
+
+
+def cast_kind(types: list) -> tuple[Any, Any]:
+    """The (source, target) DataTypes of a cast, or Nones."""
+    if len(types) != 2:
+        return None, None
+    return tuple(getattr(t, "data_type", t) for t in types)  # type: ignore[return-value]
+
+
+def render_text_bool_cast(args: list[str], types: list) -> str:
+    """CAST, except a string to a bool on an engine that refuses some of
+    DuckDB's spellings ('t', 'yes' on BigQuery and Presto)."""
+    if cast_kind(types) == (DataType.STRING, DataType.BOOL):
+        return bool_from_text(args[0])
+    return f"cast({args[0]} as {args[1]})"

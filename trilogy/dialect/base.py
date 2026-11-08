@@ -696,6 +696,30 @@ def _is_nonzero_literal(arg: str) -> bool:
     return value != 0 and math.isfinite(value)
 
 
+def _literal_number(arg: str) -> float | None:
+    try:
+        value = float(arg.strip().strip("()").strip())
+    except ValueError:
+        return None
+    return value if math.isfinite(value) else None
+
+
+def in_domain(arg: str, strict: bool) -> str:
+    """`arg` where `sqrt` (`strict=False`) or `log` (`strict=True`) is
+    defined, else NULL: DuckDB and ClickHouse answer nan or -inf outside it,
+    Postgres and BigQuery raise, SQLite is NULL (formal/Trilogy/Casts.lean,
+    `domain_guard_exact`)."""
+    value = _literal_number(arg)
+    if value is not None and (value > 0 or (value == 0 and not strict)):
+        return arg
+    op = ">" if strict else ">="
+    return f"CASE WHEN {arg} {op} 0 THEN {arg} END"
+
+
+def render_sqrt(args: list[str], types: list | None = None) -> str:
+    return f"sqrt({in_domain(args[0], strict=False)})"
+
+
 def guard_divisor(arg: str) -> str:
     """A zero divisor makes `/` and `%` NULL on every dialect, as SQLite and
     BigQuery's `safe_divide` answer; DuckDB and ClickHouse give inf or nan or
@@ -724,8 +748,14 @@ def render_log(args: list[str], types: list) -> str:
     the base first on SQLite, Postgres, Snowflake and MySQL and second
     elsewhere, so only the change of base is portable."""
     if args[1] in ("10", "10.0"):
-        return f"log10({args[0]})"
-    return f"(ln({args[0]}) / ln({args[1]}))"
+        return f"log10({in_domain(args[0], strict=True)})"
+    return render_ln_log("ln", args)
+
+
+def render_ln_log(ln: str, args: list[str]) -> str:
+    """The change of base, NULL outside the log's domain and for base 1."""
+    x, base = (in_domain(a, strict=True) for a in args)
+    return f"({ln}({x}) / nullif({ln}({base}), 0))"
 
 
 def render_present_extreme(name: str) -> Callable[..., str]:
@@ -848,7 +878,7 @@ FUNCTION_MAP = {
     FunctionType.MOD: render_mod,
     # `**` is DuckDB's alone; SQLite, Postgres and SQL Server reject it
     FunctionType.POWER: lambda x, types: f"power({x[0]}, {x[1]})",
-    FunctionType.SQRT: lambda x, types: f"sqrt({x[0]})",
+    FunctionType.SQRT: render_sqrt,
     FunctionType.RANDOM: lambda x, types: "random()",
     FunctionType.LOG: render_log,
     # aggregate types

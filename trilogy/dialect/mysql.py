@@ -17,7 +17,13 @@ from trilogy.dialect.base import (
     render_present_extreme,
     render_unsupported,
 )
-from trilogy.dialect.common import CONCAT_COALESCE_UPPER, render_window_substring
+from trilogy.dialect.common import (
+    CONCAT_COALESCE_UPPER,
+    bool_from_text,
+    cast_kind,
+    render_window_substring,
+    text_from_bool,
+)
 
 
 def date_truncate(expr: str, part: str) -> str:
@@ -78,12 +84,25 @@ def date_diff(first: str, second: str, part: str) -> str:
     raise NotImplementedError(f"Date diff not implemented for grain {grain}")
 
 
-def render_cast(args: list[str]) -> str:
-    # TEXT is a valid column type but not a valid MySQL CAST target. Trilogy's
-    # string datatype renders as TEXT for DDL, so translate it at the function
-    # boundary where MySQL requires CHAR instead.
-    target = "CHAR" if args[1].upper() == "TEXT" else args[1]
-    return f"CAST({args[0]} AS {target})"
+# TEXT, INTEGER, BIGINT, BOOLEAN and TIMESTAMP are column types but not CAST
+# targets; a bool is a TINYINT, so it casts to '1' and from 'true' as 0
+CAST_TARGETS = {
+    "TEXT": "CHAR",
+    "INTEGER": "SIGNED",
+    "BIGINT": "SIGNED",
+    "TIMESTAMP": "DATETIME",
+}
+
+
+def render_cast(args: list[str], types: list) -> str:
+    source, target = cast_kind(types)
+    if source == DataType.BOOL and target == DataType.STRING:
+        return text_from_bool(args[0])
+    if target == DataType.BOOL:
+        if source == DataType.STRING:
+            return bool_from_text(args[0])
+        return args[0] if source == DataType.BOOL else f"({args[0]} <> 0)"
+    return f"CAST({args[0]} AS {CAST_TARGETS.get(args[1].upper(), args[1])})"
 
 
 def null_safe_join_key(
@@ -116,7 +135,7 @@ FUNCTION_MAP = {
     FunctionType.CONTAINS: lambda x, types: f"(LOCATE(LOWER({x[1]}), LOWER({x[0]})) > 0)",
     **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_STRICT: lambda x, types: f"CONCAT({', '.join(x)})",
-    FunctionType.CAST: lambda x, types: render_cast(x),
+    FunctionType.CAST: render_cast,
     FunctionType.DATE_LITERAL: lambda x, types: f"DATE('{x}')",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"TIMESTAMP('{x}')",
     FunctionType.DATE_TRUNCATE: lambda x, types: date_truncate(x[0], x[1]),

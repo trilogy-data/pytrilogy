@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.casts import text_to_bool
 from trilogy.core.constants import (
     ALL_ROWS_ADDRESS,
     GRAIN_NULL_SENTINEL,
@@ -615,12 +616,22 @@ def fcast(
             case DataType.FLOAT:
                 processed = float(value)
             case DataType.BOOL:
-                processed = value.capitalize() == "True"
+                try:
+                    processed = text_to_bool(value)
+                except ValueError as e:
+                    raise fail(node, str(e))
             case DataType.STRING:
                 processed = value
             case NumericType():
                 # The one spelling of an exact decimal: a float_lit is a double.
-                processed = Decimal(value)
+                # A cast rounds half away to the scale, as the engines do; it
+                # stays a CAST, as a Decimal parameter does not bind on SQLite.
+                scaled = Decimal(value).quantize(
+                    Decimal(1).scaleb(-dtype.scale), rounding=ROUND_HALF_UP
+                )
+                return context.function_factory.create_function(
+                    [scaled, dtype], FunctionType.CAST
+                )
             case _:
                 raise fail(node, f"Invalid cast type {dtype}")
         if isinstance(dtype, TraitDataType):

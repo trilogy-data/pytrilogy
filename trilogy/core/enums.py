@@ -632,6 +632,9 @@ NULL_INTRODUCING_FUNCTIONS: frozenset[FunctionType] = frozenset(
     {
         *ZERO_DIVISOR_FUNCTIONS,
         FunctionType.NULLIF,
+        # NULL outside their domain (formal/Trilogy/Casts.lean, `domain_guard_exact`)
+        FunctionType.SQRT,
+        FunctionType.LOG,
         FunctionType.INDEX_ACCESS,
         FunctionType.MAP_ACCESS,
         FunctionType.ATTR_ACCESS,

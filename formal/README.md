@@ -51,6 +51,7 @@ a design decision or a bug.
 | `Padding.lean` | what an outer join puts in a row it could not match, and what a cast does to NULL | a NULL pad leaves `count` and `sum` of a right column equal to those over the matches (`null_pad_count_eq_matches`, `null_pad_sum_eq_matches`); a `0` pad counts an unmatched row and is the `max` of negative values (`default_pad_counts_unmatched`, `default_pad_max_raises`); a cast is strict (`cast_keeps_null`) (checked by `tests/engine/test_clickhouse_null_laws.py`, and by the window and select-grain law suites, which now run on ClickHouse through chdb beside DuckDB and SQLite) |
 | `StringMatch.lean` | the `like` pattern language, `ilike`, `contains`, and a string literal as each dialect reads it | a pattern with its specials escaped matches exactly its string (`escaped_literal_exact`), so every literal pattern means the same under any LIKE; a pattern with no wildcard is its string's equality (`exact_pattern_is_eq`); SQLite's GLOB over the translated pattern is the case-sensitive match (`glob_sound`); `contains` is a case-folded infix (`contains_is_folded_infix`); ClickHouse's rewrite of a computed pattern (`ch_strip_sound`) and its doubled-backslash literal (`ch_literal_roundtrip`) read back the pattern and the string; a match is NULL on a NULL operand (`like_strict`) (checked by `tests/core/test_string_match_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_match_renderings.py`) |
 | `Strings.lean` | `len`, `substring`, `strpos`, case, `trim`, `replace` and the regex functions as characters, positions and groups | every engine's `substring` agrees once start ≥ 1 and count ≥ 0, and the renderer's clamped arguments keep the reference's characters for any start and count (`clamp_exact`, bounded; `native_positions`); the substring at `strpos(s, t)` of `len t` characters is `t` (`strpos_extract`), and an empty needle is found at 1 (`strpos_empty`); `LEN(s + 'x') - 1` is SQL Server's length (`marker_len`); `like '%'` holds for every string (`percent_matches_all`) and `x = c and x is not null` keeps what `x = c` keeps (`sibling_rejects_null`) (checked by `tests/core/test_string_function_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_function_renderings.py`) |
+| `Casts.lean` | casts and the literal expressions the parser folds: a decimal to a smaller scale, a string or number as a bool, a bool as a string, `sqrt` / `log` outside their domain, a comparison with a NULL literal, a CASE whose arms all fold false | a decimal rescale rounds half away and ClickHouse's round-then-cast keeps it (`rescale_exact`); one table of spellings reads a string as a bool (`text_bool_exact`) and a number is true iff nonzero (`ne_zero_exact`); `sqrt` and `log` are NULL outside their domain (`domain_guard_exact`), so they are NULL-introducing (`domain_null_introducing`); a folded comparison is the Kleene one and a NULL operand is left UNKNOWN (`fold_agrees`, `fold_null_unknown`); dropping false CASE arms keeps the value and no arm left is NULL (`drop_false_arms_exact`, `no_arm_is_null`) (checked by `tests/core/test_cast_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_cast_renderings.py`) |
 
 ## What it found
 
@@ -1174,6 +1175,42 @@ a design decision or a bug.
   fail: every ClickHouse length, substring, strpos, case, `regexp_extract` and
   persisted-copy case, DuckDB's `regexp_replace`, and four planning cases;
   none now.
+- **A literal folded by the parser and a cast rendered per dialect disagreed
+  with the engine** (0.3.472; `Casts.lean`). The parser folded `null = null`
+  to TRUE and `1 = null` to FALSE, where a column holding the same values
+  compares UNKNOWN (`Casts.null_eq_null_folded_true`,
+  `Casts.literal_substitution_changes`); `where null = null` kept every row.
+  A CASE whose every arm folded false and had no ELSE rendered `CASE END`,
+  which no engine parses (`Casts.empty_case_rendered`); it is NULL now
+  (`Casts.no_arm_is_null`). `'t'::bool` and `'1'::bool` folded to FALSE
+  (`Casts.capitalize_fold_misreads_t`), and `'3.14159'::numeric(10,2)` folded
+  to all five digits, which SQLite could not bind; the fold now reads a bool
+  by `trilogy.core.casts.text_to_bool`, refuses a string with no reading,
+  and rounds a decimal half away to its scale. `1 < null` raised a
+  `TypeError` at parse.
+
+  A cast to `numeric(p, s)` truncated on ClickHouse (`1.005` was `1.00`;
+  `Casts.clickhouse_rescale_truncates`) and kept every digit on SQLite
+  (`Casts.sqlite_keeps_digits`); both round half away now. SQLite read
+  `'true'` as `0` (`Casts.sqlite_true_is_false`) and kept `2::bool` as `2`,
+  which `= true` misses (`Casts.sqlite_int_bool_keeps_value`); BigQuery and
+  Presto refuse `'t'` and `'yes'` (`Casts.bigquery_refuses_t`); a bool cast
+  to a string was `'1'` on SQLite, MySQL and SQL Server
+  (`Casts.bool_text_is_digit`). Each renders the reference now. Postgres has
+  no `string`, `bytes` or `double` type, SQL Server no `string`, `bool`,
+  `double` or `timestamptz`, and MySQL casts to `SIGNED`, not `INTEGER` or
+  `BOOLEAN`; each now names a type it has.
+
+  `sqrt(-1)` was `nan` on DuckDB and ClickHouse and NULL on SQLite, and
+  `log(0)` was `-inf` (`Casts.nan_is_not_null`); both are NULL outside their
+  domain on every dialect (`Casts.domain_guard_exact`), and a base of 1 is a
+  NULL change of base. Both functions were listed total, so a persisted copy
+  of `sqrt(i)` declared its column non-null, and reads of it dropped
+  `r is not null` and returned NULL rows; they are NULL-introducing now
+  (`Casts.domain_null_introducing`).
+
+  On main, 49 of the 83 cases `tests/core/test_cast_laws.py` runs fail; none
+  now.
 
 ## Limits
 

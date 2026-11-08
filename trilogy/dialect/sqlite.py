@@ -5,7 +5,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import ComparisonOperator, FunctionType, NullSort
 from trilogy.core.like_patterns import to_glob
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, NumericType
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
@@ -18,6 +18,7 @@ from trilogy.dialect.base import (
 from trilogy.dialect.base import (
     render_mod as base_render_mod,
 )
+from trilogy.dialect.common import bool_from_text, cast_kind, text_from_bool
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -82,6 +83,17 @@ TEMPORAL_CASTS = {
 
 
 def render_cast(args: list[str], types: list) -> str:
+    source, target = cast_kind(types)
+    if source == DataType.BOOL and target == DataType.STRING:
+        return text_from_bool(args[0])
+    if target == DataType.BOOL:
+        if source == DataType.STRING:
+            return bool_from_text(args[0], "1", "0")
+        if source != DataType.BOOL:
+            return f"({args[0]} <> 0)"
+    # NUMERIC is a REAL here and keeps every digit; round to the scale
+    if isinstance(types[-1], NumericType):
+        return f"round({args[0]}, {types[-1].scale})"
     # SQLite truncates a fraction cast to an integer; other engines round it
     if (
         len(types) == 2

@@ -50,7 +50,10 @@ an equality, and a ClickHouse string keeps its backslashes; area 6), and
 `Strings.lean` (0.3.471: `len`, `substring` and `strpos` count characters,
 one reading of `substring` positions, `regexp_replace` replaces every match,
 `regexp_extract` returns the group asked for, `like '%'` is `is not null`, and
-the NOT NULL strip reads a sibling's proof; area 7).
+the NOT NULL strip reads a sibling's proof; area 7), and `Casts.lean`
+(0.3.472: a literal the parser folds is the value the engine computes, a
+decimal cast rounds half away to its scale, one reading of a string as a
+bool, and `sqrt` / `log` are NULL outside their domain; area 8).
 
 ## The recipe
 
@@ -472,12 +475,63 @@ the NOT NULL strip reads a sibling's proof; area 7).
       failed nothing until a test selected a string constant, which is the
       only path that binds one there.
 
+26. **Lessons from the cast and folding round (`Casts.lean`, 0.3.472).**
+    - Probe literals AND columns. A literal probe (`select f(...) as x`)
+      tests the parser's fold as much as the engine: `null = null`,
+      `'t'::bool` and `'3.14159'::numeric(10,2)` never reached an engine.
+      Look at the generated SQL of every literal that disagrees; then run the
+      same expression over a column, where the dialect's rendering decides.
+    - A probe harness on SQLite loses its table after one failing statement
+      (the uncommitted insert rolls back), and every later query returns no
+      rows. Rebuild the fixture per query before reading an empty result as a
+      bug.
+    - The NULL-introducing list is a claim, like the zero divisor in lesson
+      24. Moving `sqrt` and `log` to NULL outside their domain made the
+      "total function" conformance test fail first: read that failure as the
+      claim to change, not as a regression.
+    - A decimal on SQLite is a REAL, and a float tie that is not exact in
+      binary (`2.675`) rounds by the binary value there and by the shortest
+      decimal on DuckDB and ClickHouse. Hold SQLite and float columns to
+      binary-exact ties (multiples of 1/8).
+
 ## Candidate areas
 
-**Done in 0.3.471: string functions (`Strings.lean`, area 7 below).**
+**Done in 0.3.472: casts and folded constants (`Casts.lean`, area 8 below).**
 
 **Suggested next: the area-5 leads (decimal products, the persisted-copy leads), the area-1,
 area-2 and area-4 leads below, or the area-3 leads left.**
+
+### 8. Casts and folded constants (done in `Casts.lean`; leads left)
+
+`tests/core/test_cast_laws.py` holds decimal rescaling, string / number /
+bool casts, `sqrt` and `log` domains, folded NULL comparisons, a CASE with no
+arm left and the string-literal cast folds to a Python reference on DuckDB,
+SQLite and chdb; `tests/dialect/test_cast_renderings.py` pins the other
+dialects. Leads left:
+- **A string with no reading.** `'banana'::bool`, `'abc'::int` raise on
+  DuckDB, are NULL on ClickHouse (`CAST(x AS Nullable(T))`) and on the
+  rendered bool CASE, and `0` on SQLite's numeric casts. Decide one answer
+  (NULL, as a `try_cast`, is the likeliest) and render it; until then a cast
+  of a string column is strict but not total, so `CAST` in
+  `NULL_STRICT_FUNCTIONS` with no NULL-introducing entry is a claim only
+  valid strings keep.
+- **A float as a string.** `1.0::string` is `'1.0'` on DuckDB and SQLite and
+  `'1'` on ClickHouse; `1e20` is `'1e+20'`, `'1.0e+20'` and twenty digits;
+  `-0.0` is `'-0'` on ClickHouse. A decimal keeps its trailing zeros on
+  DuckDB (`'1.0050'`) and drops them on SQLite and ClickHouse.
+- **Overflow.** `2147483647 + 1` raises on DuckDB (an INTEGER literal), and
+  a float cast to an integer out of range raises on DuckDB, saturates on
+  SQLite and wraps on ClickHouse.
+- **A float tie not exact in binary** (`2.675::numeric(12,2)`): DuckDB and
+  ClickHouse round the shortest decimal (`2.68`), SQLite the binary value
+  (`2.67`). The literal `2.675` is a decimal on DuckDB and a double
+  elsewhere, so `round(2.675, 2)` splits the same way.
+- **Snowflake `bool`** as a cast target name is unchecked (BOOLEAN is the
+  documented name). BigQuery refuses a FLOAT64 cast to BOOL.
+- **SQLite has no `stddev_samp`, `var_samp`, `any_value`, `array_agg`,
+  `md5`/`sha256`** and `date_diff(..., quarter)`; each raises there.
+  ClickHouse's `groupArray` of a group with no non-NULL value is `[]`, not
+  NULL as on DuckDB.
 
 ### 7. String functions (done in `Strings.lean`; leads left)
 
