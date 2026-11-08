@@ -22,8 +22,10 @@ TEXT = "REGEXP_REPLACE(`s`.`v`, '^[[:space:]]+|[[:space:]]+$', '')"
         (
             "v::date",
             DATE_PATTERN,
-            "STR_TO_DATE(REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX("
-            f"{TEXT}, ' ', 1), 'T', 1), '/', '-'), '%Y-%c-%e')",
+            (
+                "STR_TO_DATE(REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX("
+                f"{TEXT}, ' ', 1), 'T', 1), '/', '-'), '%Y-%c-%e')"
+            ),
         ),
     ],
 )
