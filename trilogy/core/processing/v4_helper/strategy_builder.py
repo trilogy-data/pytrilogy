@@ -3646,19 +3646,29 @@ def _input_contract_carry_demands(
     }
 
 
+def _renders_grouped(node: StrategyNode) -> bool:
+    """A node built grouped though its group's stage-2 rows are not: a ROOT
+    deduplicated at its datasource, or a body read through a forced group."""
+    return any(n.force_group for n in _iter_strategy_nodes(node))
+
+
 def _apply_input_contracts(
     parent_builds: list[ParentBuild],
+    attrs: dict[str, GroupAttrs],
     group_attrs: GroupAttrs,
     needed: set[str],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
-    parents = [parent.node for parent in parent_builds]
     parent_group_ids = {parent.group_id for parent in parent_builds}
     projection_grain_components = _input_contract_projection_grain(
         group_attrs, parent_group_ids
     )
     return _satisfy_parent_projection_contract(
-        parents,
+        [parent.node for parent in parent_builds],
+        [
+            attrs[parent.group_id].shapes_rows or _renders_grouped(parent.node)
+            for parent in parent_builds
+        ],
         needed,
         projection_grain_components,
         environment,
@@ -3687,6 +3697,7 @@ def _fd_at_grain(
 
 def _satisfy_parent_projection_contract(
     parents: list[StrategyNode],
+    shaped: list[bool],
     needed: set[str],
     projection_grain_components: frozenset[str],
     environment: BuildEnvironment,
@@ -3696,7 +3707,8 @@ def _satisfy_parent_projection_contract(
     Stage 2 chooses the projection grain. This adapter only decides whether a
     parent can be safely wrapped to satisfy that grain before it merges with an
     already-shaped sibling; it must not infer a target grain from sibling
-    outputs or group attrs.
+    outputs or group attrs. `shaped[i]` says parent `i`'s rows are already
+    shaped: it is never projected, and with none shaped nothing is.
     """
     if len(parents) <= 1 or not projection_grain_components:
         return parents
@@ -3707,7 +3719,7 @@ def _satisfy_parent_projection_contract(
     # row-grain scan feeding INTO this aggregate, there is no such sibling;
     # projecting one to the group grain just strips its finer row-grain join
     # key and the merge degrades to a 1=1 cross product.
-    if not any(_contains_shape_barrier(parent) for parent in parents):
+    if not any(shaped):
         return parents
 
     # Two different questions, two different sets. "What is available TO this
@@ -3724,7 +3736,7 @@ def _satisfy_parent_projection_contract(
     ]
     projected: list[StrategyNode] = []
     for idx, parent in enumerate(parents):
-        if _contains_shape_barrier(parent):
+        if shaped[idx]:
             projected.append(parent)
             continue
         parent_needed = outputs_by_parent[idx] & needed
@@ -6201,6 +6213,7 @@ def _assemble_final_node(
     # the FINAL WHERE reads its filter-only args off these parents
     parents = _satisfy_parent_projection_contract(
         parents,
+        [_contains_shape_barrier(parent) for parent in parents],
         final_needed | filter_only_addrs,
         final_merge_grain,
         environment,
@@ -6828,7 +6841,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
             for parent in parent_builds
         )
-        parents = _apply_input_contracts(parent_builds, a, needed, environment)
+        parents = _apply_input_contracts(parent_builds, attrs, a, needed, environment)
         origin = {id(node): pgid for pgid, node in built.items()} | {
             id(build.node): build.group_id for build in parent_builds
         }
