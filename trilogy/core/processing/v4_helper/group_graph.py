@@ -1137,15 +1137,17 @@ def _shapes_rows_here(group: GroupAttrs, environment: BuildEnvironment) -> bool:
 
 def _refresh_shapes_rows(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
 ) -> None:
     """Mark each group whose rows a grouping stage shapes: its own, a rowset
-    body's it reads out, or any group's below it."""
+    body's it reads out, or that of any group its rows flow from. A condition
+    an aggregate answers filters the rows it constrains; it does not shape them."""
     for gid in (g for g in nx.topological_sort(group_graph) if g in attrs):
         attrs[gid].shapes_rows = _shapes_rows_here(attrs[gid], environment) or any(
             attrs[pred].shapes_rows
-            for pred in group_graph.predecessors(gid)
+            for pred in lineage_predecessors(group_graph, group_edges, gid)
             if pred in attrs
         )
 
@@ -1167,7 +1169,7 @@ def _refresh_input_contracts(
     consumers = [
         gid for gid in group_graph.nodes if gid != FINAL_NODE_ID and gid in attrs
     ]
-    _refresh_shapes_rows(group_graph, attrs, environment)
+    _refresh_shapes_rows(group_graph, group_edges, attrs, environment)
     # every grain first: what a parent can carry reads its own input grain
     for gid in consumers:
         attrs[gid].input_grain = _consumer_required_input_grain(

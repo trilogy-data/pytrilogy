@@ -3605,13 +3605,6 @@ def _union_arm_parents(
     return arms
 
 
-def _contains_shape_barrier(node: StrategyNode) -> bool:
-    return any(
-        isinstance(n, (GroupNode, WindowNode)) or n.force_group
-        for n in _iter_strategy_nodes(node)
-    )
-
-
 def _input_contract_projection_grain(
     group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
 ) -> frozenset[str]:
@@ -3650,6 +3643,35 @@ def _renders_grouped(node: StrategyNode) -> bool:
     """A node built grouped though its group's stage-2 rows are not: a ROOT
     deduplicated at its datasource, or a body read through a forced group."""
     return any(n.force_group for n in _iter_strategy_nodes(node))
+
+
+def _final_parent_shaped(
+    parent: StrategyNode,
+    origin: dict[int, str],
+    attrs: dict[str, GroupAttrs],
+    projected: set[int],
+) -> bool:
+    """A FINAL contributor's rows are shaped when its group's stage-2 rows
+    are, when it renders grouped, or when the FINAL projected it itself."""
+    gid = _origin_group(parent, origin)
+    return (
+        (gid is not None and attrs[gid].shapes_rows)
+        or id(parent) in projected
+        or _renders_grouped(parent)
+    )
+
+
+def _bridges_shaped_rows(
+    merged: list[StrategyNode],
+    origin: dict[int, str],
+    attrs: dict[str, GroupAttrs],
+    parent_group_ids: set[str],
+) -> bool:
+    """A group's merge pairs its rows with a bridge its plan elected (a
+    rowset across a `union join`): a shaped bridge shapes them too."""
+    if len(merged) != 1 or (held := side_members(merged[0], origin)) is None:
+        return False
+    return any(attrs[gid].shapes_rows for gid in held - parent_group_ids)
 
 
 def _apply_input_contracts(
@@ -5479,10 +5501,10 @@ def _resourced_root_contributor(
     history: V4History,
     arms_delivered: bool,
     grouping_sibling: bool,
-) -> list[StrategyNode]:
+) -> tuple[StrategyNode, list[StrategyNode]]:
     """A ROOT contributor to FINAL, re-sourced when the merge needs more of
     it than its build carries (preserved join keys, filter-only args), and
-    wrapped to the grain the merge joins it at."""
+    wrapped to the grain the merge joins it at: the source and its wraps."""
     # A filter-only WHERE arg the SELECT never projects (a dim attribute
     # FD by this dim bucket's key) is not in `group_concepts`, so
     # `_root_atoms_satisfiable_from` would drop its atom and the fresh
@@ -5578,7 +5600,7 @@ def _resourced_root_contributor(
             projection_grain,
             dedup_orthogonal=grouping_sibling,
         )
-    return wrapped
+    return node, wrapped
 
 
 def _assemble_sole_contributor(
@@ -6152,6 +6174,8 @@ def _assemble_final_node(
     grouping_sibling = _groups_null_grouping_keys(attrs, contributing, environment)
 
     parents: list[StrategyNode] = []
+    # the ROOT contributors the FINAL itself grouped to the merge grain
+    projected: set[int] = set()
     for gid in contributing:
         node = built[gid]
         if attrs[gid].derivation != Derivation.ROOT:
@@ -6172,7 +6196,7 @@ def _assemble_final_node(
         )
         # A carried key must survive the wrap: grouping to a grain without the
         # key it was re-sourced to carry dedups it straight back out.
-        wraps = _resourced_root_contributor(
+        source, wraps = _resourced_root_contributor(
             gid,
             node,
             group_concepts,
@@ -6187,6 +6211,7 @@ def _assemble_final_node(
             grouping_sibling,
         )
         origin.update((id(wrap), gid) for wrap in wraps)
+        projected.update(id(wrap) for wrap in wraps if wrap is not source)
         parents.extend(wraps)
 
     parents = [
@@ -6213,7 +6238,7 @@ def _assemble_final_node(
     # the FINAL WHERE reads its filter-only args off these parents
     parents = _satisfy_parent_projection_contract(
         parents,
-        [_contains_shape_barrier(parent) for parent in parents],
+        [_final_parent_shaped(p, origin, attrs, projected) for p in parents],
         final_needed | filter_only_addrs,
         final_merge_grain,
         environment,
@@ -6949,6 +6974,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             attrs=attrs,
             origin=origin,
             candidates=candidates,
+        )
+        a.shapes_rows = a.shapes_rows or _bridges_shaped_rows(
+            parents, origin, attrs, parent_group_ids
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
