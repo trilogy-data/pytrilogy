@@ -14,6 +14,7 @@ from trilogy.dialect.base import (
     render_true_divide,
     render_unsupported,
 )
+from trilogy.dialect.common import render_window_substring
 from trilogy.utility import string_to_hash
 
 
@@ -48,8 +49,25 @@ def date_diff(first: str, second: str, part: str) -> str:
 DAY_OF_WEEK = "((DATEPART(weekday, {expr}) + @@DATEFIRST - 2) % 7 + 1) % 7 + 1"
 
 
+# LEN ignores trailing spaces; a marker character keeps them counted
+CHAR_LENGTH = "(LEN({} + 'x') - 1)"
+
+
+def render_strpos(args: list[str]) -> str:
+    # CHARINDEX finds no empty needle, which every other dialect finds at 1
+    return (
+        f"CASE WHEN {args[0]} IS NULL THEN NULL WHEN DATALENGTH({args[1]}) = 0"
+        f" THEN 1 ELSE CHARINDEX({args[1]}, {args[0]}) END"
+    )
+
+
 FUNCTION_MAP = {
     FunctionType.CONTAINS: lambda x, types: render_contains(x),
+    FunctionType.LENGTH: lambda x, types: CHAR_LENGTH.format(x[0]),
+    FunctionType.SUBSTRING: lambda x, types: render_window_substring(
+        "SUBSTRING", CHAR_LENGTH, x
+    ),
+    FunctionType.STRPOS: lambda x, types: render_strpos(x),
     # POWER returns its first argument's type: POWER(2, -1) is 0
     FunctionType.POWER: lambda x, types: f"POWER(CAST({x[0]} AS FLOAT), {x[1]})",
     # T-SQL has no `ln`; its two-argument LOG takes the base second

@@ -46,7 +46,11 @@ remainder keeps its fraction on ClickHouse and SQLite; area 5), and
 dialect, and a persisted copy declares `?` every column its write can hold
 NULL in; areas 3 and 5), and `StringMatch.lean` (0.3.470: one pattern language
 for `like`, `ilike` and `contains` on every dialect, a wildcard-free `like` is
-an equality, and a ClickHouse string keeps its backslashes; area 6).
+an equality, and a ClickHouse string keeps its backslashes; area 6), and
+`Strings.lean` (0.3.471: `len`, `substring` and `strpos` count characters,
+one reading of `substring` positions, `regexp_replace` replaces every match,
+`regexp_extract` returns the group asked for, `like '%'` is `is not null`, and
+the NOT NULL strip reads a sibling's proof; area 7).
 
 ## The recipe
 
@@ -470,10 +474,37 @@ an equality, and a ClickHouse string keeps its backslashes; area 6).
 
 ## Candidate areas
 
-**Done in 0.3.470: string matching (`StringMatch.lean`, area 6 below).**
+**Done in 0.3.471: string functions (`Strings.lean`, area 7 below).**
 
 **Suggested next: the area-5 leads (decimal products, the persisted-copy leads), the area-1,
 area-2 and area-4 leads below, or the area-3 leads left.**
+
+### 7. String functions (done in `Strings.lean`; leads left)
+
+`tests/core/test_string_function_laws.py` holds `len`, `substring` (literal and
+computed positions, zero and negative ones included), `strpos`, `upper` /
+`lower`, `trim`, `replace`, `regexp_replace`, `regexp_extract` and a persisted
+copy to a Python reference on DuckDB, SQLite and chdb;
+`tests/dialect/test_string_function_renderings.py` pins the other dialects and
+runs the clamped substring on DuckDB. Leads left:
+- **SQLite has no `regexp_*` or `split`.** They raise there. The executor
+  could register Python functions on its connection, but SQL written for
+  another SQLite would still lack them.
+- **SQLite's `upper` and `lower` are ASCII-only**; the case law runs ASCII
+  there. Full case mappings differ too: `upper('ß')` is `ẞ` on DuckDB and
+  `SS` on ClickHouse, and `lower('İ')` is one character or two.
+- **A computed substring position is repeated.** The clamped form names
+  `start` up to eight times; a long expression (a `strpos(...) + 1`) makes the
+  SQL long, though engines evaluate it once. A dialect whose own reading of a
+  negative start matches (BigQuery, Snowflake, MySQL, Presto, ClickHouse all
+  count from the end) could skip that part of the clamp, once each is checked
+  on an engine.
+- **`regexp_*` on dialects with no engine in CI.** Postgres, MySQL, SQL
+  Server and Snowflake render `REGEXP_CONTAINS` / `REGEXP_EXTRACT`, which they
+  do not have; BigQuery's `REGEXP_EXTRACT` drops the group argument and
+  returns NULL, not `''`, on no match. Presto and Trino `trim` all whitespace.
+- **Collation** (area 6) applies here too: MySQL's `LOCATE` and SQL Server's
+  `CHARINDEX` fold case under the default collation.
 
 ### 6. String matching (done in `StringMatch.lean`; leads left)
 
@@ -498,10 +529,9 @@ Leads left:
 - **The Trilogy literal grammar.** A string literal cannot end in a backslash,
   and `\'` keeps its backslash in the value; `contains(v, '\')` does not
   parse.
-- **More planning from patterns.** `like '%'` is `is not null`, and a prefix
-  pattern (`'Bos%'`) implies a range a partition or a value pin could read.
-  Separately, `v = 'b' and v is not null` keeps both atoms; the strip does
-  not read a sibling comparison's proof.
+- **More planning from patterns.** Done in 0.3.471: `like '%'` is
+  `is not null`, and the strip reads a sibling's proof. Left: a prefix pattern
+  (`'Bos%'`) implies a range a partition or a value pin could read.
 
 ### 5. ClickHouse (chdb in CI; `Padding.lean` done, the function, scalar and type suites run there; leads left)
 

@@ -401,3 +401,42 @@ CONCAT_COALESCE_LOWER: dict[FunctionType, Callable[..., str]] = {
         "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
     ),
 }
+
+
+def int_literal(arg: str) -> int | None:
+    try:
+        return int(arg.strip().strip("()").strip())
+    except ValueError:
+        return None
+
+
+def render_window_substring(
+    name: str, size: str, args: list[str], types: list | None = None
+) -> str:
+    """`substring(s, start, n)` as DuckDB and SQLite read it
+    (formal/Trilogy/Strings.lean, `substr`): a negative start counts from the
+    end, 0 is the position before the first character, and a negative n takes
+    the characters before start. Engines agree only once start >= 1 and
+    n >= 0, so other positions are clamped into that range (`clamp_exact`).
+    `size` renders a string's length in characters, as a format template."""
+    s, start, count = args
+    st, n = int_literal(start), int_literal(count)
+    if st is not None and st > 0 and n is not None and n >= 0:
+        return f"{name}({s},{st},{n})"
+    length = size.format(s)
+    if st is None:
+        begin = f"({start} + CASE WHEN {start} < 0 THEN {length} + 1 ELSE 0 END)"
+    elif st < 0:
+        begin = f"({length} + {st + 1})"
+    else:
+        begin = str(st)
+    if n is None:
+        low = f"{begin} + CASE WHEN {count} < 0 THEN {count} ELSE 0 END"
+        high = f"{begin} + CASE WHEN {count} < 0 THEN 0 ELSE {count} END"
+    elif n < 0:
+        low, high = f"{begin} - {-n}", begin
+    else:
+        low, high = begin, f"{begin} + {n}"
+    first = f"CASE WHEN {low} < 1 THEN 1 ELSE {low} END"
+    taken = f"{high} - {first}"
+    return f"{name}({s}, {first}, CASE WHEN {taken} < 0 THEN 0 ELSE {taken} END)"

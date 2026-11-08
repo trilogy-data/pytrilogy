@@ -17,7 +17,7 @@ from trilogy.dialect.base import (
     render_present_extreme,
     render_unsupported,
 )
-from trilogy.dialect.common import CONCAT_COALESCE_UPPER
+from trilogy.dialect.common import CONCAT_COALESCE_UPPER, render_window_substring
 
 
 def date_truncate(expr: str, part: str) -> str:
@@ -108,6 +108,11 @@ FUNCTION_MAP = {
     FunctionType.BOOL_OR: lambda x, types: f"MAX(CAST({x[0]} AS UNSIGNED))",
     FunctionType.BOOL_AND: lambda x, types: f"MIN(CAST({x[0]} AS UNSIGNED))",
     FunctionType.STRPOS: lambda x, types: f"LOCATE({x[1]}, {x[0]})",
+    # LENGTH counts bytes; CHAR_LENGTH counts characters
+    FunctionType.LENGTH: lambda x, types: f"CHAR_LENGTH({x[0]})",
+    FunctionType.SUBSTRING: lambda x, types: render_window_substring(
+        "SUBSTRING", "CHAR_LENGTH({})", x
+    ),
     FunctionType.CONTAINS: lambda x, types: f"(LOCATE(LOWER({x[1]}), LOWER({x[0]})) > 0)",
     **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_STRICT: lambda x, types: f"CONCAT({', '.join(x)})",

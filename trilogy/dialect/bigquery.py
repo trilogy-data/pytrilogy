@@ -160,6 +160,10 @@ FUNCTION_MAP = {
     FunctionType.PARSE_TIME: lambda x, types: f"PARSE_DATETIME({x[1]}, {x[0]})",
     # string
     FunctionType.CONTAINS: lambda x, types: handle_contains(x, types),
+    # a bare TRIM strips all whitespace here; elsewhere only spaces
+    FunctionType.TRIM: lambda x, types: f"TRIM({x[0]}, ' ')",
+    FunctionType.LTRIM: lambda x, types: f"LTRIM({x[0]}, ' ')",
+    FunctionType.RTRIM: lambda x, types: f"RTRIM({x[0]}, ' ')",
     FunctionType.ARRAY_TO_STRING: lambda x, types: handle_array_to_string(x, types),
     FunctionType.RANDOM: lambda x, types: f"FLOOR(RAND()*{x[0]})",
     FunctionType.ARRAY_SUM: lambda x, types: f"(select sum(x) from unnest({x[0]}) as x)",

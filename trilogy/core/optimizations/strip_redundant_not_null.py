@@ -24,6 +24,11 @@ Independently, an atom on a key this CTE's own INNER join pairs by plain equalit
 is tautological when it reads the key off a side of that pair and no later RIGHT
 or FULL join can pad that side back (`ss.customer.sk is not null` beside
 ``INNER JOIN customer on ss.customer_sk = c.customer_sk``).
+
+And an atom is tautological beside a sibling of the same AND that rejects NULL
+in that column (`v = 'b' and v is not null`): the sibling reads the column as
+the atom does, and keeps no row where it is NULL. That judges an atom by other
+atoms, so it is a gated remover, not a fact remover (`atom_contract`).
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_n
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
+    gather_non_null_proofs,
     is_scalar_condition,
 )
 from trilogy.core.processing.utility import (
@@ -118,6 +124,13 @@ class _NotNullFacts:
         self.nullable = _nullable_before_own_filter(cte)
         self.output = equivalent_addresses(cte.output_columns)
         self.rejected = _inner_join_rejected(cte)
+        # a plain `X IS NOT NULL` proves only itself, so never its own sibling
+        self.sibling_proven = {
+            address
+            for atom in (and_atoms(cte.condition) if cte.condition else [])
+            if _not_null_concept(atom) is None
+            for address in gather_non_null_proofs(atom)
+        }
 
     def redundant(self, atom: Any) -> str | None:
         """Why `atom` is a tautological `X IS NOT NULL` in the CTE, if it is."""
@@ -134,12 +147,26 @@ class _NotNullFacts:
             return f"dropping tautological {concept.address} IS NOT NULL"
         return None
 
+    def beside_sibling(self, atom: Any) -> str | None:
+        """Why `atom` is an `X IS NOT NULL` a sibling atom already implies."""
+        concept = _not_null_concept(atom)
+        if concept is None or concept.equivalent_addresses.isdisjoint(
+            self.sibling_proven
+        ):
+            return None
+        return f"{concept.address} IS NOT NULL beside a sibling rejecting NULL"
 
-@register_remover("strip_redundant_not_null", facts_only=True)
+
+def tautological_not_null(cte: CTE, atom: Any) -> bool:
+    return _NotNullFacts(cte).redundant(atom) is not None
+
+
+@register_remover("strip_redundant_not_null", facts=tautological_not_null)
 def redundant_not_null(cte: CTE, atom: Any) -> bool:
     """Whether `atom` would be stripped from `cte`'s WHERE: a rule adding it
     there would only be undone."""
-    return _NotNullFacts(cte).redundant(atom) is not None
+    facts = _NotNullFacts(cte)
+    return (facts.redundant(atom) or facts.beside_sibling(atom)) is not None
 
 
 class StripRedundantNotNull(OptimizationRule):
@@ -151,7 +178,7 @@ class StripRedundantNotNull(OptimizationRule):
         facts = _NotNullFacts(cte)
         survivors: list = []
         for atom in and_atoms(cte.condition):
-            reason = facts.redundant(atom)
+            reason = facts.redundant(atom) or facts.beside_sibling(atom)
             if reason is None:
                 survivors.append(atom)
             else:

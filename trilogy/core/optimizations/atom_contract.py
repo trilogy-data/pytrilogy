@@ -30,19 +30,23 @@ AtomRemover = Callable[[CTE, Any], bool]
 
 # phase name -> whether that phase would drop the atom from the CTE
 REMOVERS: dict[str, AtomRemover] = {}
-FACT_REMOVERS: set[str] = set()
+# phase name -> the part of its remover that reads the CTE's plan facts alone
+FACT_REMOVERS: dict[str, AtomRemover] = {}
 
 AtomSnapshot = dict[str, list]
 
 
 def register_remover(
-    *phases: str, facts_only: bool = False
+    *phases: str, facts_only: bool = False, facts: AtomRemover | None = None
 ) -> Callable[[AtomRemover], AtomRemover]:
+    """`facts` is the fact part of a remover that also reads other atoms:
+    the driver checks additions against it, while adders gate on the whole."""
+
     def register(removes: AtomRemover) -> AtomRemover:
         for phase in phases:
             REMOVERS[phase] = removes
-            if facts_only:
-                FACT_REMOVERS.add(phase)
+            if facts_only or facts is not None:
+                FACT_REMOVERS[phase] = facts or removes
         return removes
 
     return register
@@ -95,7 +99,10 @@ def contract_violations(
         for atom in atom_snapshot([cte])[cte.name]:
             if atom in prior:
                 continue
-            remover = removable(cte, atom, FACT_REMOVERS)
-            if remover is not None:
-                out.append(f"{phase} added {atom} to {cte.name}; {remover} drops it")
+            for remover, removes in FACT_REMOVERS.items():
+                if removes(cte, atom):
+                    out.append(
+                        f"{phase} added {atom} to {cte.name}; {remover} drops it"
+                    )
+                    break
     return out

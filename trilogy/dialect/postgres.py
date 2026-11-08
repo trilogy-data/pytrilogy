@@ -72,6 +72,10 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.BIT_XOR: lambda x, types: f"({x[0]} # {x[1]})",
     FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
+    # every match is replaced; without 'g' only the first is
+    FunctionType.REGEXP_REPLACE: lambda x, types: (
+        f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]}, 'g')"
+    ),
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
     # the offset may be an expression, which an interval string cannot hold
     FunctionType.DATE_ADD: lambda x, types: date_offset(x, types, "+"),

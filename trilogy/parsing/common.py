@@ -22,7 +22,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.functions import function_args_to_output_purpose
-from trilogy.core.like_patterns import literal_value
+from trilogy.core.like_patterns import literal_value, matches_any
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -2222,7 +2222,16 @@ _EXACT_LIKE = (
 def like_or_equality(left: Any, right: Any, operator: ComparisonOperator) -> Comparison:
     """A `like` whose literal pattern has no wildcard is that string's
     equality; stated as one, it reaches what reads equalities (a partition's
-    `complete where`, value pins)."""
+    `complete where`, value pins). A `like '%'` keeps every non-NULL string,
+    so it is `is not null`, which the NOT NULL strip can drop."""
+    if (
+        operator in (ComparisonOperator.LIKE, ComparisonOperator.ILIKE)
+        and isinstance(right, str)
+        and matches_any(right)
+    ):
+        return Comparison(
+            left=left, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+        )
     exact = next((eq for like, eq in _EXACT_LIKE if like == operator), None)
     if exact is not None and isinstance(right, str):
         value = literal_value(right)

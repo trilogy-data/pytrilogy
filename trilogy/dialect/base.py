@@ -168,7 +168,7 @@ from trilogy.core.table_processor import (
 )
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join as render_join_clause
-from trilogy.dialect.common import render_unnest
+from trilogy.dialect.common import render_unnest, render_window_substring
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import safe_open
 
@@ -875,7 +875,9 @@ FUNCTION_MAP = {
     # string types
     FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",
     FunctionType.LOWER: lambda x, types: f"LOWER({x[0]}) ",
-    FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
+    FunctionType.SUBSTRING: lambda x, types: render_window_substring(
+        "SUBSTRING", "length({})", x
+    ),
     FunctionType.STRPOS: lambda x, types: f"STRPOS({x[0]},{x[1]})",
     # a substring test ignores case on every dialect; array membership is exact
     FunctionType.CONTAINS: lambda x, types: (

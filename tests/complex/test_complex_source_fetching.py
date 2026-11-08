@@ -31,7 +31,10 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
             rendered = generator.render_concept_sql(
                 factory.build(avg_user_post_count), cte
             )
-            assert 'avg(length("posts"."text")) as "user_avg_post_length"' in rendered
+            assert (
+                'avg((LEN("posts"."text" + \'x\') - 1)) as "user_avg_post_length"'
+                in rendered
+            )
             found = True
         if found:
             break
@@ -55,7 +58,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
             rendered = generator.render_concept_sql(build_avg_post_length, cte)
 
             assert re.search(
-                r'avg\(length\("posts"."text"\)\) as "user_avg_post_length"',
+                r'avg\(\(LEN\("posts"."text" \+ \'x\'\) - 1\)\) as "user_avg_post_length"',
                 rendered,
             ), generator.compile_statement(query)
             found = True
