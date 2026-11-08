@@ -1447,6 +1447,51 @@ that moved is on the known-noise list or compiles identically run alone
 statements under xdist). Full suite: the same 25 failures as `main`. Corpus:
 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**A per-group merge's bridges are elected before the build (part 43).**
+Part 42 shaped a group whose merge joins a shaped bridge, but only once that
+group was built (`_bridges_shaped_rows`, now gone). It read the bridge off the
+built merge, so it marked the consumer and none of the groups reading it.
+Each planned group's bridges are now elected once, after the FINAL cover and
+before the build loop (`_plan_group_bridges`), and recorded on
+`GroupAttrs.bridges`. The election is the build's own (`elect_bridges`) over
+stage-2 inputs:
+
+- the sides are the group's row parents (`read_row_parents`), less one that
+  is a graph ancestor of another side holding every input it would supply.
+  That is the drop `_parent_nodes_for` makes; without it, a ROOT under both
+  aggregates of `test_row_gate_on_the_derived_cluster` pairs them and hides
+  the bridge the build joins;
+- each side covers what it outputs of the group's `input_concepts`;
+- the candidates and carry demands are the build's (`_bridge_candidates`
+  over the cover's groups, the consumer's `preserve_keys`). A UNION elects
+  none.
+
+`shape_through_bridges` then walks the build order and shapes a group whose
+recorded bridge is shaped, and every group its LINEAGE rows flow to from one.
+It takes the build order, not the graph's, because no edge puts a bridge
+before its consumer. It only adds shapes that start at a bridge. It never
+re-derives `shapes_rows` over the folded graph, where a group computed
+inline has left its readers.
+
+The build still elects its own bridges at each merge. A census over one suite
+run recorded both elections at every per-group merge: 171,398 merges in
+24,831 tests, with the same bridges in every one. 25 elect a bridge, and 6
+of those bridges are shaped: three q64 plans, two `tree_reporting` city builds
+and `test_row_gate_on_the_derived_cluster`. Stage 2 marks all 6.
+
+`test_a_shaped_bridge_shapes_its_consumer_and_the_consumers_readers`,
+`test_an_unshaped_bridge_shapes_nothing` and
+`test_a_merge_side_covered_by_its_descendant_is_not_a_side` pin the pass and
+the sides. They replace `test_a_shaped_bridge_shapes_the_rows_its_consumer_merges`.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, the declared-join
+pairing), the GCS test's random file name, the BigQuery temp table and
+`test_a_rust_binary_is_a_datasource`, which ran once its binary was built.
+Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1459,13 +1504,13 @@ not built yet:
    asked only for what its parent can carry (part 39). `projection_grain` and
    `sourcing_keys` are the consumer's, not copied onto every edge (part 40).
    A per-group parent's shape is the stage-2 `shapes_rows` (part 41), and
-   so is a FINAL contributor's (part 42). What is left of which parent takes
-   the projection: a ROOT rendered grouped (`_renders_grouped`) is still read
-   off the built node, a bridge's shape is recorded on its consumer only at
-   build time and does not reach the consumer's readers through
-   `_refresh_shapes_rows`, and the shapes a condition carries into a scan
-   are not in `shapes_rows` (45 per-group reads in part 41, none moving a
-   plan).
+   so is a FINAL contributor's (part 42), and a shaped bridge's, elected
+   before the build (part 43). What is left of which parent takes the
+   projection: a ROOT rendered grouped (`_renders_grouped`) is still read off
+   the built node, and the shapes a condition carries into a scan are not in
+   `shapes_rows` (45 per-group reads in part 41, none moving a plan). The
+   build still re-elects each merge's bridges instead of joining the ones
+   recorded on `GroupAttrs.bridges`; the two agree everywhere in the suite.
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

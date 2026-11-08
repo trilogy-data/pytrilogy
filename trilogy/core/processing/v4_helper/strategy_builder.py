@@ -146,6 +146,7 @@ from .group_graph import (
     read_row_parents,
     reads_grouped_rows_only,
     row_parents,
+    shape_through_bridges,
     trace_group_graph,
 )
 from .history import V4History
@@ -3574,6 +3575,70 @@ def _merge_plan(
     )
 
 
+def _merge_sides(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> list[str]:
+    """The row parents `gid` merges: less one that is an ancestor of another
+    holding every input it would supply (`_parent_nodes_for` drops it)."""
+    parents = read_row_parents(group_graph, group_edges, attrs, gid)
+    wanted = set(attrs[gid].input_concepts)
+    supplies = {p: set(attrs[p].output_concepts) & wanted for p in parents}
+    return [
+        p
+        for p in parents
+        if not any(
+            other != p
+            and supplies[p] <= supplies[other]
+            and p in nx.ancestors(group_graph, other)
+            for other in parents
+        )
+    ]
+
+
+def _plan_group_bridges(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    planned: list[str],
+    environment: BuildEnvironment,
+) -> None:
+    """Elect, before the build, the bridges each group's merge joins its row
+    parents through, and shape every group a shaped bridge feeds."""
+    authored = _required_final_contract(attrs).authored_axes
+    for gid in planned:
+        if attrs[gid].derivation == Derivation.UNION:
+            continue
+        sides = _merge_sides(group_graph, group_edges, attrs, gid)
+        if len(sides) < 2:
+            continue
+        wanted = set(attrs[gid].input_concepts)
+        cover = {
+            side: [
+                c
+                for address in attrs[side].output_concepts
+                if address in wanted and (c := _concept_at(environment, address))
+            ]
+            for side in sides
+        }
+        demands = _input_contract_carry_demands(attrs[gid])
+        attrs[gid].bridges = tuple(
+            elect_bridges(
+                group_graph,
+                attrs,
+                cover,
+                _bridge_candidates(group_graph, planned, gid),
+                [c for concepts in cover.values() for c in concepts],
+                environment,
+                authored,
+                contracted={side: demands.get(side, frozenset()) for side in sides},
+            ).extras
+        )
+    shape_through_bridges(group_graph, group_edges, attrs, planned)
+
+
 def _union_arm_parents(
     parent_builds: list[ParentBuild],
     attrs: dict[str, GroupAttrs],
@@ -3659,19 +3724,6 @@ def _final_parent_shaped(
         or id(parent) in projected
         or _renders_grouped(parent)
     )
-
-
-def _bridges_shaped_rows(
-    merged: list[StrategyNode],
-    origin: dict[int, str],
-    attrs: dict[str, GroupAttrs],
-    parent_group_ids: set[str],
-) -> bool:
-    """A group's merge pairs its rows with a bridge its plan elected (a
-    rowset across a `union join`): a shaped bridge shapes them too."""
-    if len(merged) != 1 or (held := side_members(merged[0], origin)) is None:
-        return False
-    return any(attrs[gid].shapes_rows for gid in held - parent_group_ids)
 
 
 def _apply_input_contracts(
@@ -6975,9 +7027,6 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             origin=origin,
             candidates=candidates,
         )
-        a.shapes_rows = a.shapes_rows or _bridges_shaped_rows(
-            parents, origin, attrs, parent_group_ids
-        )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
     # d1 aggregate feeding a HAVING-style filter on this root) is real
@@ -7447,6 +7496,7 @@ def build_strategy_node(
         cover = _elect_final_cover(
             group_graph, group_edges, attrs, contributors, mandatory_list, environment
         )
+        _plan_group_bridges(group_graph, group_edges, attrs, cover.groups, environment)
     built: dict[str, StrategyNode] = {}
     unbuilt: dict[str, list[BuildConcept]] = {}
     ctx = _GroupBuild(
