@@ -1540,8 +1540,13 @@ def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
     so far provably has rows. While only keyless outer joins precede, a join's
     explicit left is part of that relation and its rows count; a keyed or
     unnest join can empty the relation, so after one only the keyless right
-    sides accumulate."""
+    sides accumulate.
+
+    Grand totals joined only to each other stay outer: each is the `()`
+    group of its own rows, so the result has that group when any of them
+    does, as a union-merged key keeps a key from either side."""
     left_has_rows = False
+    all_totals = True
     keyed_seen = False
     for join in joins:
         if (
@@ -1551,12 +1556,16 @@ def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
             or join.concepts
         ):
             left_has_rows = False
+            all_totals = False
             keyed_seen = True
             continue
         if join.left is not None and not keyed_seen:
-            left_has_rows = left_has_rows or single_row_source(join.left)
+            left_single = single_row_source(join.left)
+            left_has_rows = left_has_rows or left_single
+            all_totals = all_totals and left_single
         right_has_rows = single_row_source(join.right)
-        if left_has_rows or right_has_rows:
+        all_totals = all_totals and right_has_rows
+        if (left_has_rows or right_has_rows) and not all_totals:
             join.join_type = JoinType.INNER
         left_has_rows = left_has_rows or right_has_rows
 
