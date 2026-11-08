@@ -109,3 +109,17 @@ def test_a_standard_literal_ends_at_its_quote() -> None:
     )
     # read with backslash escapes, `'\'` opens a literal that swallows `:p`
     assert ", :p," not in escape_literal_colons(sql)
+
+
+def test_chdb_parameters_double_their_backslashes() -> None:
+    from trilogy.dialect.clickhouse_chdb import _escape_backslashes
+
+    assert _escape_backslashes(["a\\b", ("c\\",), 1]) == ["a\\\\b", ("c\\\\",), 1]
+
+
+def test_raw_sql_binds_after_a_backslash_literal() -> None:
+    executor = Dialects.SQLITE.default_executor(environment=Environment())
+    got = executor.execute_raw_sql(
+        "select 'a%' like 'a\\%' ESCAPE '\\', :p", {"p": 3}
+    ).fetchall()
+    assert [tuple(r) for r in got] == [(1, 3)]
