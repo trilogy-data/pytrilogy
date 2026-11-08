@@ -20,30 +20,24 @@ def _executor():
     return executor
 
 
-def test_grand_total_cartesian_narrows_to_inner():
+def test_grand_totals_stay_full_joined():
+    # Each total is the `()` group of its own rows: the row survives when
+    # either side has one, as a union-merged key would.
     executor = _executor()
     query = "select sum(amt) as total_amt, sum(qty) as total_qty;"
     sql = executor.generate_sql(query)[-1]
 
-    assert "INNER JOIN" in sql, sql
-    assert "FULL JOIN" not in sql, sql
+    assert "FULL JOIN" in sql, sql
     assert [tuple(r) for r in executor.execute_text(query)[0].fetchall()] == [
         (30.0, 15)
     ]
 
 
-def test_planner_narrows_before_the_optimizer():
-    # The planner emits the narrowed type itself, so the optimizer rule has
-    # nothing left to do: the SQL is identical with the rule switched off.
+def test_grand_total_over_no_rows_keeps_the_other_total():
     executor = _executor()
-    query = "select sum(amt) as total_amt, sum(qty) as total_qty;"
-    narrowed_sql = executor.generate_sql(query)[-1]
-    narrowed = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
-
-    assert "FULL JOIN" not in narrowed_sql, narrowed_sql
-    full_sql = narrowed_sql.replace("INNER JOIN", "FULL JOIN")
-    unnarrowed = [tuple(r) for r in executor.execute_raw_sql(full_sql).fetchall()]
-    assert narrowed == unnarrowed
+    query = "select sum(amt) as total_amt, sum(qty ? qty > 100) as big_qty;"
+    rows = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert rows == [(30.0, None)]
 
 
 def test_having_on_aggregate_keeps_row_semantics():
