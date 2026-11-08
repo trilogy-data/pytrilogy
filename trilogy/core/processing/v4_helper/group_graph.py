@@ -1142,9 +1142,7 @@ def _refresh_shapes_rows(
 ) -> None:
     """Mark each group whose rows a grouping stage shapes: its own, a rowset
     body's it reads out, or any group's below it."""
-    for gid in nx.topological_sort(group_graph):
-        if gid not in attrs:
-            continue
+    for gid in (g for g in nx.topological_sort(group_graph) if g in attrs):
         attrs[gid].shapes_rows = _shapes_rows_here(attrs[gid], environment) or any(
             attrs[pred].shapes_rows
             for pred in group_graph.predecessors(gid)
