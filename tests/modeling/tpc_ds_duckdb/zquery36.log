@@ -1,5 +1,5 @@
 query_id = "36"
-gen_length = 2390
+gen_length = 2412
 preql_size = 979
 comp_size = 1844
 generated_sql = """
@@ -39,11 +39,11 @@ SELECT
     \"questionable\".\"g_cat\" + \"questionable\".\"g_class\" as \"lochierarchy\",
     \"questionable\".\"ss_item_category\" as \"ss_item_category\",
     \"questionable\".\"ss_item_class\" as \"ss_item_class\",
-    cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / cast(\"questionable\".\"sales_sum\" as numeric(15,4)) as \"gross_margin\",
+    cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / nullif(cast(\"questionable\".\"sales_sum\" as numeric(15,4)), 0) as \"gross_margin\",
     rank() over (partition by \"questionable\".\"g_cat\" + \"questionable\".\"g_class\",CASE
 	WHEN \"questionable\".\"g_class\" = 0 THEN \"questionable\".\"ss_item_category\"
 	ELSE null
-	END order by cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / cast(\"questionable\".\"sales_sum\" as numeric(15,4)) asc ) as \"rank_within_parent\"
+	END order by cast(\"questionable\".\"profit_sum\" as numeric(15,4)) / nullif(cast(\"questionable\".\"sales_sum\" as numeric(15,4)), 0) asc ) as \"rank_within_parent\"
 FROM
     \"questionable\")
 SELECT

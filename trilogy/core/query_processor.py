@@ -8,12 +8,14 @@ from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.domain_graph import DomainGraph, assemble_full_graph, tag_scoped_joins
 from trilogy.core.enums import (
+    NEVER_NULL_FUNCTIONS,
     BooleanOperator,
     DatasourceState,
     Derivation,
     FunctionClass,
     FunctionType,
     JoinType,
+    Modifier,
     SourceType,
 )
 from trilogy.core.ergonomics import generate_cte_names
@@ -1287,6 +1289,62 @@ def _partition_scoped_stages(
     return result
 
 
+def _derives_null(
+    concept: BuildConcept, nullable: set[str], memo: dict[str, bool]
+) -> bool:
+    if concept.address not in memo:
+        memo[concept.address] = True  # a cycle stays conservative
+        lineage = concept.lineage
+        operator = getattr(lineage, "operator", None) or getattr(
+            getattr(lineage, "function", None), "operator", None
+        )
+        args = [
+            _derives_null(a, nullable, memo)
+            for a in (lineage.concept_arguments if lineage else [])
+        ]
+        memo[concept.address] = (
+            concept.address in nullable
+            or concept.is_nullable
+            or (
+                operator not in NEVER_NULL_FUNCTIONS
+                and (all(args) if operator == FunctionType.COALESCE else any(args))
+                and bool(args)
+            )
+        )
+    return memo[concept.address]
+
+
+def written_nullable(select: ProcessedQuery) -> set[str]:
+    """Addresses a write of `select` can store NULL in: a column any CTE holds
+    NULL (its outer joins' padding included) and an output derived from one,
+    such as `sum(v)` over a padded `v`."""
+    nullable: set[str] = set()
+    stack = list(select.ctes)
+    while stack:
+        cte = stack.pop()
+        if isinstance(cte, UnionCTE):
+            # a union holds NULL where an arm does
+            stack.extend(cte.internal_ctes)
+            continue
+        nullable |= {c.address for c in cte.nullable_concepts}
+    memo: dict[str, bool] = {}
+    return {
+        c.address
+        for c in select.base.output_columns
+        if _derives_null(c, nullable, memo)
+    }
+
+
+def _bind_written_nulls(datasource: Datasource, nullable: set[str]) -> None:
+    """A datasource a persist creates binds `?` every column it writes NULL to,
+    so a read of the copy keeps `x is not null` and a NOT NULL-by-default
+    engine (ClickHouse) declares the column Nullable. In place: a later
+    redeclaration prunes this same object."""
+    for column in datasource.columns:
+        if column.concept.address in nullable and not column.is_nullable:
+            column.modifiers = [*column.modifiers, Modifier.NULLABLE]
+
+
 def process_persist(
     environment: Environment,
     statement: PersistStatement,
@@ -1321,6 +1379,8 @@ def process_persist(
     finally:
         ds.status = original_status
     _validate_persist_projection(statement, select)
+    if statement.datasource.identifier not in environment.datasources:
+        _bind_written_nulls(statement.datasource, written_nullable(select))
 
     arg_dict = {k: v for k, v in select.__dict__.items()}
     partition_by: list[str] = []

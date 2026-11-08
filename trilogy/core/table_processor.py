@@ -25,7 +25,7 @@ def datasource_to_create_table_info(
             description=(
                 col.concept.metadata.description if col.concept.metadata else None
             ),
-            nullable=Modifier.OPTIONAL in col.modifiers,
+            nullable=col.is_nullable or Modifier.OPTIONAL in col.modifiers,
             primary_key=col.concept.address in datasource.grain.components,
         )
         for col in datasource.columns

@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode, WindowType
 from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.core.statements.execute import ColumnInfo, CreateTableInfo
 from trilogy.dialect.base import (
     INLINE_SAFE_PARAM_DATATYPES,
     NAVIGATION_WINDOW_FUNCTION_MAP,
     BaseDialect,
     array_element_type,
+    guard_divisor,
     is_array_arg,
     navigation_window_factory,
 )
@@ -95,7 +97,7 @@ def render_cast(args: list[str], types: list) -> str:
 def render_mod(args: list[str], types: list) -> str:
     """`modulo` of a decimal drops its fraction (`7.5 % 3` is 0); the
     truncated remainder `x - y * trunc(x / y)` keeps it."""
-    x, y = args
+    x, y = args[0], guard_divisor(args[1])
     if any(data_type(t) == DataType.NUMERIC for t in types):
         return f"({x} - ({y}) * trunc(({x}) / ({y})))"
     return f"modulo({x}, {y})"
@@ -357,6 +359,14 @@ class ClickhouseDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
     TRANSACTIONAL_DDL = False
+
+    def render_column_type(self, column: ColumnInfo, target: CreateTableInfo) -> str:
+        """A column is NOT NULL unless declared Nullable, and would store a
+        NULL as 0 or ''."""
+        rendered = super().render_column_type(column, target)
+        if column.nullable and data_type(column.type) not in UNWRAPPABLE_TYPES:
+            return f"Nullable({rendered})"
+        return rendered
 
     def render_settings(self, query: "ProcessedQuery") -> str:
         """An outer join pads with each type's default (0, '') unless

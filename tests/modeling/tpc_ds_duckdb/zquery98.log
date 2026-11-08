@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 2626
+gen_length = 2637
 preql_size = 745
 comp_size = 811
 generated_sql = """
@@ -36,7 +36,7 @@ SELECT
     \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"cheerful\".\"store_sales_item_sk\" as \"store_sales_item_sk\",
-    ( \"cheerful\".\"item_revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
+    ( \"cheerful\".\"item_revenue\" * 100.0 ) / nullif((\"cooperative\".\"_virt_agg_sum_7595906549305205\"), 0) as \"revenueratio\"
 FROM
     \"cooperative\"
     INNER JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_class\" is not distinct from \"cheerful\".\"store_sales_item_class\")

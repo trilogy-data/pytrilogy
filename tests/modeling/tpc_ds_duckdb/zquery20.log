@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 1896
+gen_length = 1907
 preql_size = 610
 comp_size = 819
 generated_sql = """
@@ -41,7 +41,7 @@ SELECT
     \"cheerful\".\"cs_item_class\" as \"cs_item_class\",
     \"cheerful\".\"cs_item_current_price\" as \"cs_item_current_price\",
     \"cheerful\".\"revenue\" as \"revenue\",
-    ( \"cheerful\".\"revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_9832457364876792\") as \"revenue_ratio\"
+    ( \"cheerful\".\"revenue\" * 100.0 ) / nullif((\"cooperative\".\"_virt_agg_sum_9832457364876792\"), 0) as \"revenue_ratio\"
 FROM
     \"cheerful\"
     INNER JOIN \"cooperative\" on \"cheerful\".\"cs_item_class\" is not distinct from \"cooperative\".\"cs_item_class\"

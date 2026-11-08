@@ -38,9 +38,11 @@ def render(
 )
 def test_integer_quotient_casts_the_dividend(dialect, float_type: str) -> None:
     assert render(dialect, F.DIVIDE, ["a", "b"], [INT, INT]) == (
-        f"cast(a as {float_type}) / b"
+        f"cast(a as {float_type}) / nullif(b, 0)"
     )
-    assert render(dialect, F.DIVIDE, ["a", "b"], [DataType.FLOAT, INT]) == "a / b"
+    assert render(dialect, F.DIVIDE, ["a", "b"], [DataType.FLOAT, INT]) == (
+        "a / nullif(b, 0)"
+    )
 
 
 @pytest.mark.parametrize(
@@ -183,3 +185,39 @@ def test_clickhouse_renderings() -> None:
 def test_sqlite_fractional_remainder() -> None:
     assert render(SQLiteDialect, F.MOD, ["f", "3"], [FLOAT, INT]) == "mod(f, 3)"
     assert render(SQLiteDialect, F.MOD, ["i", "3"], [INT, INT]) == "i % 3"
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        SQLiteDialect,
+        PostgresDialect,
+        SqlServerDialect,
+        PrestoDialect,
+        MySQLDialect,
+        SnowflakeDialect,
+        ClickhouseDialect,
+        BaseDialect,
+    ],
+)
+def test_zero_divisor_is_null(dialect) -> None:
+    quotient = render(dialect, F.DIVIDE, ["a", "b"], [DataType.FLOAT, INT])
+    assert quotient == "a / nullif(b, 0)"
+    assert render(dialect, F.DIVIDE, ["a", "100"], [DataType.FLOAT, INT]) == "a / 100"
+    assert render(dialect, F.DIVIDE, ["a", "(-2.5)"], [DataType.FLOAT, INT]) == (
+        "a / (-2.5)"
+    )
+    assert render(dialect, F.DIVIDE, ["a", "0"], [DataType.FLOAT, INT]) == (
+        "a / nullif(0, 0)"
+    )
+    assert "nullif(b, 0)" in render(dialect, F.MOD, ["a", "b"], [INT, INT])
+    assert "nullif" not in render(dialect, F.MOD, ["a", "3"], [INT, INT])
+
+
+def test_bigquery_division_keeps_null() -> None:
+    assert render(BigqueryDialect, F.DIVIDE, ["a", "b"], [INT, INT]) == (
+        "SAFE_DIVIDE(a, b)"
+    )
+    assert render(BigqueryDialect, F.MOD, ["a", "b"], [INT, INT]) == (
+        "MOD(a, nullif(b, 0))"
+    )

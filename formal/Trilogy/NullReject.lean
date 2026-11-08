@@ -368,4 +368,114 @@ theorem mod_zero_not_total : ¬ modFn.Total := by
   intro h
   exact h rfl (some 1) (some 0) (by simp) (by simp) (by simp [modFn])
 
+/-! ## A zero divisor, and a persisted copy of a nullable column (0.3.469)
+
+`x / 0` and `x % 0` are NULL on every dialect: the renderings divide by
+`nullif(y, 0)` (BigQuery by `safe_divide`). DuckDB and ClickHouse answered `inf`
+or `nan` or raised, Postgres raised, SQLite and MySQL answered NULL, and
+BigQuery's `coalesce(safe_divide(x, y), 0)` and Snowflake's `div0` answered 0.
+NULL is the one answer every engine can give, and keeps `/` strict. -/
+
+/-- `/` as rendered: true division, NULL on a zero divisor or a NULL operand. -/
+def guardedDiv : Fn where
+  ap a b := match a, b with
+    | some x, some y => if y = 0 then none else some (x / y)
+    | _, _ => none
+  strict := true
+  total := false
+
+theorem guarded_div_strict : guardedDiv.Strict := by
+  intro _ a b h
+  cases a <;> cases b <;> simp_all [guardedDiv]
+
+/-- The planner claimed `/` total, which a zero divisor breaks. -/
+theorem div_zero_not_total : ¬ { guardedDiv with total := true }.Total := by
+  intro h
+  exact h rfl (some 1) (some 0) (by simp) (by simp) (by simp [guardedDiv])
+
+/-- A division by a nonzero literal is as nullable as its dividend, so the
+inference keeps `x / 100` non-null when `x` is. -/
+theorem literal_divisor_total (r : Row) (a : Expr) (v : Int) (hv : v ≠ 0)
+    (ha : a.eval r ≠ none) : (Expr.app guardedDiv a (.lit v)).eval r ≠ none := by
+  simp only [Expr.eval]
+  cases h : a.eval r with
+  | none => exact absurd h ha
+  | some x => simp [guardedDiv, hv]
+
+/-- BigQuery's `coalesce(safe_divide(x, y), 0)` read a NULL dividend as 0. -/
+def zeroFill : Fn where
+  ap a b := match a, b with
+    | some x, some y => some (if y = 0 then 0 else x / y)
+    | _, _ => some 0
+  strict := true
+  total := true
+
+theorem zero_fill_not_strict : ¬ zeroFill.Strict := by
+  intro h
+  exact absurd (h rfl none (some 2) (.inl rfl)) (by simp [zeroFill])
+
+/-- Snowflake's `div0` keeps a NULL operand NULL but answers a zero divisor 0,
+which no other engine does. -/
+theorem div0_zero_is_a_value :
+    zeroFill.ap (some 7) (some 0) = some 0 ∧ guardedDiv.ap (some 7) (some 0) = none := by
+  simp [zeroFill, guardedDiv]
+
+/-- Storing a value in a column. A column not declared nullable is NOT NULL on
+ClickHouse, which stores a NULL as its type's default. -/
+def store (nullable : Bool) (v : Val) : Val := if nullable then v else v.or (some 0)
+
+/-- A read of the copy under `x is not null`: the strip drops the atom when the
+copy's column is not declared nullable. -/
+def readNotNull (declared : Bool) (vs : List Val) : List Val :=
+  if declared then vs.filter (·.isSome) else vs
+
+/-- A copy declares a column nullable whenever a written value may be NULL,
+and the read is then exact. -/
+theorem copy_sound (declared : Bool) (vs : List Val)
+    (h : declared = false → ∀ v ∈ vs, v ≠ none) :
+    readNotNull declared (vs.map (store declared)) = vs.filter (·.isSome) := by
+  cases declared with
+  | true =>
+    have : store true = id := funext fun _ => rfl
+    simp [readNotNull, this]
+  | false =>
+    have hv := h rfl
+    have hs : ∀ v ∈ vs, store false v = v := by
+      intro v hm
+      cases v with
+      | none => exact absurd rfl (hv _ hm)
+      | some _ => rfl
+    have hf : ∀ v ∈ vs, v.isSome = true := by
+      intro v hm
+      cases v with
+      | none => exact absurd rfl (hv _ hm)
+      | some _ => rfl
+    simp only [readNotNull, Bool.false_eq_true, ↓reduceIte]
+    rw [List.map_congr_left hs, List.map_id', List.filter_eq_self.mpr hf]
+
+/-- The copy written from the nullability inference is exact: a column it
+declares non-null holds no NULL (`total_sound`). -/
+theorem inferred_copy_sound (nullCol : Nat → Bool) (e : Expr) (he : e.Sound)
+    (rows : List Row) (hr : ∀ r ∈ rows, ∀ i, nullCol i = false → r i ≠ none) :
+    readNotNull (e.nullable nullCol)
+        ((rows.map e.eval).map (store (e.nullable nullCol))) =
+      (rows.map e.eval).filter (·.isSome) := by
+  apply copy_sound
+  intro h v hv
+  obtain ⟨r, hm, rfl⟩ := List.mem_map.mp hv
+  exact total_sound nullCol r (hr r hm) e he h
+
+/-- A persist declared every column non-null: a read of the copy under
+`x is not null` kept the NULL row. -/
+theorem undeclared_copy_keeps_null :
+    readNotNull false ([none, some 6].map (store true)) ≠
+      [none, some 6].filter (·.isSome) := by
+  decide
+
+/-- ClickHouse stored that NULL as 0, so `count(x)` of the copy counted it. -/
+theorem not_null_column_stores_zero :
+    (([none, some 6] : List Val).map (store false)).countP (·.isSome) = 2 ∧
+      ([none, some 6] : List Val).countP (·.isSome) = 1 := by
+  decide
+
 end Trilogy.NullReject

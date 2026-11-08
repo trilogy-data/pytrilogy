@@ -40,7 +40,6 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"WEEKISO({x[0]})",
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
-    FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
     FunctionType.UNNEST: lambda x, types: f"table(flatten({x[0]}))",
     FunctionType.ARRAY: lambda x, types: f"ARRAY_CONSTRUCT({', '.join(x)})",
     # no FILTER clause; ARRAY_AGG ignores NULL elements natively, and returns

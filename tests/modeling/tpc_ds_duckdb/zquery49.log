@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 5522
+gen_length = 5555
 preql_size = 1307
 comp_size = 4352
 generated_sql = """
@@ -98,9 +98,9 @@ vacuous as (
 SELECT
     \"yummy\".\"sales_channel\" as \"sales_channel\",
     \"yummy\".\"sales_item_sk\" as \"sales_item_sk\",
-    cast(\"yummy\".\"return_qty\" as numeric(15,4)) / cast(\"yummy\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
-    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_amt\" as numeric(15,4)) / cast(\"yummy\".\"sale_paid\" as numeric(15,4)) asc ) as \"currency_rank\",
-    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_qty\" as numeric(15,4)) / cast(\"yummy\".\"sale_qty\" as numeric(15,4)) asc ) as \"return_rank\"
+    cast(\"yummy\".\"return_qty\" as numeric(15,4)) / nullif(cast(\"yummy\".\"sale_qty\" as numeric(15,4)), 0) as \"return_ratio\",
+    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_amt\" as numeric(15,4)) / nullif(cast(\"yummy\".\"sale_paid\" as numeric(15,4)), 0) asc ) as \"currency_rank\",
+    rank() over (partition by \"yummy\".\"sales_channel\" order by cast(\"yummy\".\"return_qty\" as numeric(15,4)) / nullif(cast(\"yummy\".\"sale_qty\" as numeric(15,4)), 0) asc ) as \"return_rank\"
 FROM
     \"yummy\")
 SELECT

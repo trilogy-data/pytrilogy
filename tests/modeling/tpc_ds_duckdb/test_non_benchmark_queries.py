@@ -798,7 +798,7 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
-    assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.DOTALL), sql
+    assert re.search(r"round\(\( .*? \+ .*? \) / nullif\(\(lead", sql, re.DOTALL), sql
 
 
 def test_tvf_union_rowset_remap_does_not_regroup():

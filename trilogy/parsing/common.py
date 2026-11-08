@@ -1,11 +1,15 @@
+import math
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
+    NEVER_NULL_FUNCTIONS,
     NULL_INTRODUCING_FUNCTIONS,
+    ZERO_DIVISOR_FUNCTIONS,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -244,24 +248,6 @@ def process_function_args(
     return final
 
 
-# Function operators whose result is never NULL, regardless of how nullable
-# their arguments are (count of an empty group is 0, grouping flags are 0/1,
-# the clock functions and random() always return a value).
-NEVER_NULL_FUNCTIONS: frozenset[FunctionType] = frozenset(
-    {
-        FunctionType.COUNT,
-        FunctionType.COUNT_DISTINCT,
-        FunctionType.IS_NULL,
-        FunctionType.GROUPING,
-        FunctionType.GROUPING_ID,
-        FunctionType.CURRENT_DATE,
-        FunctionType.CURRENT_DATETIME,
-        FunctionType.CURRENT_TIMESTAMP,
-        FunctionType.RANDOM,
-    }
-)
-
-
 def _value_is_null_literal(value: Any) -> bool:
     return value is None or value is MagicConstants.NULL
 
@@ -281,6 +267,27 @@ def _condition_literal(value: Any) -> Any:
     if isinstance(value, (bool, int, float, str, date, datetime)):
         return value
     return _NO_LITERAL
+
+
+def _is_nonzero_number(value: Any, environment: Environment) -> bool:
+    """A literal divisor, or a constant concept holding one, that `/` and `%`
+    cannot be NULL by."""
+    while True:
+        if (
+            isinstance(value, Function)
+            and value.operator in (FunctionType.PARENTHETICAL, FunctionType.CONSTANT)
+            and len(value.arguments) == 1
+        ):
+            value = value.arguments[0]
+        elif (
+            concept := _resolve_concept(value, environment)
+        ) is not None and concept.derivation == Derivation.CONSTANT:
+            value = concept.lineage
+        else:
+            break
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return False
+    return value != 0 and math.isfinite(value)
 
 
 def _resolve_concept(ref: Any, environment: Environment) -> Concept | None:
@@ -384,6 +391,10 @@ def _function_is_nullable(fn: Function, environment: Environment) -> bool:
         return any(_value_is_null_literal(a) for a in arguments)
     if op in NEVER_NULL_FUNCTIONS:
         return False
+    if op in ZERO_DIVISOR_FUNCTIONS and all(
+        _is_nonzero_number(a, environment) for a in arguments[1:]
+    ):
+        return _expr_is_nullable(arguments[0], environment)
     if op in NULL_INTRODUCING_FUNCTIONS:
         return True
     if op == FunctionType.GROUP:
