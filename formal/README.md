@@ -50,6 +50,7 @@ a design decision or a bug.
 | `Types.lean` | the declared type of an expression as the column a persisted copy is stored in | a sum holds in the join of its operands' types and a product in the sum of their scales (`add_preserved`, `mul_preserved`), a remainder in its dividend's type (`rem_preserved`), `greatest` / `least` in the join of all arguments (`pick_preserved`); no decimal scale holds a quotient (`third_has_no_scale`), and a 4-byte float does not hold a double (`single_misses_double`); a remainder of the integer parts or of a decimal's unscaled integer drops the fraction (`integer_rem_drops_fraction`) and `x - m * trunc(x / m)` keeps it (`rem_by_trunc`) (checked by `tests/core/test_type_materialization_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_type_law_renderings.py`) |
 | `Padding.lean` | what an outer join puts in a row it could not match, and what a cast does to NULL | a NULL pad leaves `count` and `sum` of a right column equal to those over the matches (`null_pad_count_eq_matches`, `null_pad_sum_eq_matches`); a `0` pad counts an unmatched row and is the `max` of negative values (`default_pad_counts_unmatched`, `default_pad_max_raises`); a cast is strict (`cast_keeps_null`) (checked by `tests/engine/test_clickhouse_null_laws.py`, and by the window and select-grain law suites, which now run on ClickHouse through chdb beside DuckDB and SQLite) |
 | `StringMatch.lean` | the `like` pattern language, `ilike`, `contains`, and a string literal as each dialect reads it | a pattern with its specials escaped matches exactly its string (`escaped_literal_exact`), so every literal pattern means the same under any LIKE; a pattern with no wildcard is its string's equality (`exact_pattern_is_eq`); SQLite's GLOB over the translated pattern is the case-sensitive match (`glob_sound`); `contains` is a case-folded infix (`contains_is_folded_infix`); ClickHouse's rewrite of a computed pattern (`ch_strip_sound`) and its doubled-backslash literal (`ch_literal_roundtrip`) read back the pattern and the string; a match is NULL on a NULL operand (`like_strict`) (checked by `tests/core/test_string_match_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_match_renderings.py`) |
+| `Strings.lean` | `len`, `substring`, `strpos`, case, `trim`, `replace` and the regex functions as characters, positions and groups | every engine's `substring` agrees once start ≥ 1 and count ≥ 0, and the renderer's clamped arguments keep the reference's characters for any start and count (`clamp_exact`, bounded; `native_positions`); the substring at `strpos(s, t)` of `len t` characters is `t` (`strpos_extract`), and an empty needle is found at 1 (`strpos_empty`); `LEN(s + 'x') - 1` is SQL Server's length (`marker_len`); `like '%'` holds for every string (`percent_matches_all`) and `x = c and x is not null` keeps what `x = c` keeps (`sibling_rejects_null`) (checked by `tests/core/test_string_function_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_function_renderings.py`) |
 
 ## What it found
 
@@ -1129,6 +1130,50 @@ a design decision or a bug.
   ClickHouse `contains` case, SQLite's NULL case, the three equality-planning
   cases, the persisted copy on all three engines and three ClickHouse literal
   cases; none now.
+
+- **String functions counted bytes on ClickHouse, read positions per engine,
+  and replaced or extracted differently** (0.3.471; `Strings.lean`). DuckDB
+  and SQLite agree on every `substring(s, start, n)` of a 17-by-17 grid of
+  positions, so they are the reference; every other dialect renders it:
+  - ClickHouse's `length`, `substring` and `position` and MySQL's `LENGTH`
+    count UTF-8 bytes: `len('日本')` was 6, and `substring('日本語', 3, 2)`
+    split a character (`Strings.byte_length_counts_bytes`,
+    `Strings.byte_position_counts_bytes`). They render `lengthUTF8`,
+    `substringUTF8`, `positionUTF8` and `CHAR_LENGTH`; ClickHouse's `upper`
+    and `lower` were ASCII-only and render `upperUTF8` / `lowerUTF8`.
+  - Positions outside `start ≥ 1, n ≥ 0` meant different things: ClickHouse
+    read start 0 as empty and a negative count as "all but the last"
+    (`Strings.clickhouse_zero_start`, `Strings.clickhouse_negative_count`,
+    112 of the 289 grid cells), and Postgres and SQL Server read a negative
+    start as a window before the string (`Strings.standard_negative_start`).
+    Every engine agrees once `start ≥ 1` and `n ≥ 0`, so a dialect that is not
+    the reference clamps other positions into that form
+    (`render_window_substring`, `Strings.clamp_exact`); a positive literal
+    start and a non-negative literal count render as before.
+  - `regexp_replace` replaced only the first match on DuckDB and Postgres
+    and every match elsewhere (`Strings.replace_first_only`); both now pass
+    `'g'`.
+  - ClickHouse's `extract` ignored the group asked for, returning group 1 for
+    `regexp_extract(s, p, 2)` and for `0` (`Strings.clickhouse_extract_ignores_group`);
+    an explicit group renders `regexpExtract(s, p, g)`.
+  - On dialects with no engine in CI: BigQuery's bare `TRIM` strips every
+    whitespace character (`Strings.bigquery_trim_strips_tabs`), so it trims
+    `' '`; SQL Server has no `length` or `STRPOS` and its `LEN` drops trailing
+    spaces, so length is `LEN(s + 'x') - 1` (`Strings.marker_len`) and
+    `strpos` is `CHARINDEX` with an empty needle found at 1
+    (`Strings.charindex_misses_empty`); Snowflake has no `STRPOS` and renders
+    `POSITION`.
+
+  Two plans got smaller. `like '%'` keeps every non-NULL string
+  (`Strings.percent_matches_all`), so the parser states it as `is not null`,
+  which the NOT NULL strip can drop. And the strip now drops
+  `x is not null` beside a sibling of the same AND that rejects NULL in `x`
+  (`x = 'b'`, `x like 'a%'`, an OR of such): `Strings.sibling_rejects_null`.
+
+  On main, 12 of the 52 cases `tests/core/test_string_function_laws.py` runs
+  fail: every ClickHouse length, substring, strpos, case, `regexp_extract` and
+  persisted-copy case, DuckDB's `regexp_replace`, and four planning cases;
+  none now.
 
 ## Limits
 

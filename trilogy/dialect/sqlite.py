@@ -223,6 +223,8 @@ FUNCTION_MAP = {
     FunctionType.GREATEST: render_present_extreme("max"),
     FunctionType.LEAST: render_present_extreme("min"),
     FunctionType.STRPOS: lambda x, types: f"instr({x[0]}, {x[1]})",
+    # native: the reference semantics (formal/Trilogy/Strings.lean, `substr`)
+    FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
     # SQLAlchemy registers a Python `floor` here, which raises on NULL
     FunctionType.FLOOR: lambda x, types: (
         f"(CAST({x[0]} AS INTEGER) - ({x[0]} < CAST({x[0]} AS INTEGER)))"

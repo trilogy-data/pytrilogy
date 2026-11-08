@@ -40,6 +40,12 @@ def literal_value(pattern: str) -> str | None:
     return "".join(t.char for t in tokens)
 
 
+def matches_any(pattern: str) -> bool:
+    """Whether the pattern matches every string: it is one or more `%`."""
+    tokens = tokenize(pattern)
+    return bool(tokens) and all(t.wildcard and t.char == "%" for t in tokens)
+
+
 def canonical(pattern: str, escaped: str = "%_\\") -> str:
     """The pattern with every literal in `escaped` written as `\\c`."""
     return "".join(

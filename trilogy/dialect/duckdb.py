@@ -211,9 +211,15 @@ FUNCTION_MAP = {
     FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})+1",
     # string
     FunctionType.CONTAINS: lambda x, types: contains(x, types),
+    # native: the reference semantics (formal/Trilogy/Strings.lean, `substr`)
+    FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
     # regexp
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
+    # every match is replaced, as on the other dialects; DuckDB's default is the first
+    FunctionType.REGEXP_REPLACE: lambda x, types: (
+        f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]}, 'g')"
+    ),
     FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
     FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]}, {x[1]})",

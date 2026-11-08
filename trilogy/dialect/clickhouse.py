@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode, WindowType
+from trilogy.core.models.author import get_basic_type
 from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.statements.execute import ColumnInfo, CreateTableInfo
@@ -14,7 +15,11 @@ from trilogy.dialect.base import (
     is_array_arg,
     navigation_window_factory,
 )
-from trilogy.dialect.common import CONCAT_COALESCE_LOWER, sunday_first_from_iso
+from trilogy.dialect.common import (
+    CONCAT_COALESCE_LOWER,
+    render_window_substring,
+    sunday_first_from_iso,
+)
 
 
 def date_part(expr: str, part: str) -> str:
@@ -161,6 +166,24 @@ def array_to_string(args, types):
     return f"arrayStringConcat(arrayMap(x -> toString(x), {args[0]}), {args[1]})"
 
 
+# the sentinel group of a two-argument regexp_extract
+AUTO_CAPTURE_GROUP = "-1"
+
+
+def char_length(args: list[str], types: list) -> str:
+    """`length` of a String counts bytes here; a string counts characters"""
+    if types and get_basic_type(types[0]) == DataType.STRING:
+        return f"lengthUTF8({args[0]})"
+    return f"length({args[0]})"
+
+
+def regexp_extract(args: list[str], types: list) -> str:
+    # `extract` takes the first group when the pattern has one, else the match
+    if len(args) < 3 or args[2] == AUTO_CAPTURE_GROUP:
+        return f"extract({args[0]}, {args[1]})"
+    return f"regexpExtract({args[0]}, {args[1]}, {args[2]})"
+
+
 def _ch_log(args):
     base = str(args[1]).strip()
     if base in ("10", "10.0"):
@@ -202,14 +225,21 @@ FUNCTION_MAP = {
     FunctionType.GREATEST: present_extreme("greatest"),
     FunctionType.LEAST: present_extreme("least"),
     # string
-    FunctionType.STRPOS: lambda x, types: f"position({x[0]}, {x[1]})",
+    # the plain string functions count bytes; the UTF8 forms count characters
+    FunctionType.LENGTH: char_length,
+    FunctionType.SUBSTRING: lambda x, types: render_window_substring(
+        "substringUTF8", "lengthUTF8({})", x
+    ),
+    FunctionType.STRPOS: lambda x, types: f"positionUTF8({x[0]}, {x[1]})",
+    FunctionType.UPPER: lambda x, types: f"upperUTF8({x[0]})",
+    FunctionType.LOWER: lambda x, types: f"lowerUTF8({x[0]})",
     FunctionType.CONTAINS: lambda x, types: (
         f"has({x[0]}, {x[1]})"
         if is_array_arg(types)
         else f"positionCaseInsensitiveUTF8({x[0]}, {x[1]}) > 0"
     ),
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"match({x[0]}, {x[1]})",
-    FunctionType.REGEXP_EXTRACT: lambda x, types: f"extract({x[0]}, {x[1]})",
+    FunctionType.REGEXP_EXTRACT: regexp_extract,
     FunctionType.REGEXP_REPLACE: lambda x, types: f"replaceRegexpAll({x[0]}, {x[1]}, {x[2]})",
     FunctionType.REPLACE: lambda x, types: f"replaceAll({x[0]}, {x[1]}, {x[2]})",
     FunctionType.SPLIT: lambda x, types: f"splitByString({x[1]}, {x[0]})",

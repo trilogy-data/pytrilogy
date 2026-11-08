@@ -24,6 +24,10 @@ Independently, an atom on a key this CTE's own INNER join pairs by plain equalit
 is tautological when it reads the key off a side of that pair and no later RIGHT
 or FULL join can pad that side back (`ss.customer.sk is not null` beside
 ``INNER JOIN customer on ss.customer_sk = c.customer_sk``).
+
+And an atom is tautological beside a sibling of the same AND that rejects NULL
+in that column (`v = 'b' and v is not null`): the sibling reads the column as
+the atom does, and keeps no row where it is NULL.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_n
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
+    gather_non_null_proofs,
     is_scalar_condition,
 )
 from trilogy.core.processing.utility import (
@@ -118,6 +123,13 @@ class _NotNullFacts:
         self.nullable = _nullable_before_own_filter(cte)
         self.output = equivalent_addresses(cte.output_columns)
         self.rejected = _inner_join_rejected(cte)
+        # a plain `X IS NOT NULL` proves only itself, so never its own sibling
+        self.sibling_proven = {
+            address
+            for atom in (and_atoms(cte.condition) if cte.condition else [])
+            if _not_null_concept(atom) is None
+            for address in gather_non_null_proofs(atom)
+        }
 
     def redundant(self, atom: Any) -> str | None:
         """Why `atom` is a tautological `X IS NOT NULL` in the CTE, if it is."""
@@ -126,6 +138,8 @@ class _NotNullFacts:
             return None
         if _read_off_rejected_side(self.cte, concept.address, self.rejected):
             return f"{concept.address} IS NOT NULL is an INNER key"
+        if not concept.equivalent_addresses.isdisjoint(self.sibling_proven):
+            return f"{concept.address} IS NOT NULL beside a sibling rejecting NULL"
         if (
             concept.derivation == Derivation.ROOT
             and not concept.equivalent_addresses.isdisjoint(self.output)
