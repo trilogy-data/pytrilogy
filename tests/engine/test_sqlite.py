@@ -82,7 +82,7 @@ def test_string_functions():
     assert row.greeting_substring == "Hello"
     assert row.greeting_replaced == "  Hello, Trilogy!  "
     assert row.greeting_concatenated == "  Hello, World!   Welcome to Trilogy."
-    assert row.contains_world == 1
+    assert row.contains_world == 0
     assert row.contains_world_case_insensitive == 1
     assert row.contains_function == 1
 

@@ -1,9 +1,10 @@
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, NullSort
+from trilogy.core.enums import ComparisonOperator, FunctionType, NullSort
+from trilogy.core.like_patterns import to_glob
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import (
     BaseDialect,
@@ -252,6 +253,31 @@ DATATYPE_MAP: dict[DataType, str] = {
 }
 
 
+# `to_glob` over a pattern only known at run time: the escaped specials are
+# parked on control characters while the wildcards are rewritten. A pattern
+# holding those control characters itself is not translated faithfully.
+_RUNTIME_GLOB_STEPS = (
+    ("'\\\\'", "char(1)"),
+    ("'\\%'", "char(2)"),
+    ("'\\_'", "char(3)"),
+    ("'\\'", "''"),
+    ("'['", "'[[]'"),
+    ("'*'", "'[*]'"),
+    ("'?'", "'[?]'"),
+    ("'%'", "'*'"),
+    ("'_'", "'?'"),
+    ("char(1)", "'\\'"),
+    ("char(2)", "'%'"),
+    ("char(3)", "'_'"),
+)
+
+
+def runtime_glob(pattern_sql: str) -> str:
+    for old, new in _RUNTIME_GLOB_STEPS:
+        pattern_sql = f"replace({pattern_sql}, {old}, {new})"
+    return pattern_sql
+
+
 class SQLiteDialect(BaseDialect):
     NULL_SORT = NullSort.SMALLEST
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
@@ -270,6 +296,23 @@ class SQLiteDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "no such column"
     # no native ILIKE; emulate via case-folded LIKE
     ILIKE_AS_LOWER_LIKE = ("lower", "like", "not ")
+
+    def render_like(
+        self,
+        left_sql: str,
+        pattern,
+        operator: ComparisonOperator,
+        render: Callable[[Any], str],
+    ) -> str:
+        """SQLite's LIKE ignores ASCII case; GLOB is its case-sensitive match."""
+        if operator not in (ComparisonOperator.LIKE, ComparisonOperator.NOT_LIKE):
+            return super().render_like(left_sql, pattern, operator, render)
+        if isinstance(pattern, str):
+            glob = self.render_string_literal(to_glob(pattern))
+        else:
+            glob = runtime_glob(render(pattern))
+        negate = "not " if operator == ComparisonOperator.NOT_LIKE else ""
+        return f"({negate}{left_sql} glob {glob})"
 
     def compile_create_table_statements(self, target, create_mode) -> list[str]:
         statements = super().compile_create_table_statements(target, create_mode)

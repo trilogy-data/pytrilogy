@@ -206,7 +206,7 @@ FUNCTION_MAP = {
     FunctionType.CONTAINS: lambda x, types: (
         f"has({x[0]}, {x[1]})"
         if is_array_arg(types)
-        else f"position({x[0]}, {x[1]}) > 0"
+        else f"positionCaseInsensitiveUTF8({x[0]}, {x[1]}) > 0"
     ),
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"match({x[0]}, {x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: f"extract({x[0]}, {x[1]})",
@@ -351,6 +351,9 @@ class ClickhouseDialect(BaseDialect):
     # `Decimal(p, s)`; DATATYPE_MAP's bare `Decimal64(4)` takes no precision
     NUMERIC_TYPE_NAME = "Decimal"
     QUOTE_CHARACTER = "`"
+    # LIKE escapes with a backslash natively and takes no ESCAPE clause
+    LIKE_ESCAPE_CLAUSE = False
+    STRING_LITERAL_BACKSLASH_ESCAPES = True
     SUPPORTS_QUALIFY = True
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode
     # emits `SELECT arrayJoin(...) AS alias` with no FROM, which CH supports.
@@ -398,6 +401,19 @@ class ClickhouseDialect(BaseDialect):
             f"CREATE TABLE IF NOT EXISTS {target} AS {staged}",
             f"EXCHANGE TABLES {target} AND {staged}",
         ]
+
+    def render_like_pattern(self, pattern, render: Callable[[Any], str]) -> str:
+        """ClickHouse honours an escape only before `%`, `_` and `\\`, and
+        keeps the backslash before any other character; drop it there."""
+        if isinstance(pattern, str):
+            return super().render_like_pattern(pattern, render)
+        regex = self.render_string_literal(r"\\([^%_\\])")
+        group = self.render_string_literal(r"\1")
+        return f"replaceRegexpAll({render(pattern)}, {regex}, {group})"
+
+    def render_string_literal(self, value: str) -> str:
+        # ClickHouse reads a backslash in a string literal as an escape.
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
     def render_map_literal(
         self,

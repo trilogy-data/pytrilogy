@@ -44,7 +44,9 @@ on chdb; a cast and `round` round half away, `week` is whole spans, and a
 remainder keeps its fraction on ClickHouse and SQLite; area 5), and
 `NullReject.lean` extended (0.3.469: `x / 0` and `x % 0` are NULL on every
 dialect, and a persisted copy declares `?` every column its write can hold
-NULL in; areas 3 and 5).
+NULL in; areas 3 and 5), and `StringMatch.lean` (0.3.470: one pattern language
+for `like`, `ilike` and `contains` on every dialect, a wildcard-free `like` is
+an equality, and a ClickHouse string keeps its backslashes; area 6).
 
 ## The recipe
 
@@ -445,10 +447,61 @@ NULL in; areas 3 and 5).
       ClickHouse probe of `x / 0` looks like NULL; `coalesce(x / 0, -1)` or
       `x / 0 is null` tells them apart.
 
+25. **Lessons from the string-matching round (`StringMatch.lean`, 0.3.470).**
+    - Sweep the renderings of every dialect, not only the engines in CI. The
+      engine probe found three splits; rendering the same three predicates
+      for all ten dialects found four more (`ilike` and `contains` emitted as
+      functions four engines do not have).
+    - A data-driven matrix needs data that comes close to its claims. Random
+      patterns against random strings almost never matched, and the computed
+      pattern suite passed on main; patterns derived from each row's own
+      value (an escaped special, a swapped case, a spliced wildcard) failed
+      on all three engines.
+    - A fix in the rendering can trip a pass that reads the rendered SQL. The
+      executor's colon escaping read `'\'` as an unterminated literal and
+      swallowed the next bind parameter on SQLite; only a test that bound a
+      parameter after a `like` caught it.
+    - Equal predicates should be one predicate to the planner. `city like
+      'Boston'` and `city = 'Boston'` were the same filter, and only the
+      second reached a partition's `complete where`.
+    - Ablate every change, including the plumbing: chdb's parameter escaping
+      failed nothing until a test selected a string constant, which is the
+      only path that binds one there.
+
 ## Candidate areas
+
+**Done in 0.3.470: string matching (`StringMatch.lean`, area 6 below).**
 
 **Suggested next: the area-5 leads (decimal products, the persisted-copy leads), the area-1,
 area-2 and area-4 leads below, or the area-3 leads left.**
+
+### 6. String matching (done in `StringMatch.lean`; leads left)
+
+`tests/core/test_string_match_laws.py` holds `like`, `not like`, `ilike`,
+`not ilike` over literal and computed patterns, `contains`, NULL operands, the
+equality planning of an exact pattern, string literals and a persisted copy to
+`trilogy.core.like_patterns` on DuckDB, SQLite and chdb;
+`tests/dialect/test_string_match_renderings.py` pins the other dialects.
+Leads left:
+- **Collation.** MySQL's and SQL Server's default collations are
+  case-insensitive, so `like` and `=` both fold case there, and SQL Server's
+  `=` ignores trailing spaces while its LIKE does not. Neither has an engine
+  in CI; a `COLLATE` (or `BINARY`) rendering would hold them to the law, and
+  would change `=` too.
+- **Unicode case.** `ilike` and `contains` fold with the engine's `lower`:
+  ASCII only on SQLite, Unicode on DuckDB and Postgres, and BigQuery's
+  `CONTAINS_SUBSTR` also NFKC-normalizes. The suite's alphabet is ASCII.
+- **Pattern edges left to the engine.** A computed pattern ending in a lone
+  backslash (DuckDB and Postgres raise), a computed pattern holding `char(1)`
+  to `char(3)` on SQLite (the `replace` chain parks escapes there), and `[` in
+  a computed pattern on SQL Server (a character class).
+- **The Trilogy literal grammar.** A string literal cannot end in a backslash,
+  and `\'` keeps its backslash in the value; `contains(v, '\')` does not
+  parse.
+- **More planning from patterns.** `like '%'` is `is not null`, and a prefix
+  pattern (`'Bos%'`) implies a range a partition or a value pin could read.
+  Separately, `v = 'b' and v is not null` keeps both atoms; the strip does
+  not read a sibling comparison's proof.
 
 ### 5. ClickHouse (chdb in CI; `Padding.lean` done, the function, scalar and type suites run there; leads left)
 

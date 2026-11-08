@@ -3,7 +3,12 @@ from typing import ClassVar
 
 from trilogy.core.enums import FunctionType, NullSort, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
-from trilogy.dialect.base import BaseDialect, TableColumn, render_present_extreme
+from trilogy.dialect.base import (
+    BaseDialect,
+    TableColumn,
+    is_array_arg,
+    render_present_extreme,
+)
 from trilogy.dialect.common import (
     CONCAT_COALESCE_UPPER,
     SQL_STANDARD_EXTRACT,
@@ -25,6 +30,11 @@ def date_part(expr: str, part: str) -> str:
 
 
 FUNCTION_MAP = {
+    FunctionType.CONTAINS: lambda x, types: (
+        f"ARRAY_CONTAINS({x[1]}::variant, {x[0]})"
+        if is_array_arg(types)
+        else f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))"
+    ),
     # LOG takes the base first; there is no LOG10
     FunctionType.LOG: lambda x, types: f"LOG({x[1]}, {x[0]})",
     FunctionType.GREATEST: render_present_extreme("GREATEST"),
@@ -79,6 +89,7 @@ class SnowflakeDialect(BaseDialect):
         DataType.TIMESTAMP: "TIMESTAMP_TZ",
     }
     QUOTE_CHARACTER = '"'
+    STRING_LITERAL_BACKSLASH_ESCAPES = True
     QUOTE_CTE_NAMES = True
     UNNEST_MODE = UnnestMode.SNOWFLAKE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

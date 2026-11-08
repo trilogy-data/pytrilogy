@@ -17,6 +17,15 @@ from trilogy.dialect.base import (
 from trilogy.utility import string_to_hash
 
 
+def render_contains(args: list[str]) -> str:
+    """CHARINDEX finds no empty needle, so match `%needle%` with the needle's
+    pattern characters escaped; NULL on either side stays NULL."""
+    needle = f"LOWER({args[1]})"
+    for char in ("\\", "%", "_", "["):
+        needle = f"REPLACE({needle}, '{char}', '\\{char}')"
+    return f"(LOWER({args[0]}) LIKE '%' + {needle} + '%' ESCAPE '\\')"
+
+
 def render_cast(args: list[str], types: list) -> str:
     # a fraction cast to an integer truncates here; other engines round it
     if types[0].data_type in (
@@ -40,6 +49,7 @@ DAY_OF_WEEK = "((DATEPART(weekday, {expr}) + @@DATEFIRST - 2) % 7 + 1) % 7 + 1"
 
 
 FUNCTION_MAP = {
+    FunctionType.CONTAINS: lambda x, types: render_contains(x),
     # POWER returns its first argument's type: POWER(2, -1) is 0
     FunctionType.POWER: lambda x, types: f"POWER(CAST({x[0]} AS FLOAT), {x[1]})",
     # T-SQL has no `ln`; its two-argument LOG takes the base second
@@ -72,6 +82,9 @@ class SqlServerDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = '"'
+    ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
+    # T-SQL reads `[...]` in a pattern as a character class
+    LIKE_SPECIAL_CHARACTERS = "["
     LIMIT_STYLE = "TOP"
     RECURSIVE_KEYWORD = ""
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
