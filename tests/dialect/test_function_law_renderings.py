@@ -13,7 +13,7 @@ from trilogy.dialect.postgres import PostgresDialect
 from trilogy.dialect.presto import PrestoDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
-from trilogy.dialect.sqlite import SQLiteDialect
+from trilogy.dialect.sqlite import SQLiteDialect, write_float
 
 F = FunctionType
 INT = DataType.INTEGER
@@ -55,9 +55,12 @@ def test_integer_quotient_casts_the_dividend(dialect, float_type: str) -> None:
 )
 def test_fraction_cast_rounds(dialect, expected: str) -> None:
     assert render(dialect, F.CAST, ["x", "INTEGER"], [DataType.DOUBLE, INT]) == expected
-    assert render(
-        dialect, F.CAST, ["x", "TEXT"], [DataType.DOUBLE, DataType.STRING]
-    ) == ("cast(x as TEXT)")
+    # SQLite writes a float as `repr` does (`test_text_write_laws.py`)
+    text = write_float("x") if dialect is SQLiteDialect else "cast(x as TEXT)"
+    assert (
+        render(dialect, F.CAST, ["x", "TEXT"], [DataType.DOUBLE, DataType.STRING])
+        == text
+    )
 
 
 def test_postgres_date_diff_truncates_both_sides() -> None:
