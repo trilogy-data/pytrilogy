@@ -1653,7 +1653,11 @@ election sees the same graph and leaves it unchanged. It fails if the fold
 runs as each absorber is picked. `test_each_elected_basic_folds_into_its_window`
 pins the fold.
 
-Gate: corpus 0 of 205 plans moved; fuzzer 522 of 522. Suite capture pending.
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, CLI ingest, config
+bootstrap), the GCS name and the BigQuery temp table. Full suite: the same 25
+failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
