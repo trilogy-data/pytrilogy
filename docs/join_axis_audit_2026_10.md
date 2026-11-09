@@ -1577,6 +1577,47 @@ assertion columns in `test_check_exact` and `TestReadCost`. Two serial
 captures of `main` reorder those too. Full suite: the same 25 failures as
 `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**Each row provider is elected over the graph stage 2 built (part 46).**
+Open item 3 starts here. `_regraft_group_sources` re-homed one group at a
+time: it picked a provider, then rewired the graph before picking the next.
+So a later pick could read an earlier one's edges, its adopted grain, or a
+ROOT it minted. Picking is now separate from rewiring:
+
+- `_elect_row_provider` picks a group's `RowProvider` and changes nothing. A
+  provider is the parent the group reads, the grain it adopts from a grouping
+  provider, the lineage parents that parent replaces, and the dimension ROOT
+  minted for it. The order of choices is unchanged: a terminal BASIC's
+  grouping provider, then a full-coverage sibling, then a dimension ROOT,
+  then a partial spine. A grain adopted from a grouping provider that is
+  still declined (an independent sibling co-grains on it) is read by the
+  later choices, as before.
+- `_synthetic_dimension_regraft_parent` returns its choice instead of
+  dropping edges and adding the minted bucket itself. `_regraft_candidate`
+  takes that adopted grain explicitly.
+- `_regraft_group_sources` elects every provider first, then applies them
+  all (`_apply_row_provider`).
+
+A census over one suite run applied every regraft both ways, one at a time
+and elected-then-applied, and compared the resulting graphs (nodes, edges
+and their kinds, every grain, the buckets): 70,608 regraft passes, 7,280
+elected providers in 3,331 tests, 308 passes electing more than one. No
+graph differed. No pick depended on another, so the order was never load
+bearing.
+
+`test_every_row_provider_is_elected_over_the_graph_stage_two_built` pins the
+read: every election in a statement sees the same graph and leaves it
+unchanged. It fails if the regraft applies each provider as it is picked.
+`test_each_elected_provider_becomes_its_groups_lineage_parent` pins the
+apply.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, CLI ingest), the
+GCS name, `test_a_rust_binary_is_a_datasource`, the dashboard statement
+count, `test_mocking`, and column order in `test_derived_key_domain`, which
+compiles identically when run serially. Full suite: the same 25 failures as
+`main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1596,8 +1637,12 @@ not built yet:
    datasources, so it cannot state that one. The shapes a condition carries
    into a scan are not in `shapes_rows` either (45 per-group reads in
    part 41, none moving a plan).
-3. The regraft functions still rewrite the group graph instead of picking a
-   provider.
+3. The regraft functions pick a provider over the graph stage 2 built, and
+   no pick reads another (part 46). Applying the pick still rewrites the
+   graph: it adds a lineage edge, drops the parents the provider replaces,
+   overwrites the group's `grain_components` and may mint a ROOT. Then
+   `_compute_concept_sets` runs again. `_merge_basic_into_window_parent`
+   still folds a group into its window parent as it goes.
 
 ## 8. Not claimed
 

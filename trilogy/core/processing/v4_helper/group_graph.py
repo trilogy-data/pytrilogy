@@ -17,7 +17,7 @@ single bucket). No derivation is privileged in the orchestrator.
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -2454,6 +2454,18 @@ def trace_group_graph(
         )
 
 
+@dataclass(frozen=True)
+class RowProvider:
+    """The row source a regraftable group is re-homed onto: the parent it
+    reads, the grain it adopts from a grouping provider, the lineage parents
+    that parent replaces, and the dimension ROOT minted for it."""
+
+    parent: str | None
+    grain: frozenset[str] | None = None
+    drop: frozenset[str] = frozenset()
+    minted: GroupBucket | None = None
+
+
 def _regraft_candidate(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2462,6 +2474,7 @@ def _regraft_candidate(
     *,
     allow_partial: bool,
     environment: BuildEnvironment | None = None,
+    grain: frozenset[str] | None = None,
 ) -> str | None:
     """Find the richest row-compatible sibling to source `gid`'s inputs.
 
@@ -2494,6 +2507,8 @@ def _regraft_candidate(
     merge.
     """
     current = attrs[gid]
+    if grain is None:
+        grain = current.grain_components
     needed = set(current.input_concepts)
     if not needed:
         return None
@@ -2529,9 +2544,7 @@ def _regraft_candidate(
             # right one is chosen by depth below, not by derivation type.
             if not allow_partial or current.derivation != Derivation.BASIC:
                 continue
-            if not _same_rows(
-                cattrs.grain_components, current.grain_components, environment
-            ):
+            if not _same_rows(cattrs.grain_components, grain, environment):
                 continue
             if not (needed - covered) <= pred_outputs:
                 continue
@@ -2668,7 +2681,8 @@ def _synthetic_dimension_regraft_parent(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
-) -> str | None:
+    grain: frozenset[str],
+) -> RowProvider | None:
     current = attrs[gid]
     if current.derivation != Derivation.BASIC:
         return None
@@ -2678,7 +2692,7 @@ def _synthetic_dimension_regraft_parent(
     # condition's derived arg needs.
     if current.depth_label == DepthLabel.D1:
         return None
-    key = set(current.grain_components)
+    key = set(grain)
     if not key:
         return None
     lineage_preds = lineage_predecessors(group_graph, group_edges, gid)
@@ -2715,11 +2729,9 @@ def _synthetic_dimension_regraft_parent(
 
     dimension_root = _covering_dimension_root(root_preds, inputs, attrs, buckets)
     if dimension_root is not None:
-        for other in root_preds:
-            if other != dimension_root and group_graph.has_edge(other, gid):
-                remove_edge(group_graph, group_edges, other, gid)
-        return dimension_root
-
+        return RowProvider(
+            dimension_root, drop=frozenset(root_preds) - {dimension_root}
+        )
     bucket = GroupBucket(
         depth_label=DepthLabel.ROOT,
         derivation=Derivation.ROOT,
@@ -2730,15 +2742,7 @@ def _synthetic_dimension_regraft_parent(
         reason=RootReason.BASIC_INPUT,
         primary_members=list(inputs),
     )
-    root_gid = bucket.group_id
-    if root_gid not in group_graph:
-        group_graph.add_node(root_gid)
-        attrs[root_gid] = GroupAttrs.from_bucket(bucket)
-        buckets[root_gid] = bucket
-    for pred in root_preds:
-        if group_graph.has_edge(pred, gid):
-            remove_edge(group_graph, group_edges, pred, gid)
-    return root_gid
+    return RowProvider(bucket.group_id, drop=frozenset(root_preds), minted=bucket)
 
 
 def _covering_dimension_root(
@@ -2868,6 +2872,87 @@ def _merge_basic_into_window_parent(
         _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
 
 
+def _elect_row_provider(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+) -> RowProvider | None:
+    """Pick `gid`'s row source over the graph; mutates nothing."""
+    grain = None
+    provider_gid = _terminal_basic_grouping_provider(
+        group_graph, attrs, gid, environment
+    )
+    if provider_gid is not None:
+        grain = attrs[provider_gid].grain_components
+        if not _grain_needed_by_independent_sibling(
+            group_graph, attrs, gid, provider_gid
+        ):
+            # Placed at the provider's grain, the projection has no use for
+            # a finer relation the provider was built from. Joined back, it
+            # pairs the provider's groups on a non-key (a region domain on
+            # a nullable description) and drops or multiplies them.
+            provider_ancestors = nx.ancestors(group_graph, provider_gid)
+            drop = frozenset(
+                pred
+                for pred in lineage_predecessors(group_graph, group_edges, gid)
+                if pred in provider_ancestors
+            )
+            return RowProvider(provider_gid, grain, drop)
+    own_grain = attrs[gid].grain_components if grain is None else grain
+    parent_gid = _regraft_candidate(
+        group_graph, group_edges, attrs, gid, allow_partial=False
+    )
+    if parent_gid is not None:
+        return RowProvider(parent_gid, grain)
+    dimension = _synthetic_dimension_regraft_parent(
+        group_graph, group_edges, attrs, buckets, concept_attrs, gid, own_grain
+    )
+    if dimension is not None:
+        return replace(dimension, grain=grain)
+    parent_gid = _regraft_candidate(
+        group_graph,
+        group_edges,
+        attrs,
+        gid,
+        allow_partial=True,
+        environment=environment,
+        grain=own_grain,
+    )
+    if parent_gid is None and grain is None:
+        return None
+    return RowProvider(parent_gid, grain)
+
+
+def _apply_row_provider(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    gid: str,
+    provider: RowProvider,
+) -> None:
+    if provider.grain is not None:
+        attrs[gid].grain_components = provider.grain
+        if gid in buckets:
+            buckets[gid].grain_components = provider.grain
+    minted = provider.minted
+    if minted is not None and minted.group_id not in group_graph:
+        group_graph.add_node(minted.group_id)
+        attrs[minted.group_id] = GroupAttrs.from_bucket(minted)
+        buckets[minted.group_id] = minted
+    for pred in provider.drop:
+        if group_graph.has_edge(pred, gid):
+            remove_edge(group_graph, group_edges, pred, gid)
+    parent = provider.parent
+    if parent is None or group_graph.has_edge(parent, gid):
+        return
+    add_edge(group_graph, group_edges, parent, gid, EdgeKind.LINEAGE)
+
+
 def _regraft_group_sources(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2876,55 +2961,30 @@ def _regraft_group_sources(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
 ) -> None:
-    """Topology-only repair for groups whose best row source is already built.
+    """Re-home each group whose best row source is already built.
 
-    This is still a grouping-phase concern: it may add group edges or a
-    synthetic dimension ROOT bucket so IO demand flows through the right parent,
-    but concrete datasource selection remains in `source_planning` and
-    StrategyNode construction remains in `strategy_builder`.
+    Every provider is elected over the graph as stage 2 built it, then all
+    are applied: no election reads another's edges or adopted grain.
+    Concrete datasource selection remains in `source_planning` and
+    StrategyNode construction in `strategy_builder`.
     """
-    for gid in list(group_graph.nodes):
-        if gid == FINAL_NODE_ID:
-            continue
-        if attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS:
-            continue
-        provider_gid = _terminal_basic_grouping_provider(
-            group_graph, attrs, gid, environment
-        )
-        parent_gid = None
-        if provider_gid is not None:
-            attrs[gid].grain_components = attrs[provider_gid].grain_components
-            if gid in buckets:
-                buckets[gid].grain_components = attrs[provider_gid].grain_components
-            if not _grain_needed_by_independent_sibling(
-                group_graph, attrs, gid, provider_gid
-            ):
-                parent_gid = provider_gid
-                # Placed at the provider's grain, the projection has no use for
-                # a finer relation the provider was built from. Joined back, it
-                # pairs the provider's groups on a non-key (a region domain on
-                # a nullable description) and drops or multiplies them.
-                provider_ancestors = nx.ancestors(group_graph, provider_gid)
-                for pred in lineage_predecessors(group_graph, group_edges, gid):
-                    if pred in provider_ancestors:
-                        remove_edge(group_graph, group_edges, pred, gid)
-        if parent_gid is None:
-            parent_gid = _regraft_candidate(
-                group_graph, group_edges, attrs, gid, allow_partial=False
-            )
-        if parent_gid is None:
-            parent_gid = _synthetic_dimension_regraft_parent(
-                group_graph, group_edges, attrs, buckets, concept_attrs, gid
-            )
-        if parent_gid is None:
-            parent_gid = _regraft_candidate(
+    providers = {
+        gid: provider
+        for gid in list(group_graph.nodes)
+        if gid != FINAL_NODE_ID
+        and attrs[gid].derivation in _REGRAFTABLE_DERIVATIONS
+        and (
+            provider := _elect_row_provider(
                 group_graph,
                 group_edges,
                 attrs,
+                buckets,
+                concept_attrs,
+                environment,
                 gid,
-                allow_partial=True,
-                environment=environment,
             )
-        if parent_gid is None or group_graph.has_edge(parent_gid, gid):
-            continue
-        add_edge(group_graph, group_edges, parent_gid, gid, EdgeKind.LINEAGE)
+        )
+        is not None
+    }
+    for gid, provider in providers.items():
+        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
