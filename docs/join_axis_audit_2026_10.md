@@ -1492,6 +1492,37 @@ pairing), the GCS test's random file name, the BigQuery temp table and
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 Fuzzer: 522 of 522.
 
+**The build joins the bridges recorded before it (part 44).** Part 43
+elected each planned group's bridges before the build, but the build still
+ran its own election at every merge (`elect_bridges` over
+`_bridge_candidates`) and only the shapes read the record. `_merge_plan` now
+plans the merge with the consumer's `GroupAttrs.bridges` as its extras
+(`plan_final_join(..., extras=...)`); it elects nothing. A side merged below
+the consumer still takes no bridge, as before. `_join_elected_bridges` joins
+them as it did, skipping one that no longer joins two islands as built.
+
+A census over one suite run planned every per-group merge both ways: 13,723
+merges whose sides are all groups. 26 carry a bridge, and in each the plan
+and its pairings are the same. One merge differs, in
+`test_q64_nested_membership_two_source_agg_clean_error`: a ROOT side the
+pre-build election paired the two aggregates through built nothing ("no
+connected cover exists"), and the build re-elected a filter as a bridge
+around the hole. With the record, the merge stays islanded; the statement is
+unsourceable either way and raises the same `UnresolvableQueryException`.
+
+`test_the_build_joins_the_bridges_recorded_before_it` and
+`test_a_bridge_left_unrecorded_is_never_elected_at_build` pin the read: with
+the record erased after stage 2, `select id, cluster_id` hits the keyless-join
+guard instead of electing its bridge at build time.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise (column and GROUP BY order, the GCS and
+BigQuery names, `test_a_rust_binary_is_a_datasource`, the dashboard statement
+count, CLI ingest) and column order in `test_unmodelled_regions` and
+`test_derived_key_domain`, which two captures of `main` alone move as well.
+Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1505,12 +1536,11 @@ not built yet:
    `sourcing_keys` are the consumer's, not copied onto every edge (part 40).
    A per-group parent's shape is the stage-2 `shapes_rows` (part 41), and
    so is a FINAL contributor's (part 42), and a shaped bridge's, elected
-   before the build (part 43). What is left of which parent takes the
-   projection: a ROOT rendered grouped (`_renders_grouped`) is still read off
-   the built node, and the shapes a condition carries into a scan are not in
-   `shapes_rows` (45 per-group reads in part 41, none moving a plan). The
-   build still re-elects each merge's bridges instead of joining the ones
-   recorded on `GroupAttrs.bridges`; the two agree everywhere in the suite.
+   before the build (part 43) and joined as recorded (part 44). What is left
+   of which parent takes the projection: a ROOT rendered grouped
+   (`_renders_grouped`) is still read off the built node, and the shapes a
+   condition carries into a scan are not in `shapes_rows` (45 per-group
+   reads in part 41, none moving a plan).
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 

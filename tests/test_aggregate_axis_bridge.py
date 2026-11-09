@@ -9,10 +9,17 @@ affected: the FINAL assembly when the aggregates are projected side by side,
 and a consumer group's own parent merge when an expression reads them together.
 """
 
+import networkx as nx
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.v4_helper import strategy_builder
+from trilogy.core.processing.v4_helper.edges import EdgeMap
+from trilogy.core.processing.v4_helper.join_plan import JoinPlan
+from trilogy.core.processing.v4_helper.models import GroupAttrs
 from trilogy.executor import Executor
 
 MODEL = """
@@ -76,3 +83,48 @@ def test_row_gate_on_the_derived_cluster(executor: Executor):
         MODEL + "select id where id = cluster_id order by id asc;"
     )[-1].fetchall()
     assert results == [("com-1",), ("osm-2",), ("tem-1",), ("tem-2",)]
+
+
+def _capture_merge_plans(monkeypatch) -> list[JoinPlan]:
+    planned: list[JoinPlan] = []
+    plan_merge = strategy_builder._merge_plan
+
+    def capture(*args, **kwargs) -> JoinPlan | None:
+        plan = plan_merge(*args, **kwargs)
+        if plan is not None:
+            planned.append(plan)
+        return plan
+
+    monkeypatch.setattr(strategy_builder, "_merge_plan", capture)
+    return planned
+
+
+def test_the_build_joins_the_bridges_recorded_before_it(
+    executor: Executor, monkeypatch
+):
+    planned = _capture_merge_plans(monkeypatch)
+    executor.execute_text(MODEL + "select id, cluster_id order by id asc;")
+    assert any(plan.extras for plan in planned)
+
+
+def test_a_bridge_left_unrecorded_is_never_elected_at_build(
+    executor: Executor, monkeypatch
+):
+    planned = _capture_merge_plans(monkeypatch)
+    plan_bridges = strategy_builder._plan_group_bridges
+
+    def unrecorded(
+        group_graph: nx.DiGraph,
+        group_edges: EdgeMap,
+        attrs: dict[str, GroupAttrs],
+        order: list[str],
+        environment: BuildEnvironment,
+    ) -> None:
+        plan_bridges(group_graph, group_edges, attrs, order, environment)
+        for gid in order:
+            attrs[gid].bridges = ()
+
+    monkeypatch.setattr(strategy_builder, "_plan_group_bridges", unrecorded)
+    with pytest.raises(UnresolvableQueryException, match="keyless join"):
+        executor.execute_text(MODEL + "select id, cluster_id order by id asc;")
+    assert planned and not any(plan.extras for plan in planned)
