@@ -3704,9 +3704,12 @@ def _input_contract_carry_demands(
 
 
 def _renders_grouped(node: StrategyNode) -> bool:
-    """A node built grouped though its group's stage-2 rows are not: a ROOT
-    deduplicated at its datasource, or a body read through a forced group."""
-    return any(n.force_group for n in _iter_strategy_nodes(node))
+    """A node holding rows a source plan grouped, though its group's stage-2
+    rows are not: a ROOT deduplicated at its datasource or rolled up off a
+    summary, the one choice stage 2 does not make. The planner's own forced
+    groups (a FINAL or region dedup, `_distinct_rows`) never decide a
+    projection."""
+    return any(n.grouped_at_source for n in _iter_strategy_nodes(node))
 
 
 def _final_parent_shaped(

@@ -1692,6 +1692,83 @@ def test_a_parent_whose_stage_two_rows_are_shaped_is_never_projected():
     assert projected[1] is rowset_read
 
 
+def _dim_beside_a_forced_group(
+    source_grouped: bool,
+) -> tuple[list[StrategyNode], StrategyNode]:
+    env = BuildEnvironment()
+    store_id = _build_concept("store.id", Purpose.KEY)
+    station_name = _build_concept(
+        "station.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={store_id.address},
+        keys={store_id.address},
+    )
+    for concept in (store_id, station_name):
+        env.concepts[concept.address] = concept
+        env.canonical_concepts[concept.canonical_address] = concept
+    dim_parent = SelectNode(
+        input_concepts=[store_id, station_name],
+        output_concepts=[store_id, station_name],
+        parents=[
+            StrategyNode(
+                input_concepts=[],
+                output_concepts=[store_id, station_name],
+                environment=env,
+            )
+        ],
+        environment=env,
+    )
+    scan = StrategyNode(input_concepts=[], output_concepts=[store_id], environment=env)
+    scan.grouped_at_source = source_grouped
+    deduplicated = GroupNode(
+        input_concepts=[store_id],
+        output_concepts=[store_id],
+        parents=[scan.copy()],
+        environment=env,
+        force_group=True,
+    )
+    attrs = {
+        gid: GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.BASIC,
+            grain_components=frozenset({store_id.address}),
+        )
+        for gid in ("dim", "deduplicated")
+    }
+    consumer = GroupAttrs(
+        depth_label=DepthLabel.D1,
+        derivation=Derivation.BASIC,
+        grain_components=frozenset({store_id.address}),
+        input_grain=frozenset({store_id.address}),
+        input_contracts=tuple(
+            GroupInputContract(
+                parent_group_id=gid,
+                consumer_group_id="consumer",
+                required_grain=frozenset({store_id.address}),
+                may_project_dimension=True,
+            )
+            for gid in attrs
+        ),
+    )
+    projected = _apply_input_contracts(
+        [ParentBuild("dim", dim_parent), ParentBuild("deduplicated", deduplicated)],
+        attrs,
+        consumer,
+        needed={station_name.address},
+        environment=env,
+    )
+    return projected, dim_parent
+
+
+def test_only_a_source_plans_grouping_shapes_a_parent_built_grouped():
+    projected, dim_parent = _dim_beside_a_forced_group(source_grouped=False)
+    assert projected[0] is dim_parent
+
+    projected, dim_parent = _dim_beside_a_forced_group(source_grouped=True)
+    assert isinstance(projected[0], GroupNode)
+
+
 def test_final_hides_only_non_mandatory_grain_keys():
 
     env = BuildEnvironment()

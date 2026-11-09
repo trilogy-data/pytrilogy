@@ -2438,6 +2438,20 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     return merged
 
 
+def _groups_rows(node: StrategyNode) -> bool:
+    seen: set[int] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        if current.force_group:
+            return True
+        seen.add(id(current))
+        stack.extend(current.parents)
+    return False
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -2445,9 +2459,11 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
-    if not plan_trace.active():
-        return _plan_source(request)
     node = _plan_source(request)
+    if node is not None:
+        node.grouped_at_source = _groups_rows(node)
+    if not plan_trace.active():
+        return node
     plan_trace.note_sourced(node)
     plan_trace.record(
         f"source: {', '.join(c.address for c in request.outputs)}",

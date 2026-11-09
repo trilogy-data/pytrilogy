@@ -341,6 +341,9 @@ class StrategyNode:
     # COUNT outputs an aggregate node renders DISTINCT
     # (`QueryDatasource.distinct_counts`); copies keep it.
     distinct_counts: frozenset[str] = frozenset()
+    # Set on a v4 `plan_source` result whose plan groups datasource rows (a
+    # scan deduplicated to the asked columns, a summary rollup); copies keep it.
+    grouped_at_source: bool = False
 
     def __init__(
         self,
@@ -735,6 +738,7 @@ class StrategyNode:
         node.region_spans = self.region_spans
         node.origin_group = self.origin_group
         node.distinct_counts = self.distinct_counts
+        node.grouped_at_source = self.grouped_at_source
         return node
 
 

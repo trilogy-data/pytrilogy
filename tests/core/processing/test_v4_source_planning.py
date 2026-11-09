@@ -539,3 +539,41 @@ class TestBridgeSourcePlanning:
 
         assert node is not None
         assert "local.value" in {concept.address for concept in node.output_concepts}
+
+
+SOURCE_GROUPING_MODEL = """
+key order_id int;
+key customer_id int;
+
+datasource orders (
+    order_id: order_id,
+    customer_id: customer_id,
+)
+grain (order_id)
+query '''
+select 1 order_id, 10 customer_id union all select 2, 10
+''';
+"""
+
+
+def _source_orders(*addresses: str):
+    env = Environment()
+    env.parse(SOURCE_GROUPING_MODEL)
+    benv = env.materialize_for_select()
+    node = plan_source(
+        SourceRequest(
+            outputs=[benv.concepts[a] for a in addresses],
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
+        )
+    )
+    assert node is not None
+    return node
+
+
+def test_a_source_plan_marks_the_rows_it_groups():
+    assert not _source_orders("local.order_id", "local.customer_id").grouped_at_source
+    grouped = _source_orders("local.customer_id")
+    assert grouped.grouped_at_source
+    assert grouped.copy().grouped_at_source
