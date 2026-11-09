@@ -1523,6 +1523,60 @@ count, CLI ingest) and column order in `test_unmodelled_regions` and
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 Fuzzer: 522 of 522.
 
+**Only a source plan's grouping shapes a parent built grouped (part 45).**
+`_renders_grouped` was the last shape read taken off a built node, kept in
+part 41 for the ROOT deduplicated at its datasource, the one choice stage 2
+does not make. It read wider than that: any forced group anywhere in the
+parent's built tree. A census over one suite run counted the reads where it
+alone marked a parent shaped: 7,586 projections in 3,162 tests. The forced
+group came from about fifteen places. A datasource scan grouped to the asked
+columns (`finalize_select_node`) and the source planner's rollups and fan-out
+regroups (`source_planning`) are datasource choices. The planner's own
+forced groups are not: the FINAL dedup and `_at_declared_identity`, a region
+domain's dedup in `_build_group`, `_with_null_members`, `_distinct_rows`, and
+a generator's grain claim (`gen_basic`, `gen_filter`, `resolve_rowset`).
+
+Which of them decide a projection, measured by projecting each of those
+7,586 both ways and then capturing the 25 files whose projections differed:
+
+- dropping the read outright projects 379 merges (355 tests) differently. It
+  moves 199 statements, mostly larger, and fails three tests: both
+  `test_q29_existence_feeder_dangling` cases and
+  `test_probe_reaches_the_scan_below_a_projected_join_target`, whose forced
+  group is a datasource dedup two merges below the parent;
+- counting only the forced groups source planning builds moves nothing. Every
+  statement that moved under xdist is on the known-noise list, and each file
+  off it compiles identically serially: `test_grainless_source_identity`,
+  `test_derived_key_domain`, `test_rowset_declared_join_pairing`,
+  `test_non_benchmark_queries`, `test_q29_existence_feeder_dangling` and the
+  tree-reporting dashboard.
+
+So the planner's own forced groups never decide a projection. `plan_source`
+is the one entry to source planning. It now marks each node of its plan that
+groups datasource rows (`StrategyNode.grouped_at_source`; copies keep it),
+and `_renders_grouped` reads that mark. It still walks the parent's tree,
+since the q64 variant's mark sits two merges down. But it reads one decision,
+made in one place, instead of any `force_group` in the tree. The mark goes on
+the grouping nodes, not on the plan's top node, because `gen_root` may
+re-wrap or drop that top node. With the mark on the top only,
+`test_tvf_union_order_by_grouped_away_column` lost it and its FINAL full
+join became a left join.
+
+`test_a_source_plan_marks_the_rows_it_groups` pins the mark, and
+`test_only_a_source_plans_grouping_shapes_a_parent_built_grouped` pins the
+read: a dimension beside a planner-forced group is left as built, and beside
+a source-grouped one it is projected.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, the declared-join
+pairing, CLI ingest), the GCS and Snowflake names,
+`test_a_rust_binary_is_a_datasource`, the statement count of
+`test_validate_fix` and `test_validate_fix_types`, and the order of
+assertion columns in `test_check_exact` and `TestReadCost`. Two serial
+captures of `main` reorder those too. Full suite: the same 25 failures as
+`main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1537,10 +1591,11 @@ not built yet:
    A per-group parent's shape is the stage-2 `shapes_rows` (part 41), and
    so is a FINAL contributor's (part 42), and a shaped bridge's, elected
    before the build (part 43) and joined as recorded (part 44). What is left
-   of which parent takes the projection: a ROOT rendered grouped
-   (`_renders_grouped`) is still read off the built node, and the shapes a
-   condition carries into a scan are not in `shapes_rows` (45 per-group
-   reads in part 41, none moving a plan).
+   of which parent takes the projection: a ROOT's datasource grouping is
+   read off the mark its source plan sets (part 45). Stage 2 does not choose
+   datasources, so it cannot state that one. The shapes a condition carries
+   into a scan are not in `shapes_rows` either (45 per-group reads in
+   part 41, none moving a plan).
 3. The regraft functions still rewrite the group graph instead of picking a
    provider.
 
