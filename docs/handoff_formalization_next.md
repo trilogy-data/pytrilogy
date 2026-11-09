@@ -61,7 +61,10 @@ names one UTC instant on every engine, `date(s)` / `datetime(s)` /
 `timestamp(s)` of a string are its cast, and a numeral past its target's
 range is NULL; area 10), and `Writings.lean` (0.3.475: a float, a decimal
 and an instant cast to a string have one text on every engine that reads back
-as the value, and a decimal quotient is a double on ClickHouse; area 11).
+as the value, and a decimal quotient is a double on ClickHouse; area 11), and
+`Sharing.lean` (0.3.476: a cast or a clamped substring evaluates its operand
+once, so nested casts grow linearly, a random operand is drawn once, and the
+SQLite reads parse on SQLite 3.45; area 12).
 
 ## The recipe
 
@@ -540,14 +543,60 @@ as the value, and a decimal quotient is a double on ClickHouse; area 11).
 
 ## Candidate areas
 
-**Done in 0.3.475: a value written as a string (`Writings.lean`; area 11
-below).**
+**Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
+area 12 below).**
 
-**Suggested next: the area-11 leads (SQLite's parser stack, other dialects'
-writes), the area-10 leads (Trilogy `int` width, a date with a zone,
+**Suggested next: the area-12 leads (a `random` concept is drawn once per
+reference, which needs a decision on what `random` means; other dialects'
+clamped substring), the area-11 leads (other dialects' writes), the area-10 leads (Trilogy `int` width, a date with a zone,
 precision), the area-9 leads (dialects with no engine in CI), the area-5 leads
 (decimal products, the persisted-copy leads), the area-1, area-2 and area-4
 leads below, or the area-3 leads left.**
+
+### 12. Sharing (done in `Sharing.lean`; leads left)
+
+`tests/core/test_bound_operand_laws.py` measures how many times each cast
+and clamped substring names its operand on DuckDB, SQLite and ClickHouse (by
+rendering two operands of different lengths), holds three nested casts to
+linear size, a random operand to one draw (its float text is `repr` of one
+value), SQLite's compiled program to linear in its SQL (the flattener guard),
+and runs the SQLite reads through `/usr/bin/python3` when its SQLite is
+before 3.46 (Ubuntu 24.04, so CI's ubuntu runners). Leads left:
+- **A `random` concept is drawn once per reference (wrong answers).** With
+  `auto x <- random(1000000) / 7.0;`, `select id, x, cast(x as string)`
+  renders `random()` twice and the columns disagree on every row on DuckDB
+  and SQLite; `select id, x where x > 0.5` filters on one draw and returns
+  another, so rows with `x < 0.5` come back; `select x, count(id)` treats
+  `x` as a keyless constant (one row). ClickHouse happens to agree because
+  it computes identical expressions once. What `random` is (per row of the
+  query's grain, or one value per query as its keylessness says) has to be
+  decided first; either way a volatile concept must be computed once and
+  read thereafter (materialized in a CTE, never inlined). The area-3 lead on
+  `random(n)` (a fraction on DuckDB, an integer below `n` on SQLite) is the
+  same decision.
+- **A column-free volatile operand on SQLite** (`random(100)::string`) is
+  still inlined and drawn per use: SQLite evaluates a subquery with no
+  column once per query, so binding it would make it one value for every
+  row. It resolves with the lead above.
+- **DuckDB** names the operand twice in a number or date read and four
+  times in an instant read or write (guard, zone test, two `TRY_CAST`
+  branches), so nested instant reads grow 4^n in text; DuckDB computes the
+  repeats once, so only the SQL grows. A `TIMESTAMPTZ` cast of the text
+  with `'Z'` appended when it has no zone would make it two.
+- **Other dialects' clamped substring** names a computed start up to 19
+  times (Postgres, MySQL, BigQuery, Snowflake, Presto, SQL Server; area 7).
+  None has an engine in CI; Postgres and Presto could bind with a lateral
+  subquery or a lambda once checked on an engine.
+- **SQLite 3.45 and three nested instant reads.** Each bound read is five
+  subquery levels; two nested reads parse on 3.45, three still overflow its
+  parser stack. Fewer levels (inlining the month into the day level) would
+  raise it.
+- **SQLite read cost.** Bound, a datetime read is ~10 µs a row (1.1 s per
+  100k rows), most of it the date check and the zone GLOBs; a number read
+  ~8 µs. Unbound it was 136 µs.
+- **ClickHouse number reads** name the operand three times and the float
+  write twice: ClickHouse computes the repeats once, and binding them with
+  `arrayMap` doubled the number read's time (21 to 46 ms per 100k rows).
 
 ### 11. Writings (done in `Writings.lean`; leads left)
 
@@ -557,12 +606,8 @@ product and rescale, `datetime` / `timestamp` reads of a string, literals and
 the DuckDB session zone, cast to `string`, to `trilogy.core.casts`
 (`float_to_text`, `decimal_to_text`, `instant_to_text`) on DuckDB, SQLite and
 chdb, plus each text read back and a decimal quotient. Leads left:
-- **SQLite's parser stack.** SQLite before 3.46 (Ubuntu 24.04's system
-  Python ships 3.45.1) has a fixed 100-deep parser stack, and the SQLite
-  instant read from 0.3.474 overflows it: `s::datetime` raises `parser stack
-  overflow` there, and 33 cases of `tests/core/test_instant_read_laws.py`
-  fail. CI's Python has a newer SQLite. Flattening the read (fewer nested
-  `substr`s, a `CASE` per part) would make it run on 3.45.
+- **Done in 0.3.476: SQLite's parser stack.** The instant read binds its
+  parts once and parses on SQLite 3.45 (area 12).
 - **SQLite's 16th and 17th digits.** Its printf is exact to 15 significant
   digits only, so a double needing 16 or 17 is written with a last digit
   that reads back as the value but is not `repr`'s
@@ -585,9 +630,10 @@ chdb, plus each text read back and a decimal quotient. Leads left:
 - **Implicit writes.** `concat` refuses a number (it must be cast), and
   persisting a float into a string column, or a CSV export, goes through the
   driver, not this rendering.
-- **SQL size.** The SQLite float write is ~1.3 kB per cast and the
-  ClickHouse one ~1.8 kB (bound once with `arrayMap`); a model that casts a
-  float to a string in many places pays it each time.
+- **SQL size.** Done in 0.3.476: every SQLite and ClickHouse cast names
+  its operand once or a fixed few times (area 12). Each cast still carries
+  ~1.5-5 kB of its own text; a model that casts in many places pays it each
+  time.
 
 ### 10. Instants and ranges (done in `Instants.lean`, `Readings.lean`; leads left)
 

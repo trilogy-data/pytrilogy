@@ -55,6 +55,7 @@ a design decision or a bug.
 | `Readings.lean` | a string cast to a number or a date: the numeral grammar, the value it names, the rendered guards and reads per engine, a set of reads under membership | SQLite's GLOBs accept exactly the pattern's strings (`glob_number_exact`, bounded); the value read is the numeral's and an integer rounds it half away (`read_number_exact`); ClickHouse's read at 18 places then rounding is the exact rounding (`truncate_then_round_exact`, bounded), which truncating to the target's own scale is not (`truncate_to_target_misrounds`); a calendar that rolls an overflowing day gives a written day back iff it is real (`readback_exact`, bounded); a non-null string can read as NULL (`read_null_introducing`), and over a set with no NULL member equality is identity (`null_free_eq_exact`); a numeral past the target's range is NULL, never saturated (`saturate_in_range`, `saturation_is_not_the_value`), SQLite's digit-by-digit check of the 64-bit bound is the order (`digit_compare_exact`, bounded), and the range is checked on the rounded value (`round_can_leave_range`) (checked by `tests/core/test_text_read_laws.py`, `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 | `Instants.lean` | a string cast to a datetime or a timestamp, and `date(s)` / `datetime(s)` / `timestamp(s)` of a string: the day count, zones, UTC, each engine's precision | the day count is linear in the day of the month, so a rolled day has the written day's count and only reading it back tells them apart (`roll_keeps_count`, bounded); under one zone a read keeps the order of local times and a zone is a shift (`utc_monotone`, `utc_shift`), which can cross midnight (`read_instant_exact`); truncating to an engine's precision composes, keeps order, and decides a comparison with a value the engine holds as the exact instant does (`trunc_trunc`, `trunc_monotone`, `trunc_ge_exact`) (checked by `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 | `Writings.lean` | a float, a decimal or an instant cast to a string: shortest digits laid out as `repr`, a declared scale, a fraction without trailing zeros, a timestamp at UTC; a decimal quotient | a decimal's text reads back as its value and carries its scale (`decimal_read_write`, `decimal_scale_written`, bounded); `repr`'s layout reads back as the digits and exponent it laid out (`layout_read_exact`, bounded) and is fixed exactly for an exponent in [-4, 16) (`fixed_iff`); rounding to 15 places keeps a value of 15 digits or fewer (`round15_exact`, bounded); the stripped fraction reads back and does not depend on the precision the engine holds (`fraction_read_write`, `fraction_precision_free`, bounded) (checked by `tests/core/test_text_write_laws.py` on DuckDB, SQLite and ClickHouse) |
+| `Sharing.lean` | a rendering's operand: how many times a cast or a clamped substring names it, its size when nested, the draws a volatile operand reads, SQLite's flattener | inlined, `n` levels hold `k ^ n` copies of the operand (`inline_nested_ge`) and bound they grow linearly (`bound_nested`), so binding wins once its own text is under the copies it saves (`bound_le_inline`); bound, every use reads one draw (`bind_draws_once`), and a binding that reads its row's column draws per row (`correlated_per_row`); flattening a binding is inlining it (`flattened_is_inline`) (checked by `tests/core/test_bound_operand_laws.py` on DuckDB, SQLite and ClickHouse, and on SQLite 3.45 where `/usr/bin/python3` has it) |
 
 ## What it found
 
@@ -1324,6 +1325,36 @@ a design decision or a bug.
 
   On main, 24 of the 58 cases `tests/core/test_text_write_laws.py` runs fail;
   none now.
+- **A rendering named its operand hundreds of times** (0.3.476;
+  `Sharing.lean`). SQLite's datetime read named its operand 756 times in
+  ~120 kB of its own text, a date read 162 times and a float write 42 times,
+  so `cast(cast(cast(s as datetime) as string) as datetime)` was 77 MB of SQL
+  (`Sharing.sqlite_instant_blowup`); ClickHouse's datetime write of a read
+  named it 29 times and the same three levels were 2.1 MB
+  (`Sharing.clickhouse_instant_blowup`). The nesting also overflowed the
+  100-deep parser stack of SQLite before 3.46 (Ubuntu 24.04's 3.45.1), so
+  every datetime read raised `parser stack overflow` there. A random operand
+  was drawn once per use, so SQLite's float write chose its digit count and
+  layout from one draw and printed another (`Sharing.inline_redraws`). Each
+  operand is bound once now: on SQLite a correlated subquery per level of
+  named parts, with an OFFSET so the flattener does not inline the levels
+  back (`Sharing.flattened_program_blowup`: 1,866 compiled instructions
+  instead of 291, and a datetime read 12 times slower than bound); an
+  operand with no column stays inline, as SQLite evaluates an uncorrelated
+  subquery once per query (`Sharing.hoisted_draw_is_shared`). On ClickHouse
+  a date or instant read, an instant write and a clamped substring bind with
+  `arrayMap`; a number read stays inline, as ClickHouse computes a repeated
+  expression once and the lambda doubled its time. The zone of a SQLite
+  instant read is now `ltrim` of the tail, with the fraction's shape checked
+  in the guard, which saves a level.
+
+  Over 100k rows a SQLite datetime read went from 13.6 s to 1.1 s, a date
+  read from 5.0 s to 0.9 s and a float write from 0.52 s to 0.23 s; a
+  ClickHouse datetime read from 240 ms to 70 ms. On main, 24 of the 51 cases
+  `tests/core/test_bound_operand_laws.py` runs fail (the SQLite nesting case
+  runs out of memory), and 37 of 126 SQLite cases of the read and write law
+  suites fail on SQLite 3.45; none now.
+
 
 ## Limits
 

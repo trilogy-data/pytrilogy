@@ -39,6 +39,7 @@ from trilogy.dialect.common import (
     bool_from_text,
     cast_kind,
     guarded_read,
+    int_literal,
     reads_text,
     render_window_substring,
     sunday_first_from_iso,
@@ -113,9 +114,22 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     digits past any half-away tie, then rounded to the target. As a date: the
     zero-padded day, only if `toDate32` gives it back, as it rolls
     '2020-02-30' into March and '2020-13-01' to 1970. As an instant: the same
-    day, parsed in UTC."""
-    value = f"toString({value})"
-    text = f"replaceRegexpAll({value}, '^[[:space:]]+|[[:space:]]+$', '')"
+    day, parsed in UTC. A date's string and its trim are each bound once;
+    a number's are left to the engine, which computes a repeated expression
+    once and runs the lambda slower."""
+    raw = f"toString({value})"
+    if data_type(target_type) not in (DataType.DATE, *INSTANT_READ_TARGETS):
+        return read_trimmed(raw, trim(raw), target, target_type)
+    name, text = "_trilogy_raw", "_trilogy_text"
+    read = bind([text], [trim(name)], read_trimmed(name, text, target, target_type))
+    return bind([name], [raw], read)
+
+
+def trim(text: str) -> str:
+    return f"replaceRegexpAll({text}, '^[[:space:]]+|[[:space:]]+$', '')"
+
+
+def read_trimmed(raw: str, text: str, target: str, target_type: Any) -> str:
     parts = f"splitByRegexp('[-/ T]', {text})"
     day = (
         f"concat({parts}[1], '-', leftPad({parts}[2], 2, '0'), '-',"
@@ -124,7 +138,7 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     real_day = f"toString(toDate32OrNull({day})) = {day}"
     if data_type(target_type) == DataType.DATE:
         return guarded_read(
-            f"match({value}, '{DATE_PATTERN}') AND {real_day}",
+            f"match({raw}, '{DATE_PATTERN}') AND {real_day}",
             f"CAST(toDate32OrNull({day}) AS Nullable(Date))",
         )
     if data_type(target_type) in INSTANT_READ_TARGETS:
@@ -133,19 +147,19 @@ def read_text(value: str, target: str, target_type: Any) -> str:
         if not target.startswith("Nullable("):
             target = f"Nullable({target})"
         return guarded_read(
-            f"match({value}, '{DATETIME_PATTERN}') AND {real_day}",
+            f"match({raw}, '{DATETIME_PATTERN}') AND {real_day}",
             f"CAST(parseDateTime64BestEffortOrNull({text}, 6, 'UTC') AS {target})",
         )
     if data_type(target_type) in FLOAT_TYPES:
         return guarded_read(
-            f"match({value}, '{FLOAT_PATTERN}')", f"toFloat64OrNull({text})"
+            f"match({raw}, '{FLOAT_PATTERN}')", f"toFloat64OrNull({text})"
         )
     scale = target_type.scale if isinstance(target_type, NumericType) else 0
     if target.startswith("Nullable("):
         target = target[len("Nullable(") : -1]
     number = f"round(toDecimal128OrNull({text}, 18), {scale})"
     return guarded_read(
-        f"match({value}, '{NUMBER_PATTERN}') AND {in_range(number, target_type)}",
+        f"match({raw}, '{NUMBER_PATTERN}') AND {in_range(number, target_type)}",
         f"accurateCastOrNull({number}, '{target}')",
     )
 
@@ -233,10 +247,12 @@ def write_text(value: str, source: Any) -> str:
     if isinstance(source, NumericType):
         return f"toDecimalString({value}, {source.scale})"
     if source in INSTANT_READ_TARGETS:
-        text = f"toString({value}, 'UTC')"
+        text = "_trilogy_text"
         fraction = f"trimRight(substr({text}, 21), '0')"
-        written = (
-            f"substr({text}, 1, 19)" f" || if({fraction} = '', '', '.' || {fraction})"
+        written = bind(
+            [text],
+            [f"toString({value}, 'UTC')"],
+            f"substr({text}, 1, 19) || if({fraction} = '', '', '.' || {fraction})",
         )
         return utc_text(written) if source == DataType.TIMESTAMP else written
     return write_float(value)
@@ -340,6 +356,26 @@ def nullable_navigation(name: str) -> Callable[[str, str, str, int | None], str]
     return wrapped
 
 
+SUBSTRING, LENGTH = "substringUTF8", "lengthUTF8({})"
+
+
+def substring(args: list[str]) -> str:
+    """The clamped substring names a computed position up to eight times;
+    the string and each computed bound are bound once."""
+    start, count = int_literal(args[1]), int_literal(args[2])
+    if start is not None and start > 0 and count is not None and count >= 0:
+        return render_window_substring(SUBSTRING, LENGTH, args)
+    names = ["_trilogy_string", "_trilogy_start", "_trilogy_count"]
+    bound = [True, start is None, count is None]
+    window = [name if b else arg for name, arg, b in zip(names, args, bound)]
+    pairs = [(name, arg) for name, arg, b in zip(names, args, bound) if b]
+    return bind(
+        [name for name, _ in pairs],
+        [arg for _, arg in pairs],
+        render_window_substring(SUBSTRING, LENGTH, window),
+    )
+
+
 def array_to_string(args, types):
     # arrayStringConcat only takes a string array; map other element types
     if array_element_type(types) == DataType.STRING:
@@ -406,9 +442,7 @@ FUNCTION_MAP = {
     # string
     # the plain string functions count bytes; the UTF8 forms count characters
     FunctionType.LENGTH: char_length,
-    FunctionType.SUBSTRING: lambda x, types: render_window_substring(
-        "substringUTF8", "lengthUTF8({})", x
-    ),
+    FunctionType.SUBSTRING: lambda x, types: substring(x),
     FunctionType.STRPOS: lambda x, types: f"positionUTF8({x[0]}, {x[1]})",
     FunctionType.UPPER: lambda x, types: f"upperUTF8({x[0]})",
     FunctionType.LOWER: lambda x, types: f"lowerUTF8({x[0]})",
