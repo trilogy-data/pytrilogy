@@ -13,8 +13,8 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     # A hung test used to burn the 6h default; fail fast instead. Windows runs
-    # ~42-50m, so keep a margin - raise it rather than trimming coverage.
-    timeout-minutes: 60
+    # ~25m with the law grids moved to the `laws` job below, so keep a margin.
+    timeout-minutes: 45
     strategy:
       # One failing cell (e.g. a 1.x-only break) should not cancel the others.
       fail-fast: false
@@ -207,11 +207,12 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           python .scripts/check_benchmark_growth.py FETCH_HEAD
+      # *_laws.py grids run once, in the `laws` job below.
       - name: Test with pytest
         if: matrix.run_llm_tests == true
         shell: bash
         run: |
-          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live"
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore-glob='*_laws.py'
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -223,7 +224,7 @@ jobs:
         if: matrix.run_llm_tests != true
         shell: bash
         run: |
-          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py --ignore-glob='*_laws.py'
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -241,7 +242,7 @@ jobs:
           # install rich and rerun CLI tests. One invocation, not three: the -k
           # filters are disjoint but each run re-collected the whole tests/ tree.
           uv pip install --system rich
-          python -m pytest tests/ $PYTEST_COV ${PYTEST_COV:+--cov-append} --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
+          python -m pytest tests/ $PYTEST_COV ${PYTEST_COV:+--cov-append} --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh" --ignore-glob='*_laws.py'
       - name: Upload coverage to Codecov
         if: matrix.python-version != '3.11' && matrix.duckdb == '2.x'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
@@ -263,3 +264,67 @@ jobs:
           uv pip install --python .venv .
           .venv/Scripts/trilogy --help
           .venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
+
+  laws:
+    # The *_laws.py grids check application logic (planner, rendering, dialect
+    # semantics) over large parametrized cross-products: ~2/3 of the pytest
+    # step, and every matrix cell used to rerun them. One OS/Python/DuckDB is
+    # enough for that, so they run here once, split by directory into two
+    # shards of roughly equal time. A new law file lands in a shard by its path.
+    name: laws (${{ matrix.shard.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - name: discovery-unnest
+            grep: -E
+          - name: rest
+            grep: -vE
+    env:
+      MATURIN_PEP517_USE_BASE_PYTHON: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: stable
+          cache-workspaces: trilogy/scripts/dependency
+          cache-key: laws
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            requirements.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
+      - name: Build Rust extension
+        run: |
+          python -m pip install -e .
+      - name: Locate the Lark parser cache
+        id: lark-cache
+        run: |
+          echo "dir=$(python -c 'import tempfile; print(tempfile.gettempdir())')" >> "$GITHUB_OUTPUT"
+          echo "lark=$(python -c 'import lark; print(lark.__version__)')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        with:
+          path: ${{ steps.lark-cache.outputs.dir }}/.lark_cache_*
+          key: lark-${{ runner.os }}-py3.13-lark${{ steps.lark-cache.outputs.lark }}-${{ hashFiles('trilogy/parsing/trilogy.lark') }}
+      - name: Test the law grids
+        run: |
+          files=$(find tests -name '*_laws.py' | grep ${{ matrix.shard.grep }} '^tests/(discovery|unnest)/' | sort)
+          python -m pytest $files --cov=trilogy --durations=40 -m "not adventureworks_execution and not cloud_live"
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: laws-${{ matrix.shard.name }}
+          name: laws-${{ matrix.shard.name }}
