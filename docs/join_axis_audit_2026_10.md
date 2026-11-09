@@ -1634,7 +1634,18 @@ the regraft does since part 46:
   all (`_absorb_group`). An absorber is a WINDOW, so it is never itself
   folded and no fold removes another's parent.
 
-Census: pending (one suite run folding both ways).
+A census over one suite run folded every pass both ways, one at a time and
+elected-then-folded, and compared the resulting graphs (nodes, edges and
+their kinds, every grain and member list, the buckets): 70,664 fold passes,
+64 folding anything, 68 BASICs folded in 44 tests, 4 passes folding more
+than one. No graph differed.
+
+The same run elected the regraft's providers twice in each of those 64
+passes: over the graph stage 2 built and over the graph the fold left.
+Every surviving group got the same provider both times, and every folded
+BASIC would itself have been elected a regraft provider. So the fold is a
+regraft onto a WINDOW that also inlines the group, and the two passes can
+elect over one graph.
 
 `test_every_window_absorber_is_elected_over_the_graph_stage_two_built` pins
 the read over a statement that folds two BASICs into two windows: every
