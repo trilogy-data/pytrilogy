@@ -1,11 +1,14 @@
 """Each scalar BASIC's window absorber is elected over the group graph as stage
 2 built it; every BASIC is folded only once all absorbers are elected."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from tests.core.processing.test_v4_row_provider_election import _graph_state
 from tests.core.processing.test_v4_window_basic_merge import _MODEL
 from trilogy import Dialects, Environment
+from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
 
 _QUERY = """
@@ -63,5 +66,15 @@ def test_each_elected_basic_folds_into_its_window(log):
     attrs = log.folded[0]
     for gid, parent in log.elected.items():
         assert gid not in attrs
-        assert attrs[parent].derivation == gg.Derivation.WINDOW
+        assert attrs[parent].derivation == Derivation.WINDOW
         assert set(log.members[gid]) <= set(attrs[parent].primary_members)
+
+
+def test_a_basic_holding_a_row_shape_barrier_member_elects_no_absorber():
+    attrs = {
+        "g": SimpleNamespace(
+            derivation=Derivation.BASIC, condition_atoms=(), primary_members=("m",)
+        )
+    }
+    concept_attrs = {"m": SimpleNamespace(derivation=Derivation.AGGREGATE)}
+    assert _ELECT(None, {}, attrs, concept_attrs, "g") is None
