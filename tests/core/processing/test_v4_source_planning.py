@@ -572,8 +572,18 @@ def _source_orders(*addresses: str):
     return node
 
 
+def _marked(node) -> list:
+    stack, found = [node], []
+    while stack:
+        current = stack.pop()
+        if current.grouped_at_source:
+            found.append(current)
+        stack.extend(current.parents)
+    return found
+
+
 def test_a_source_plan_marks_the_rows_it_groups():
-    assert not _source_orders("local.order_id", "local.customer_id").grouped_at_source
-    grouped = _source_orders("local.customer_id")
-    assert grouped.grouped_at_source
-    assert grouped.copy().grouped_at_source
+    assert not _marked(_source_orders("local.order_id", "local.customer_id"))
+    marked = _marked(_source_orders("local.customer_id"))
+    assert marked and all(node.force_group for node in marked)
+    assert marked[0].copy().grouped_at_source

@@ -2438,18 +2438,19 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     return merged
 
 
-def _groups_rows(node: StrategyNode) -> bool:
+def _mark_grouped_at_source(node: StrategyNode) -> None:
+    """Mark each node of a source plan that groups datasource rows; the
+    caller may re-wrap or drop the plan's top node."""
     seen: set[int] = set()
     stack = [node]
     while stack:
         current = stack.pop()
         if id(current) in seen:
             continue
-        if current.force_group:
-            return True
         seen.add(id(current))
+        if current.force_group:
+            current.grouped_at_source = True
         stack.extend(current.parents)
-    return False
 
 
 def plan_source(request: SourceRequest) -> StrategyNode | None:
@@ -2461,7 +2462,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     """
     node = _plan_source(request)
     if node is not None:
-        node.grouped_at_source = _groups_rows(node)
+        _mark_grouped_at_source(node)
     if not plan_trace.active():
         return node
     plan_trace.note_sourced(node)
