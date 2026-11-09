@@ -561,7 +561,11 @@ rendering two operands of different lengths), holds three nested casts to
 linear size, a random operand to one draw (its float text is `repr` of one
 value), SQLite's compiled program to linear in its SQL (the flattener guard),
 and runs the SQLite reads through `/usr/bin/python3` when its SQLite is
-before 3.46 (Ubuntu 24.04, so CI's ubuntu runners). Leads left:
+before 3.46 (Ubuntu 24.04). Leads left:
+- **CI does not run the SQLite 3.45 check.** The laws job's ubuntu-26.04
+  image has a newer system SQLite, so `test_sqlite_reads_parse_before_3_46`
+  skips there; it runs on an Ubuntu 24.04 machine. A job with an old
+  SQLite (a pinned runner image or a built amalgamation) would hold it.
 - **A `random` concept is drawn once per reference (wrong answers).** With
   `auto x <- random(1000000) / 7.0;`, `select id, x, cast(x as string)`
   renders `random()` twice and the columns disagree on every row on DuckDB

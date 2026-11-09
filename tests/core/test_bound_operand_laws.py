@@ -13,7 +13,8 @@ through chdb where it installs.
   binding stays a subquery (an OFFSET keeps it one) and the compiled program
   stays linear in the SQL;
 - the SQLite reads parse on SQLite before 3.46, whose parser stack is 100
-  frames deep, when one is installed (Ubuntu 24.04's `/usr/bin/python3`).
+  frames deep, when one is installed (Ubuntu 24.04's `/usr/bin/python3`;
+  CI's ubuntu-26.04 runner has a newer one, so there it skips).
 """
 
 import json
