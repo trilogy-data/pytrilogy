@@ -11,6 +11,12 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  # A newer push to the same PR supersedes the running checks; runs on main
+  # are never cancelled, so every merge keeps its own result.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   vgi:
     runs-on: ${{ matrix.os }}
