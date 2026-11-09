@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from trilogy.core.casts import (
     DATE_PATTERN,
     DATETIME_PATTERN,
+    FIXED_EXPONENTS,
     FLOAT_PATTERN,
     INSTANT_READ_TARGETS,
     INT64,
@@ -32,6 +33,7 @@ from trilogy.dialect.base import (
     navigation_window_factory,
     render_log,
 )
+from trilogy.dialect.base import render_divide as base_render_divide
 from trilogy.dialect.common import (
     CONCAT_COALESCE_LOWER,
     bool_from_text,
@@ -40,6 +42,8 @@ from trilogy.dialect.common import (
     reads_text,
     render_window_substring,
     sunday_first_from_iso,
+    utc_text,
+    written_kind,
 )
 
 
@@ -156,6 +160,96 @@ def in_range(number: str, target_type: Any) -> str:
     return f"{number} BETWEEN {low} AND {high}"
 
 
+ZEROS = "'" + "0" * 20 + "'"
+
+
+def float_layout(digits: str, exponent: str) -> str:
+    """`repr`'s layout of the significant `digits` and the decimal exponent
+    of the first one."""
+    low, high = FIXED_EXPONENTS
+    count = f"length({digits})"
+    fixed = (
+        f"CASE WHEN {exponent} >= {count} - 1"
+        f" THEN {digits} || substr({ZEROS}, 1, {exponent} - {count} + 1) || '.0'"
+        f" WHEN {exponent} >= 0"
+        f" THEN substr({digits}, 1, {exponent} + 1) || '.' || substr({digits}, {exponent} + 2)"
+        f" ELSE '0.' || substr({ZEROS}, 1, -{exponent} - 1) || {digits} END"
+    )
+    scientific = (
+        f"substr({digits}, 1, 1)"
+        f" || CASE WHEN {count} > 1 THEN '.' || substr({digits}, 2) ELSE '' END"
+        f" || 'e' || CASE WHEN {exponent} < 0 THEN '-' ELSE '+' END"
+        f" || if(abs({exponent}) < 10, '0', '') || toString(abs({exponent}))"
+    )
+    return (
+        f"CASE WHEN {exponent} BETWEEN {low} AND {high - 1}"
+        f" THEN {fixed} ELSE {scientific} END"
+    )
+
+
+def bind(names: list[str], values: list[str], body: str) -> str:
+    """`body` with each name bound once: a lambda applied to one-element
+    arrays, which keeps a repeated argument from growing the SQL."""
+    arrays = ", ".join(f"[{v}]" for v in values)
+    return f"arrayMap(({', '.join(names)}) -> {body}, {arrays})[1]"
+
+
+def write_float(value: str) -> str:
+    """`toString` gives the shortest digits, as `repr` does, but fixed up to
+    1e21 and with no `.0`; its digits and exponent are laid out again."""
+    text, magnitude = "_trilogy_text", "_trilogy_magnitude"
+    e = f"position({magnitude}, 'e')"
+    mantissa = f"if({e} > 0, substr({magnitude}, 1, {e} - 1), {magnitude})"
+    shift = f"if({e} > 0, toInt32(substr({magnitude}, {e} + 1)), 0)"
+    run, whole = "_trilogy_run", "_trilogy_whole"
+    leading = f"length({run}) - length(trimLeft({run}, '0'))"
+    exponent = f"{shift} + if({whole} != '0', length({whole}) - 1, -({leading}))"
+    layout = bind(
+        ["_trilogy_digits", "_trilogy_exponent"],
+        [f"trimBoth({run}, '0')", exponent],
+        float_layout("_trilogy_digits", "_trilogy_exponent"),
+    )
+    parts = bind(
+        [run, whole],
+        [f"replaceOne({mantissa}, '.', '')", f"splitByChar('.', {mantissa})[1]"],
+        layout,
+    )
+    sign = f"if(startsWith({text}, '-'), '-', '')"
+    body = (
+        f"CASE WHEN {magnitude} IN ('inf', 'nan') THEN {text}"
+        f" WHEN {magnitude} = '0' THEN {sign} || '0.0'"
+        f" ELSE {sign} || {parts} END"
+    )
+    number = f"toFloat64({value})"
+    return bind(
+        [text, magnitude], [f"toString({number})", f"toString(abs({number}))"], body
+    )
+
+
+def write_text(value: str, source: Any) -> str:
+    """`toString` drops a decimal's trailing zeros and a float's `.0`, writes
+    a DateTime64 at its full precision and a zoneless one in the server's
+    zone."""
+    if isinstance(source, NumericType):
+        return f"toDecimalString({value}, {source.scale})"
+    if source in INSTANT_READ_TARGETS:
+        text = f"toString({value}, 'UTC')"
+        fraction = f"trimRight(substr({text}, 21), '0')"
+        written = (
+            f"substr({text}, 1, 19)" f" || if({fraction} = '', '', '.' || {fraction})"
+        )
+        return utc_text(written) if source == DataType.TIMESTAMP else written
+    return write_float(value)
+
+
+def render_divide(args: list[str], types: list) -> str:
+    """A decimal quotient is a DOUBLE (`get_divide_output_type`); a Decimal
+    divides at the dividend's scale (`1 / 3` is 0.3333)."""
+    if any(data_type(t) == DataType.NUMERIC for t in types):
+        args = [f"toFloat64({args[0]})", *args[1:]]
+    return base_render_divide(args)
+
+
 def render_cast(args: list[str], types: list) -> str:
     """A cast keeps NULL: CAST to a bare type raises on one. A fraction cast
     to an integer or a decimal of a smaller scale rounds half away, as `round`
@@ -166,6 +260,9 @@ def render_cast(args: list[str], types: list) -> str:
         return bool_from_text(value)
     if reads_text(types):
         return read_text(value, target, types[-1])
+    written = written_kind(types)
+    if written is not None:
+        return write_text(value, written)
     if target_type not in UNWRAPPABLE_TYPES and not target.startswith("Nullable("):
         target = f"Nullable({target})"
     if (
@@ -365,6 +462,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"toISOWeek({x[0]})",
     # casts
     FunctionType.CAST: lambda x, types: render_cast(x, types),
+    FunctionType.DIVIDE: render_divide,
     FunctionType.DATE: lambda x, types: f"toDate({x[0]})",
     FunctionType.DATETIME: lambda x, types: f"toDateTime64({x[0]}, 3)",
     FunctionType.TIMESTAMP: lambda x, types: f"toDateTime64({x[0]}, 3)",

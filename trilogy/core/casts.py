@@ -155,6 +155,37 @@ def text_to_instant(value: str, target: Any) -> date | datetime | None:
     return read.replace(tzinfo=UTC)
 
 
+# A value cast to a string is written one way on every engine, and the text
+# reads back as the value (formal/Trilogy/Writings.lean). A float is its
+# shortest round-tripping digits laid out as Python's `repr`: fixed notation
+# with at least one fraction digit for a decimal exponent in [-4, 16), else
+# `d.ddde±XX`. A decimal keeps exactly its declared scale. An instant is
+# `YYYY-MM-DD HH:MM:SS` and its fraction without trailing zeros; a timestamp
+# is its UTC instant followed by `+00:00`.
+FIXED_EXPONENTS = (-4, 16)
+UTC_SUFFIX = "+00:00"
+
+
+def float_to_text(value: float) -> str:
+    return repr(value)
+
+
+def decimal_to_text(value: Decimal, scale: int) -> str:
+    text = f"{_rounded(value, scale):f}"
+    return text.lstrip("-") if Decimal(text) == 0 else text
+
+
+def instant_to_text(value: datetime) -> str:
+    """A naive datetime as written; an aware one as its UTC instant."""
+    aware = value.tzinfo is not None
+    if aware:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    text = value.replace(microsecond=0).isoformat(" ")
+    if value.microsecond:
+        text += "." + f"{value.microsecond:06d}".rstrip("0")
+    return text + UTC_SUFFIX if aware else text
+
+
 # `date(s)`, `datetime(s)` and `timestamp(s)` of a string are its cast
 READ_FUNCTION_TARGETS = {
     "date": DataType.DATE,

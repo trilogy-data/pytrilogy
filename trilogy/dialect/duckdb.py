@@ -37,7 +37,12 @@ from trilogy.core.enums import (
     UnnestMode,
 )
 from trilogy.core.exceptions import ConfigurationException
-from trilogy.core.models.core import CONCRETE_TYPES, DataType, arg_to_datatype
+from trilogy.core.models.core import (
+    CONCRETE_TYPES,
+    DataType,
+    NumericType,
+    arg_to_datatype,
+)
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import (
     CTE,
@@ -58,6 +63,8 @@ from trilogy.dialect.common import (
     guarded_read,
     read_pattern,
     reads_text,
+    utc_text,
+    written_kind,
 )
 from trilogy.utility import safe_open
 
@@ -128,6 +135,23 @@ def read_instant(text: str, target: DataType) -> str:
     return f"CASE WHEN regexp_matches({text}, '{ZONED}') THEN {zoned} ELSE {plain} END"
 
 
+def write_text(value: str, source: Any) -> str:
+    """VARCHAR writes a float as `repr` does; the cast to the declared type
+    first keeps a DECIMAL literal (`1.50`) or an engine-side scale from
+    showing, and a TIMESTAMPTZ is written in the session's zone."""
+    if isinstance(source, NumericType):
+        precision = min(source.precision, 38)
+        typed = f"CAST({value} AS DECIMAL({precision}, {source.scale}))"
+    elif source == DataType.TIMESTAMP:
+        typed = f"CAST({value} AT TIME ZONE 'UTC' AS TIMESTAMP)"
+        return utc_text(f"CAST({typed} AS VARCHAR)")
+    elif source == DataType.DATETIME:
+        typed = value
+    else:
+        typed = f"CAST({value} AS DOUBLE)"
+    return f"CAST({typed} AS VARCHAR)"
+
+
 def handle_cast(args, types):
     source, target = cast_kind(types)
     # a string with no reading is NULL here too; CAST raises on it. The text
@@ -142,6 +166,9 @@ def handle_cast(args, types):
         if target in INSTANT_READ_TARGETS:
             read = read_instant(trimmed, target)
         return guarded_read(f"regexp_full_match({text}, '{read_pattern(types)}')", read)
+    written = written_kind(types)
+    if written is not None:
+        return write_text(args[0], written)
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATE:
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:

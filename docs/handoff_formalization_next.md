@@ -59,7 +59,9 @@ on every engine and is NULL without one, a cast from a string is
 NULL-introducing, and ClickHouse membership keeps NULL identity; area 9), and `Instants.lean` (0.3.474: a string cast to a datetime or a timestamp
 names one UTC instant on every engine, `date(s)` / `datetime(s)` /
 `timestamp(s)` of a string are its cast, and a numeral past its target's
-range is NULL; area 10).
+range is NULL; area 10), and `Writings.lean` (0.3.475: a float, a decimal
+and an instant cast to a string have one text on every engine that reads back
+as the value, and a decimal quotient is a double on ClickHouse; area 11).
 
 ## The recipe
 
@@ -538,13 +540,49 @@ range is NULL; area 10).
 
 ## Candidate areas
 
-**Done in 0.3.474: a string read as a datetime, and a number read past its
-target's range (`Instants.lean`, `Readings.lean`; area 10 below).**
+**Done in 0.3.475: a value written as a string (`Writings.lean`; area 11
+below).**
 
-**Suggested next: the area-10 leads (Trilogy `int` width, a date with a zone,
+**Suggested next: the area-11 leads (SQLite's parser stack, other dialects'
+writes), the area-10 leads (Trilogy `int` width, a date with a zone,
 precision), the area-9 leads (dialects with no engine in CI), the area-5 leads
 (decimal products, the persisted-copy leads), the area-1, area-2 and area-4
 leads below, or the area-3 leads left.**
+
+### 11. Writings (done in `Writings.lean`; leads left)
+
+`tests/core/test_text_write_laws.py` holds a float column (short and
+17-digit values, infinities, `-0.0`, NaN), a `numeric(12,4)` column, its
+product and rescale, `datetime` / `timestamp` reads of a string, literals and
+the DuckDB session zone, cast to `string`, to `trilogy.core.casts`
+(`float_to_text`, `decimal_to_text`, `instant_to_text`) on DuckDB, SQLite and
+chdb, plus each text read back and a decimal quotient. Leads left:
+- **SQLite's parser stack.** SQLite before 3.46 (Ubuntu 24.04's system
+  Python ships 3.45.1) has a fixed 100-deep parser stack, and the SQLite
+  instant read from 0.3.474 overflows it: `s::datetime` raises `parser stack
+  overflow` there, and 33 cases of `tests/core/test_instant_read_laws.py`
+  fail. CI's Python has a newer SQLite. Flattening the read (fewer nested
+  `substr`s, a `CASE` per part) would make it run on 3.45.
+- **SQLite's 16th and 17th digits.** Its printf is exact to 15 significant
+  digits only, so a double needing 16 or 17 is written with a last digit
+  that reads back as the value but is not `repr`'s
+  (`'1462468587316101.3'` for `…101.2`; ~1% of random 64-bit doubles), and a
+  subnormal is written with 15 digits (`'4.94065645841247e-324'`). Exact
+  digits need exact arithmetic, which SQL there does not have.
+- **Other dialects** still render a bare CAST to a string: Postgres,
+  BigQuery, Snowflake, Presto, SQL Server and MySQL write floats, decimals
+  and timestamps with their own CAST, unchecked against `repr` here. None has
+  an engine in CI; pin a rendering per dialect once each is probed.
+- **A date, an integer, a bool** already agree on every engine CI runs; a
+  date before year 1000 and a negative year are not checked.
+- **A decimal past 15 digits on SQLite** is a REAL, so its text holds 15
+  significant digits; a `numeric(18, 4)` past that is approximate there.
+- **Implicit writes.** `concat` refuses a number (it must be cast), and
+  persisting a float into a string column, or a CSV export, goes through the
+  driver, not this rendering.
+- **SQL size.** The SQLite float write is ~1.3 kB per cast and the
+  ClickHouse one ~1.8 kB (bound once with `arrayMap`); a model that casts a
+  float to a string in many places pays it each time.
 
 ### 10. Instants and ranges (done in `Instants.lean`, `Readings.lean`; leads left)
 
@@ -636,10 +674,8 @@ SQLite and chdb; `tests/dialect/test_cast_renderings.py` pins the other
 dialects. Leads left:
 - **Done in 0.3.473: a string with no reading** is NULL on every engine CI
   runs and on MySQL, and a cast from a string is NULL-introducing (area 9).
-- **A float as a string.** `1.0::string` is `'1.0'` on DuckDB and SQLite and
-  `'1'` on ClickHouse; `1e20` is `'1e+20'`, `'1.0e+20'` and twenty digits;
-  `-0.0` is `'-0'` on ClickHouse. A decimal keeps its trailing zeros on
-  DuckDB (`'1.0050'`) and drops them on SQLite and ClickHouse.
+- **Done in 0.3.475: a float or a decimal as a string** is written one way
+  on every engine CI runs (area 11).
 - **Overflow.** `2147483647 + 1` raises on DuckDB (an INTEGER literal), and
   a float cast to an integer out of range raises on DuckDB, saturates on
   SQLite and wraps on ClickHouse.

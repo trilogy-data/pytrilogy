@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 from jinja2 import Template
 
 from trilogy.core.casts import (
+    FIXED_EXPONENTS,
     INSTANT_READ_TARGETS,
     INT64,
     NEGATIVE_INFINITY,
@@ -32,6 +33,8 @@ from trilogy.dialect.common import (
     guarded_read,
     reads_text,
     text_from_bool,
+    utc_text,
+    written_kind,
 )
 
 MONTH_NAME_CASE = (
@@ -251,10 +254,45 @@ def int64_fits(text: str, number: str) -> str:
     )
 
 
+def write_float(value: str) -> str:
+    """`repr`'s text: the fewest digits from 15 to 17 that read back as the
+    value (printf's are exact to 15 only), fixed or `e±XX` by the exponent.
+    `%!` drops a fraction's trailing zeros and keeps `.0`."""
+    digits = (
+        f"CASE WHEN CAST(printf('%!.14e', {value}) AS REAL) = {value} THEN 14"
+        f" WHEN CAST(printf('%!.15e', {value}) AS REAL) = {value} THEN 15 ELSE 16 END"
+    )
+    scientific = f"printf('%!.*e', {digits}, {value})"
+    exponent = f"CAST(substr({scientific}, instr({scientific}, 'e') + 1) AS INTEGER)"
+    low, high = FIXED_EXPONENTS
+    return (
+        f"CASE WHEN {value} IS NULL THEN NULL"
+        f" WHEN {value} = 9e999 THEN 'inf' WHEN {value} = -9e999 THEN '-inf'"
+        f" WHEN {exponent} BETWEEN {low} AND {high - 1}"
+        f" THEN printf('%!.*f', max({digits} - {exponent}, 0), {value})"
+        f" ELSE replace({scientific}, '.0e', 'e') END"
+    )
+
+
+def write_text(value: str, source: Any) -> str:
+    """CAST writes a REAL at 15 digits, which can read back as another value,
+    and a decimal without its scale; `printf` of NULL is '0'."""
+    if isinstance(source, NumericType):
+        return f"CASE WHEN {value} IS NOT NULL THEN printf('%.{source.scale}f', {value}) END"
+    if source == DataType.TIMESTAMP:
+        return utc_text(f"datetime({value})")
+    if source == DataType.DATETIME:
+        return f"datetime({value})"
+    return write_float(value)
+
+
 def render_cast(args: list[str], types: list) -> str:
     source, target = cast_kind(types)
     if reads_text(types):
         return read_text(args[0], args[1], types[-1])
+    written = written_kind(types)
+    if written is not None:
+        return write_text(args[0], written)
     if source == DataType.BOOL and target == DataType.STRING:
         return text_from_bool(args[0])
     if target == DataType.BOOL:
