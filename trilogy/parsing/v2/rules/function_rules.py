@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.casts import (
     text_to_bool,
-    text_to_date,
     text_to_decimal,
     text_to_float,
+    text_to_instant,
     text_to_int,
 )
 from trilogy.core.constants import (
@@ -620,10 +619,9 @@ def fcast(
     if isinstance(value, str):
         processed: Any
         match dtype:
-            case DataType.DATE:
-                processed = _read_literal(node, value, dtype, text_to_date(value))
-            case DataType.DATETIME | DataType.TIMESTAMP:
-                processed = datetime.fromisoformat(value)
+            case DataType.DATE | DataType.DATETIME | DataType.TIMESTAMP:
+                read = text_to_instant(value, dtype)
+                processed = _read_literal(node, value, dtype, read)
             case DataType.INTEGER:
                 processed = _read_literal(node, value, dtype, text_to_int(value))
             case DataType.FLOAT:
@@ -639,7 +637,10 @@ def fcast(
                 # The one spelling of an exact decimal: a float_lit is a double.
                 # It stays a CAST, as a Decimal parameter does not bind on SQLite.
                 scaled = _read_literal(
-                    node, value, dtype, text_to_decimal(value, dtype.scale)
+                    node,
+                    value,
+                    dtype,
+                    text_to_decimal(value, dtype.scale, dtype.precision),
                 )
                 return context.function_factory.create_function(
                     [scaled, dtype], FunctionType.CAST

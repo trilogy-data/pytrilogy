@@ -46,6 +46,25 @@ Counterexamples, one per bug fixed in 0.3.473:
 - `null_free_claim_drops_match`: a set of reads was claimed NULL-free, so
   `x in S` rendered as plain equality and dropped a NULL probe that matches
   the NULL member by identity.
+
+A read past the target's range (0.3.474): a numeral whose rounded value an
+integer type or a `numeric(p, s)` cannot hold has no reading and is NULL, as
+DuckDB's `TRY_CAST` gives. Laws:
+- `saturate_in_range`: clamping is the identity on the range, so a guard
+  that checks the range keeps every value the target holds.
+- `digit_compare_exact` (bounded): a whole numeral with no leading zero is
+  at most the bound iff it has fewer digits, or as many and is not later in
+  digit order (SQLite's text check of the 64-bit bound).
+- `round_can_leave_range`: a value inside the range can round out of it
+  (`9.995` at two places is `10.00`), so the guard reads the rounded value.
+
+Counterexamples:
+- `saturation_is_not_the_value`: SQLite's CAST saturated
+  `'99999999999999999999'::int` to 2^63 - 1, where DuckDB is NULL.
+- `clickhouse_overflow_raises`: ClickHouse's `accurateCastOrNull` from a
+  decimal raised past Int64, failing the whole query.
+- `decimal_precision_unchecked`: SQLite and ClickHouse kept
+  `'12345678901.25'::numeric(12,2)`, which has 11 whole digits.
 -/
 
 namespace Trilogy.Readings
@@ -311,5 +330,66 @@ theorem null_free_claim_drops_match :
 theorem null_free_eq_exact (x : Option Int) (S : List Int) :
     memberEq x (S.map some) = member x (S.map some) := by
   cases x <;> induction S <;> simp_all [memberEq, member] <;> rfl
+
+/-! ## A read past the target's range -/
+
+def inRange (lo hi v : Int) : Bool := lo ≤ v && v ≤ hi
+
+/-- The reference: the value read, if the target holds it. -/
+def readIn (lo hi : Int) (s : List C) (v : Int) : Out :=
+  if accepts s && inRange lo hi v then .val v else .null
+
+def saturate (lo hi v : Int) : Int := max lo (min hi v)
+
+theorem saturate_in_range (lo hi v : Int) (h : inRange lo hi v = true) :
+    saturate lo hi v = v := by
+  simp only [inRange, Bool.and_eq_true, decide_eq_true_eq] at h
+  simp only [saturate]; omega
+
+def int64Lo : Int := -(2 ^ 63)
+def int64Hi : Int := 2 ^ 63 - 1
+
+theorem saturation_is_not_the_value :
+    saturate int64Lo int64Hi (10 ^ 20) = int64Hi ∧
+      readIn int64Lo int64Hi [.d 1] (10 ^ 20) = .null := by
+  decide
+
+/-- ClickHouse's `accurateCastOrNull(decimal, 'Int64')` raises out of range. -/
+def clickhouseAccurate (v : Int) : Out := if inRange int64Lo int64Hi v then .val v else .error
+
+theorem clickhouse_overflow_raises :
+    clickhouseAccurate (10 ^ 19) = .error ∧ readIn int64Lo int64Hi [.d 1] (10 ^ 19) = .null := by
+  decide
+
+/-- A `numeric(p, s)` holds a value scaled by `10^s` with fewer than
+`10^p` units. -/
+def fitsPrecision (p : Nat) (n : Int) : Bool := n.natAbs < 10 ^ p
+
+theorem decimal_precision_unchecked : fitsPrecision 12 1234567890125 = false := by decide
+
+/-- `9.995` rounded to two places is `10.00`, past `numeric(3, 2)`, though
+`9.995` itself has one whole digit. -/
+theorem round_can_leave_range :
+    (9995 : Int).natAbs < 10 * 1000 ∧
+      fitsPrecision 3 (roundHalfAway ⟨9995, 10, by decide⟩) = false := by
+  decide
+
+/-! SQLite's text check of the bound. -/
+
+def digitsOf (n : Nat) : List Nat := (Nat.toDigits 10 n).map fun c => c.toNat - 48
+
+def lexLe : List Nat → List Nat → Bool
+  | [], _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => a < b || (a == b && lexLe as bs)
+
+def textLe (n bound : Nat) : Bool :=
+  (digitsOf n).length < (digitsOf bound).length ||
+    ((digitsOf n).length == (digitsOf bound).length && lexLe (digitsOf n) (digitsOf bound))
+
+set_option maxRecDepth 100000 in
+/-- Bounded: every numeral below 2000 against the bound 1207. -/
+theorem digit_compare_exact : ∀ n : Nat, n < 2000 → textLe n 1207 = decide (n ≤ 1207) := by
+  decide
 
 end Trilogy.Readings

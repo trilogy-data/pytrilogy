@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 
 from trilogy.constants import logger
+from trilogy.core.casts import INSTANT_READ_TARGETS, ZONED
 from trilogy.core.enums import (
     AddressType,
     ComparisonOperator,
@@ -115,6 +116,18 @@ def date_trunc(args, types):
     return rendered
 
 
+def read_instant(text: str, target: DataType) -> str:
+    """A zone is read as an offset to UTC, and no zone as UTC: a TIMESTAMP
+    drops the zone and a TIMESTAMPTZ reads none as the session's."""
+    zoned = f"TRY_CAST({text} AS TIMESTAMPTZ)"
+    plain = f"TRY_CAST({text} AS TIMESTAMP)"
+    if target == DataType.DATETIME:
+        zoned = f"{zoned} AT TIME ZONE 'UTC'"
+    else:
+        plain = f"{plain} AT TIME ZONE 'UTC'"
+    return f"CASE WHEN regexp_matches({text}, '{ZONED}') THEN {zoned} ELSE {plain} END"
+
+
 def handle_cast(args, types):
     source, target = cast_kind(types)
     # a string with no reading is NULL here too; CAST raises on it. The text
@@ -123,12 +136,12 @@ def handle_cast(args, types):
     if source == DataType.STRING and target == DataType.BOOL:
         return bool_from_text(text)
     if reads_text(types):
-        return guarded_read(
-            f"regexp_full_match({text}, '{read_pattern(types)}')",
-            # a tab or newline after a time of day fails TRY_CAST
-            f"TRY_CAST(trim({text}, ' ' || chr(9) || chr(10) || chr(13))"
-            f" AS {args[1]})",
-        )
+        # a tab or newline after a time of day fails TRY_CAST
+        trimmed = f"trim({text}, ' ' || chr(9) || chr(10) || chr(13))"
+        read = f"TRY_CAST({trimmed} AS {args[1]})"
+        if target in INSTANT_READ_TARGETS:
+            read = read_instant(trimmed, target)
+        return guarded_read(f"regexp_full_match({text}, '{read_pattern(types)}')", read)
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATE:
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:

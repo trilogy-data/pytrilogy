@@ -1,7 +1,12 @@
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from trilogy.core.casts import DATE_PATTERN, NUMBER_PATTERN
+from trilogy.core.casts import (
+    DATE_PATTERN,
+    INSTANT_READ_TARGETS,
+    INT64,
+    NUMBER_PATTERN,
+)
 from trilogy.core.enums import (
     CreateMode,
     DatePart,
@@ -10,7 +15,7 @@ from trilogy.core.enums import (
     Modifier,
     NullSort,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, NumericType
 from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import (
     BaseDialect,
@@ -107,11 +112,25 @@ def read_text(value: str, target: str, types: list) -> str:
         day = f"SUBSTRING_INDEX(SUBSTRING_INDEX({text}, ' ', 1), 'T', 1)"
         read = f"STR_TO_DATE(REPLACE({day}, '/', '-'), '%Y-%c-%e')"
         return guarded_read(f"{value} REGEXP '{DATE_PATTERN}'", read)
+    if cast_kind(types)[1] in INSTANT_READ_TARGETS:
+        # CAST reads only a `+HH:MM` zone, into the session's zone; a zone is
+        # left unread (NULL) here
+        read = f"CAST(REPLACE({text}, '/', '-') AS DATETIME(6))"
+        return guarded_read(f"{value} REGEXP '{DATE_PATTERN}'", read)
+    matches = f"{value} REGEXP '{NUMBER_PATTERN}'"
+    exact = f"CAST({text} AS DECIMAL(65, 30))"
+    target_type = types[-1]
+    # CAST saturates past the target's range
     if target.upper() in ("INTEGER", "BIGINT"):
-        read = f"CAST(CAST({text} AS DECIMAL(65, 30)) AS SIGNED)"
+        low, high = INT64
+        matches += f" AND {exact} > {low}.5 AND {exact} < {high}.5"
+        read = f"CAST({exact} AS SIGNED)"
     else:
+        if isinstance(target_type, NumericType):
+            whole = target_type.precision - target_type.scale
+            matches += f" AND ABS(ROUND({exact}, {target_type.scale})) < 1e{whole}"
         read = f"CAST({text} AS {target})"
-    return guarded_read(f"{value} REGEXP '{NUMBER_PATTERN}'", read)
+    return guarded_read(matches, read)
 
 
 def render_cast(args: list[str], types: list) -> str:

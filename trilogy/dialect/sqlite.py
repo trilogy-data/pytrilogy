@@ -4,11 +4,17 @@ from typing import Any, ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.casts import NEGATIVE_INFINITY, POSITIVE_INFINITY
+from trilogy.core.casts import (
+    INSTANT_READ_TARGETS,
+    INT64,
+    NEGATIVE_INFINITY,
+    POSITIVE_INFINITY,
+)
 from trilogy.core.enums import ComparisonOperator, FunctionType, NullSort
 from trilogy.core.like_patterns import to_glob
 from trilogy.core.models.core import DataType, NumericType
 from trilogy.dialect.base import (
+    INLINE_SAFE_PARAM_DATATYPES,
     BaseDialect,
     TableColumn,
     guard_divisor,
@@ -136,13 +142,35 @@ def padded_day(text: str) -> str:
     )
 
 
-def is_date(text: str) -> str:
-    """`DATE_PATTERN` as GLOBs and digit counts; `date()` rolls '2020-02-30'
-    into March, so the zero-padded day must read back as written."""
+def _clock_tail(time: str) -> tuple[str, str]:
+    """The fraction after the seconds and the zone after it."""
+    tail = f"substr({time}, 10)"
+    fraction = (
+        f"CASE WHEN substr({tail}, 1, 1) = '.'"
+        f" THEN substr({tail}, 1, 1 + {_digit_run(f'substr({tail}, 2)')}) ELSE '' END"
+    )
+    return fraction, f"substr({tail}, length({fraction}) + 1)"
+
+
+ZONE_GLOBS = tuple(
+    f"[+-]{hour}{minute}"
+    for hour in ("[01][0-9]", "2[0-3]")
+    for minute in ("", "[0-5][0-9]", ":[0-5][0-9]")
+)
+
+
+def is_date(text: str, zoned: bool = False) -> str:
+    """`DATE_PATTERN` (`DATETIME_PATTERN` when `zoned`) as GLOBs and digit
+    counts; `date()` rolls '2020-02-30' into March, so the zero-padded day
+    must read back as written."""
     rest, after_month, time = _date_parts(text)
     separator = f"substr({text}, 5, 1)"
     day = padded_day(text)
     clock = "[0-5][0-9]:[0-5][0-9]"
+    fraction, zone = _clock_tail(time)
+    zones = " OR ".join(f"{zone} GLOB '{z}'" for z in ZONE_GLOBS)
+    tail = f"{fraction} <> '.' AND ({zone} = ''"
+    tail += f" OR {zone} = 'Z' OR {zones})" if zoned else ")"
     return (
         f"substr({text}, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
         f" AND {separator} IN ('-', '/')"
@@ -152,8 +180,22 @@ def is_date(text: str) -> str:
         f" AND date({day}) = {day}"
         f" AND ({time} = ''"
         f" OR ({time} GLOB '[ T][01][0-9]:{clock}*' OR {time} GLOB '[ T]2[0-3]:{clock}*')"
-        f" AND (length({time}) = 9 OR substr({time}, 10) GLOB '.[0-9]*'"
-        f" AND substr({time}, 11) NOT GLOB '*[^0-9]*'))"
+        f" AND {tail})"
+    )
+
+
+def read_instant(text: str) -> str:
+    """The UTC instant at whole seconds, as `datetime()` gives every
+    datetime here; the zone is applied as an offset, as `datetime()` refuses
+    one past 14 hours."""
+    _, _, time = _date_parts(text)
+    _, zone = _clock_tail(time)
+    minutes = f"replace({zone}, ':', '')"
+    sign = f"CASE WHEN {zone} GLOB '-*' THEN 1 ELSE -1 END"
+    return (
+        f"datetime({padded_day(text)} || substr({time}, 1, 9),"
+        f" ({sign} * CAST(substr({zone}, 2, 2) AS INTEGER)) || ' hours',"
+        f" ({sign} * CAST(substr({minutes}, 4, 2) AS INTEGER)) || ' minutes')"
     )
 
 
@@ -168,15 +210,20 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     base = getattr(target_type, "data_type", target_type)
     if base == DataType.DATE:
         return guarded_read(is_date(text), f"date({padded_day(text)})")
+    if base in INSTANT_READ_TARGETS:
+        return guarded_read(is_date(text, zoned=True), read_instant(text))
     number = f"CAST({text} AS REAL)"
     if isinstance(target_type, NumericType):
         read = f"round({number}, {target_type.scale})"
+        whole = target_type.precision - target_type.scale
+        fits = f"abs({read}) < 1e{whole}"
     elif base in INTEGER_TYPES:
         # a REAL holds an integer exactly only to 2^53
         read = (
             f"CASE WHEN {text} GLOB '*[.eE]*' THEN CAST(round({number}) AS INTEGER)"
             f" ELSE CAST({text} AS INTEGER) END"
         )
+        fits = int64_fits(text, number)
     else:
         # 9e999 overflows to an infinity; SQLite has no NaN, so 'nan' is NULL
         folded = f"lower({text})"
@@ -188,7 +235,20 @@ def read_text(value: str, target: str, target_type: Any) -> str:
             f" WHEN {folded} IN ({negative}) THEN -9e999"
             f" WHEN {is_number(text)} THEN {number} END"
         )
-    return guarded_read(is_number(text), read)
+    return guarded_read(f"{is_number(text)} AND {fits}", read)
+
+
+def int64_fits(text: str, number: str) -> str:
+    """CAST saturates past 64 bits. A whole numeral is compared digit for
+    digit with the bound; a fraction or exponent is read through a REAL."""
+    digits = f"ltrim(ltrim({text}, '+-'), '0')"
+    low, high = INT64
+    bound = f"CASE WHEN {text} GLOB '-*' THEN '{-low}' ELSE '{high}' END"
+    return (
+        f"CASE WHEN {text} GLOB '*[.eE]*' THEN abs(round({number})) < {float(-low)}"
+        f" ELSE length({digits}) < {len(str(high))} OR length({digits}) = {len(str(high))}"
+        f" AND {digits} <= {bound} END"
+    )
 
 
 def render_cast(args: list[str], types: list) -> str:
@@ -421,6 +481,11 @@ class SQLiteDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "no such column"
     # no native ILIKE; emulate via case-folded LIKE
     ILIKE_AS_LOWER_LIKE = ("lower", "like", "not ")
+    # a bound datetime is its isoformat ('+00:00', microseconds), which does
+    # not compare as text with the `datetime()` every other instant is
+    INLINE_PARAM_DATATYPES: ClassVar[frozenset[DataType]] = (
+        INLINE_SAFE_PARAM_DATATYPES | {DataType.DATETIME, DataType.TIMESTAMP}
+    )
 
     def render_non_finite(self, value: float) -> str:
         """CAST('inf' AS REAL) is 0 here; 9e999 overflows to an infinity, and

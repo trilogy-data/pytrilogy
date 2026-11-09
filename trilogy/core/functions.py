@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from trilogy.constants import MagicConstants
+from trilogy.core.casts import READ_FUNCTION_TARGETS, base_type, text_to_instant
 
 if TYPE_CHECKING:
     from trilogy.parsing.helpers import Meta
@@ -1594,6 +1595,16 @@ class FunctionFactory:
             return self.environment.data_types.get(name)
         return None
 
+    def _read_text(self, value: Any, target: DataType, meta: "Meta | None"):
+        """A string read as a date or an instant, as a cast reads it; a
+        literal is folded, and one with no reading is refused."""
+        if not isinstance(value, str):
+            return self.create_function([value, target], FunctionType.CAST, meta)
+        read = text_to_instant(value, target)
+        if read is None:
+            raise InvalidSyntaxException(f"Cannot cast {value!r} to {target}")
+        return self.create_function([read], FunctionType.CONSTANT, meta)
+
     def create_function(
         self,
         args: list[Any],
@@ -1618,6 +1629,9 @@ class FunctionFactory:
             )
         else:
             full_args = []
+        read = _read_function_target(operator, full_args)
+        if read is not None:
+            return self._read_text(full_args[0], read, meta)
         if (
             operator == FunctionType.COUNT
             and full_args
@@ -1818,6 +1832,14 @@ class FunctionFactory:
             if current == DataType.NULL or current.data_type == target.data_type:
                 continue
             branch.expr = self.create_function([branch.expr, target], FunctionType.CAST)
+
+
+def _read_function_target(operator: FunctionType, args: list[Any]) -> DataType | None:
+    """`date(s)`, `datetime(s)` and `timestamp(s)` of a string are its cast."""
+    target = READ_FUNCTION_TARGETS.get(operator.value)
+    if target is None or len(args) != 1:
+        return None
+    return target if base_type(arg_to_datatype(args[0])) == DataType.STRING else None
 
 
 def create_function_derived_concept(
