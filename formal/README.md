@@ -1292,7 +1292,7 @@ a design decision or a bug.
   with the 64-bit bound digit by digit (`Readings.digit_compare_exact`). A
   literal past the 64-bit range or the declared precision is refused.
 
-  On main, 98 of the 118 cases `tests/core/test_instant_read_laws.py` ran
+  On main, 103 of the 124 cases `tests/core/test_instant_read_laws.py` runs
   fail; none now.
 
 ## Limits
