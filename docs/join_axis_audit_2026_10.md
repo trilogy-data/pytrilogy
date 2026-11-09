@@ -1515,7 +1515,13 @@ unsourceable either way and raises the same `UnresolvableQueryException`.
 the record erased after stage 2, `select id, cluster_id` hits the keyless-join
 guard instead of electing its bridge at build time.
 
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise (column and GROUP BY order, the GCS and
+BigQuery names, `test_a_rust_binary_is_a_datasource`, the dashboard statement
+count, CLI ingest) and column order in `test_unmodelled_regions` and
+`test_derived_key_domain`, which two captures of `main` alone move as well.
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
