@@ -1618,6 +1618,32 @@ count, `test_mocking`, and column order in `test_derived_key_domain`, which
 compiles identically when run serially. Full suite: the same 25 failures as
 `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**Each window absorber is elected over the graph stage 2 built (part 47).**
+`_merge_basic_into_window_parent` was the other half of open item 3. It
+folded one scalar BASIC into its WINDOW parent at a time, so a later pick
+read the graph an earlier fold had rewritten: the folded group gone, its
+readers repointed onto the window. It now elects first and folds after, as
+the regraft does since part 46:
+
+- `_elect_window_absorber` picks the WINDOW a BASIC renders inline in, or
+  none, and changes nothing. The gates are unchanged: a scalar BASIC with no
+  condition atoms and no row-shape barrier member; a full-coverage sibling,
+  else a partial spine; the spine a WINDOW at the BASIC's own grain that
+  already sources every input the BASIC reads.
+- `_merge_basic_into_window_parent` elects every absorber, then folds them
+  all (`_absorb_group`). An absorber is a WINDOW, so it is never itself
+  folded and no fold removes another's parent.
+
+Census: pending (one suite run folding both ways).
+
+`test_every_window_absorber_is_elected_over_the_graph_stage_two_built` pins
+the read over a statement that folds two BASICs into two windows: every
+election sees the same graph and leaves it unchanged. It fails if the fold
+runs as each absorber is picked. `test_each_elected_basic_folds_into_its_window`
+pins the fold.
+
+Gate: corpus 0 of 205 plans moved; fuzzer 522 of 522. Suite capture pending.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1638,11 +1664,12 @@ not built yet:
    into a scan are not in `shapes_rows` either (45 per-group reads in
    part 41, none moving a plan).
 3. The regraft functions pick a provider over the graph stage 2 built, and
-   no pick reads another (part 46). Applying the pick still rewrites the
-   graph: it adds a lineage edge, drops the parents the provider replaces,
-   overwrites the group's `grain_components` and may mint a ROOT. Then
-   `_compute_concept_sets` runs again. `_merge_basic_into_window_parent`
-   still folds a group into its window parent as it goes.
+   no pick reads another (part 46); so does the window fold (part 47).
+   Applying the picks still rewrites the graph: a fold deletes the BASIC and
+   repoints its readers; a provider adds a lineage edge, drops the parents
+   it replaces, overwrites the group's `grain_components` and may mint a
+   ROOT. Then `_compute_concept_sets` runs again. The regraft elects over
+   the graph the fold left, not the one stage 2 built.
 
 ## 8. Not claimed
 
