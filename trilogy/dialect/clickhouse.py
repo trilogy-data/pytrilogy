@@ -108,7 +108,8 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     """A string as a number: read exactly at 18 digits, which truncates only
     digits past any half-away tie, then rounded to the target. As a date: the
     zero-padded day, only if `toDate32` gives it back, as it rolls
-    '2020-02-30' into March and '2020-13-01' to 1970."""
+    '2020-02-30' into March and '2020-13-01' to 1970. As an instant: the same
+    day, parsed in UTC."""
     value = f"toString({value})"
     text = f"replaceRegexpAll({value}, '^[[:space:]]+|[[:space:]]+$', '')"
     parts = f"splitByRegexp('[-/ T]', {text})"
@@ -123,11 +124,13 @@ def read_text(value: str, target: str, target_type: Any) -> str:
             f"CAST(toDate32OrNull({day}) AS Nullable(Date))",
         )
     if data_type(target_type) in INSTANT_READ_TARGETS:
-        # best effort also reads epoch seconds, '20200105' and '24:00:00'
+        # best effort also reads epoch seconds, '20200105', '24:00:00' and a
+        # month or day of 00
+        if not target.startswith("Nullable("):
+            target = f"Nullable({target})"
         return guarded_read(
             f"match({value}, '{DATETIME_PATTERN}') AND {real_day}",
-            f"CAST(parseDateTime64BestEffortOrNull({text}, 6, 'UTC')"
-            f" AS {target if target.startswith('Nullable(') else f'Nullable({target})'})",
+            f"CAST(parseDateTime64BestEffortOrNull({text}, 6, 'UTC') AS {target})",
         )
     if data_type(target_type) in FLOAT_TYPES:
         return guarded_read(
