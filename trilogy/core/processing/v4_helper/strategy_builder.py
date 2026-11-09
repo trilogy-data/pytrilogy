@@ -3444,6 +3444,7 @@ def _pre_merge_parents(
     attrs: dict[str, GroupAttrs] | None = None,
     origin: dict[int, str] | None = None,
     candidates: Sequence[str] = (),
+    bridges: Sequence[str] = (),
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -3477,7 +3478,7 @@ def _pre_merge_parents(
         attrs,
         origin,
         group_graph,
-        candidates,
+        bridges,
         needed,
         carry_demands or {},
         environment,
@@ -3535,24 +3536,22 @@ def _merge_plan(
     attrs: dict[str, GroupAttrs] | None,
     origin: dict[int, str] | None,
     group_graph: nx.DiGraph | None,
-    candidates: Sequence[str],
+    bridges: Sequence[str],
     needed: set[str] | None,
     carry_demands: Mapping[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> JoinPlan | None:
     """A consumer's join plan over the groups its row parents came from, with
-    the bridges it elects from `candidates` as extras. A side merged below the
-    consumer stands for the groups it joins; it elects no bridge, since its
-    own merge joined what pairs them. None when a side is no group's: resolve
-    discovers the keys."""
+    the bridges stage 2 elected for it (`GroupAttrs.bridges`) as extras. A
+    side merged below the consumer stands for the groups it joins; it takes no
+    bridge, since its own merge joined what pairs them. None when a side is no
+    group's: resolve discovers the keys."""
     if attrs is None or origin is None or group_graph is None:
         return None
     member_sets = [side_members(parent, origin) for parent in parents]
     if any(m is None for m in member_sets):
         return None
     sides = [gid for m in member_sets if m is not None for gid in sorted(m)]
-    if len(sides) != len(parents):
-        candidates = ()
     wanted = needed or set()
     cover = {
         gid: [
@@ -3562,16 +3561,16 @@ def _merge_plan(
         ]
         for gid in sides
     }
-    return elect_bridges(
+    return plan_final_join(
         group_graph,
         attrs,
         cover,
-        candidates,
         [c for concepts in cover.values() for c in concepts],
         environment,
         _required_final_contract(attrs).authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
         contracted={gid: carry_demands.get(gid, frozenset()) for gid in sides},
+        extras=bridges if len(sides) == len(parents) else (),
     )
 
 
@@ -6985,6 +6984,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     attrs=attrs,
                     origin=origin,
                     candidates=candidates,
+                    bridges=a.bridges,
                 )
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
@@ -7026,6 +7026,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             attrs=attrs,
             origin=origin,
             candidates=candidates,
+            bridges=a.bridges,
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
