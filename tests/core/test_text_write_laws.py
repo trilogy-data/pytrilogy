@@ -214,6 +214,17 @@ def test_decimal_text_keeps_scale(dialect: Dialects, seed: int) -> None:
         ], expr
 
 
+def test_float_declared_sum_text(dialect: Dialects) -> None:
+    """`n + 1.5` is a float; DuckDB computes a DECIMAL. Every `n` is a
+    multiple of 1/8, so the double sum is exact on every engine."""
+    rng = random.Random(6)
+    rows = [(k, None, Decimal(rng.randint(-8000, 8000)) / 8) for k in range(40)]
+    executor = _executor(dialect, rows)
+    assert _column(executor, "(n + 1.5)::string") == [
+        float_to_text(float(n) + 1.5) for _, _, n in rows
+    ]
+
+
 def test_decimal_text_reads_back(dialect: Dialects) -> None:
     rows = _rows(random.Random(4), [0.0] * 60)
     executor = _executor(dialect, rows)

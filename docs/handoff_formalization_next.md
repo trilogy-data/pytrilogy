@@ -573,6 +573,11 @@ chdb, plus each text read back and a decimal quotient. Leads left:
   BigQuery, Snowflake, Presto, SQL Server and MySQL write floats, decimals
   and timestamps with their own CAST, unchecked against `repr` here. None has
   an engine in CI; pin a rendering per dialect once each is probed.
+- **Declared decimal types.** `round(n, 2)` and `avg(n)` of a
+  `numeric(12,4)` are declared `numeric(12,4)`, so their text has four
+  places on every engine, though DuckDB computes DECIMAL(12,2) and DOUBLE.
+  Declaring `round`'s scale as its argument (when a literal) would make the
+  text `'1.23'`; it changes a persisted copy's column type too (`Types.lean`).
 - **A date, an integer, a bool** already agree on every engine CI runs; a
   date before year 1000 and a negative year are not checked.
 - **A decimal past 15 digits on SQLite** is a REAL, so its text holds 15

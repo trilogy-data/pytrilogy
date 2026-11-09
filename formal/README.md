@@ -1312,14 +1312,17 @@ a design decision or a bug.
   `toString`'s shortest digits again), a decimal with exactly its declared
   scale, an instant with its fraction's trailing zeros dropped, and a
   timestamp at UTC followed by `+00:00`. A float literal is cast to a double
-  first, so DuckDB's DECIMAL `1.50` writes `'1.5'`.
+  first, so a float DuckDB computes as a DECIMAL (`n + 1.5`) writes `'2.5'`,
+  not `'2.5000'`, and a decimal is cast to its declared type, so DuckDB's
+  DOUBLE `avg(n)` and DECIMAL(12,2) `round(n, 2)` of a `numeric(12,4)` write
+  four places as SQLite and ClickHouse do.
 
   ClickHouse divided a decimal at the dividend's scale, so `n / 3` of a
   `numeric(12,4)` was 0.3333 where the declared type of a decimal quotient is
   a double (`Writings.clickhouse_decimal_quotient`); it divides as a Float64
   now.
 
-  On main, 19 of the 55 cases `tests/core/test_text_write_laws.py` runs fail;
+  On main, 24 of the 58 cases `tests/core/test_text_write_laws.py` runs fail;
   none now.
 
 ## Limits
