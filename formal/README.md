@@ -54,6 +54,7 @@ a design decision or a bug.
 | `Casts.lean` | casts and the literal expressions the parser folds: a decimal to a smaller scale, a string or number as a bool, a bool as a string, `sqrt` / `log` outside their domain, a comparison with a NULL literal, a CASE whose arms all fold false | a decimal rescale rounds half away and ClickHouse's round-then-cast keeps it (`rescale_exact`); one table of spellings reads a string as a bool (`text_bool_exact`) and a number is true iff nonzero (`ne_zero_exact`); `sqrt` and `log` are NULL outside their domain (`domain_guard_exact`), so they are NULL-introducing (`domain_null_introducing`); a folded comparison is the Kleene one and a NULL operand is left UNKNOWN (`fold_agrees`, `fold_null_unknown`); dropping false CASE arms keeps the value and no arm left is NULL (`drop_false_arms_exact`, `no_arm_is_null`) (checked by `tests/core/test_cast_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_cast_renderings.py`) |
 | `Readings.lean` | a string cast to a number or a date: the numeral grammar, the value it names, the rendered guards and reads per engine, a set of reads under membership | SQLite's GLOBs accept exactly the pattern's strings (`glob_number_exact`, bounded); the value read is the numeral's and an integer rounds it half away (`read_number_exact`); ClickHouse's read at 18 places then rounding is the exact rounding (`truncate_then_round_exact`, bounded), which truncating to the target's own scale is not (`truncate_to_target_misrounds`); a calendar that rolls an overflowing day gives a written day back iff it is real (`readback_exact`, bounded); a non-null string can read as NULL (`read_null_introducing`), and over a set with no NULL member equality is identity (`null_free_eq_exact`); a numeral past the target's range is NULL, never saturated (`saturate_in_range`, `saturation_is_not_the_value`), SQLite's digit-by-digit check of the 64-bit bound is the order (`digit_compare_exact`, bounded), and the range is checked on the rounded value (`round_can_leave_range`) (checked by `tests/core/test_text_read_laws.py`, `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 | `Instants.lean` | a string cast to a datetime or a timestamp, and `date(s)` / `datetime(s)` / `timestamp(s)` of a string: the day count, zones, UTC, each engine's precision | the day count is linear in the day of the month, so a rolled day has the written day's count and only reading it back tells them apart (`roll_keeps_count`, bounded); under one zone a read keeps the order of local times and a zone is a shift (`utc_monotone`, `utc_shift`), which can cross midnight (`read_instant_exact`); truncating to an engine's precision composes, keeps order, and decides a comparison with a value the engine holds as the exact instant does (`trunc_trunc`, `trunc_monotone`, `trunc_ge_exact`) (checked by `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
+| `Writings.lean` | a float, a decimal or an instant cast to a string: shortest digits laid out as `repr`, a declared scale, a fraction without trailing zeros, a timestamp at UTC; a decimal quotient | a decimal's text reads back as its value and carries its scale (`decimal_read_write`, `decimal_scale_written`, bounded); `repr`'s layout reads back as the digits and exponent it laid out (`layout_read_exact`, bounded) and is fixed exactly for an exponent in [-4, 16) (`fixed_iff`); rounding to 15 places keeps a value of 15 digits or fewer (`round15_exact`, bounded); the stripped fraction reads back and does not depend on the precision the engine holds (`fraction_read_write`, `fraction_precision_free`, bounded) (checked by `tests/core/test_text_write_laws.py` on DuckDB, SQLite and ClickHouse) |
 
 ## What it found
 
@@ -1294,6 +1295,35 @@ a design decision or a bug.
 
   On main, 103 of the 124 cases `tests/core/test_instant_read_laws.py` runs
   fail; none now.
+
+- **A value cast to a string had a text per engine** (0.3.475;
+  `Writings.lean`). SQLite's CAST wrote a REAL at 15 significant digits on
+  SQLite 3.45, so `0.1 + 0.2` was `'0.3'` and read back as another double
+  (`Writings.sqlite_fifteen_digits`), and at 17 on 3.53
+  (`'0.33333333333333332'`); ClickHouse wrote the float 1.0 as `'1'` and
+  `1e20` as twenty-one digits (`Writings.clickhouse_drops_point`); SQLite and
+  ClickHouse wrote a `numeric(12,2)` 3.00 as `'3.0'` and `'3'`
+  (`Writings.scale_dropped`); ClickHouse wrote a `DateTime64(3)` with its
+  padded milliseconds (`'.250'`, `'.000'`; `Writings.clickhouse_pads_fraction`);
+  and DuckDB wrote a timestamp in the session's zone
+  (`Writings.session_zone_written`). One text (`trilogy.core.casts`) is
+  rendered now: a float as Python's `repr` (DuckDB's own VARCHAR; SQLite picks
+  the fewest of 15 to 17 printf digits that read back, ClickHouse lays out
+  `toString`'s shortest digits again), a decimal with exactly its declared
+  scale, an instant with its fraction's trailing zeros dropped, and a
+  timestamp at UTC followed by `+00:00`. A float literal is cast to a double
+  first, so a float DuckDB computes as a DECIMAL (`n + 1.5`) writes `'2.5'`,
+  not `'2.5000'`, and a decimal is cast to its declared type, so DuckDB's
+  DOUBLE `avg(n)` and DECIMAL(12,2) `round(n, 2)` of a `numeric(12,4)` write
+  four places as SQLite and ClickHouse do.
+
+  ClickHouse divided a decimal at the dividend's scale, so `n / 3` of a
+  `numeric(12,4)` was 0.3333 where the declared type of a decimal quotient is
+  a double (`Writings.clickhouse_decimal_quotient`); it divides as a Float64
+  now.
+
+  On main, 24 of the 58 cases `tests/core/test_text_write_laws.py` runs fail;
+  none now.
 
 ## Limits
 

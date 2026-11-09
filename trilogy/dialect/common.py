@@ -12,6 +12,7 @@ from trilogy.core.casts import (
     NUMBER_PATTERN,
     TEXT_READ_TARGETS,
     TRUE_TEXT,
+    UTC_SUFFIX,
 )
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode
@@ -23,7 +24,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildParamaterizedConceptReference,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, NumericType
 from trilogy.core.models.execute import (
     CTE,
     ConceptPair,
@@ -485,6 +486,22 @@ def cast_kind(types: list) -> tuple[Any, Any]:
 def reads_text(types: list) -> bool:
     source, target = cast_kind(types)
     return source == DataType.STRING and target in TEXT_READ_TARGETS
+
+
+def written_kind(types: list) -> Any:
+    """The source of a cast to a string whose text the engine's own CAST
+    does not write as `trilogy.core.casts` does: a float, a decimal of a
+    declared scale or an instant; else None."""
+    source, target = cast_kind(types)
+    if target != DataType.STRING:
+        return None
+    if source in FLOAT_READ_TARGETS or source in INSTANT_READ_TARGETS:
+        return source
+    return types[0] if isinstance(types[0], NumericType) else None
+
+
+def utc_text(text: str) -> str:
+    return f"({text} || '{UTC_SUFFIX}')"
 
 
 def read_pattern(types: list) -> str:
