@@ -1,7 +1,14 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from trilogy.core.casts import DATE_PATTERN, FLOAT_PATTERN, NUMBER_PATTERN
+from trilogy.core.casts import (
+    DATE_PATTERN,
+    DATETIME_PATTERN,
+    FLOAT_PATTERN,
+    INSTANT_READ_TARGETS,
+    INT64,
+    NUMBER_PATTERN,
+)
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -104,16 +111,23 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     '2020-02-30' into March and '2020-13-01' to 1970."""
     value = f"toString({value})"
     text = f"replaceRegexpAll({value}, '^[[:space:]]+|[[:space:]]+$', '')"
+    parts = f"splitByRegexp('[-/ T]', {text})"
+    day = (
+        f"concat({parts}[1], '-', leftPad({parts}[2], 2, '0'), '-',"
+        f" leftPad({parts}[3], 2, '0'))"
+    )
+    real_day = f"toString(toDate32OrNull({day})) = {day}"
     if data_type(target_type) == DataType.DATE:
-        parts = f"splitByRegexp('[-/ T]', {text})"
-        day = (
-            f"concat({parts}[1], '-', leftPad({parts}[2], 2, '0'), '-',"
-            f" leftPad({parts}[3], 2, '0'))"
-        )
         return guarded_read(
-            f"match({value}, '{DATE_PATTERN}')"
-            f" AND toString(toDate32OrNull({day})) = {day}",
+            f"match({value}, '{DATE_PATTERN}') AND {real_day}",
             f"CAST(toDate32OrNull({day}) AS Nullable(Date))",
+        )
+    if data_type(target_type) in INSTANT_READ_TARGETS:
+        # best effort also reads epoch seconds, '20200105' and '24:00:00'
+        return guarded_read(
+            f"match({value}, '{DATETIME_PATTERN}') AND {real_day}",
+            f"CAST(parseDateTime64BestEffortOrNull({text}, 6, 'UTC')"
+            f" AS {target if target.startswith('Nullable(') else f'Nullable({target})'})",
         )
     if data_type(target_type) in FLOAT_TYPES:
         return guarded_read(
@@ -122,11 +136,21 @@ def read_text(value: str, target: str, target_type: Any) -> str:
     scale = target_type.scale if isinstance(target_type, NumericType) else 0
     if target.startswith("Nullable("):
         target = target[len("Nullable(") : -1]
-    read = (
-        f"accurateCastOrNull(round(toDecimal128OrNull({text}, 18), {scale}),"
-        f" '{target}')"
+    number = f"round(toDecimal128OrNull({text}, 18), {scale})"
+    return guarded_read(
+        f"match({value}, '{NUMBER_PATTERN}') AND {in_range(number, target_type)}",
+        f"accurateCastOrNull({number}, '{target}')",
     )
-    return guarded_read(f"match({value}, '{NUMBER_PATTERN}')", read)
+
+
+def in_range(number: str, target_type: Any) -> str:
+    """`accurateCastOrNull` raises past Int64 from a decimal, and a Decimal
+    keeps more whole digits than its precision allows."""
+    if isinstance(target_type, NumericType):
+        whole = "1" + "0" * (target_type.precision - target_type.scale)
+        return f"abs({number}) < toDecimal256('{whole}', 0)"
+    low, high = INT64
+    return f"{number} BETWEEN {low} AND {high}"
 
 
 def render_cast(args: list[str], types: list) -> str:

@@ -91,10 +91,16 @@ def test_literal_keeps_awareness(dialect, naive, aware):
 def test_duckdb_timestamp_function_is_aware():
     from trilogy import Dialects
 
-    sql = Dialects.DUCK_DB.default_executor().generate_sql(
-        "const x <- timestamp('2024-01-15 22:30:00+00'); select x;"
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text("const x <- timestamp('2024-01-15 22:30:00+02');")
+    assert executor.environment.concepts["x"].datatype == DataType.TIMESTAMP
+    assert executor.execute_text("select x;")[-1].fetchall()[0][0] == datetime(
+        2024, 1, 15, 20, 30, tzinfo=UTC
+    )
+    sql = executor.generate_sql(
+        "key s string; datasource t (s: s) address t; select timestamp(s) as y;"
     )[-1]
-    assert "as timestamptz" in sql
+    assert "AS TIMESTAMPTZ" in sql
 
 
 def test_python_value_types_by_awareness():
