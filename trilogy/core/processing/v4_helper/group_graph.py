@@ -2804,6 +2804,50 @@ def _absorb_group(
     buckets.pop(gid, None)
 
 
+def _elect_window_absorber(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    concept_attrs: dict[str, ConceptAttrs],
+    gid: str,
+) -> str | None:
+    """The WINDOW parent that renders BASIC `gid` inline; mutates nothing."""
+    a = attrs[gid]
+    if a.derivation != Derivation.BASIC or a.condition_atoms:
+        return None
+    # pure scalar projection only: a member that is itself a row-shape
+    # barrier (aggregate/window output) can't render in the parent's SELECT.
+    if any(
+        m in concept_attrs
+        and concept_attrs[m].derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+        for m in a.primary_members
+    ):
+        return None
+    # The BASIC may also read a sibling the window already sources
+    # (`round(lag(x))` references `x` directly AND via the lag, so the round
+    # group's parents are the window + the BASIC the window itself reads).
+    # Full coverage misses this; fall back to a partial spine and gate on the
+    # window carrying every remaining input.
+    parent_gid = _regraft_candidate(
+        group_graph, group_edges, attrs, gid, allow_partial=False
+    ) or _regraft_candidate(group_graph, group_edges, attrs, gid, allow_partial=True)
+    if parent_gid is None or parent_gid == gid:
+        return None
+    pa = attrs[parent_gid]
+    if pa.derivation != Derivation.WINDOW:
+        return None
+    if pa.grain_components != a.grain_components:
+        return None
+    # Absorption renders gid inline in the window's own SELECT, so the window
+    # must already source every input gid needs, from its outputs or its
+    # inputs. A spine whose missing inputs the window doesn't carry would need
+    # a real join the absorb can't create, so leave it as a separate joined
+    # node.
+    if not set(a.input_concepts) <= set(pa.output_concepts) | set(pa.input_concepts):
+        return None
+    return parent_gid
+
+
 def _merge_basic_into_window_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2823,52 +2867,26 @@ def _merge_basic_into_window_parent(
     An AGGREGATE parent is excluded; that fold is handled by
     `CollapseSingleParent`'s `basic_fold_into_group_is_safe`.
 
+    Every absorber is elected over the graph as stage 2 built it, then all
+    are folded: no election reads another's fold. An absorber is a WINDOW,
+    never itself absorbed.
+
     A post-window filter (`x is not null`) needs no handling here: it has not
     been injected yet (this runs before `_inject_conditions`), and placement
     refuses to host a filter on a window group's own output, so it defers to
     FINAL."""
-    for gid in list(group_graph.nodes):
-        if gid == FINAL_NODE_ID:
-            continue
-        a = attrs[gid]
-        if a.derivation != Derivation.BASIC or a.condition_atoms:
-            continue
-        # pure scalar projection only: a member that is itself a row-shape
-        # barrier (aggregate/window output) can't render in the parent's SELECT.
-        if any(
-            m in concept_attrs
-            and concept_attrs[m].derivation in ROW_SHAPE_BARRIER_DERIVATIONS
-            for m in a.primary_members
-        ):
-            continue
-        parent_gid = _regraft_candidate(
-            group_graph, group_edges, attrs, gid, allow_partial=False
-        )
-        if parent_gid is None:
-            # The BASIC may also read a sibling the window already sources
-            # (`round(lag(x))` references `x` directly AND via the lag, so the
-            # round group's parents are the window + the BASIC the window
-            # itself reads). Full coverage misses this; fall back to a partial
-            # spine and gate on the window carrying every remaining input.
-            parent_gid = _regraft_candidate(
-                group_graph, group_edges, attrs, gid, allow_partial=True
+    absorbers = {
+        gid: parent_gid
+        for gid in list(group_graph.nodes)
+        if gid != FINAL_NODE_ID
+        and (
+            parent_gid := _elect_window_absorber(
+                group_graph, group_edges, attrs, concept_attrs, gid
             )
-        if parent_gid is None or parent_gid == gid:
-            continue
-        pa = attrs[parent_gid]
-        if pa.derivation != Derivation.WINDOW:
-            continue
-        if pa.grain_components != a.grain_components:
-            continue
-        # Absorption renders gid inline in the window's own SELECT, so the window
-        # must already source every input gid needs, from its outputs or its
-        # inputs. A spine whose missing inputs the window doesn't carry would
-        # need a real join the absorb can't create, so leave it as a separate
-        # joined node.
-        if not set(a.input_concepts) <= set(pa.output_concepts) | set(
-            pa.input_concepts
-        ):
-            continue
+        )
+        is not None
+    }
+    for gid, parent_gid in absorbers.items():
         _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
 
 
