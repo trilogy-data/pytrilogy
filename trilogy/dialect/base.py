@@ -2354,6 +2354,9 @@ class BaseDialect:
         left = probes[0] if len(probes) == 1 else f"({', '.join(probes)})"
         return f"{left} in (select {', '.join(members)} from {q}{semi.feeder}{q})"
 
+    def render_non_finite(self, value: float) -> str:
+        return f"CAST('{value}' AS {self.DATATYPE_MAP[DataType.FLOAT]})"
+
     def _render_membership_exists(
         self,
         left_sql: str,
@@ -2802,7 +2805,7 @@ class BaseDialect:
         elif isinstance(e, str):
             return self.render_string_literal(e)
         elif isinstance(e, float) and not math.isfinite(e):
-            return f"CAST('{e}' AS {self.DATATYPE_MAP[DataType.FLOAT]})"
+            return self.render_non_finite(e)
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, Decimal):

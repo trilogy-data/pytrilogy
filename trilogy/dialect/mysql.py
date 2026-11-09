@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+from trilogy.core.casts import DATE_PATTERN, NUMBER_PATTERN
 from trilogy.core.enums import (
     CreateMode,
     DatePart,
@@ -21,6 +22,8 @@ from trilogy.dialect.common import (
     CONCAT_COALESCE_UPPER,
     bool_from_text,
     cast_kind,
+    guarded_read,
+    reads_text,
     render_window_substring,
     text_from_bool,
 )
@@ -94,8 +97,27 @@ CAST_TARGETS = {
 }
 
 
+def read_text(value: str, target: str, types: list) -> str:
+    """CAST reads a numeric prefix ('abc' AS SIGNED is 0); the reference's
+    shape is required, and an integer is read through DECIMAL, which rounds
+    half away where SIGNED truncates. There is no infinity, so a float reads
+    numerals only."""
+    text = f"REGEXP_REPLACE({value}, '^[[:space:]]+|[[:space:]]+$', '')"
+    if cast_kind(types)[1] == DataType.DATE:
+        day = f"SUBSTRING_INDEX(SUBSTRING_INDEX({text}, ' ', 1), 'T', 1)"
+        read = f"STR_TO_DATE(REPLACE({day}, '/', '-'), '%Y-%c-%e')"
+        return guarded_read(f"{value} REGEXP '{DATE_PATTERN}'", read)
+    if target.upper() in ("INTEGER", "BIGINT"):
+        read = f"CAST(CAST({text} AS DECIMAL(65, 30)) AS SIGNED)"
+    else:
+        read = f"CAST({text} AS {target})"
+    return guarded_read(f"{value} REGEXP '{NUMBER_PATTERN}'", read)
+
+
 def render_cast(args: list[str], types: list) -> str:
     source, target = cast_kind(types)
+    if reads_text(types):
+        return read_text(args[0], args[1], types)
     if source == DataType.BOOL and target == DataType.STRING:
         return text_from_bool(args[0])
     if target == DataType.BOOL:

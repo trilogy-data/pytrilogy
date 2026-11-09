@@ -53,7 +53,10 @@ one reading of `substring` positions, `regexp_replace` replaces every match,
 the NOT NULL strip reads a sibling's proof; area 7), and `Casts.lean`
 (0.3.472: a literal the parser folds is the value the engine computes, a
 decimal cast rounds half away to its scale, one reading of a string as a
-bool, and `sqrt` / `log` are NULL outside their domain; area 8).
+bool, and `sqrt` / `log` are NULL outside their domain; area 8), and
+`Readings.lean` (0.3.473: a string cast to a number or a date has one reading
+on every engine and is NULL without one, a cast from a string is
+NULL-introducing, and ClickHouse membership keeps NULL identity; area 9).
 
 ## The recipe
 
@@ -494,12 +497,94 @@ bool, and `sqrt` / `log` are NULL outside their domain; area 8).
       decimal on DuckDB and ClickHouse. Hold SQLite and float columns to
       binary-exact ties (multiples of 1/8).
 
+27. **Lessons from the string-reading round (`Readings.lean`, 0.3.473).**
+    - Probe a column, not only a literal, for every cast source. The literal
+      probe of #902 raised a parse error on `'abc'::int` on all three engines
+      and looked consistent; the same strings in a column gave three answers
+      (an error, 0, NULL), and ClickHouse refused `' 12 '` and `'1.5'`, which
+      every other engine reads.
+    - Define the reference by a grammar, not by an engine. DuckDB's own
+      reading accepts `'1_000'`, `'0x10'`, `'inf'` and `'2020-1-5'`, which
+      nothing else does; a pattern guard around each engine's read gave one
+      answer with little new code, and a portable POSIX pattern with no
+      backslash or brace survives every dialect's literal and parameter
+      syntax (ClickHouse's `{name:Type}` would read `{4}`).
+    - Where an engine has no regex, a conjunction of GLOBs can still state a
+      regular grammar exactly; fuzz the rendering against the pattern before
+      trusting it (31k strings, then `Readings.glob_number_exact`).
+    - A new NULL source is a planner claim twice over: nullability (the
+      persisted copy) and membership (`_null_free_set`). Test `x in S` with a
+      NULL probe, not `x in S and x is not null`, which hides the claim: a
+      plain `IN` and a stripped `is not null` agree.
+    - A law suite's new axis can expose an engine bug unrelated to the round:
+      ClickHouse decorrelates a correlated `exists (... <=> ...)` into a join
+      that loses NULL identity. Test the shape apart from the round's feature
+      (`test_membership_is_identity`) so the fix is held on its own.
+    - DuckDB's `TRY_CAST(... AS DATE)` accepts trailing whitespace after a
+      date but not after a time; trim before the read, not only in the guard.
+    - Run the modeling suites before choosing a grammar. The first grammar
+      was strict `YYYY-MM-DD`; TPC-DS builds birth dates as `'1980/5/3'`,
+      binds a physical DATE column to a `string` concept, and renders
+      non-finite floats as `'inf'::float`. Each broke only there, and each is
+      a reading real models rely on: widen the reference to it, then hold
+      every engine to the wider one.
+    - A read guard costs SQL size wherever the planner inlines the cast:
+      TPC-DS q99 reads `date.date` sixteen times. Measure the growth with
+      the guard replaced by the bare cast before raising a size gate; here
+      every query matched or beat its old size without it.
+
 ## Candidate areas
 
-**Done in 0.3.472: casts and folded constants (`Casts.lean`, area 8 below).**
+**Done in 0.3.473: a string read as a number or a date (`Readings.lean`, area 9 below).**
 
-**Suggested next: the area-5 leads (decimal products, the persisted-copy leads), the area-1,
-area-2 and area-4 leads below, or the area-3 leads left.**
+**Suggested next: the area-9 leads (dialects with no engine in CI, overflow), the area-5
+leads (decimal products, the persisted-copy leads), the area-1, area-2 and area-4 leads
+below, or the area-3 leads left.**
+
+### 9. String readings (done in `Readings.lean`; leads left)
+
+`tests/core/test_text_read_laws.py` holds a string column cast to `int`,
+`numeric(12,s)`, `float`, `date` and `bool`, `is null` / `is not null` over
+the casts, a persisted copy, membership in a set of reads, membership
+identity over nullable and NULL-free sets, and literal folds to
+`trilogy.core.casts` on DuckDB, SQLite and chdb;
+`tests/dialect/test_text_read_renderings.py` pins MySQL. Leads left:
+- **Dialects with no engine in CI.** Postgres, BigQuery, Presto, Snowflake
+  and SQL Server still render a bare CAST of a string: they raise on a string
+  with no reading (not NULL), and Postgres, BigQuery, Presto and SQL Server
+  raise on `'1.5'::int` where the reference rounds. Loud, not wrong; each
+  needs its regex function (`~`, `REGEXP_CONTAINS`, `regexp_like`,
+  `REGEXP_LIKE`; SQL Server has none, `TRY_CAST(x AS FLOAT)` is close) and
+  an integer read through a decimal. MySQL's rendering is pinned but not run.
+- **Overflow.** A numeral beyond the target's range: DuckDB's `TRY_CAST`
+  and ClickHouse's `accurateCastOrNull` give NULL, SQLite saturates
+  (`'99999999999999999999'::int` is 2^63 - 1). A Trilogy `int` is INTEGER
+  (32-bit) on DuckDB and Int64 on ClickHouse, so the bound differs too; the
+  suite keeps values in 32 bits. A decimal beyond its precision is NULL on
+  DuckDB and is not tested elsewhere. `'1e400'::float` is not tested.
+- **Long fractions on SQLite.** SQLite reads a fraction through a REAL, so
+  a tie not exact in binary (`'2.675'::numeric(12,2)`) and a fraction past
+  double precision (`'0.49999999999999999'::int`) round by the binary value;
+  the suite holds SQLite to binary-exact ties, as `Casts` does.
+- **Datetimes.** A string cast to `datetime` / `timestamp` is untouched:
+  the literal fold uses Python's `fromisoformat` (which reads `'20200105'`),
+  and the engines read their own grammars. A date with a time of day reads
+  its day only; a time with a zone or a fraction past microseconds is not
+  in the pattern.
+- **ClickHouse dates before 1970.** The read goes through `Date32` and
+  casts to `Date`, whose range is 1970-2149; the suite stays inside it.
+  DuckDB also reads two- and five-digit years, `24:00:00`, zones and `BC`,
+  which the reference refuses.
+- **NaN.** SQLite has no NaN, so `'nan'::float` is NULL there; DuckDB
+  orders NaN above every number (`nan > 0` is TRUE) and ClickHouse does not.
+  MySQL has no infinity, so its float read takes numerals only.
+- **SQL size.** The DuckDB guard is ~360 characters and is repeated at every
+  inlined read; a model that binds a typed column to a `string` concept pays
+  it for nothing. Declaring the binding's real type avoids it.
+- **Unicode digits and whitespace.** The pattern's digits are ASCII and its
+  whitespace POSIX `[[:space:]]` (which includes `\v` and `\f`, which the
+  Python reference does not strip); DuckDB's TRY_CAST of `'١٢'` is NULL as
+  the reference is, other engines unchecked.
 
 ### 8. Casts and folded constants (done in `Casts.lean`; leads left)
 
@@ -508,13 +593,8 @@ bool casts, `sqrt` and `log` domains, folded NULL comparisons, a CASE with no
 arm left and the string-literal cast folds to a Python reference on DuckDB,
 SQLite and chdb; `tests/dialect/test_cast_renderings.py` pins the other
 dialects. Leads left:
-- **A string with no reading.** `'banana'::bool`, `'abc'::int` raise on
-  DuckDB, are NULL on ClickHouse (`CAST(x AS Nullable(T))`) and on the
-  rendered bool CASE, and `0` on SQLite's numeric casts. Decide one answer
-  (NULL, as a `try_cast`, is the likeliest) and render it; until then a cast
-  of a string column is strict but not total, so `CAST` in
-  `NULL_STRICT_FUNCTIONS` with no NULL-introducing entry is a claim only
-  valid strings keep.
+- **Done in 0.3.473: a string with no reading** is NULL on every engine CI
+  runs and on MySQL, and a cast from a string is NULL-introducing (area 9).
 - **A float as a string.** `1.0::string` is `'1.0'` on DuckDB and SQLite and
   `'1'` on ClickHouse; `1e20` is `'1e+20'`, `'1.0e+20'` and twenty digits;
   `-0.0` is `'-0'` on ClickHouse. A decimal keeps its trailing zeros on

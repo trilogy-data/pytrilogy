@@ -51,6 +51,13 @@ from trilogy.dialect.base import (
     offset_keeps_date,
 )
 from trilogy.dialect.cancel import duckdb_side_cursor
+from trilogy.dialect.common import (
+    bool_from_text,
+    cast_kind,
+    guarded_read,
+    read_pattern,
+    reads_text,
+)
 from trilogy.utility import safe_open
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
@@ -109,6 +116,19 @@ def date_trunc(args, types):
 
 
 def handle_cast(args, types):
+    source, target = cast_kind(types)
+    # a string with no reading is NULL here too; CAST raises on it. The text
+    # is cast again, as a string concept can be bound to a typed column.
+    text = f"CAST({args[0]} AS VARCHAR)"
+    if source == DataType.STRING and target == DataType.BOOL:
+        return bool_from_text(text)
+    if reads_text(types):
+        return guarded_read(
+            f"regexp_full_match({text}, '{read_pattern(types)}')",
+            # a tab or newline after a time of day fails TRY_CAST
+            f"TRY_CAST(trim({text}, ' ' || chr(9) || chr(10) || chr(13))"
+            f" AS {args[1]})",
+        )
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATE:
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:

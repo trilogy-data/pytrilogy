@@ -22,6 +22,7 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
+from trilogy.core.casts import cast_introduces_null
 from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
@@ -4331,6 +4332,10 @@ class Factory:
                     and self._null_free_set(array)
                     for arg in member.arguments
                 )
+            if member.operator == FunctionType.CAST and cast_introduces_null(
+                list(member.arguments)
+            ):
+                return False
             return (
                 member.operator == FunctionType.CONSTANT
                 or member.operator in NULL_STRICT_FUNCTIONS

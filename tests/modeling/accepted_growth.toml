@@ -2,7 +2,7 @@
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
 ["tpc_ds_duckdb/zquery21.log"]
-reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
+reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed); and a string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
 
 ["tpc_ds_duckdb/zquery73.log"]
 reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
@@ -11,13 +11,13 @@ reason = "HAVING restates its aggregate instead of the SELECT alias over a raw t
 reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
 
 ["tpc_ds_duckdb/zquery05.log"]
-reason = "Sales and returns roll up as separate union arms: a return lands on its own entity, which can differ from its sale's (coalescing the two misattributed returns)"
+reason = "Sales and returns roll up as separate union arms: a return lands on its own entity, which can differ from its sale's (coalescing the two misattributed returns); and a string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
 
 ["tpc_ds_duckdb/zquery24.log"]
 reason = "Query gained the reference's ORDER BY; it compared unordered rows by position"
 
 ["tpc_ds_duckdb/zquery23.log"]
-reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
+reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct); and a string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
 
 ["tpc_ds_duckdb/zquery30.log"]
 reason = "The select drops a key its aggregate is `by`, so two key tuples can share a projected tuple; the FINAL dedups them to the distinct tuples (formal/Trilogy/SelectGrain.lean, fixed_value_rows_distinct)"
@@ -39,3 +39,60 @@ reason = "The select drops a key its aggregate is `by`, so two key tuples can sh
 
 ["tpc_ds_duckdb/zquery04.log"]
 reason = "Each ratio divides by nullif(divisor, 0): a zero divisor is NULL on every dialect (formal/Trilogy/NullReject.lean, guarded_div_strict)"
+
+["tpc_ds_duckdb/zquery12.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery16.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery20.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery32.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery37.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery38.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery40.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery51.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery72.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery77.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery80.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery82.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery83.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery87.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery92.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery94.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery95.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery98.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery99.log"]
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"

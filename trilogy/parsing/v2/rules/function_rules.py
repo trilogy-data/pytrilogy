@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from datetime import datetime
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.casts import text_to_bool
+from trilogy.core.casts import (
+    text_to_bool,
+    text_to_date,
+    text_to_decimal,
+    text_to_float,
+    text_to_int,
+)
 from trilogy.core.constants import (
     ALL_ROWS_ADDRESS,
     GRAIN_NULL_SENTINEL,
@@ -594,6 +599,14 @@ def _resolve_bare_trait_cast_target(
     return TraitDataType(type=base, traits=[name])
 
 
+def _read_literal(node: SyntaxNode, value: str, dtype: Any, read: Any) -> Any:
+    """A literal is read as a column is (`trilogy.core.casts`); one with no
+    reading is refused here, where a column's would be NULL."""
+    if read is None:
+        raise fail(node, f"Cannot cast {value!r} to {dtype}")
+    return read
+
+
 def fcast(
     node: SyntaxNode,
     context: RuleContext,
@@ -608,13 +621,13 @@ def fcast(
         processed: Any
         match dtype:
             case DataType.DATE:
-                processed = date.fromisoformat(value)
+                processed = _read_literal(node, value, dtype, text_to_date(value))
             case DataType.DATETIME | DataType.TIMESTAMP:
                 processed = datetime.fromisoformat(value)
             case DataType.INTEGER:
-                processed = int(value)
+                processed = _read_literal(node, value, dtype, text_to_int(value))
             case DataType.FLOAT:
-                processed = float(value)
+                processed = _read_literal(node, value, dtype, text_to_float(value))
             case DataType.BOOL:
                 try:
                     processed = text_to_bool(value)
@@ -624,10 +637,9 @@ def fcast(
                 processed = value
             case NumericType():
                 # The one spelling of an exact decimal: a float_lit is a double.
-                # A cast rounds half away to the scale, as the engines do; it
-                # stays a CAST, as a Decimal parameter does not bind on SQLite.
-                scaled = Decimal(value).quantize(
-                    Decimal(1).scaleb(-dtype.scale), rounding=ROUND_HALF_UP
+                # It stays a CAST, as a Decimal parameter does not bind on SQLite.
+                scaled = _read_literal(
+                    node, value, dtype, text_to_decimal(value, dtype.scale)
                 )
                 return context.function_factory.create_function(
                     [scaled, dtype], FunctionType.CAST

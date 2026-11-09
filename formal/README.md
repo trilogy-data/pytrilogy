@@ -52,6 +52,7 @@ a design decision or a bug.
 | `StringMatch.lean` | the `like` pattern language, `ilike`, `contains`, and a string literal as each dialect reads it | a pattern with its specials escaped matches exactly its string (`escaped_literal_exact`), so every literal pattern means the same under any LIKE; a pattern with no wildcard is its string's equality (`exact_pattern_is_eq`); SQLite's GLOB over the translated pattern is the case-sensitive match (`glob_sound`); `contains` is a case-folded infix (`contains_is_folded_infix`); ClickHouse's rewrite of a computed pattern (`ch_strip_sound`) and its doubled-backslash literal (`ch_literal_roundtrip`) read back the pattern and the string; a match is NULL on a NULL operand (`like_strict`) (checked by `tests/core/test_string_match_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_match_renderings.py`) |
 | `Strings.lean` | `len`, `substring`, `strpos`, case, `trim`, `replace` and the regex functions as characters, positions and groups | every engine's `substring` agrees once start ≥ 1 and count ≥ 0, and the renderer's clamped arguments keep the reference's characters for any start and count (`clamp_exact`, bounded; `native_positions`); the substring at `strpos(s, t)` of `len t` characters is `t` (`strpos_extract`), and an empty needle is found at 1 (`strpos_empty`); `LEN(s + 'x') - 1` is SQL Server's length (`marker_len`); `like '%'` holds for every string (`percent_matches_all`) and `x = c and x is not null` keeps what `x = c` keeps (`sibling_rejects_null`) (checked by `tests/core/test_string_function_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_function_renderings.py`) |
 | `Casts.lean` | casts and the literal expressions the parser folds: a decimal to a smaller scale, a string or number as a bool, a bool as a string, `sqrt` / `log` outside their domain, a comparison with a NULL literal, a CASE whose arms all fold false | a decimal rescale rounds half away and ClickHouse's round-then-cast keeps it (`rescale_exact`); one table of spellings reads a string as a bool (`text_bool_exact`) and a number is true iff nonzero (`ne_zero_exact`); `sqrt` and `log` are NULL outside their domain (`domain_guard_exact`), so they are NULL-introducing (`domain_null_introducing`); a folded comparison is the Kleene one and a NULL operand is left UNKNOWN (`fold_agrees`, `fold_null_unknown`); dropping false CASE arms keeps the value and no arm left is NULL (`drop_false_arms_exact`, `no_arm_is_null`) (checked by `tests/core/test_cast_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_cast_renderings.py`) |
+| `Readings.lean` | a string cast to a number or a date: the numeral grammar, the value it names, the rendered guards and reads per engine, a set of reads under membership | SQLite's GLOBs accept exactly the pattern's strings (`glob_number_exact`, bounded); the value read is the numeral's and an integer rounds it half away (`read_number_exact`); ClickHouse's read at 18 places then rounding is the exact rounding (`truncate_then_round_exact`, bounded), which truncating to the target's own scale is not (`truncate_to_target_misrounds`); a calendar that rolls an overflowing day gives a written day back iff it is real (`readback_exact`, bounded); a non-null string can read as NULL (`read_null_introducing`), and over a set with no NULL member equality is identity (`null_free_eq_exact`) (checked by `tests/core/test_text_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 
 ## What it found
 
@@ -1211,6 +1212,45 @@ a design decision or a bug.
 
   On main, 49 of the 83 cases `tests/core/test_cast_laws.py` runs fail; none
   now.
+
+- **A string cast to a number or a date read differently on every engine**
+  (0.3.473; `Readings.lean`). ClickHouse's `CAST` read `' 12 '`, `'1.5'` and
+  `'1e3'` as an integer as NULL (`Readings.clickhouse_refuses_space`); SQLite
+  read the longest numeric prefix, so `'abc'` was 0, `'1e3'::int` was 1 and
+  `'12abc'` 12 (`Readings.sqlite_reads_prefix`), and truncated `'2.5'::int`
+  to 2 (`Readings.sqlite_truncates_fraction`); MySQL read a prefix as SQLite
+  did; DuckDB raised on any string with no reading (`Readings.duckdb_raises`).
+  `'2020-02-30'::date` was March 1st on SQLite and ClickHouse and
+  `'2020-13-01'` was 1970-01-01 on ClickHouse
+  (`Readings.rolled_day_is_not_the_day`,
+  `Readings.clickhouse_month_thirteen_is_epoch`), and SQLite read `'1.5'` as a
+  Julian day (`Readings.sqlite_julian_day`). One reading
+  (`trilogy.core.casts.text_to_number`, `text_to_date`) is rendered now: a
+  pattern guard (`regexp_full_match`, `match`, `REGEXP`, and on SQLite a
+  conjunction of GLOBs, `Readings.glob_number_exact`) around the engine's own
+  read, and NULL for a string with no reading, a bool spelling included. A
+  date is DuckDB's `YYYY-M-D` or `YYYY/M/D` with an optional time, as
+  TPC-DS's `'1980/5/3'::date` birth dates need; a float also reads `inf` and
+  `nan`. The guard reads its operand as text, since a `string` concept can be
+  bound to a column the engine holds as a date (TPC-DS's `_date_string`). The
+  parser's fold of a literal reads the same way (`'1.5'::int` and
+  `'1e3'::int` raised a Python `ValueError`) and still refuses a literal with
+  no reading. A folded infinite float rendered `CAST('inf' AS REAL)`, which
+  SQLite reads as 0 (`Readings.sqlite_text_infinity_is_zero`); it renders
+  `9e999` there.
+
+  The cast was listed NULL-strict and not NULL-introducing, so a persisted
+  copy of `s::int` declared its column non-null and `x in S` over a set of
+  reads rendered plain equality, dropping a NULL probe that matches the NULL
+  member by identity (`Readings.null_free_claim_drops_match`); both read it as
+  NULL-introducing now (`Readings.read_null_introducing`). The membership test
+  found a ClickHouse bug of its own: its decorrelation of `exists (... where m
+  <=> x)` lost the NULL match, so `i in m` over any nullable set dropped a
+  NULL `i` and `not in` kept it. ClickHouse renders an uncorrelated `IN`
+  with an explicit NULL-member check now.
+
+  On main, 84 of the 120 cases `tests/core/test_text_read_laws.py` runs
+  fail; none now.
 
 ## Limits
 

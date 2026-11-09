@@ -186,7 +186,7 @@ def test_settings_only_where_a_join_pads() -> None:
 def test_cast_renders_nullable_scalars() -> None:
     cast = ClickhouseDialect.FUNCTION_MAP
     assert (
-        cast[FunctionType.CAST](["x", "Int64"], [DataType.STRING, DataType.INTEGER])
+        cast[FunctionType.CAST](["x", "Int64"], [DataType.BOOL, DataType.INTEGER])
         == "CAST(x AS Nullable(Int64))"
     )
     array = ArrayType(type=DataType.INTEGER)

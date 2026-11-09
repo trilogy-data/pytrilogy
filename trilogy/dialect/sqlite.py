@@ -1,8 +1,10 @@
+import math
 from collections.abc import Callable
 from typing import Any, ClassVar
 
 from jinja2 import Template
 
+from trilogy.core.casts import NEGATIVE_INFINITY, POSITIVE_INFINITY
 from trilogy.core.enums import ComparisonOperator, FunctionType, NullSort
 from trilogy.core.like_patterns import to_glob
 from trilogy.core.models.core import DataType, NumericType
@@ -18,7 +20,13 @@ from trilogy.dialect.base import (
 from trilogy.dialect.base import (
     render_mod as base_render_mod,
 )
-from trilogy.dialect.common import bool_from_text, cast_kind, text_from_bool
+from trilogy.dialect.common import (
+    bool_from_text,
+    cast_kind,
+    guarded_read,
+    reads_text,
+    text_from_bool,
+)
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -82,8 +90,111 @@ TEMPORAL_CASTS = {
 }
 
 
+def trimmed(value: str) -> str:
+    return f"trim({value}, ' ' || char(9) || char(10) || char(13))"
+
+
+def is_number(text: str) -> str:
+    """`NUMBER_PATTERN` as GLOBs over the trimmed text: one sign, then digits
+    with at most one '.', then at most one exponent whose sign follows its
+    'e' (formal/Trilogy/Readings.lean, `glob_number_exact`)."""
+    rest = f"lower(ltrim({text}, '+-'))"
+    return " AND ".join(
+        [
+            f"{text} NOT GLOB '[+-][+-]*'",
+            f"{rest} NOT GLOB '*[^0-9.e+-]*'",
+            f"{rest} NOT GLOB '*e*e*'",
+            f"{rest} NOT GLOB '*.*.*'",
+            f"{rest} NOT GLOB '*e*.*'",
+            f"{rest} NOT GLOB '*[^e][+-]*'",
+            f"({rest} GLOB '[0-9]*' OR {rest} GLOB '.[0-9]*')",
+            f"{rest} NOT GLOB '*e'",
+            f"{rest} NOT GLOB '*e[+-]'",
+        ]
+    )
+
+
+def _digit_run(text: str) -> str:
+    """How many digits `text` starts with."""
+    return f"(length({text}) - length(ltrim({text}, '0123456789')))"
+
+
+def _date_parts(text: str) -> tuple[str, str, str]:
+    """The text after the year's separator, after the month's, and after the
+    day: the month and day are each one or two digits."""
+    rest = f"substr({text}, 6)"
+    after_month = f"substr({rest}, {_digit_run(rest)} + 2)"
+    clock = f"substr({after_month}, {_digit_run(after_month)} + 1)"
+    return rest, after_month, clock
+
+
+def padded_day(text: str) -> str:
+    rest, after_month, _ = _date_parts(text)
+    return (
+        f"printf('%s-%02d-%02d', substr({text}, 1, 4), CAST({rest} AS INTEGER),"
+        f" CAST({after_month} AS INTEGER))"
+    )
+
+
+def is_date(text: str) -> str:
+    """`DATE_PATTERN` as GLOBs and digit counts; `date()` rolls '2020-02-30'
+    into March, so the zero-padded day must read back as written."""
+    rest, after_month, time = _date_parts(text)
+    separator = f"substr({text}, 5, 1)"
+    day = padded_day(text)
+    clock = "[0-5][0-9]:[0-5][0-9]"
+    return (
+        f"substr({text}, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+        f" AND {separator} IN ('-', '/')"
+        f" AND {_digit_run(rest)} BETWEEN 1 AND 2"
+        f" AND substr({rest}, {_digit_run(rest)} + 1, 1) = {separator}"
+        f" AND {_digit_run(after_month)} BETWEEN 1 AND 2"
+        f" AND date({day}) = {day}"
+        f" AND ({time} = ''"
+        f" OR ({time} GLOB '[ T][01][0-9]:{clock}*' OR {time} GLOB '[ T]2[0-3]:{clock}*')"
+        f" AND (length({time}) = 9 OR substr({time}, 10) GLOB '.[0-9]*'"
+        f" AND substr({time}, 11) NOT GLOB '*[^0-9]*'))"
+    )
+
+
+def _text_list(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+def read_text(value: str, target: str, target_type: Any) -> str:
+    """A string with no reading is NULL; CAST reads any numeric prefix ('abc'
+    is 0, '1e3' as an INTEGER is 1) and `date()` a number as a Julian day."""
+    text = trimmed(value)
+    base = getattr(target_type, "data_type", target_type)
+    if base == DataType.DATE:
+        return guarded_read(is_date(text), f"date({padded_day(text)})")
+    number = f"CAST({text} AS REAL)"
+    if isinstance(target_type, NumericType):
+        read = f"round({number}, {target_type.scale})"
+    elif base in INTEGER_TYPES:
+        # a REAL holds an integer exactly only to 2^53
+        read = (
+            f"CASE WHEN {text} GLOB '*[.eE]*' THEN CAST(round({number}) AS INTEGER)"
+            f" ELSE CAST({text} AS INTEGER) END"
+        )
+    else:
+        # 9e999 overflows to an infinity; SQLite has no NaN, so 'nan' is NULL
+        folded = f"lower({text})"
+        positive, negative = _text_list(POSITIVE_INFINITY), _text_list(
+            NEGATIVE_INFINITY
+        )
+        return (
+            f"CASE WHEN {folded} IN ({positive}) THEN 9e999"
+            f" WHEN {folded} IN ({negative}) THEN -9e999"
+            f" WHEN {is_number(text)} THEN {number} END"
+        )
+    return guarded_read(is_number(text), read)
+
+
 def render_cast(args: list[str], types: list) -> str:
     source, target = cast_kind(types)
+    if reads_text(types):
+        return read_text(args[0], args[1], types[-1])
     if source == DataType.BOOL and target == DataType.STRING:
         return text_from_bool(args[0])
     if target == DataType.BOOL:
@@ -310,6 +421,13 @@ class SQLiteDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "no such column"
     # no native ILIKE; emulate via case-folded LIKE
     ILIKE_AS_LOWER_LIKE = ("lower", "like", "not ")
+
+    def render_non_finite(self, value: float) -> str:
+        """CAST('inf' AS REAL) is 0 here; 9e999 overflows to an infinity, and
+        there is no NaN."""
+        if math.isnan(value):
+            return "NULL"
+        return "9e999" if value > 0 else "-9e999"
 
     def render_like(
         self,

@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8667
+gen_length = 10521
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_sale_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ws_web_sales\".\"WS_WEB_PAGE_SK\" is not null
+    CASE WHEN regexp_full_match(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ws_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end and \"ws_web_sales\".\"WS_WEB_PAGE_SK\" is not null
 
 GROUP BY
     1),
@@ -27,7 +27,7 @@ FROM
     \"memory\".\"web_returns\" as \"ws_web_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    CASE WHEN regexp_full_match(CAST(\"ws_return_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ws_return_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),
@@ -63,7 +63,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_sale_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ss_store_sales\".\"SS_STORE_SK\" is not null
+    CASE WHEN regexp_full_match(CAST(\"ss_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ss_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1),
@@ -76,7 +76,7 @@ FROM
     \"memory\".\"store_returns\" as \"ss_store_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    CASE WHEN regexp_full_match(CAST(\"ss_return_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ss_return_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),
@@ -112,7 +112,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"cs_sale_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" is not null
+    CASE WHEN regexp_full_match(CAST(\"cs_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"cs_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end and \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" is not null
 
 GROUP BY
     1),
@@ -125,7 +125,7 @@ FROM
     \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"cs_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    CASE WHEN regexp_full_match(CAST(\"cs_return_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"cs_return_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),

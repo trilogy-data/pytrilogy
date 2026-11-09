@@ -1,7 +1,15 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode, WindowType
+from trilogy.core.casts import DATE_PATTERN, FLOAT_PATTERN, NUMBER_PATTERN
+from trilogy.core.enums import (
+    ComparisonOperator,
+    FunctionType,
+    JoinType,
+    Modifier,
+    UnnestMode,
+    WindowType,
+)
 from trilogy.core.models.author import get_basic_type
 from trilogy.core.models.core import DataType, MapWrapper, NumericType
 from trilogy.core.models.execute import CTE, Join, UnionCTE
@@ -19,6 +27,10 @@ from trilogy.dialect.base import (
 )
 from trilogy.dialect.common import (
     CONCAT_COALESCE_LOWER,
+    bool_from_text,
+    cast_kind,
+    guarded_read,
+    reads_text,
     render_window_substring,
     sunday_first_from_iso,
 )
@@ -85,12 +97,48 @@ def round_half_away(value: str, digits: str, value_type: Any) -> str:
     return f"(sign({value}) * floor(abs({value}) * {scale} + 0.5) / {scale})"
 
 
+def read_text(value: str, target: str, target_type: Any) -> str:
+    """A string as a number: read exactly at 18 digits, which truncates only
+    digits past any half-away tie, then rounded to the target. As a date: the
+    zero-padded day, only if `toDate32` gives it back, as it rolls
+    '2020-02-30' into March and '2020-13-01' to 1970."""
+    value = f"toString({value})"
+    text = f"replaceRegexpAll({value}, '^[[:space:]]+|[[:space:]]+$', '')"
+    if data_type(target_type) == DataType.DATE:
+        parts = f"splitByRegexp('[-/ T]', {text})"
+        day = (
+            f"concat({parts}[1], '-', leftPad({parts}[2], 2, '0'), '-',"
+            f" leftPad({parts}[3], 2, '0'))"
+        )
+        return guarded_read(
+            f"match({value}, '{DATE_PATTERN}')"
+            f" AND toString(toDate32OrNull({day})) = {day}",
+            f"CAST(toDate32OrNull({day}) AS Nullable(Date))",
+        )
+    if data_type(target_type) in FLOAT_TYPES:
+        return guarded_read(
+            f"match({value}, '{FLOAT_PATTERN}')", f"toFloat64OrNull({text})"
+        )
+    scale = target_type.scale if isinstance(target_type, NumericType) else 0
+    if target.startswith("Nullable("):
+        target = target[len("Nullable(") : -1]
+    read = (
+        f"accurateCastOrNull(round(toDecimal128OrNull({text}, 18), {scale}),"
+        f" '{target}')"
+    )
+    return guarded_read(f"match({value}, '{NUMBER_PATTERN}')", read)
+
+
 def render_cast(args: list[str], types: list) -> str:
     """A cast keeps NULL: CAST to a bare type raises on one. A fraction cast
     to an integer or a decimal of a smaller scale rounds half away, as `round`
     does; ClickHouse truncates it."""
     value, target = args
     target_type = data_type(types[-1]) if types else None
+    if cast_kind(types) == (DataType.STRING, DataType.BOOL):
+        return bool_from_text(value)
+    if reads_text(types):
+        return read_text(value, target, types[-1])
     if target_type not in UNWRAPPABLE_TYPES and not target.startswith("Nullable("):
         target = f"Nullable({target})"
     if (
@@ -407,6 +455,31 @@ class ClickhouseDialect(BaseDialect):
         if column.nullable and data_type(column.type) not in UNWRAPPABLE_TYPES:
             return f"Nullable({rendered})"
         return rendered
+
+    def _render_membership_exists(
+        self,
+        left_sql: str,
+        member_sql: str,
+        from_clause: str,
+        operator: ComparisonOperator,
+        null_free: bool = False,
+    ) -> str:
+        """Identity membership without a correlated subquery: ClickHouse
+        decorrelates `exists (... where m <=> x)` into a join that drops the
+        NULL match, so a NULL probe matched nothing and `not in` kept it. A
+        NULL probe's `IN` is NULL, so it is read as FALSE."""
+        members = f"select {member_sql} from {from_clause}"
+        if null_free:
+            matched = f"coalesce({left_sql} IN ({members}), false)"
+        else:
+            matched = (
+                f"(coalesce({left_sql} IN ({members} where {member_sql} is not null),"
+                f" false) OR {left_sql} IS NULL"
+                f" AND exists ({members} where {member_sql} is null))"
+            )
+        if operator == ComparisonOperator.NOT_IN:
+            return f"not {matched}"
+        return matched
 
     def render_settings(self, query: "ProcessedQuery") -> str:
         """An outer join pads with each type's default (0, '') unless

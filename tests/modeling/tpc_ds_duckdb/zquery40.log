@@ -1,5 +1,5 @@
 query_id = "40"
-gen_length = 1829
+gen_length = 2786
 preql_size = 903
 comp_size = 1047
 generated_sql = """
@@ -7,11 +7,11 @@ SELECT
     \"catalog_sales_warehouse_warehouse\".\"w_state\" as \"catalog_sales_warehouse_state\",
     \"catalog_sales_item_items\".\"I_ITEM_ID\" as \"catalog_sales_item_id\",
     sum(CASE
-	WHEN cast(\"catalog_sales_sale_date_date\".\"D_DATE\" as date) < :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_sales_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
+	WHEN CASE WHEN regexp_full_match(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END < :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_sales_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
 	ELSE cast(0.0 as numeric)
 	END) as \"sales_before\",
     sum(CASE
-	WHEN cast(\"catalog_sales_sale_date_date\".\"D_DATE\" as date) >= :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_sales_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
+	WHEN CASE WHEN regexp_full_match(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END >= :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_sales_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
 	ELSE cast(0.0 as numeric)
 	END) as \"sales_after\"
 FROM
@@ -21,7 +21,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"catalog_sales_catalog_returns\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_sales_catalog_returns\".\"CR_ITEM_SK\" AND \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" = \"catalog_sales_catalog_returns\".\"CR_ORDER_NUMBER\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"catalog_sales_warehouse_warehouse\" on \"catalog_sales_catalog_sales\".\"CS_WAREHOUSE_SK\" = \"catalog_sales_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" BETWEEN 0.99 AND 1.49 and cast(\"catalog_sales_sale_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
+    \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" BETWEEN 0.99 AND 1.49 and CASE WHEN regexp_full_match(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :start_date AND :end_date
 
 GROUP BY
     1,

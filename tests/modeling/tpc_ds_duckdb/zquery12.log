@@ -1,5 +1,5 @@
 query_id = "12"
-gen_length = 2086
+gen_length = 2401
 preql_size = 664
 comp_size = 749
 generated_sql = """
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_sale_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"web_sales_sale_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and (\"web_sales_item_items\".\"I_CATEGORY\" is not null and \"web_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home'))
+    CASE WHEN regexp_full_match(CAST(\"web_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"web_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN date '1999-02-22' AND date '1999-03-24' and (\"web_sales_item_items\".\"I_CATEGORY\" is not null and \"web_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home'))
 
 GROUP BY
     1,

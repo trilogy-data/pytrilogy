@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.core.casts import cast_introduces_null
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
     NEVER_NULL_FUNCTIONS,
@@ -397,6 +398,8 @@ def _function_is_nullable(fn: Function, environment: Environment) -> bool:
     ):
         return _expr_is_nullable(arguments[0], environment)
     if op in NULL_INTRODUCING_FUNCTIONS:
+        return True
+    if op == FunctionType.CAST and cast_introduces_null(arguments):
         return True
     if op == FunctionType.GROUP:
         # group(expr, *grain): nullability tracks the wrapped expression.

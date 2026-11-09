@@ -1,5 +1,5 @@
 query_id = "72"
-gen_length = 3257
+gen_length = 3873
 preql_size = 1022
 comp_size = 1360
 generated_sql = """
@@ -21,7 +21,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"cs_sale_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sale_date_date\".\"D_WEEK_SEQ\" and date_diff('day', cast(\"cs_sale_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5
+    \"cs_sale_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sale_date_date\".\"D_WEEK_SEQ\" and date_diff('day', CASE WHEN regexp_full_match(CAST(\"cs_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"cs_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END, CASE WHEN regexp_full_match(CAST(\"cs_ship_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"cs_ship_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END) > 5
 
 GROUP BY
     1,

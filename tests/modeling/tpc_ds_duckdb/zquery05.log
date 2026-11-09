@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 9209
+gen_length = 9825
 preql_size = 1719
 comp_size = 4238
 generated_sql = """
@@ -74,7 +74,7 @@ FROM
     INNER JOIN \"macho\" on \"kaput\".\"s_channel\" = \"macho\".\"s_channel\" AND \"kaput\".\"s_channel_dim_id\" = \"macho\".\"s_channel_dim_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"s_sale_date_date\" on \"kaput\".\"s_sale_date_sk\" = \"s_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"s_sale_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    CASE WHEN regexp_full_match(CAST(\"s_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"s_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
 
 GROUP BY
     1,
@@ -176,7 +176,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"abundant\".\"s_return_date_sk\" = \"s_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"abundant\".\"s_channel\" = \"cheerful\".\"s_channel\" AND \"yummy\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\"
 WHERE
-    cast(\"s_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
+    CASE WHEN regexp_full_match(CAST(\"s_return_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"s_return_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
 
 GROUP BY
     1,

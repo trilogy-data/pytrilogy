@@ -1,5 +1,5 @@
 query_id = "87"
-gen_length = 4393
+gen_length = 5344
 preql_size = 1135
 comp_size = 1163
 generated_sql = """
@@ -21,7 +21,7 @@ sweltering as (
 SELECT
     \"web_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"web_sales_billing_customer_first_name\",
     \"web_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"web_sales_billing_customer_last_name\",
-    cast(\"web_sales_sale_date_date\".\"D_DATE\" as date) as \"web_sales_sale_date_date\"
+    CASE WHEN regexp_full_match(CAST(\"web_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"web_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END as \"web_sales_sale_date_date\"
 FROM
     \"sparkling\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_sale_date_date\" on \"sparkling\".\"web_sales_sale_date_sk\" = \"web_sales_sale_date_date\".\"D_DATE_SK\"
@@ -49,7 +49,7 @@ juicy as (
 SELECT
     \"catalog_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"catalog_sales_billing_customer_first_name\",
     \"catalog_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"catalog_sales_billing_customer_last_name\",
-    cast(\"catalog_sales_sale_date_date\".\"D_DATE\" as date) as \"catalog_sales_sale_date_date\"
+    CASE WHEN regexp_full_match(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"catalog_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END as \"catalog_sales_sale_date_date\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sale_date_date\" on \"abundant\".\"catalog_sales_sale_date_sk\" = \"catalog_sales_sale_date_date\".\"D_DATE_SK\"
@@ -77,7 +77,7 @@ thoughtful as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
-    cast(\"store_sales_sale_date_date\".\"D_DATE\" as date) as \"store_sales_sale_date_date\"
+    CASE WHEN regexp_full_match(CAST(\"store_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"store_sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END as \"store_sales_sale_date_date\"
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"wakeful\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
