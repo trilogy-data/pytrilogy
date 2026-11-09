@@ -40,8 +40,10 @@ def test_mysql_reads_numbers_in_range(expr: str, guard: str, read: str) -> None:
     [
         (
             "v::date",
-            "STR_TO_DATE(REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX("
-            f"{TEXT}, ' ', 1), 'T', 1), '/', '-'), '%Y-%c-%e')",
+            (
+                "STR_TO_DATE(REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX("
+                f"{TEXT}, ' ', 1), 'T', 1), '/', '-'), '%Y-%c-%e')"
+            ),
         ),
         ("v::datetime", f"CAST(REPLACE({TEXT}, '/', '-') AS DATETIME(6))"),
         ("datetime(v)", f"CAST(REPLACE({TEXT}, '/', '-') AS DATETIME(6))"),

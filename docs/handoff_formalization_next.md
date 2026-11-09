@@ -56,7 +56,10 @@ decimal cast rounds half away to its scale, one reading of a string as a
 bool, and `sqrt` / `log` are NULL outside their domain; area 8), and
 `Readings.lean` (0.3.473: a string cast to a number or a date has one reading
 on every engine and is NULL without one, a cast from a string is
-NULL-introducing, and ClickHouse membership keeps NULL identity; area 9).
+NULL-introducing, and ClickHouse membership keeps NULL identity; area 9), and `Instants.lean` (0.3.474: a string cast to a datetime or a timestamp
+names one UTC instant on every engine, `date(s)` / `datetime(s)` /
+`timestamp(s)` of a string are its cast, and a numeral past its target's
+range is NULL; area 10).
 
 ## The recipe
 
@@ -535,11 +538,55 @@ NULL-introducing, and ClickHouse membership keeps NULL identity; area 9).
 
 ## Candidate areas
 
-**Done in 0.3.473: a string read as a number or a date (`Readings.lean`, area 9 below).**
+**Done in 0.3.474: a string read as a datetime, and a number read past its
+target's range (`Instants.lean`, `Readings.lean`; area 10 below).**
 
-**Suggested next: the area-9 leads (dialects with no engine in CI, overflow), the area-5
-leads (decimal products, the persisted-copy leads), the area-1, area-2 and area-4 leads
-below, or the area-3 leads left.**
+**Suggested next: the area-10 leads (Trilogy `int` width, a date with a zone,
+precision), the area-9 leads (dialects with no engine in CI), the area-5 leads
+(decimal products, the persisted-copy leads), the area-1, area-2 and area-4
+leads below, or the area-3 leads left.**
+
+### 10. Instants and ranges (done in `Instants.lean`, `Readings.lean`; leads left)
+
+`tests/core/test_instant_read_laws.py` holds a string column cast to
+`datetime` and `timestamp` and passed to `datetime(s)`, `timestamp(s)` and
+`date(s)`, `is not null` over the reads, a comparison with a whole second,
+the order of reads, a persisted copy, a bound constant, literal folds and the
+DuckDB session zone, plus integer and decimal reads at their range's edges,
+to `trilogy.core.casts` on DuckDB, SQLite and chdb;
+`tests/dialect/test_text_read_renderings.py` pins MySQL. Leads left:
+- **The width of a Trilogy `int`.** It is INTEGER (32-bit) on DuckDB and
+  64-bit on SQLite and ClickHouse, so `'2147483648'::int` is NULL on DuckDB
+  only, and `2147483647 + 1` raises there (area 8). The suite holds each
+  engine to its own width; one width (BIGINT on DuckDB) would make `int` mean
+  one thing, at the cost of every DuckDB DDL and literal type.
+- **Precision.** DuckDB keeps microseconds, ClickHouse's `DateTime64(3)`
+  milliseconds, SQLite's `datetime()` whole seconds; each truncates. A
+  persisted copy of a microsecond instant from DuckDB into ClickHouse loses
+  digits. `DateTime64(6)` would match DuckDB; SQLite would need
+  `strftime('%Y-%m-%d %H:%M:%f')` everywhere `datetime()` is rendered, or
+  text comparisons break (`bound_text_is_not_datetime_text`).
+- **A date with a zone.** `'2020-01-05 23:00:00-05:00'::date` is NULL (the
+  date pattern takes no zone), though its UTC instant is on January 6th;
+  `date(datetime(s))` reads it. Reading the UTC day would make `date(s)`
+  depend on the zone; reading the local day would make it differ from
+  `date(datetime(s))`. Either is a choice to state first.
+- **ClickHouse's server zone.** `DateTime64(3)` with no zone displays in
+  the server's zone; the read parses in UTC, and chdb's server is UTC, so the
+  suite cannot see a server in another zone. `timestamp` is
+  `DateTime64(3, 'UTC')` and is exact.
+- **MySQL instants.** A zone is left unread (NULL): CAST reads only
+  `+HH:MM`, into the session's zone. A read applying the offset as SQLite's
+  does would close it, once it runs on an engine. Postgres, BigQuery,
+  Presto, Snowflake and SQL Server still render a bare CAST (area 9).
+- **Ranges beyond Decimal128.** ClickHouse reads a numeral through
+  `Decimal128(18)`, so one with more than 20 whole digits is NULL even for a
+  `numeric(38, 0)`; SQLite reads a fraction or exponent through a REAL, so a
+  value within 1024 of 2^63 is checked approximately.
+- **Year edges.** The pattern takes `0000` to `9999`; a zone can carry
+  `9999-12-31 23:00:00-05:00` past year 9999 (Python refuses it, as the
+  reference does) and ClickHouse's `DateTime64` holds 1900-2299 only. The
+  suite stays in 1971-2100.
 
 ### 9. String readings (done in `Readings.lean`; leads left)
 
@@ -556,21 +603,15 @@ identity over nullable and NULL-free sets, and literal folds to
   needs its regex function (`~`, `REGEXP_CONTAINS`, `regexp_like`,
   `REGEXP_LIKE`; SQL Server has none, `TRY_CAST(x AS FLOAT)` is close) and
   an integer read through a decimal. MySQL's rendering is pinned but not run.
-- **Overflow.** A numeral beyond the target's range: DuckDB's `TRY_CAST`
-  and ClickHouse's `accurateCastOrNull` give NULL, SQLite saturates
-  (`'99999999999999999999'::int` is 2^63 - 1). A Trilogy `int` is INTEGER
-  (32-bit) on DuckDB and Int64 on ClickHouse, so the bound differs too; the
-  suite keeps values in 32 bits. A decimal beyond its precision is NULL on
-  DuckDB and is not tested elsewhere. `'1e400'::float` is not tested.
+- **Done in 0.3.474: overflow.** A numeral past the target's range is NULL
+  on every engine CI runs and on MySQL (area 10); `'1e400'::float` is an
+  infinity on each.
 - **Long fractions on SQLite.** SQLite reads a fraction through a REAL, so
   a tie not exact in binary (`'2.675'::numeric(12,2)`) and a fraction past
   double precision (`'0.49999999999999999'::int`) round by the binary value;
   the suite holds SQLite to binary-exact ties, as `Casts` does.
-- **Datetimes.** A string cast to `datetime` / `timestamp` is untouched:
-  the literal fold uses Python's `fromisoformat` (which reads `'20200105'`),
-  and the engines read their own grammars. A date with a time of day reads
-  its day only; a time with a zone or a fraction past microseconds is not
-  in the pattern.
+- **Done in 0.3.474: datetimes** (area 10). A date with a time of day
+  still reads its day only, and a date with a zone is NULL.
 - **ClickHouse dates before 1970.** The read goes through `Date32` and
   casts to `Date`, whose range is 1970-2149; the suite stays inside it.
   DuckDB also reads two- and five-digit years, `24:00:00`, zones and `BC`,

@@ -6,7 +6,7 @@ case. A parse-time fold of a literal and every dialect's rendering share it.
 
 import re
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any
 
 from trilogy.core.models.core import DataType, arg_to_datatype
@@ -73,13 +73,22 @@ def text_to_number(value: str) -> Decimal | None:
     return Decimal(value.strip(SPACE))
 
 
+def _rounded(number: Decimal, scale: int) -> Decimal | None:
+    """`number` rounded half away to `scale` places, or None when it is past
+    any type's range (a 400-digit exponent)."""
+    if number.adjusted() > 76:
+        return None
+    with localcontext(prec=160):
+        return number.quantize(Decimal(1).scaleb(-scale), rounding=ROUND_HALF_UP)
+
+
 def text_to_int(value: str, bounds: tuple[int, int] = INT64) -> int | None:
     """The integer read, or None past `bounds` (the target's range)."""
     number = text_to_number(value)
-    if number is None:
+    read = None if number is None else _rounded(number, 0)
+    if read is None or not bounds[0] <= read <= bounds[1]:
         return None
-    read = int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP))
-    return read if bounds[0] <= read <= bounds[1] else None
+    return int(read)
 
 
 def text_to_decimal(
@@ -88,9 +97,9 @@ def text_to_decimal(
     """The decimal read, or None with more than `precision - scale` whole
     digits."""
     number = text_to_number(value)
-    if number is None:
+    read = None if number is None else _rounded(number, scale)
+    if read is None:
         return None
-    read = number.quantize(Decimal(1).scaleb(-scale), rounding=ROUND_HALF_UP)
     if precision is not None and abs(read) >= Decimal(10) ** (precision - scale):
         return None
     return read

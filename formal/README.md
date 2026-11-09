@@ -52,7 +52,8 @@ a design decision or a bug.
 | `StringMatch.lean` | the `like` pattern language, `ilike`, `contains`, and a string literal as each dialect reads it | a pattern with its specials escaped matches exactly its string (`escaped_literal_exact`), so every literal pattern means the same under any LIKE; a pattern with no wildcard is its string's equality (`exact_pattern_is_eq`); SQLite's GLOB over the translated pattern is the case-sensitive match (`glob_sound`); `contains` is a case-folded infix (`contains_is_folded_infix`); ClickHouse's rewrite of a computed pattern (`ch_strip_sound`) and its doubled-backslash literal (`ch_literal_roundtrip`) read back the pattern and the string; a match is NULL on a NULL operand (`like_strict`) (checked by `tests/core/test_string_match_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_match_renderings.py`) |
 | `Strings.lean` | `len`, `substring`, `strpos`, case, `trim`, `replace` and the regex functions as characters, positions and groups | every engine's `substring` agrees once start ≥ 1 and count ≥ 0, and the renderer's clamped arguments keep the reference's characters for any start and count (`clamp_exact`, bounded; `native_positions`); the substring at `strpos(s, t)` of `len t` characters is `t` (`strpos_extract`), and an empty needle is found at 1 (`strpos_empty`); `LEN(s + 'x') - 1` is SQL Server's length (`marker_len`); `like '%'` holds for every string (`percent_matches_all`) and `x = c and x is not null` keeps what `x = c` keeps (`sibling_rejects_null`) (checked by `tests/core/test_string_function_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_string_function_renderings.py`) |
 | `Casts.lean` | casts and the literal expressions the parser folds: a decimal to a smaller scale, a string or number as a bool, a bool as a string, `sqrt` / `log` outside their domain, a comparison with a NULL literal, a CASE whose arms all fold false | a decimal rescale rounds half away and ClickHouse's round-then-cast keeps it (`rescale_exact`); one table of spellings reads a string as a bool (`text_bool_exact`) and a number is true iff nonzero (`ne_zero_exact`); `sqrt` and `log` are NULL outside their domain (`domain_guard_exact`), so they are NULL-introducing (`domain_null_introducing`); a folded comparison is the Kleene one and a NULL operand is left UNKNOWN (`fold_agrees`, `fold_null_unknown`); dropping false CASE arms keeps the value and no arm left is NULL (`drop_false_arms_exact`, `no_arm_is_null`) (checked by `tests/core/test_cast_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_cast_renderings.py`) |
-| `Readings.lean` | a string cast to a number or a date: the numeral grammar, the value it names, the rendered guards and reads per engine, a set of reads under membership | SQLite's GLOBs accept exactly the pattern's strings (`glob_number_exact`, bounded); the value read is the numeral's and an integer rounds it half away (`read_number_exact`); ClickHouse's read at 18 places then rounding is the exact rounding (`truncate_then_round_exact`, bounded), which truncating to the target's own scale is not (`truncate_to_target_misrounds`); a calendar that rolls an overflowing day gives a written day back iff it is real (`readback_exact`, bounded); a non-null string can read as NULL (`read_null_introducing`), and over a set with no NULL member equality is identity (`null_free_eq_exact`) (checked by `tests/core/test_text_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
+| `Readings.lean` | a string cast to a number or a date: the numeral grammar, the value it names, the rendered guards and reads per engine, a set of reads under membership | SQLite's GLOBs accept exactly the pattern's strings (`glob_number_exact`, bounded); the value read is the numeral's and an integer rounds it half away (`read_number_exact`); ClickHouse's read at 18 places then rounding is the exact rounding (`truncate_then_round_exact`, bounded), which truncating to the target's own scale is not (`truncate_to_target_misrounds`); a calendar that rolls an overflowing day gives a written day back iff it is real (`readback_exact`, bounded); a non-null string can read as NULL (`read_null_introducing`), and over a set with no NULL member equality is identity (`null_free_eq_exact`); a numeral past the target's range is NULL, never saturated (`saturate_in_range`, `saturation_is_not_the_value`), SQLite's digit-by-digit check of the 64-bit bound is the order (`digit_compare_exact`, bounded), and the range is checked on the rounded value (`round_can_leave_range`) (checked by `tests/core/test_text_read_laws.py`, `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
+| `Instants.lean` | a string cast to a datetime or a timestamp, and `date(s)` / `datetime(s)` / `timestamp(s)` of a string: the day count, zones, UTC, each engine's precision | the day count is linear in the day of the month, so a rolled day has the written day's count and only reading it back tells them apart (`roll_keeps_count`, bounded); under one zone a read keeps the order of local times and a zone is a shift (`utc_monotone`, `utc_shift`), which can cross midnight (`read_instant_exact`); truncating to an engine's precision composes, keeps order, and decides a comparison with a value the engine holds as the exact instant does (`trunc_trunc`, `trunc_monotone`, `trunc_ge_exact`) (checked by `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 
 ## What it found
 
@@ -1250,6 +1251,48 @@ a design decision or a bug.
   with an explicit NULL-member check now.
 
   On main, 84 of the 120 cases `tests/core/test_text_read_laws.py` runs
+  fail; none now.
+
+- **A string cast to a datetime read differently on every engine, and a
+  number past its target's range saturated or raised** (0.3.474;
+  `Instants.lean`, `Readings.lean`). A string cast to `datetime` or
+  `timestamp` was a bare CAST: DuckDB raised on any string with no reading,
+  and its TIMESTAMP cast dropped a zone, so `'12:34:56+02:00'` was 12:34:56
+  where SQLite and ClickHouse read 10:34:56 UTC (`Instants.duckdb_drops_zone`);
+  a zoneless string cast to TIMESTAMPTZ was read in the session's zone.
+  `'2020-01-05 24:00:00'` was the next midnight on DuckDB and ClickHouse and
+  the text `24:00:00` on SQLite (`Instants.hour_24_is_not_a_clock`);
+  `'2020-02-30 00:00:00'` was March 1st on SQLite
+  (`Instants.rolled_instant_is_not_the_instant`); ClickHouse read
+  `'2147483648'` as seconds since 1970, `'1.5'` as a day in 2026 and
+  `'20200105'` as a day (`Instants.clickhouse_epoch_seconds`); SQLite read
+  `'1.5'` as a Julian day, refused a leading space, a one-digit month and
+  `2020/01/05`, and refuses a zone past 14 hours
+  (`Instants.sqlite_zone_limit`). One reading (`trilogy.core.casts.text_to_datetime`)
+  is rendered now: a date, an optional `HH:MM:SS[.f]` and an optional zone
+  (`Z`, `+HH`, `+HHMM`, `+HH:MM`), naming the UTC instant, truncated to the
+  engine's precision (microseconds, ClickHouse milliseconds, SQLite whole
+  seconds). `date(s)`, `datetime(s)` and `timestamp(s)` of a string are its
+  cast now; each rendered a bare CAST or `toDate`, which raised on DuckDB and
+  ClickHouse and rolled the day on SQLite. A literal folds the same way
+  (`fromisoformat` read `'20200105'` and kept a zone unconverted), a folded
+  `timestamp` is an aware UTC instant, and on SQLite a folded instant is
+  inlined as `datetime('...')`: bound as a parameter, its isoformat text
+  (`+00:00`, microseconds) never equalled a read
+  (`Instants.bound_text_is_not_datetime_text`).
+
+  A numeral past its target's range is NULL, as DuckDB's `TRY_CAST` gives:
+  SQLite's CAST saturated `'99999999999999999999'::int` to 2^63 - 1
+  (`Readings.saturation_is_not_the_value`); ClickHouse's
+  `accurateCastOrNull` from a decimal raised `Convert overflow`, failing the
+  whole query over one such row (`Readings.clickhouse_overflow_raises`); and
+  SQLite and ClickHouse kept `'12345678901.25'::numeric(12,2)`
+  (`Readings.decimal_precision_unchecked`). The guard reads the rounded value
+  (`Readings.round_can_leave_range`); on SQLite a whole numeral is compared
+  with the 64-bit bound digit by digit (`Readings.digit_compare_exact`). A
+  literal past the 64-bit range or the declared precision is refused.
+
+  On main, 98 of the 118 cases `tests/core/test_instant_read_laws.py` ran
   fail; none now.
 
 ## Limits
