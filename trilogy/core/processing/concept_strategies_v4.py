@@ -958,7 +958,12 @@ def _nested_row_grains(
         out.setdefault(concept.address, []).append(grain)
         if concept.lineage is None or concept.address in roots:
             continue
-        args = {c.address: c for c in concept.lineage.concept_arguments}
+        # resolved as `_nested_rollup_roots` walks: a statement-local rewrite
+        # (`reaggregate_partials`) can give the environment's copy other args
+        args = {
+            c.address: environment.concepts.get(c.address) or c
+            for c in concept.lineage.concept_arguments
+        }
         below = args if concept.derivation == Derivation.AGGREGATE else beside | args
         stack.extend((arg, below) for arg in args.values())
     return out
