@@ -1,6 +1,5 @@
-"""One election re-homes every group over the graph stage 2 built: a fold is
-a row provider that renders its group inline, applied only once all are
-elected."""
+"""One election re-homes every unplaced group over one graph, as the rewrite
+it makes, applied only once all are elected."""
 
 from types import SimpleNamespace
 
@@ -11,13 +10,7 @@ from tests.core.processing.test_v4_window_absorber_election import _QUERY
 from tests.core.processing.test_v4_window_basic_merge import _MODEL
 from trilogy import Dialects, Environment
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
-from trilogy.core.processing.v4_helper.edges import (
-    EdgeKind,
-    add_edge,
-    lineage_predecessors,
-)
 
 _ELECT_PROVIDER = gg._elect_row_provider
 
@@ -45,42 +38,9 @@ def log(monkeypatch) -> _RehomeLog:
     return log
 
 
-def test_folds_and_providers_are_elected_over_one_graph(log):
+def test_providers_are_elected_over_one_graph(log):
     assert len(log.provided) >= 2
     assert all(state == log.seen[0] for state in log.seen)
-
-
-def _fold_b(*args) -> gg.RowProvider | None:
-    return gg.RowProvider("w", inline=True) if args[-1] == "b" else None
-
-
-def test_a_parent_a_placement_drops_is_gone_before_it_folds(monkeypatch):
-    group_graph = nx.DiGraph()
-    edges: dict = {}
-    for u, v in [("b", "p"), ("b", "g"), ("r", "g"), ("g", gg.FINAL_NODE_ID)]:
-        add_edge(group_graph, edges, u, v, EdgeKind.LINEAGE)
-    group_graph.add_node("w")
-    attrs = {
-        gid: SimpleNamespace(
-            derivation=d,
-            grain_components=frozenset(),
-            primary_members=(gid,),
-            member_depths={},
-        )
-        for gid, d in [
-            ("g", Derivation.BASIC),
-            ("b", Derivation.BASIC),
-            ("p", Derivation.AGGREGATE),
-            ("r", Derivation.ROOT),
-            ("w", Derivation.WINDOW),
-        ]
-    }
-    grouping = {"g": "p"}
-    placed = gg._place_projections(group_graph, edges, attrs, {}, grouping)
-    monkeypatch.setattr(gg, "_elect_row_provider", _fold_b)
-    gg._rehome_groups(group_graph, edges, attrs, {}, {}, None, grouping, placed)
-    assert "b" not in group_graph
-    assert set(lineage_predecessors(group_graph, edges, "g")) == {"p", "r"}
 
 
 def _graph(*edges) -> nx.DiGraph:
@@ -105,11 +65,6 @@ def test_a_drop_on_a_held_parent_is_a_rewrite():
     provider = gg.RowProvider("p", frozenset({"r"}))
     rewrite = gg._as_rewrite(_graph(("p", "g"), ("r", "g")), "g", provider)
     assert rewrite == gg.RowProvider(None, frozenset({"r"}))
-
-
-def test_an_inline_provider_is_always_a_rewrite():
-    provider = gg.RowProvider("p", inline=True)
-    assert gg._as_rewrite(_graph(("p", "g")), "g", provider) == provider
 
 
 def test_a_minted_root_already_in_the_graph_is_not_minted_again():
