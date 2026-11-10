@@ -23,7 +23,7 @@ materialized-root pre-pass, and the V4History cache wiring.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from contextlib import nullcontext
 
 from trilogy.constants import logger
@@ -557,6 +557,9 @@ def materialized_root_addresses(
             key, key.grain, where, environment, datasources, unions
         )
     }
+    out |= _stored_coarser_roots(
+        candidates, target_grain, out | rolled_roots, where, environment, datasources
+    )
     nested_exact, nested = _nested_rollup_roots(
         mandatory_list, out | rolled_roots, where, environment, datasources, unions
     )
@@ -578,6 +581,70 @@ def materialized_root_addresses(
             + list(condition_args_by_address.values())
             + _rolled_grain_columns(rolled_roots, environment),
             rollup_sources,
+        )
+    )
+
+
+def _stored_coarser_roots(
+    candidates: list[BuildConcept],
+    target_grain: BuildGrain,
+    roots: set[str],
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> set[str]:
+    """Values a table stores at their own grain, which the query's rows
+    determine (`slope` by `g` beside `id`, or inside `count(id ? resid < 1)`):
+    joined from that table on its grain, not recomputed from the finer rows
+    and joined back on the same keys."""
+    reachable = build_fd_closure(
+        environment, target_grain.components, include_empty_grain=False
+    )
+    found: set[str] = set()
+    seen: set[str] = set()
+    stack = list(candidates)
+    while stack:
+        popped = stack.pop()
+        concept = environment.concepts.get(popped.address) or popped
+        if concept.address in seen or concept.address in roots:
+            continue
+        seen.add(concept.address)
+        if _stored_at_own_grain(concept, reachable, where, environment, datasources):
+            found.add(concept.address)
+        elif concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return found
+
+
+def _stored_at_own_grain(
+    concept: BuildConcept,
+    reachable: Collection[str],
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> bool:
+    grain = concept.grain.components if concept.grain else set()
+    return (
+        concept.derivation in (Derivation.AGGREGATE, Derivation.BASIC)
+        and bool(grain)
+        and _recomputes_aggregate(concept, environment)
+        and all(key in reachable for key in grain)
+        and _exactly_materialized(
+            concept, concept.grain, where, environment, datasources, ()
+        )
+    )
+
+
+def _recomputes_aggregate(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """Re-deriving `concept` aggregates rows no table stores the result of;
+    a row expression over stored inputs is re-derived from them instead."""
+    stored = environment.materialized_canonical_concepts
+    return concept.derivation == Derivation.AGGREGATE or any(
+        c.derivation == Derivation.AGGREGATE and c.canonical_address not in stored
+        for c in walk_lineage(
+            [concept],
+            descend=lambda c: c is concept or c.canonical_address not in stored,
+            resolve=lambda c: environment.concepts.get(c.address) or c,
         )
     )
 
