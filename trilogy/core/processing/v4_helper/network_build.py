@@ -96,6 +96,7 @@ from trilogy.core.processing.v4_helper.projection import (
 def _condition_fit(
     datasource: BuildDatasource | BuildUnionDatasource,
     conditions: BuildWhereClause | None,
+    environment: BuildEnvironment,
 ) -> ConditionFit:
     if conditions is None:
         return ConditionFit.NEUTRAL
@@ -104,9 +105,20 @@ def _condition_fit(
         conditions.conditional, non_partial_for.conditional
     ):
         return ConditionFit.IMPLIED_EXACT
-    if isinstance(
-        datasource, BuildDatasource
-    ) and datasource_has_filter_sensitive_aggregate(datasource, conditions):
+    # A condition on a property of the grain's keys selects whole groups, so
+    # the aggregate is kept (`Cover.joined_case_exact`); the map is only built
+    # when the plain check would refuse.
+    if (
+        isinstance(datasource, BuildDatasource)
+        and datasource_has_filter_sensitive_aggregate(datasource, conditions)
+        and datasource_has_filter_sensitive_aggregate(
+            datasource,
+            conditions,
+            canonical_to_concept={
+                c.canonical_address: c for c in environment.concepts.values()
+            },
+        )
+    ):
         return ConditionFit.SENSITIVE
     return ConditionFit.NEUTRAL
 
@@ -257,7 +269,7 @@ def _candidate(
         node=node,
         datasource=datasource,
         bindings=_bindings_for(emitted, partial, stored, equivalence),
-        condition=_condition_fit(datasource, conditions),
+        condition=_condition_fit(datasource, conditions, environment),
         is_union=isinstance(datasource, BuildUnionDatasource),
         grain=_grain_classes(datasource, equivalence),
     )

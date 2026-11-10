@@ -4,10 +4,11 @@ dominates. A source is an arm (`complete where`, every row, or no row a
 WHERE can complete for a `partial datasource` without one) stored at a
 grain. It answers when the WHERE implies its arm and every filter and target
 column is a function of its grain; it dominates another when its arm implies
-the other's and its grain is coarser (`Cost.dominated_le`). Each case runs one
-query against the base table plus a set of filtered tables and summaries,
-checks the rows against the base table alone, and checks which table was
-read."""
+the other's and its grain is coarser (`Cost.dominated_le`), and under the
+query's WHERE any coarser answering source reads no more rows than it
+(`Cost.filtered_dominated_le`). Each case runs one query against the base
+table plus a set of filtered tables and summaries, checks the rows against the
+base table alone, and checks which table was read."""
 
 import itertools
 import re
@@ -33,6 +34,8 @@ create table sum_c_a_t as select * from sum_c_t where city = 'A';
 create table sum_cs_sub_t as select * from sum_cs_t where city = 'A';
 create table sum_s_t as
   select species, count(tree_id) n, sum(height) h from trees_t group by all;
+create table species_t as select * from (values ('Acer', 'broad'), ('Quercus', 'broad'),
+  ('Tilia', 'linden'), ('Ulmus', 'elm')) t(species, form);
 """
 
 MODEL = """
@@ -42,6 +45,8 @@ key species string;
 property tree_id.height int;
 auto n_trees <- count(tree_id);
 auto total_height <- sum(height);
+property species.form string;
+datasource species_dim (species, form) grain (species) address species_t;
 """
 
 ALL_CITIES = frozenset("ABC")
@@ -133,6 +138,11 @@ GRAINS = {
 
 AGGREGATES = {"count": "count(tree_id)", "sum": "sum(height)"}
 
+# No aggregate: the species the kept rows hold, and a property looked up on
+# them (`Cover.exists_by_value`), under a WHERE on `city`; with no tree column
+# they read `species_dim` alone, which lists a species no tree has.
+LOOKUPS = {"species_form": "species, form", "form": "form", "species": "species"}
+
 
 @dataclass(frozen=True)
 class Query:
@@ -155,6 +165,12 @@ def _queries() -> dict[str, Query]:
                 out[f"{aggregate}-{grain}-{name}"] = Query(
                     f"select {columns}{clause};", cities, filtered | set(keys), False
                 )
+        for lookup, columns in LOOKUPS.items():
+            if "city" not in filtered:
+                continue
+            out[f"lookup-{lookup}-{name}"] = Query(
+                f"select {columns}{clause};", cities, filtered | {"species"}, False
+            )
     return out
 
 
@@ -185,12 +201,12 @@ def answers(source: Source, query: Query) -> bool:
 
 
 def dominates(a: Source, b: Source) -> bool:
+    """`Cost.dominated_le` on what each stores, or `Cost.filtered_dominated_le`
+    on what each reads under a WHERE both answer: the coarser grain."""
     narrower = a.arm <= b.arm
     coarser = _closure(a.grain) <= _closure(b.grain)
-    return (
-        narrower
-        and coarser
-        and (a.arm < b.arm or _closure(a.grain) < _closure(b.grain))
+    return _closure(a.grain) < _closure(b.grain) or (
+        narrower and coarser and a.arm < b.arm
     )
 
 
