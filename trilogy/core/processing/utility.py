@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
     UnnestJoin,
 )
+from trilogy.core.processing.aggregate_rollup import sourced_arguments
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 
@@ -124,10 +126,13 @@ def walk_lineage(
     starts: Iterable[BuildConcept],
     descend: Callable[[BuildConcept], bool] = _descend_all,
     resolve: Callable[[BuildConcept], BuildConcept] = _as_is,
+    partials: Mapping[str, BuildConcept] = MappingProxyType({}),
 ) -> list[BuildConcept]:
     """Every concept reachable from `starts` through the lineage arguments of
     those `descend` accepts, `starts` included, each once, in visit order.
-    `resolve` maps each argument before it is visited."""
+    `resolve` maps each argument before it is visited. With `partials`, the
+    walk follows what a plan reads: an aggregate elected to re-aggregate a
+    partial reads that partial (`aggregate_rollup.sourced_arguments`)."""
     out: dict[str, BuildConcept] = {}
     stack = list(starts)
     while stack:
@@ -136,7 +141,7 @@ def walk_lineage(
             continue
         out[concept.address] = concept
         if concept.lineage is not None and descend(concept):
-            stack.extend(resolve(arg) for arg in concept.lineage.concept_arguments)
+            stack.extend(resolve(arg) for arg in sourced_arguments(concept, partials))
     return list(out.values())
 
 

@@ -1715,10 +1715,12 @@ class BaseDialect:
             else None
         )
         if planned is not None:
-            # the planned rollup, not a stale spelling of it in a parent's
-            # lineage (`count_distinct(k)` read as the `count(k)` it became)
+            # the copy this CTE planned the rollup of
             c = planned
-            rolled = self.safe_get_cte_value(cte, c, raise_invalid)
+            partial = (
+                cte.partial_sources.get(c.address) if isinstance(cte, CTE) else None
+            )
+            rolled = self.safe_get_cte_value(cte, partial or c, raise_invalid)
             if not rolled:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"

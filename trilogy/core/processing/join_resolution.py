@@ -1514,7 +1514,12 @@ def single_row_source(ds: DataSource) -> bool:
         return False
     if ds.source_type in (SourceType.UNION, SourceType.RECURSIVE, SourceType.UNNEST):
         return False
-    if ds.limit is not None or ds.rollup_concepts:
+    # a re-aggregate of a parent's partials is computed here, as any
+    # aggregate is; one of a summary's stored column is not claimed
+    reaggregated = ds.partial_sources.keys()
+    if ds.limit is not None or any(
+        c.address not in reaggregated for c in ds.rollup_concepts
+    ):
         return False
     if not ds.group_required:
         return (
@@ -1524,7 +1529,9 @@ def single_row_source(ds: DataSource) -> bool:
             and single_row_source(ds.datasources[0])
         )
     outputs = ds.output_concepts
-    if any(ds.source_map.get(c.address) for c in outputs):
+    if any(
+        ds.source_map.get(c.address) and c.address not in reaggregated for c in outputs
+    ):
         return False
     output_by_addr = {c.address: c for c in outputs}
     if not all(

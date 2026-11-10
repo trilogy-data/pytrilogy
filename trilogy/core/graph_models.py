@@ -24,12 +24,14 @@ from trilogy.core.processing.condition_utility import (
 def _aggregate_signature(
     concept: BuildConcept,
 ) -> tuple[FunctionType, tuple[str, ...]] | None:
-    from trilogy.core.models.build import BuildAggregateWrapper
+    from trilogy.core.models.build import BuildAggregateWrapper, rollup_operator
 
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return None
+    function = concept.lineage.function
     return (
-        concept.lineage.function.operator,
+        # a distinct count of a key is a count of it
+        rollup_operator(function) or function.operator,
         tuple(
             sorted(
                 arg.canonical_address

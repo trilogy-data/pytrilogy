@@ -1,5 +1,6 @@
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import TypeVar
 
 from trilogy.core.enums import (
@@ -341,6 +342,9 @@ class StrategyNode:
     # COUNT outputs an aggregate node renders DISTINCT
     # (`QueryDatasource.distinct_counts`); copies keep it.
     distinct_counts: frozenset[str] = frozenset()
+    # Each rollup output re-aggregated from a parent's partial under another
+    # address (`QueryDatasource.partial_sources`); copies keep it.
+    partial_sources: Mapping[str, BuildConcept] = MappingProxyType({})
     # Set on a node of a v4 `plan_source` result that groups datasource rows
     # (a scan deduplicated to the asked columns, a summary rollup); copies
     # keep it.
@@ -739,6 +743,7 @@ class StrategyNode:
         node.region_spans = self.region_spans
         node.origin_group = self.origin_group
         node.distinct_counts = self.distinct_counts
+        node.partial_sources = self.partial_sources
         node.grouped_at_source = self.grouped_at_source
         return node
 

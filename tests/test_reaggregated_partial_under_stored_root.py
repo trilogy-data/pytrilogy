@@ -1,16 +1,15 @@
-"""A statement re-expresses a coarser aggregate (`count(x) by *`) as a
-re-aggregate of a finer demanded partial (`count(x) by g`) in its own
-environment only; copies embedded in other lineages keep the authored form.
-Planning passes that walk the demand's lineage must agree on which copy they
-follow, or one reaches the partial through the rewrite and the other never
-records it (#926)."""
+"""A statement computes a coarser aggregate (`count(x) by *`) by re-aggregating
+a finer demanded partial of it (`count(x) by g`). That is a sourcing election
+(`BuildEnvironment.partial_sources`): every copy of the concept keeps its
+authored lineage, and the passes that walk what the plan reads follow the
+election together (#926)."""
 
 import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import reaggregate_partials
+from trilogy.core.processing.aggregate_rollup import elect_partials
 from trilogy.core.processing.concept_strategies_v4 import _nested_row_grains
 from trilogy.core.processing.utility import walk_lineage
 from trilogy.execution.state.isolation import hidden_datasources
@@ -106,8 +105,12 @@ def test_row_grains_cover_every_resolved_lineage_concept(agg: str, coarse: str):
     scaled = build_env.concepts["local.scaled"]
     part = build_env.concepts["local.part"]
     level = build_env.concepts["local.level"]
-    rewritten = _rollup_rewrite(build_env, [level, scaled, part])
-    assert rewritten, "the coarse aggregate should read the finer partial"
+    authored = whole.lineage
+    build_env.partial_sources = elect_partials(
+        [level, scaled, part], build_env.concepts, build_env.datasources.values()
+    )
+    assert build_env.partial_sources == {whole.address: part}
+    assert build_env.concepts[whole.address].lineage is authored
     mandatory = [build_env.concepts["local.g"], level, scaled]
     roots = {level.address}
     rows = _nested_row_grains(mandatory, roots, build_env)
@@ -115,18 +118,34 @@ def test_row_grains_cover_every_resolved_lineage_concept(agg: str, coarse: str):
         mandatory,
         descend=lambda c: c.address not in roots,
         resolve=lambda c: build_env.concepts.get(c.address) or c,
+        partials=build_env.partial_sources,
     )
     assert {c.address for c in reached} <= rows.keys()
-    assert whole.address in rows
+    assert {whole.address, part.address} <= rows.keys()
 
 
-def _rollup_rewrite(build_env: BuildEnvironment, demanded) -> dict:
-    rewritten = reaggregate_partials(
-        demanded, build_env.concepts, build_env.datasources.values()
-    )
-    for address, concept in rewritten.items():
-        build_env.concepts[address] = concept
-    return rewritten
+@pytest.mark.parametrize("coarse", COARSE)
+@pytest.mark.parametrize("agg", AGGREGATES)
+def test_reaggregation_plans_without_rewriting_a_concept(agg: str, coarse: str):
+    ex = _executor(agg, coarse)
+    query = "select g, part, whole order by g asc;"
+    with hidden_datasources(ex.environment, ["levels"]):
+        processed = ex.parse_text(query)[-1]
+        sql = ex.generate_sql(query)[-1]
+    reagg = "sum" if agg in ("count", "sum") else agg
+    assert f'{reagg}("' in sql and '"part")' in sql, sql
+    assert sql.count('"rows"."x"') == 1, sql
+    planned = [
+        column
+        for cte in processed.ctes
+        for column in cte.output_columns
+        if column.address == "local.whole"
+    ]
+    assert planned
+    for column in planned:
+        function = column.lineage.function
+        assert function.operator.value == agg
+        assert [c.address for c in function.concept_arguments] == ["local.x"]
 
 
 ROUNDS_MODEL = """

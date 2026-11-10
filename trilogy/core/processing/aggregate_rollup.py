@@ -1,18 +1,17 @@
-from collections.abc import Iterable, Mapping
-from dataclasses import replace
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.models.build import (
-    ROLLUP_REAGGREGATES,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
-    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
     aggregate_filter,
+    rollup_operator,
 )
 from trilogy.core.processing.condition_utility import condition_implies
 
@@ -32,7 +31,7 @@ def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
 def _is_rollable_aggregate(concept: BuildConcept) -> bool:
     return (
         isinstance(concept.lineage, BuildAggregateWrapper)
-        and concept.lineage.function.operator in ROLLUP_REAGGREGATES
+        and rollup_operator(concept.lineage.function) is not None
     )
 
 
@@ -678,35 +677,23 @@ def _rolls_up_from(
     )
 
 
-def _reaggregated(coarse: BuildConcept, fine: BuildConcept) -> BuildConcept:
-    assert isinstance(coarse.lineage, BuildAggregateWrapper)
-    function = coarse.lineage.function
-    reaggregate = replace(
-        function,
-        operator=ROLLUP_REAGGREGATES[function.operator],
-        arguments=[fine],
-        arg_count=1,
-        valid_inputs=None,
-    )
-    return replace(coarse, lineage=replace(coarse.lineage, function=reaggregate))
-
-
-def reaggregate_partials(
+def elect_partials(
     demanded: Iterable[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
     datasources: Iterable[BuildDatasource],
 ) -> dict[str, BuildConcept]:
-    """Each demanded rollable aggregate that a strictly finer demanded partial
-    of the same aggregate can answer, re-expressed as the re-aggregate of the
-    coarsest such partial (`Rollup.reaggregated_sum_is_partial`): the query groups the
-    rows once and every coarser grain reads the groups."""
+    """Each demanded rollable aggregate, by address, to the coarsest strictly
+    finer demanded partial of the same aggregate
+    (`Rollup.reaggregated_sum_is_partial`): the query groups the rows once and
+    every coarser grain re-aggregates the groups. A sourcing decision; neither
+    concept changes."""
     aggregates = [
         c
         for c in _demanded_aggregates(demanded, concepts_by_address)
         if _standard_rollable(c)
     ]
     datasource_list = list(datasources)
-    rewritten: dict[str, BuildConcept] = {}
+    elected: dict[str, BuildConcept] = {}
     for coarse in aggregates:
         candidates = [
             fine
@@ -714,86 +701,33 @@ def reaggregate_partials(
             if _rolls_up_from(coarse, fine, concepts_by_address, datasource_list)
         ]
         if candidates:
-            fine = min(candidates, key=lambda c: (len(c.grain.components), c.address))
-            rewritten[coarse.address] = _reaggregated(coarse, fine)
-    return rewritten
-
-
-def _distinct_count_key(concept: BuildConcept) -> BuildConcept | None:
-    """The key a `count_distinct(k)` counts, `k ? c` (either spelling)
-    included."""
-    if not isinstance(concept.lineage, BuildAggregateWrapper):
-        return None
-    function = concept.lineage.function
-    if function.operator != FunctionType.COUNT_DISTINCT:
-        return None
-    if len(function.arguments) != 1:
-        return None
-    filtered = aggregate_filter(function.arguments[0])
-    key = filtered[0] if filtered else function.arguments[0]
-    return key if isinstance(key, BuildConcept) and key.purpose == Purpose.KEY else None
-
-
-def distinct_key_counts(
-    demanded: Iterable[BuildConcept],
-    conditions: BuildWhereClause | None,
-    concepts_by_address: Mapping[str, BuildConcept],
-    datasources: Iterable[BuildDatasource],
-) -> dict[str, BuildConcept]:
-    """Each demanded `count_distinct(k)` a summary storing `count(k)` can
-    answer, re-expressed as `count(k)` (`Cover.count_distinct_of_key_exact`):
-    on rows where every grouping and WHERE column is a function of the key,
-    each value of `k` is one row. An unnested or other fanned-out column
-    repeats the key, so it keeps its distinct count."""
-    datasource_list = list(datasources)
-    stored = {
-        c.rollup_signature
-        for ds in datasource_list
-        for c in ds.output_concepts
-        if c.rollup_signature is not None
-    }
-    row_columns = [
-        c
-        for c in (conditions.row_arguments if conditions else [])
-        if c.granularity != Granularity.SINGLE_ROW
-    ]
-    rewritten: dict[str, BuildConcept] = {}
-    for concept in _distinct_counts(demanded, concepts_by_address):
-        key = _distinct_count_key(concept)
-        if key is None or (FunctionType.COUNT, (key.canonical_address,)) not in stored:
-            continue
-        assert isinstance(concept.lineage, BuildAggregateWrapper)
-        grouping = [
-            concepts_by_address.get(address)
-            for address in _grain_identity(concept.grain)
-        ]
-        if not all(
-            column is not None
-            and _safe_dropped_grain(
-                column, {key.address}, datasource_list, concepts_by_address
+            elected[coarse.address] = min(
+                candidates, key=lambda c: (len(c.grain.components), c.address)
             )
-            for column in [*grouping, *row_columns]
-        ):
-            continue
-        count = replace(concept.lineage.function, operator=FunctionType.COUNT)
-        rewritten[concept.address] = replace(
-            concept, lineage=replace(concept.lineage, function=count)
-        )
-    return rewritten
+    return elected
 
 
-def _distinct_counts(
-    concepts: Iterable[BuildConcept], concepts_by_address: Mapping[str, BuildConcept]
+def sourced_arguments(
+    concept: BuildConcept, partials: Mapping[str, BuildConcept]
 ) -> list[BuildConcept]:
-    found: dict[str, BuildConcept] = {}
-    stack = list(concepts)
-    while stack:
-        concept = concepts_by_address.get(stack.pop().address)
-        if concept is None or concept.address in found:
-            continue
-        found[concept.address] = concept
-        if concept.lineage is not None and not isinstance(
-            concept.lineage, BuildFilterItem
-        ):
-            stack.extend(concept.lineage.concept_arguments)
-    return [c for c in found.values() if _distinct_count_key(c) is not None]
+    """The concepts a plan reads to compute `concept`: its lineage arguments,
+    or for an aggregate elected to re-aggregate a partial (`elect_partials`),
+    that partial beside its grouping keys."""
+    if concept.lineage is None:
+        return []
+    partial = partials.get(concept.address)
+    if partial is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+        return list(concept.lineage.concept_arguments)
+    return [partial, *concept.lineage.by]
+
+
+def sourced_function_arguments(
+    concept: BuildConcept, partials: Mapping[str, BuildConcept]
+) -> Sequence[Any]:
+    """What an aggregate's function reads in the plan: its arguments, or the
+    partial it is elected to re-aggregate."""
+    assert isinstance(concept.lineage, BuildAggregateWrapper)
+    partial = partials.get(concept.address)
+    if partial is not None:
+        return [partial]
+    return concept.lineage.function.arguments

@@ -140,6 +140,8 @@ RELATION = {
     "member": "ecoregion_id, count(tree_id) as n",
     "member_property": "biome, count(tree_id) as n",
     "beside_property": "bucket, biome, count(tree_id) as n",
+    # a distinct count of the counted key is its count, fanned target or not
+    "member_distinct": "ecoregion_id, count_distinct(tree_id) as n",
 }
 
 # `Cover.case_on_aggregate_rows`, `Cover.finer_grain_read_fans_out`: a scalar
@@ -167,7 +169,6 @@ UNSERVABLE = {
     "finer_condition": "species, count(tree_id ? dbh > 10) as n",
     "finer_target": "dbh, count(tree_id) as n",
     "distinct_non_key": "count_distinct(dbh) as n",
-    "distinct_fanned": "ecoregion_id, count_distinct(tree_id) as n",
     "finer_existence": "dbh",
 }
 

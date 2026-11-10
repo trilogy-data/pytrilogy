@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import sourced_function_arguments
 from trilogy.core.processing.nodes import GroupNode, StrategyNode
 from trilogy.core.processing.v4_helper.constants import (
     ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
@@ -149,18 +150,26 @@ def gen_aggregate(
         nonstandard_grouping_lineage(c) is not None for c in outputs
     )
     outputs = outputs_with_scoped_join_mates(outputs, parents, environment)
-    input_concepts = parent_outputs_needed(outputs, parents, conditions)
-    input_addresses = {concept.address for concept in input_concepts}
     available_by_address = {
         concept.address: concept
         for parent in parents
         for concept in parent.output_concepts
     }
+    # an aggregate no parent passes through, re-aggregated from the finer
+    # partial of it a parent holds
+    partials = {
+        c.address: partial
+        for c in outputs
+        if c.address not in available_by_address
+        and (partial := environment.partial_sources.get(c.address)) is not None
+    }
+    input_concepts = parent_outputs_needed(outputs, parents, conditions, partials)
+    input_addresses = {concept.address for concept in input_concepts}
 
     for output in outputs:
         if not isinstance(output.lineage, BuildAggregateWrapper):
             continue
-        for arg in output.lineage.function.arguments:
+        for arg in sourced_function_arguments(output, partials):
             if (
                 isinstance(arg, BuildConcept)
                 and arg.derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
@@ -169,7 +178,7 @@ def gen_aggregate(
                     arg, input_concepts, input_addresses, available_by_address
                 )
 
-    return GroupNode(
+    node = GroupNode(
         output_concepts=outputs,
         input_concepts=input_concepts,
         environment=environment,
@@ -179,4 +188,7 @@ def gen_aggregate(
             preexisting_conditions.conditional if preexisting_conditions else None
         ),
         force_group=True if has_non_standard_grouping else None,
+        rollup_concepts=[c for c in outputs if c.address in partials],
     )
+    node.partial_sources = partials
+    return node

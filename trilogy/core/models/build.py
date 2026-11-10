@@ -157,10 +157,30 @@ ROLLUP_REAGGREGATES = {
 }
 
 
+def rollup_operator(function: BuildFunction) -> FunctionType | None:
+    """The rollable aggregate `function` computes, if any. A distinct count of
+    a key is a count of it (`Cover.count_distinct_of_key_exact`): each value
+    is counted once either way, so partials of one are partials of the other,
+    additive wherever the grain summed away partitions the key (the guard
+    every re-summed count passes, `get_rollup_concepts`)."""
+    operator = function.operator
+    if operator in ROLLUP_REAGGREGATES:
+        return operator
+    if operator != FunctionType.COUNT_DISTINCT or len(function.arguments) != 1:
+        return None
+    filtered = aggregate_filter(function.arguments[0])
+    key = filtered[0] if filtered else function.arguments[0]
+    if isinstance(key, BuildConcept) and key.purpose == Purpose.KEY:
+        return FunctionType.COUNT
+    return None
+
+
 def rollup_reaggregate(concept: BuildConcept) -> FunctionType:
     """The function that re-aggregates `concept`'s precomputed values."""
     assert isinstance(concept.lineage, BuildAggregateWrapper)
-    return ROLLUP_REAGGREGATES[concept.lineage.function.operator]
+    operator = rollup_operator(concept.lineage.function)
+    assert operator is not None
+    return ROLLUP_REAGGREGATES[operator]
 
 
 def _gen_agg_name(parent: BuildAggregateWrapper) -> str:
@@ -1354,7 +1374,8 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         anything that is not a rollable aggregate."""
         if not isinstance(self.lineage, BuildAggregateWrapper):
             return None
-        if self.lineage.function.operator not in ROLLUP_REAGGREGATES:
+        operator = rollup_operator(self.lineage.function)
+        if operator is None:
             return None
         arguments = self.lineage.function.arguments
         # `x ? c` and `case when c then x end` are one argument
@@ -1365,9 +1386,9 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                 f"<Filter: {content.canonical_address} where "
                 f"{_canonical_str_for_hash(where)}>"
             )
-            return self.lineage.function.operator, (argument,)
+            return operator, (argument,)
         return (
-            self.lineage.function.operator,
+            operator,
             tuple(
                 sorted(
                     (
@@ -1393,15 +1414,15 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         lineage = self.lineage
         if not (
             isinstance(lineage, BuildAggregateWrapper)
-            and lineage.function.operator in ROLLUP_REAGGREGATES
             and len(lineage.function.arguments) == 1
         ):
             return None
+        operator = rollup_operator(lineage.function)
         filtered = aggregate_filter(lineage.function.arguments[0])
-        if filtered is None:
+        if operator is None or filtered is None:
             return None
         content, where = filtered
-        return (lineage.function.operator, (content.canonical_address,)), where
+        return (operator, (content.canonical_address,)), where
 
     def __str__(self):
         grain = str(self.grain) if self.grain else "Grain<>"

@@ -212,6 +212,10 @@ class BuildEnvironment:
     # Set around each plan (`_build_from_graph`) and each group
     # (`build_strategy_node`); merges capture it.
     span_scope: SpanScope = field(default_factory=SpanScope)
+    # Each aggregate this statement re-aggregates from a finer demanded partial
+    # of it, by address (`aggregate_rollup.elect_partials`). A sourcing
+    # decision the plan reads; no concept's lineage changes.
+    partial_sources: dict[str, BuildConcept] = field(default_factory=dict)
     # A delta materialization's baseline (`Factory.build_environment_delta`):
     # its classes carry over while every name matches the baseline's.
     class_baseline: "BuildEnvironment | None" = field(

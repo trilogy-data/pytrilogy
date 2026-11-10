@@ -60,6 +60,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseBuildConceptList,
     generate_concept_name,
+    get_concept_arguments,
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
@@ -71,6 +72,8 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
     finer_than_grain,
     pending_rollups,
+    sourced_arguments,
+    sourced_function_arguments,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -931,7 +934,8 @@ def _aggregate_inlines(
             concept
             for addr in attrs[consumer].primary_members
             if (concept := _concept_at(environment, addr)) is not None
-        ]
+        ],
+        environment.partial_sources,
     ):
         return False
     # A derived key of the consumer's ROLLUP/CUBE/GROUPING SETS spec must stay
@@ -1886,22 +1890,26 @@ def _output_spelling(
     return next((o for o in outputs.values() if concept.address in o.pseudonyms), None)
 
 
-def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept]:
+def _aggregate_row_preserving_inputs(
+    concept: BuildConcept, partials: Mapping[str, BuildConcept]
+) -> list[BuildConcept]:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
     return [
         arg
-        for arg in concept.lineage.function.arguments
+        for arg in sourced_function_arguments(concept, partials)
         if isinstance(arg, BuildConcept)
         and arg.derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
         and not lineage_crosses_row_shape_barrier(arg)
     ]
 
 
-def _aggregate_row_preserving_input_addresses(outputs: list[BuildConcept]) -> set[str]:
+def _aggregate_row_preserving_input_addresses(
+    outputs: list[BuildConcept], partials: Mapping[str, BuildConcept]
+) -> set[str]:
     addresses: set[str] = set()
     for concept in outputs:
-        for input_concept in _aggregate_row_preserving_inputs(concept):
+        for input_concept in _aggregate_row_preserving_inputs(concept, partials):
             addresses.update(arg.address for arg in _row_lineage_closure(input_concept))
     return addresses
 
@@ -1954,6 +1962,7 @@ def _aggregate_inputs_are_row_preserving(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
     parents: list[StrategyNode],
+    partials: Mapping[str, BuildConcept],
 ) -> bool:
     row_preserving_inputs: list[BuildConcept] = []
     for concept in outputs:
@@ -1961,7 +1970,7 @@ def _aggregate_inputs_are_row_preserving(
             continue
         if not isinstance(concept.lineage, BuildAggregateWrapper):
             continue
-        for arg in concept.lineage.function.arguments:
+        for arg in sourced_function_arguments(concept, partials):
             # Only a top-level row-preserving BuildConcept arg lets the aggregate
             # skip input-grain normalization. Collecting the leaves of an inline
             # function arg (`sum(a - coalesce(b, 0))`) would skip normalization
@@ -2100,7 +2109,9 @@ def _aggregate_scalar_inputs(
             return []
         scalar_inputs.extend(
             aggregate_input
-            for aggregate_input in _aggregate_row_preserving_inputs(concept)
+            for aggregate_input in _aggregate_row_preserving_inputs(
+                concept, environment.partial_sources
+            )
             if aggregate_input.derivation == Derivation.BASIC
             # beside a region domain only an argument that takes a value on
             # a padded row (CASE, COALESCE) has to be computed before the
@@ -4600,25 +4611,31 @@ def _add_needed_concept(needed: set[str], concept: BuildConcept) -> None:
         needed.update(concept.grain.components)
 
 
-def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> None:
+def _add_aggregate_needed_concepts(
+    needed: set[str], concept: BuildConcept, partials: Mapping[str, BuildConcept]
+) -> None:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         if concept.lineage is None:
             return
         for arg in concept.lineage.concept_arguments:
             _add_needed_concept(needed, arg)
         return
-    for arg in concept.lineage.function.concept_arguments:
-        _add_needed_concept(needed, arg)
+    for argument in sourced_function_arguments(concept, partials):
+        for arg in get_concept_arguments(argument):
+            _add_needed_concept(needed, arg)
     for group_key in concept.lineage.by:
         needed.add(group_key.address)
-    for input_concept in _aggregate_row_preserving_inputs(concept):
+    for input_concept in _aggregate_row_preserving_inputs(concept, partials):
         for row_input in _row_lineage_closure(input_concept):
             if row_input.address != input_concept.address:
                 _add_needed_concept(needed, row_input)
 
 
 def _reads_inner_aggregate_rows(
-    outputs: list[BuildConcept], primary_addrs: set[str], grain: frozenset[str]
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    grain: frozenset[str],
+    partials: Mapping[str, BuildConcept],
 ) -> bool:
     """Every aggregate here reads only inner aggregates at `grain` and scalars of
     its keys, so its input rows are one per key: a finer parent fans them out."""
@@ -4626,7 +4643,7 @@ def _reads_inner_aggregate_rows(
         arg
         for c in outputs
         if c.address in primary_addrs and isinstance(c.lineage, BuildAggregateWrapper)
-        for arg in _parent_supplied_args(c, primary_addrs)
+        for arg in _parent_supplied_args(c, primary_addrs, partials)
     ]
     return any(_scalar_of_aggregate(a) for a in args) and all(
         _function_of(a, set(grain)) for a in args
@@ -4642,7 +4659,7 @@ def _scalar_of_aggregate(concept: BuildConcept) -> bool:
 
 
 def _parent_supplied_args(
-    concept: BuildConcept, primary_addrs: set[str]
+    concept: BuildConcept, primary_addrs: set[str], partials: Mapping[str, BuildConcept]
 ) -> list[BuildConcept]:
     """Lineage args of `concept` that a PARENT has to supply.
 
@@ -4650,7 +4667,7 @@ def _parent_supplied_args(
     over `grouping(...)` reads the grouping virtual the same node emits), so the
     parent owns its inputs, not the arg itself. Walk through those; stop at
     everything else."""
-    stack = list(concept.lineage.concept_arguments) if concept.lineage else []
+    stack = sourced_arguments(concept, partials)
     seen: set[str] = set()
     supplied: list[BuildConcept] = []
     while stack:
@@ -6887,7 +6904,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 # re-supplies grouping keys the twin already carries. Treat
                 # it like a passthrough: skip its lineage.
                 if c.address not in a.twin_reused:
-                    _add_aggregate_needed_concepts(needed, c)
+                    _add_aggregate_needed_concepts(
+                        needed, c, environment.partial_sources
+                    )
             else:
                 # Recurse through args that are THEMSELVES primary members
                 # of this group (intermediates computed here, e.g. a window
@@ -7084,7 +7103,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # build.
     if derivation not in (Derivation.ROOT, Derivation.UNNEST):
         wanted = outputs
-        outputs = satisfiable_outputs(outputs, parents)
+        outputs = satisfiable_outputs(outputs, parents, environment.partial_sources)
         if not outputs:
             ctx.unbuilt[gid] = wanted
             return None
@@ -7145,11 +7164,16 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         and (
             a.aggregate_input_grain != a.grain_components
             or _reads_inner_aggregate_rows(
-                outputs, primary_addrs, a.aggregate_input_grain
+                outputs,
+                primary_addrs,
+                a.aggregate_input_grain,
+                environment.partial_sources,
             )
         )
         and parents
-        and not _aggregate_inputs_are_row_preserving(outputs, primary_addrs, parents)
+        and not _aggregate_inputs_are_row_preserving(
+            outputs, primary_addrs, parents, environment.partial_sources
+        )
         and not _parents_already_at_input_grain(
             outputs, parents, a.aggregate_input_grain, environment
         )
@@ -7160,7 +7184,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             normalize_addrs.add(c.address)
             if c.address not in primary_addrs or c.lineage is None:
                 continue
-            for arg in _parent_supplied_args(c, primary_addrs):
+            for arg in _parent_supplied_args(
+                c, primary_addrs, environment.partial_sources
+            ):
                 normalize_addrs.add(arg.address)
                 aggregate_arg_addrs.add(arg.address)
         normalize_parent_output_by_addr: dict[str, BuildConcept] = {}

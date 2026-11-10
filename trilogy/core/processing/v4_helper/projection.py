@@ -1,6 +1,7 @@
 """Shared v4 helpers for projection widening and lineage satisfiability."""
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator, Mapping
+from types import MappingProxyType
 
 from trilogy.core.enums import Derivation
 from trilogy.core.models.author import SelectLineage
@@ -202,6 +203,7 @@ def literal_producible(concept: BuildConcept, _seen: set[str] | None = None) -> 
 def satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
+    partials: Mapping[str, BuildConcept] = MappingProxyType({}),
 ) -> list[BuildConcept]:
     # A parentless group keeps its outputs here even when it cannot source them.
     # That looks wrong, but it is load-bearing: the bogus node has to survive
@@ -211,16 +213,25 @@ def satisfiable_outputs(
     # renders INVALID_REFERENCE_BUG for the condition args nothing produces.
     if not parents:
         return outputs
-    return satisfiable_from(
-        outputs,
-        {output.address for parent in parents for output in parent.output_concepts},
-    )
+    available = {
+        output.address for parent in parents for output in parent.output_concepts
+    }
+    # an aggregate re-aggregated from a partial renders from that partial
+    reaggregated = {
+        c.address
+        for c in outputs
+        if (partial := partials.get(c.address)) is not None
+        and partial.address in available
+    }
+    return satisfiable_from(outputs, available, reaggregated)
 
 
 def satisfiable_from(
-    outputs: list[BuildConcept], available: set[str]
+    outputs: list[BuildConcept],
+    available: set[str],
+    satisfied: Collection[str] = (),
 ) -> list[BuildConcept]:
-    keep_addrs: set[str] = set()
+    keep_addrs: set[str] = set(satisfied)
     changed = True
     while changed:
         changed = False

@@ -983,10 +983,11 @@ from that round:
 - A summary storing `agg(x)` at exactly the target grain does not answer
   `agg(x ? c)`: the matcher pairs them only where the partials are
   re-aggregated.
-- **The statement's lineage is still stale** after `_reaggregate_partials`.
-  This round resolved the two walks that read it (`_nested_rollup_roots`,
-  `_summary_leaves`) and the rollup render; a rewrite of the statement's own
-  nested lineage would retire the class.
+- **The statement's lineage no longer goes stale** (0.3.483): the
+  `_reaggregate_partials` rewrite is gone. The election it made lives in
+  `BuildEnvironment.partial_sources` and the group node re-aggregates the
+  partial as a rollup (`QueryDatasource.partial_sources`); every copy of a
+  concept keeps its authored lineage.
 - `siblings/scalar` under a WHERE on a stored column right-joins the summary
   to the trees' distinct `(city, species, plant_year)`: right, but a scan the
   summary makes unnecessary.

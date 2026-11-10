@@ -110,6 +110,9 @@ class GroupNode(StrategyNode):
         )
         rollup_addresses = {c.address for c in self.rollup_concepts}
         input_addresses = {c.address for c in self.input_concepts}
+        # a rollup reads its partial where the parents hold it
+        for address, partial in self.partial_sources.items():
+            source_map[address] = set(source_map.get(partial.address, set()))
         for concept in self.output_concepts:
             if concept.is_aggregate and concept.address not in rollup_addresses:
                 # An aggregate arriving via input_concepts is passed through from
@@ -205,6 +208,7 @@ class GroupNode(StrategyNode):
             condition=self.conditions,
             ordering=self.ordering,
             distinct_counts=self.distinct_counts,
+            partial_sources=dict(self.partial_sources),
         )
         return base
 

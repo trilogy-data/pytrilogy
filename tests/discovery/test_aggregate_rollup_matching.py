@@ -311,7 +311,11 @@ def test_rollup_signature_matches_across_spellings():
     assert env.concepts["local.flight_count"].rollup_signature != signature
     # Non-additive aggregates have no rollup identity at all.
     assert env.concepts["local.avg_distance"].rollup_signature is None
-    assert env.concepts["local.distinct_carriers"].rollup_signature is None
+    # A distinct count of a key is a count of it.
+    assert env.concepts["local.distinct_carriers"].rollup_signature == (
+        FunctionType.COUNT,
+        ("local.carrier_code",),
+    )
     # A plain column is not an aggregate.
     assert env.concepts["local.distance"].rollup_signature is None
 
