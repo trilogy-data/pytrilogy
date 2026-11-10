@@ -1659,6 +1659,40 @@ What moved is the known noise: column and GROUP BY order (grain checks,
 bootstrap), the GCS name and the BigQuery temp table. Full suite: the same 25
 failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**Window absorbers and row providers are elected over one graph (part 48).**
+Part 47 left the regraft electing over the graph the fold had rewritten.
+Both elections now read the graph stage 2 built, and neither applies until
+both are done:
+
+- `_rehome_groups` elects every absorber (`_elect_window_absorbers`), then
+  every row provider (`_elect_row_providers`), then folds and applies. It
+  replaces the two back-to-back calls in `build_group_graph`.
+- A folded BASIC takes no provider: its WINDOW renders it. Part 47's census
+  found each folded BASIC would itself have been elected a provider; that
+  pick is now never applied.
+- No provider is a BASIC (a candidate is neither ROOT nor BASIC, a grouping
+  provider is grouped, a dimension provider is a ROOT), so no fold removes a
+  provider. A parent a provider drops can be a folded BASIC, whose edge the
+  fold moves onto its WINDOW, so the drop names that WINDOW.
+- `_merge_basic_into_window_parent` and `_regraft_group_sources` now only
+  apply what was elected.
+
+A census over one suite run rehomed every pass both ways, part 47's order
+(fold, then elect providers over the folded graph) and one election, and
+compared the resulting graphs (nodes, edges and their kinds, every grain,
+member list and member depths, the buckets): 70,830 passes, 7,285 elected
+providers, 66 passes folding anything, 29 of them also electing providers.
+No graph differed.
+
+`test_absorbers_and_providers_are_elected_over_one_graph` pins the read over
+part 47's statement: every absorber and provider election sees the same
+graph. It fails in part 47's order. `test_a_folded_basic_takes_no_row_provider`
+and `test_a_dropped_parent_that_is_folded_is_dropped_as_its_window` pin the
+two hand-offs.
+
+Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522. Full suite: the same 25
+failures as `main`. Suite capture: pending.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1678,13 +1712,12 @@ not built yet:
    datasources, so it cannot state that one. The shapes a condition carries
    into a scan are not in `shapes_rows` either (45 per-group reads in
    part 41, none moving a plan).
-3. The regraft functions pick a provider over the graph stage 2 built, and
-   no pick reads another (part 46); so does the window fold (part 47).
-   Applying the picks still rewrites the graph: a fold deletes the BASIC and
-   repoints its readers; a provider adds a lineage edge, drops the parents
-   it replaces, overwrites the group's `grain_components` and may mint a
-   ROOT. Then `_compute_concept_sets` runs again. The regraft elects over
-   the graph the fold left, not the one stage 2 built.
+3. Every window absorber and row provider is picked over the graph stage 2
+   built, and no pick reads another (parts 46-48). Applying the picks still
+   rewrites the graph: a fold deletes the BASIC and repoints its readers; a
+   provider adds a lineage edge, drops the parents it replaces, overwrites
+   the group's `grain_components` and may mint a ROOT. Then
+   `_compute_concept_sets` runs again.
 
 ## 8. Not claimed
 
