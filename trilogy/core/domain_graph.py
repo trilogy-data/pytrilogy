@@ -36,7 +36,7 @@ from functools import partial
 from typing import Any
 from weakref import ReferenceType, ref
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import Derivation, FunctionType, JoinType, Purpose
 from trilogy.core.union_find import find
 
 
@@ -1017,10 +1017,36 @@ def _row_determinants(datasource: Any) -> frozenset[str]:
     }
 
 
+def derived_key_inputs(concept: Any, concepts: Any = None) -> frozenset[str]:
+    """The grain of a derived key's inputs (`key cls <- case ...`): its values
+    are its own grain, but it is a function of those rows, as a property is of
+    its keys. Empty for anything else, a rename of a key included."""
+    lineage = concept.lineage
+    if (
+        concept.purpose != Purpose.KEY
+        or concept.derivation != Derivation.BASIC
+        or lineage is None
+    ):
+        return frozenset()
+    args = [
+        (concepts.get(arg.address) if concepts else None) or arg
+        for arg in lineage.concept_arguments
+    ]
+    if getattr(lineage, "operator", None) == FunctionType.ALIAS and all(
+        arg.purpose == Purpose.KEY for arg in args
+    ):
+        return frozenset()
+    out: set[str] = set()
+    for arg in args:
+        if arg.grain:
+            out |= arg.grain.components
+    return frozenset(out - {concept.address})
+
+
 def mint_fd_edges(environment: Any) -> list[FDEdge]:
     out: list[FDEdge] = []
     for concept in _unique_concepts(environment):
-        keys = concept.keys
+        keys = concept.keys or derived_key_inputs(concept, environment.concepts)
         if keys:
             out.append(
                 FDEdge(
