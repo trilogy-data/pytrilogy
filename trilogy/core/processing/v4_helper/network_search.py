@@ -300,12 +300,10 @@ def _reads_alike(
 
 
 def _arm_columns(network: SourceNetwork, candidate: SourceCandidate) -> frozenset[str]:
-    datasource = candidate.datasource
-    if datasource is None or datasource.non_partial_for is None:
-        return frozenset()
+    arm = candidate.datasource.non_partial_for if candidate.datasource else None
     return frozenset(
         network.equivalence.get(c.address, c.address)
-        for c in datasource.non_partial_for.conditional.concept_arguments
+        for c in (arm.conditional.concept_arguments if arm else ())
     )
 
 
