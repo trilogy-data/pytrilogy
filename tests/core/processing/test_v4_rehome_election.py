@@ -99,3 +99,10 @@ def test_a_new_grain_on_a_held_parent_is_a_rewrite():
 def test_an_inline_provider_is_always_a_rewrite():
     provider = gg.RowProvider("p", inline=True)
     assert gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider) == provider
+
+
+def test_a_minted_root_already_in_the_graph_is_not_minted_again():
+    minted = SimpleNamespace(group_id="p")
+    provider = gg.RowProvider("p", minted=minted)
+    rewrite = gg._as_rewrite(_graph(("r", "g")), _ATTRS, {}, "g", provider)
+    assert rewrite == gg.RowProvider("p")
