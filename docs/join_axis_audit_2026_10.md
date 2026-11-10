@@ -1846,6 +1846,45 @@ GCS name, the BigQuery temp table and `test_a_rust_binary_is_a_datasource`.
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 Fuzzer: 522 of 522.
 
+**A projection is placed at its grouping provider before the rehome (part
+52).** Part 51 stated each projection's grain before the election, but the
+election still gave it its grouping provider as a row provider: the edge
+onto that provider and the drop of the parents it was built from. That pick
+reads nothing another election writes, so stage 2 now states it with the
+grain:
+
+- `_place_projections` states each projection's grain, then reads every
+  placement over the graph stage 2 built (`_projection_placements`) before
+  applying any. A projection whose provider's grain an independent sibling
+  co-grains on is stated but not placed: it keeps its parents and takes a row
+  provider, as before.
+- Every projection feeds only FINAL, so a placement changes no other group's
+  ancestors, and no other election can see it.
+- The row-provider election skips placed projections. It now picks only a
+  fold, a full-coverage sibling, a dimension ROOT or a partial spine. A
+  stated but unplaced projection still takes no inline WINDOW.
+- A provider now drops only ROOT parents (a dimension pick), and no fold
+  removes a ROOT, so the election no longer maps a dropped parent onto the
+  WINDOW it folds into. A placement's drop is applied before any fold, so the
+  folded BASIC's edge is already gone when its readers are repointed.
+
+A census over one suite run rehomed every pass both ways: as on main (grain
+stated, provider elected and applied in the rehome) and with the placement.
+It then compared the resulting graphs: nodes, edges and their kinds, every
+grain, member list and member depths, and the buckets. 71,353 passes, no
+graph differed. Of 1,636 stated projections, 1,464 were placed; 820
+rewrites are left in the election (1,722 in part 51).
+
+`test_each_placed_projection_reads_its_provider_when_providers_are_elected`
+pins the order over `select region, coalesce(sum(amount), 0)`: when the
+providers are elected, each placed projection already reads its provider
+and is not elected. `test_a_projection_an_independent_sibling_needs_is_stated_but_not_placed`,
+`test_a_placed_projection_is_not_elected`, `test_an_unplaced_projection_takes_no_inline_window`
+and `test_a_parent_a_placement_drops_is_gone_before_it_folds` pin the rest.
+
+Full suite: the same 25 failures as `main` (the credential-gated BigQuery,
+Snowflake, GCS and NCAA tests, and `the_look::test_wrapped_aggregate_with_dependent_by_grain`).
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1867,14 +1906,16 @@ not built yet:
    part 41, none moving a plan).
 3. Every group's rehome, a window fold included, is one row-provider pick
    over the graph stage 2 built, and no pick reads another (parts 46-49).
-   A pick is elected only as the rewrite it makes (part 50), and a
-   projection's grain is stated before any pick (part 51), so a rewrite never
-   changes a grain. Those rewrites still change the graph: a fold deletes the
-   BASIC and repoints its readers; a provider adds a lineage edge, drops the
-   parents it replaces and may mint a ROOT. The stated grain still follows
+   A pick is elected only as the rewrite it makes (part 50). A projection's
+   grain is stated before any pick (part 51), and so is its edge onto its
+   grouping provider (part 52), so a rewrite never changes a grain and the
+   election never places a projection. The rewrites left still change the
+   graph: a fold deletes the BASIC and repoints its readers; a sibling or
+   spine adds a lineage edge; a dimension pick drops ROOT parents and may
+   mint a ROOT. The stated grain and placement still follow
    `_compute_concept_sets`, since the grouping provider is read off the
-   groups' input and output sets; stating it when stage 2 groups needs those
-   sets first. Then `_compute_concept_sets` runs again.
+   groups' input and output sets; stating them when stage 2 groups needs
+   those sets first. Then `_compute_concept_sets` runs again.
 
 ## 8. Not claimed
 
