@@ -102,6 +102,7 @@ from trilogy.core.processing.nodes.base_node import (
     readable_outputs,
     region_reads,
 )
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.utility import unique
 
 from .concept_graph import (
@@ -163,6 +164,7 @@ from .models import (
     GroupAttrs,
     InputChannel,
 )
+from .network_build import null_sensitive
 from .network_coalescing import axis_arms_delivered
 from .projection import (
     concept_satisfiable,
@@ -2516,7 +2518,9 @@ def _widen_scan_chain(
     cross-joins ON 1=1."""
     if concept.address in {o.address for o in node.output_concepts}:
         return True
-    if not isinstance(node, _WIDENABLE_PROJECTIONS):
+    if not isinstance(node, _WIDENABLE_PROJECTIONS) or _pads_null_sensitive(
+        node, concept
+    ):
         return False
     available = renderable_addresses(node)
     if not concept_satisfiable(concept, available):
@@ -2538,7 +2542,7 @@ def _widen_scan_chain(
             and not below.force_group
             and _widen_scan_chain(below, concept, depth + 1)
             for below in node.parents
-        ):
+        ) and not _widen_inputs_below(node, concept, available, depth):
             return False
         available = renderable_addresses(node)
     if _synthesizes_handle(concept, node, available):
@@ -2550,6 +2554,46 @@ def _widen_scan_chain(
         available_addresses=available,
     )
     return True
+
+
+def _pads_null_sensitive(node: StrategyNode, concept: BuildConcept) -> bool:
+    """A scan binding `concept` partially computes it on its own rows only; a
+    null-sensitive one (a CASE with an ELSE) takes a value on the rows a join
+    pads, so it is computed above that join (`network_build._candidate`)."""
+    return (
+        isinstance(node, SelectNode)
+        and node.datasource is not None
+        and null_sensitive(concept)
+        and bool(
+            scan_partial_addresses(
+                node.datasource,
+                [concept],
+                {c.concept.address for c in node.datasource.columns},
+                partial_is_full=node.partial_is_full,
+            )
+        )
+    )
+
+
+def _widen_inputs_below(
+    node: StrategyNode, concept: BuildConcept, available: set[str], depth: int
+) -> bool:
+    """Carry `concept`'s missing row inputs up from `node`'s parents, so a
+    merge computes it on its joined rows."""
+    if not isinstance(node, MergeNode):
+        return False
+    for arg in row_lineage_arguments(concept):
+        if concept_satisfiable(arg, available):
+            continue
+        if not any(
+            isinstance(below, _WIDENABLE_PROJECTIONS)
+            and not below.force_group
+            and _widen_scan_chain(below, arg, depth + 1)
+            for below in node.parents
+        ):
+            return False
+        available = renderable_addresses(node)
+    return concept_satisfiable(concept, available)
 
 
 def _widen_passthrough_group(

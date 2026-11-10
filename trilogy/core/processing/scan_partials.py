@@ -5,6 +5,7 @@ network candidate (`network_build._candidate`), the scan node's stamp
 
 from collections.abc import Collection, Iterable
 
+from trilogy.core.domain_graph import derived_key_inputs
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
@@ -30,9 +31,10 @@ def scan_partial_addresses(
     `complete where` (`partial_is_full`) completes every `~` the partition
     heals and leaves the rest as extension licenses
     (`pinned_partial_addresses`). A row value the scan computes inline, off
-    no `stored` column, is as partial as the `~` keys it is a function of:
-    the scan computes it for its own rows, and the rows it lacks (the lines
-    no return references) hold a value it cannot (`ret_qty is not null`), so
+    no `stored` column, is as partial as the `~` keys it is a function of (a
+    derived key's are its inputs'): the scan computes it for its own rows, and
+    the rows it lacks (the lines no return references) hold a value it cannot
+    (`ret_qty is not null`), so
     a complete column elsewhere must bind them. Only a BASIC is such a value:
     an aggregate the scan hosts is a function of its own rows that no other
     column binds, so its keys' partiality is the only partiality it has."""
@@ -59,7 +61,11 @@ def scan_partial_addresses(
         if spellings & partial or (
             concept.derivation == Derivation.BASIC
             and not spellings & stored_addresses
-            and set(concept.keys or concept.grain.components) & partial
+            and _row_keys(concept) & partial
         ):
             out |= spellings
     return out
+
+
+def _row_keys(concept: BuildConcept) -> set[str]:
+    return set(concept.keys or derived_key_inputs(concept) or concept.grain.components)
