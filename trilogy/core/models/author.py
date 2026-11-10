@@ -1449,6 +1449,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 where_clause=grain.where_clause,
             )
             keys = set(keys or ()) | set(raw)
+        elif (
+            self.derivation == Derivation.BASIC
+            and self.purpose == Purpose.KEY
+            and not _is_alias(new_lineage)
+        ):
+            # a derived key is its own grain, whatever its inputs are keyed on;
+            # a renamed key still reads the rows that bind it
+            final_grain = Grain(components={self.address})
+            keys = None
         elif self.derivation == Derivation.BASIC:
             assert new_lineage
             by_refs, has_by_aggregate = _aggregate_by_grain_refs(

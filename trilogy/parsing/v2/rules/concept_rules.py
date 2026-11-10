@@ -315,8 +315,12 @@ def concept_derivation(
             environment=context.environment,
             metadata=metadata,
         )
-        if purpose == Purpose.KEY and concept_value.purpose != Purpose.KEY:
+        if purpose == Purpose.KEY:
+            # A declared key is its own grain, wherever its value comes from;
+            # don't inherit the inputs' grain/keys.
             concept_value.purpose = Purpose.KEY
+            concept_value.grain = Grain(components={concept_value.address})
+            concept_value.keys = None
         elif (
             purpose
             and purpose != Purpose.AUTO
