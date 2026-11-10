@@ -5,9 +5,9 @@ A `round(agg / lead(agg) over (...))` ratio is a scalar projection whose only
 non-grain input is the window's output. It should render in the window node's own
 SELECT (the `lead(...)` inline inside `round(...)`); v4 used to give the window
 and the round separate groups, forcing the window to materialize the lead as a
-passthrough column carried through a chain of CTEs. `_merge_basic_into_window_
-parent` folds the BASIC into the WINDOW group so the lead renders inline and is
-never materialized. The post-window `is not null` defers to FINAL untouched
+passthrough column carried through a chain of CTEs. The BASIC's row provider
+is the WINDOW and renders it inline (`_renders_inline`), so the BASIC folds into
+the WINDOW group and the lead is never materialized. The post-window `is not null` defers to FINAL untouched
 (condition placement won't host a filter on a window group's own output).
 
 Rows are identical between planners; this is purely plan size / CTE shape."""

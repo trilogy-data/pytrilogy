@@ -1697,6 +1697,58 @@ pairing, config bootstrap), CLI ingest, the dashboard statement counts, the
 GCS name and `test_a_rust_binary_is_a_datasource`. Full suite: the same 25
 failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
+**A window fold is a row provider (part 49).** Part 48 elected absorbers and
+providers over one graph, but as two elections with two result maps, and the
+provider election had to be told which groups the other one folded. There is
+now one election per group, and a fold is one kind of provider:
+
+- `_elect_row_provider` picks, in order: a WINDOW that renders the group
+  inline (`_inline_window`), a terminal BASIC's grouping provider, a
+  full-coverage sibling, a dimension ROOT, a partial spine. An inline pick is
+  a `RowProvider` with `inline=True`.
+- `_renders_inline` holds the fold's gates on the pick (a WINDOW at the
+  BASIC's own grain that already sources every input it reads);
+  `_inline_window` holds the BASIC's own gates (scalar, no condition atoms,
+  no row-shape barrier member) and the candidate search.
+- `_rehome_groups` folds each inline provider's group, then applies the rest.
+  A dropped parent that folds is still dropped as its WINDOW.
+- `_elect_window_absorber(s)`, `_merge_basic_into_window_parent` and
+  `_regraft_group_sources` are gone.
+
+Why the inline WINDOW comes first, not as a gate on the chain's own pick: a
+census over one suite run elected both ways in every pass (70,841 passes).
+Of 76 folds, 73 are the chain's own pick, a plain one (no adopted grain, no
+drop, no minted ROOT). In the other 3 the chain picks a terminal BASIC's
+grouping provider, an AGGREGATE whose grain the BASIC would adopt, and the
+fold takes the WINDOW (`test_window_in_having_qualify_render`'s two window
+HAVING statements and `test_membership_in_having_no_projected_flag_renders_valid_subselect`).
+Gating the chain's pick would move those plans; ranking the fold first moves
+none.
+
+The same run classified what each applied provider changes (7,167 applied):
+5,000 change nothing (the provider is already a lineage parent, with no new
+grain, drop or mint), 1,576 adopt a grouping provider's grain, 1,597 add a
+lineage edge (1,102 of them also dropping the parents it replaces), and 237
+of those edges are to a minted dimension ROOT. So most of what the regraft elects is already in the
+graph stage 2 built.
+
+`test_an_inline_window_outranks_a_grouping_provider` pins the order over the
+window HAVING statement: the BASIC's grouping provider exists and is not
+picked, and the BASIC folds. It fails with the fold ranked after the
+grouping provider. `test_each_inline_provider_folds_its_basic`,
+`test_a_provider_that_is_not_inline_keeps_its_group` and the
+`_renders_inline` gate tests pin the fold; `test_folds_and_providers_are_elected_over_one_graph`
+and `test_a_dropped_parent_that_is_folded_is_dropped_as_its_window` carry
+part 48's guards over.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, the declared-join
+pairing), CLI ingest, the GCS name, the BigQuery temp table, the statement
+count of `test_validate_fix_types` and `test_a_rust_binary_is_a_datasource`.
+Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1716,8 +1768,9 @@ not built yet:
    datasources, so it cannot state that one. The shapes a condition carries
    into a scan are not in `shapes_rows` either (45 per-group reads in
    part 41, none moving a plan).
-3. Every window absorber and row provider is picked over the graph stage 2
-   built, and no pick reads another (parts 46-48). Applying the picks still
+3. Every group's rehome, a window fold included, is one row-provider pick
+   over the graph stage 2 built, and no pick reads another (parts 46-49).
+   About 70% of applied picks change nothing (part 49). Applying the picks still
    rewrites the graph: a fold deletes the BASIC and repoints its readers; a
    provider adds a lineage edge, drops the parents it replaces, overwrites
    the group's `grain_components` and may mint a ROOT. Then
