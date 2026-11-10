@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS, GRAIN_SEPARATOR
-from trilogy.core.domain_graph import DomainEdge, EdgeScope
+from trilogy.core.domain_graph import DomainEdge, EdgeScope, derived_key_inputs
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -211,12 +211,7 @@ def _derived_key_row_grain(
     own grain, but the stream deriving it holds one per input row, and pairs
     with its siblings on those rows' keys (`crown2` by `cls` and `genus`
     joins back to the trees on both)."""
-    out: set[str] = set()
-    for arg in concept.lineage.concept_arguments if concept.lineage else ():
-        resolved = environment.concepts.get(arg.address) or arg
-        if resolved.grain:
-            out |= resolved.grain.components
-    return frozenset(out)
+    return derived_key_inputs(concept, environment.concepts)
 
 
 def derived_key(concept: BuildConcept) -> bool:

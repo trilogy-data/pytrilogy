@@ -24,6 +24,7 @@ from trilogy.core.constants import (
     WORKING_PATH_CONCEPT,
     rowset_alias_prefix,
 )
+from trilogy.core.domain_graph import derived_key_inputs
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -972,6 +973,7 @@ class Environment:
             out.append((determinants, bound - determinants))
         # A declared property is a function of its keys, which is how a key
         # can determine an arm's discriminator (`property tree_id.source`).
+        # So is a key declared by derivation of its inputs' rows.
         for concept in self.concepts.values():
             if (
                 concept.keys
@@ -979,6 +981,8 @@ class Environment:
                 and concept.derivation != Derivation.FILTER
             ):
                 out.append((frozenset(concept.keys), frozenset({concept.address})))
+            elif inputs := derived_key_inputs(concept, self.concepts):
+                out.append((inputs, frozenset({concept.address})))
         self._binding_fds = (stamp, tuple(out))
         return self._binding_fds[1]
 
