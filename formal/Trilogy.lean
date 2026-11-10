@@ -30,3 +30,4 @@ import Trilogy.Casts
 import Trilogy.Readings
 import Trilogy.Instants
 import Trilogy.Writings
+import Trilogy.Sharing

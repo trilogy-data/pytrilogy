@@ -1,4 +1,5 @@
 import math
+import re
 from collections.abc import Callable
 from typing import Any, ClassVar
 
@@ -103,6 +104,53 @@ def trimmed(value: str) -> str:
     return f"trim({value}, ' ' || char(9) || char(10) || char(13))"
 
 
+VALUE, TEXT, REST, AFTER_MONTH, CLOCK, DAY, FRACTION, ZONE = (
+    f"_trilogy_{name}"
+    for name in (
+        "value",
+        "text",
+        "rest",
+        "after_month",
+        "clock",
+        "day",
+        "fraction",
+        "zone",
+    )
+)
+DIGITS, SCIENTIFIC, EXPONENT = (
+    "_trilogy_digits",
+    "_trilogy_scientific",
+    "_trilogy_exponent",
+)
+Level = list[tuple[str, str]]
+
+
+def _literal(text: str) -> Callable[[re.Match[str]], str]:
+    return lambda _: text
+
+
+def bind(value: str, levels: list[Level], body: str) -> str:
+    """`body` over names each bound once, a level reading only the names of
+    the levels before it and `VALUE` the operand. A correlated subquery per
+    level keeps a part used many times from growing the SQL and its nesting
+    (SQLite before 3.46 overflows a 100-deep parser stack) and a volatile
+    operand from being drawn once per use; an OFFSET keeps the flattener from
+    inlining each level back into the next. An operand with no column is
+    inlined: SQLite evaluates an uncorrelated subquery once per query, not
+    once per row."""
+    named = [pair for level in levels for pair in level]
+    if '"' not in value:
+        for name, expr in reversed([(VALUE, value), *named]):
+            body = re.sub(rf"\b{name}\b", _literal(f"({expr})"), body)
+        return body
+    bound = f"SELECT {value} AS {VALUE}"
+    for level in [*levels, [("", body)]]:
+        columns = ", ".join(f"{e} AS {n}" if n else e for n, e in level)
+        kept = "*, " if level[0][0] else ""
+        bound = f"SELECT {kept}{columns} FROM ({bound} LIMIT -1 OFFSET 0)"
+    return f"({bound})"
+
+
 def is_number(text: str) -> str:
     """`NUMBER_PATTERN` as GLOBs over the trimmed text: one sign, then digits
     with at most one '.', then at most one exponent whose sign follows its
@@ -128,31 +176,35 @@ def _digit_run(text: str) -> str:
     return f"(length({text}) - length(ltrim({text}, '0123456789')))"
 
 
-def _date_parts(text: str) -> tuple[str, str, str]:
-    """The text after the year's separator, after the month's, and after the
-    day: the month and day are each one or two digits."""
-    rest = f"substr({text}, 6)"
+def _date_levels() -> list[Level]:
+    """The text after the year's separator and after the month's (each one
+    or two digits), then after the day and the zero-padded day, then the zone
+    after the seconds and their fraction (any '.' and digits before it)."""
+    rest = f"substr({TEXT}, 6)"
     after_month = f"substr({rest}, {_digit_run(rest)} + 2)"
-    clock = f"substr({after_month}, {_digit_run(after_month)} + 1)"
-    return rest, after_month, clock
+    tail = f"substr({CLOCK}, 10)"
+    zone = f"ltrim({tail}, '.0123456789')"
+    return [
+        [(TEXT, trimmed(VALUE))],
+        [(REST, rest), (AFTER_MONTH, after_month)],
+        [
+            (CLOCK, f"substr({AFTER_MONTH}, {_digit_run(AFTER_MONTH)} + 1)"),
+            (
+                DAY,
+                (
+                    f"printf('%s-%02d-%02d', substr({TEXT}, 1, 4),"
+                    f" CAST({REST} AS INTEGER), CAST({AFTER_MONTH} AS INTEGER))"
+                ),
+            ),
+        ],
+        [
+            (ZONE, zone),
+            (FRACTION, f"substr({tail}, 1, length({tail}) - length({zone}))"),
+        ],
+    ]
 
 
-def padded_day(text: str) -> str:
-    rest, after_month, _ = _date_parts(text)
-    return (
-        f"printf('%s-%02d-%02d', substr({text}, 1, 4), CAST({rest} AS INTEGER),"
-        f" CAST({after_month} AS INTEGER))"
-    )
-
-
-def _clock_tail(time: str) -> tuple[str, str]:
-    """The fraction after the seconds and the zone after it."""
-    tail = f"substr({time}, 10)"
-    fraction = (
-        f"CASE WHEN substr({tail}, 1, 1) = '.'"
-        f" THEN substr({tail}, 1, 1 + {_digit_run(f'substr({tail}, 2)')}) ELSE '' END"
-    )
-    return fraction, f"substr({tail}, length({fraction}) + 1)"
+DATE_LEVELS = _date_levels()
 
 
 ZONE_GLOBS = tuple(
@@ -162,42 +214,40 @@ ZONE_GLOBS = tuple(
 )
 
 
-def is_date(text: str, zoned: bool = False) -> str:
+def is_date(zoned: bool = False) -> str:
     """`DATE_PATTERN` (`DATETIME_PATTERN` when `zoned`) as GLOBs and digit
-    counts; `date()` rolls '2020-02-30' into March, so the zero-padded day
-    must read back as written."""
-    rest, after_month, time = _date_parts(text)
-    separator = f"substr({text}, 5, 1)"
-    day = padded_day(text)
+    counts over `DATE_LEVELS`; `date()` rolls '2020-02-30' into March, so the
+    zero-padded day must read back as written."""
+    separator = f"substr({TEXT}, 5, 1)"
     clock = "[0-5][0-9]:[0-5][0-9]"
-    fraction, zone = _clock_tail(time)
-    zones = " OR ".join(f"{zone} GLOB '{z}'" for z in ZONE_GLOBS)
-    tail = f"{fraction} <> '.' AND ({zone} = ''"
-    tail += f" OR {zone} = 'Z' OR {zones})" if zoned else ")"
+    zones = " OR ".join(f"{ZONE} GLOB '{z}'" for z in ZONE_GLOBS)
+    fraction = (
+        f"({FRACTION} = '' OR {FRACTION} GLOB '.[0-9]*' AND {FRACTION} NOT GLOB '?*.*')"
+    )
+    tail = f"{fraction} AND ({ZONE} = ''"
+    tail += f" OR {ZONE} = 'Z' OR {zones})" if zoned else ")"
     return (
-        f"substr({text}, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+        f"substr({TEXT}, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
         f" AND {separator} IN ('-', '/')"
-        f" AND {_digit_run(rest)} BETWEEN 1 AND 2"
-        f" AND substr({rest}, {_digit_run(rest)} + 1, 1) = {separator}"
-        f" AND {_digit_run(after_month)} BETWEEN 1 AND 2"
-        f" AND date({day}) = {day}"
-        f" AND ({time} = ''"
-        f" OR ({time} GLOB '[ T][01][0-9]:{clock}*' OR {time} GLOB '[ T]2[0-3]:{clock}*')"
+        f" AND {_digit_run(REST)} BETWEEN 1 AND 2"
+        f" AND substr({REST}, {_digit_run(REST)} + 1, 1) = {separator}"
+        f" AND {_digit_run(AFTER_MONTH)} BETWEEN 1 AND 2"
+        f" AND date({DAY}) = {DAY}"
+        f" AND ({CLOCK} = ''"
+        f" OR ({CLOCK} GLOB '[ T][01][0-9]:{clock}*' OR {CLOCK} GLOB '[ T]2[0-3]:{clock}*')"
         f" AND {tail})"
     )
 
 
-def read_instant(text: str) -> str:
+def read_instant() -> str:
     """The UTC instant at whole seconds, as `datetime()` gives every
     datetime here; the zone is applied as an offset, as `datetime()` refuses
     one past 14 hours."""
-    _, _, time = _date_parts(text)
-    _, zone = _clock_tail(time)
-    minutes = f"replace({zone}, ':', '')"
-    sign = f"CASE WHEN {zone} GLOB '-*' THEN 1 ELSE -1 END"
+    minutes = f"replace({ZONE}, ':', '')"
+    sign = f"CASE WHEN {ZONE} GLOB '-*' THEN 1 ELSE -1 END"
     return (
-        f"datetime({padded_day(text)} || substr({time}, 1, 9),"
-        f" ({sign} * CAST(substr({zone}, 2, 2) AS INTEGER)) || ' hours',"
+        f"datetime({DAY} || substr({CLOCK}, 1, 9),"
+        f" ({sign} * CAST(substr({ZONE}, 2, 2) AS INTEGER)) || ' hours',"
         f" ({sign} * CAST(substr({minutes}, 4, 2) AS INTEGER)) || ' minutes')"
     )
 
@@ -209,36 +259,40 @@ def _text_list(values: tuple[str, ...]) -> str:
 def read_text(value: str, target: str, target_type: Any) -> str:
     """A string with no reading is NULL; CAST reads any numeric prefix ('abc'
     is 0, '1e3' as an INTEGER is 1) and `date()` a number as a Julian day."""
-    text = trimmed(value)
     base = getattr(target_type, "data_type", target_type)
     if base == DataType.DATE:
-        return guarded_read(is_date(text), f"date({padded_day(text)})")
+        return bind(value, DATE_LEVELS, guarded_read(is_date(), f"date({DAY})"))
     if base in INSTANT_READ_TARGETS:
-        return guarded_read(is_date(text, zoned=True), read_instant(text))
-    number = f"CAST({text} AS REAL)"
+        read = guarded_read(is_date(zoned=True), read_instant())
+        return bind(value, DATE_LEVELS, read)
+    return bind(value, [[(TEXT, trimmed(VALUE))]], read_number(target_type))
+
+
+def read_number(target_type: Any) -> str:
+    number = f"CAST({TEXT} AS REAL)"
     if isinstance(target_type, NumericType):
         read = f"round({number}, {target_type.scale})"
         whole = target_type.precision - target_type.scale
         fits = f"abs({read}) < 1e{whole}"
-    elif base in INTEGER_TYPES:
+    elif getattr(target_type, "data_type", target_type) in INTEGER_TYPES:
         # a REAL holds an integer exactly only to 2^53
         read = (
-            f"CASE WHEN {text} GLOB '*[.eE]*' THEN CAST(round({number}) AS INTEGER)"
-            f" ELSE CAST({text} AS INTEGER) END"
+            f"CASE WHEN {TEXT} GLOB '*[.eE]*' THEN CAST(round({number}) AS INTEGER)"
+            f" ELSE CAST({TEXT} AS INTEGER) END"
         )
-        fits = int64_fits(text, number)
+        fits = int64_fits(TEXT, number)
     else:
         # 9e999 overflows to an infinity; SQLite has no NaN, so 'nan' is NULL
-        folded = f"lower({text})"
+        folded = f"lower({TEXT})"
         positive, negative = _text_list(POSITIVE_INFINITY), _text_list(
             NEGATIVE_INFINITY
         )
         return (
             f"CASE WHEN {folded} IN ({positive}) THEN 9e999"
             f" WHEN {folded} IN ({negative}) THEN -9e999"
-            f" WHEN {is_number(text)} THEN {number} END"
+            f" WHEN {is_number(TEXT)} THEN {number} END"
         )
-    return guarded_read(f"{is_number(text)} AND {fits}", read)
+    return guarded_read(f"{is_number(TEXT)} AND {fits}", read)
 
 
 def int64_fits(text: str, number: str) -> str:
@@ -258,20 +312,35 @@ def write_float(value: str) -> str:
     """`repr`'s text: the fewest digits from 15 to 17 that read back as the
     value (printf's are exact to 15 only), fixed or `e±XX` by the exponent.
     `%!` drops a fraction's trailing zeros and keeps `.0`."""
-    digits = (
-        f"CASE WHEN CAST(printf('%!.14e', {value}) AS REAL) = {value} THEN 14"
-        f" WHEN CAST(printf('%!.15e', {value}) AS REAL) = {value} THEN 15 ELSE 16 END"
-    )
-    scientific = f"printf('%!.*e', {digits}, {value})"
-    exponent = f"CAST(substr({scientific}, instr({scientific}, 'e') + 1) AS INTEGER)"
+    scientific = f"printf('%!.*e', {DIGITS}, {VALUE})"
+    levels = [
+        [
+            (
+                DIGITS,
+                (
+                    f"CASE WHEN CAST(printf('%!.14e', {VALUE}) AS REAL) = {VALUE}"
+                    f" THEN 14 WHEN CAST(printf('%!.15e', {VALUE}) AS REAL) = {VALUE}"
+                    " THEN 15 ELSE 16 END"
+                ),
+            )
+        ],
+        [
+            (SCIENTIFIC, scientific),
+            (
+                EXPONENT,
+                f"CAST(substr({scientific}, instr({scientific}, 'e') + 1) AS INTEGER)",
+            ),
+        ],
+    ]
     low, high = FIXED_EXPONENTS
-    return (
-        f"CASE WHEN {value} IS NULL THEN NULL"
-        f" WHEN {value} = 9e999 THEN 'inf' WHEN {value} = -9e999 THEN '-inf'"
-        f" WHEN {exponent} BETWEEN {low} AND {high - 1}"
-        f" THEN printf('%!.*f', max({digits} - {exponent}, 0), {value})"
-        f" ELSE replace({scientific}, '.0e', 'e') END"
+    body = (
+        f"CASE WHEN {VALUE} IS NULL THEN NULL"
+        f" WHEN {VALUE} = 9e999 THEN 'inf' WHEN {VALUE} = -9e999 THEN '-inf'"
+        f" WHEN {EXPONENT} BETWEEN {low} AND {high - 1}"
+        f" THEN printf('%!.*f', max({DIGITS} - {EXPONENT}, 0), {VALUE})"
+        f" ELSE replace({SCIENTIFIC}, '.0e', 'e') END"
     )
+    return bind(value, levels, body)
 
 
 def write_text(value: str, source: Any) -> str:
