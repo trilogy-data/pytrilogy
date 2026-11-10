@@ -68,7 +68,7 @@ def _rows(ex, query: str) -> list[tuple]:
 
 
 # recomputing `level` beside a by-region aggregate plans a keyless join, with
-# or without the stored table (predates #926)
+# or without the stored table (#929)
 KEYLESS_RECOMPUTE = pytest.mark.xfail(raises=UnresolvableQueryException, strict=True)
 
 
