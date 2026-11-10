@@ -53,9 +53,49 @@ def _elect(*args) -> gg.RowProvider:
 
 def test_a_dropped_parent_that_is_folded_is_dropped_as_its_window(monkeypatch):
     group_graph = nx.DiGraph()
-    group_graph.add_nodes_from(["g", "b", gg.FINAL_NODE_ID])
-    attrs = {gid: SimpleNamespace(derivation=Derivation.BASIC) for gid in "gb"}
+    group_graph.add_nodes_from(["g", "b", "r", gg.FINAL_NODE_ID])
+    group_graph.add_edges_from([("b", "g"), ("r", "g")])
+    attrs = {
+        gid: SimpleNamespace(derivation=d, grain_components=frozenset())
+        for gid, d in [
+            ("g", Derivation.BASIC),
+            ("b", Derivation.BASIC),
+            ("r", Derivation.ROOT),
+        ]
+    }
     monkeypatch.setattr(gg, "_elect_row_provider", _elect)
     providers = gg._elect_row_providers(group_graph, {}, attrs, {}, {}, None)
     assert providers["b"].inline
     assert providers["g"].drop == {"w", "r"}
+
+
+def _graph(*edges) -> nx.DiGraph:
+    group_graph = nx.DiGraph()
+    group_graph.add_nodes_from(["g", "p", "r"])
+    group_graph.add_edges_from(edges)
+    return group_graph
+
+
+_ATTRS = {"g": SimpleNamespace(grain_components=frozenset({"k"}))}
+
+
+def test_a_provider_the_graph_already_holds_is_no_rewrite():
+    provider = gg.RowProvider("p", frozenset({"k"}), frozenset({"r"}))
+    assert gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider) is None
+
+
+def test_a_rewrite_keeps_only_what_the_graph_lacks():
+    provider = gg.RowProvider("p", frozenset({"k"}), frozenset({"r"}))
+    rewrite = gg._as_rewrite(_graph(("r", "g")), _ATTRS, {}, "g", provider)
+    assert rewrite == gg.RowProvider("p", None, frozenset({"r"}))
+
+
+def test_a_new_grain_on_a_held_parent_is_a_rewrite():
+    provider = gg.RowProvider("p", frozenset({"j"}))
+    rewrite = gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider)
+    assert rewrite == gg.RowProvider(None, frozenset({"j"}))
+
+
+def test_an_inline_provider_is_always_a_rewrite():
+    provider = gg.RowProvider("p", inline=True)
+    assert gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider) == provider

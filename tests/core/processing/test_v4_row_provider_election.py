@@ -22,6 +22,7 @@ class _ElectionLog:
         self.seen: list[tuple] = []
         self.elected: dict[str, gg.RowProvider] = {}
         self.applied: list[tuple] = []
+        self.rewrites: dict[str, gg.RowProvider] = {}
 
     def elect(self, group_graph, group_edges, attrs, *rest):
         before = _graph_state(group_graph, group_edges, attrs)
@@ -33,6 +34,8 @@ class _ElectionLog:
         return provider
 
     def rehome(self, group_graph, group_edges, attrs, *rest):
+        self.built = _graph_state(group_graph, group_edges, attrs)
+        self.rewrites = gg._elect_row_providers(group_graph, group_edges, attrs, *rest)
         _REHOME(group_graph, group_edges, attrs, *rest)
         self.applied.append((group_graph, group_edges))
 
@@ -61,3 +64,17 @@ def test_each_elected_provider_becomes_its_groups_lineage_parent(log):
     group_graph, group_edges = log.applied[0]
     for gid, provider in log.elected.items():
         assert provider.parent in lineage_predecessors(group_graph, group_edges, gid)
+
+
+def test_a_pick_the_graph_already_holds_is_not_elected(log):
+    edges, _, grains = log.built
+    held = {
+        gid
+        for gid, p in log.elected.items()
+        if (p.parent, gid) in edges
+        and p.grain in (None, grains[gid])
+        and not {(d, gid) for d in p.drop} & edges
+        and p.minted is None
+    }
+    assert held
+    assert not held & set(log.rewrites)

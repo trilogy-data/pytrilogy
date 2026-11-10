@@ -2454,7 +2454,8 @@ class RowProvider:
     """The row source a regraftable group is re-homed onto: the parent it
     reads, the grain it adopts from a grouping provider, the lineage parents
     that parent replaces, the dimension ROOT minted for it, and whether the
-    parent renders the group inline."""
+    parent renders the group inline. Once elected (`_as_rewrite`) it holds
+    only what the graph lacks: `parent` is None when already a parent."""
 
     parent: str | None
     grain: frozenset[str] | None = None
@@ -2945,6 +2946,36 @@ def _apply_row_provider(
     add_edge(group_graph, group_edges, parent, gid, EdgeKind.LINEAGE)
 
 
+def _as_rewrite(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    gid: str,
+    provider: RowProvider,
+) -> RowProvider | None:
+    """`provider` less what the graph stage 2 built already holds, or None
+    when it changes nothing: its parent is already a parent, its grain is
+    already the group's, and it drops and mints nothing."""
+    if provider.inline:
+        return provider
+    grain = provider.grain
+    bucket = buckets.get(gid)
+    if grain == attrs[gid].grain_components and (
+        bucket is None or grain == bucket.grain_components
+    ):
+        grain = None
+    drop = frozenset(p for p in provider.drop if group_graph.has_edge(p, gid))
+    minted = provider.minted
+    if minted is not None and minted.group_id in group_graph:
+        minted = None
+    parent = provider.parent
+    if parent is not None and group_graph.has_edge(parent, gid):
+        parent = None
+    if parent is None and grain is None and not drop and minted is None:
+        return None
+    return RowProvider(parent, grain, drop, minted)
+
+
 def _elect_row_providers(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2954,7 +2985,7 @@ def _elect_row_providers(
     environment: BuildEnvironment,
 ) -> dict[str, RowProvider]:
     """Each regraftable group whose best row source is already built, elected
-    over the graph as stage 2 built it.
+    over the graph as stage 2 built it, as the rewrite it makes of that graph.
 
     No provider is a BASIC, so no fold removes one; a parent a provider drops
     that folds is dropped as the WINDOW its edge moves to. Concrete datasource
@@ -2971,6 +3002,8 @@ def _elect_row_providers(
         provider = _elect_row_provider(
             group_graph, group_edges, attrs, buckets, concept_attrs, environment, gid
         )
+        if provider is not None:
+            provider = _as_rewrite(group_graph, attrs, buckets, gid, provider)
         if provider is not None:
             providers[gid] = provider
     folded = _folds(providers)
