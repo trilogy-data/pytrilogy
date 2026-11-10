@@ -174,7 +174,7 @@ def _walk_aggregate_grain_inputs(
         # A filter's keys name its KEY content as an entity; a grainless one
         # (a union output) is a row value, so its rows are the identity.
         return _walk_aggregate_grain_inputs(concept.lineage.content, environment, seen)
-    if _derived_key(concept):
+    if derived_key(concept):
         return [concept]
     if concept.purpose == Purpose.PROPERTY and concept.keys:
         return [
@@ -204,16 +204,16 @@ def _walk_aggregate_grain_inputs(
     return collected
 
 
-def _derived_key(concept: BuildConcept) -> bool:
+def derived_key(concept: BuildConcept) -> bool:
     """A key computed by an expression is its own row identity, not its
-    inputs'. A rename is not: it reads the rows that bind its source."""
-    return (
-        concept.purpose == Purpose.KEY
-        and concept.derivation == Derivation.BASIC
-        and not (
-            isinstance(concept.lineage, BuildFunction)
-            and concept.lineage.operator == FunctionType.ALIAS
-        )
+    inputs'. A rename of a key is not: it has its source's rows."""
+    if concept.purpose != Purpose.KEY or concept.derivation != Derivation.BASIC:
+        return False
+    lineage = concept.lineage
+    return not (
+        isinstance(lineage, BuildFunction)
+        and lineage.operator == FunctionType.ALIAS
+        and all(arg.purpose == Purpose.KEY for arg in lineage.concept_arguments)
     )
 
 
