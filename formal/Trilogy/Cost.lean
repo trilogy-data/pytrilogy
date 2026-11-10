@@ -18,8 +18,10 @@ data-independent: a source whose arm implies another's and whose grain is
 coarser holds no more rows on ANY data (`Cost.dominated_le`). The planner must
 never read a source an answering source in scope dominates. Two answering
 sources neither dominates (a filtered row table beside a complete summary) can
-be cheaper either way (`Cost.partial_and_summary_incomparable`), so between
-them any choice is sound.
+store more either way (`Cost.partial_and_summary_incomparable`), but a scan
+reads only the stored rows the WHERE keeps: under a WHERE that implies the
+filtered table's arm, the coarser source applying it reads no more rows
+(`Cost.filtered_dominated_le`), so the summary is the read.
 
 A source that does NOT answer must not be read alone: a partial summary
 under a WHERE that does not imply its arm loses the rows outside it
@@ -111,6 +113,50 @@ theorem Cost.partial_and_summary_incomparable :
     (stored arm id few).length < (stored (fun _ => true) Prod.snd few).length ∧
       (stored (fun _ => true) Prod.snd many).length <
         (stored arm id (many.zipIdx.map (fun (r, i) => (r.1, r.2 + 10 * i)))).length := by
+  decide
+
+/-! ### Under the query's WHERE
+
+`stored` is what a source holds; a scan reads only the stored rows the query's
+WHERE keeps. A WHERE `q` on a source's grain is applied to its stored rows, so
+the scan reads `(stored c g rows).filter q`. Under a WHERE that implies the
+finer source's arm, a source at a coarser grain that applies the same WHERE
+reads no more rows, whatever its own arm: the filtered table and the complete
+summary `Cost.partial_and_summary_incomparable` cannot order are ordered once
+the summary binds the WHERE's columns. A `complete where city = 'A'` table of
+trees is never cheaper than a `(city, species)` summary read under
+`city = 'A'`. -/
+
+/-- The rows a source reads under a WHERE `q` on its grain. -/
+def readUnder [DecidableEq κ] (c : α → Bool) (g : α → κ) (q : κ → Bool)
+    (rows : List α) : List κ :=
+  (stored c g rows).filter q
+
+/-- **Dominance under the WHERE.** The WHERE `q ∘ h ∘ g` implies the finer
+source's arm `c`; the source at the coarser grain `h ∘ g` reads no more rows. -/
+theorem Cost.filtered_dominated_le [DecidableEq κ] [DecidableEq τ] (c c' : α → Bool)
+    (g : α → κ) (h : κ → τ) (q : τ → Bool) (rows : List α)
+    (himp : ∀ r, q (h (g r)) = true → c r = true) :
+    (readUnder c' (h ∘ g) q rows).length ≤ (readUnder c g (q ∘ h) rows).length := by
+  unfold readUnder stored
+  calc ((dedup ((rows.filter c').map (h ∘ g))).filter q).length
+      ≤ (((dedup ((rows.filter c).map g)).filter (q ∘ h)).map h).length := by
+        apply nodup_length_le _ _ ((nodup_dedup _).sublist List.filter_sublist)
+        intro x hx
+        have ⟨hx1, hx2⟩ := List.mem_filter.mp hx
+        obtain ⟨r, hr, rfl⟩ := List.mem_map.mp ((mem_dedup _ _).mp hx1)
+        have hr' := List.mem_filter.mp hr
+        have hq : q (h (g r)) = true := hx2
+        refine List.mem_map.mpr ⟨g r, List.mem_filter.mpr ⟨(mem_dedup _ _).mpr ?_, hq⟩, rfl⟩
+        exact List.mem_map.mpr ⟨r, List.mem_filter.mpr ⟨hr'.1, himp r hq⟩, rfl⟩
+    _ = ((dedup ((rows.filter c).map g)).filter (q ∘ h)).length := List.length_map ..
+
+/-- It can be strict: two trees of one species in city 0 are two rows of the
+`complete where city = 0` table and one `(city, species)` group. -/
+theorem Cost.filtered_summary_strict :
+    let rows := [((0 : Nat), (0 : Nat), (0 : Nat)), (0, 0, 1), (1, 1, 2)]
+    (readUnder (fun _ => true) (fun r => (r.1, r.2.1)) (fun k => k.1 == 0) rows).length <
+      (readUnder (fun r => r.1 == 0) id (fun r => r.1 == 0) rows).length := by
   decide
 
 open Rollup in

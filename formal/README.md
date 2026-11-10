@@ -32,7 +32,7 @@ a design decision or a bug.
 | `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument, a filter on a stored group value is a filter on the summary key (`group_value_filter_exact`), and a grain column's distinct values are the summary's (`count_distinct_grain_column_exact`) (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect; ClickHouse's `sign(x) * floor(abs(x) + 0.5)` is `round` (`sign_round_is_round`), and its Monday-boundary `week` is not whole spans (`monday_boundaries_is_not_week_diff`) (checked by `tests/core/test_function_laws.py` on DuckDB, SQLite and ClickHouse) |
-| `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order, a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
+| `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order by what they store but do by what they read: under a WHERE implying the table's arm, the coarser source applying it reads no more rows (`Cost.filtered_dominated_le`, `Cost.filtered_summary_strict`), a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
 | `Stack.lean` | a partition family stacked into one source: value-set arms, summaries stacked at their grain | `x in S` is the disjunction of `x = a` over `S`, so the cell checker covers families mixing `=` and `in` arms, a per-value arm choice can count a value twice, stacked summaries are exact and repeat no grain value when the grain determines each arm, and repeat one when it does not (checked by `tests/discovery/test_partition_family_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
@@ -1381,6 +1381,34 @@ a design decision or a bug.
     classes (`ValueSet.count_column_from_row_count`), not over every class
     (`ValueSet.count_column_counts_null_group`); that rewrite is not
     implemented.
+
+- **A city's species lookup read the city's tree file** (0.3.485;
+  `Cost.lean`, "Under the query's WHERE"). The Urban Tree Reporting species
+  page asks `select common_names[1], tree_form, growth_rate` under
+  `city = 'USBOS'`: the species with a tree in the city, looked up on the
+  enrichment table (`Cover.exists_by_value`). Both a `complete where
+  city = 'USBOS'` tree table and the `(city, species)` count summary answer
+  it, and `Cost.partial_and_summary_incomparable` says neither stores fewer
+  rows, but a scan reads only what the WHERE keeps, and there the summary
+  reads one row per species and the table one per tree
+  (`Cost.filtered_dominated_le`). The network search ranked the summary as
+  "read in full beside a pre-filtered twin" and broke the remaining tie by
+  name; `dominated_reads` now counts the tree table, not the summary. The
+  same card under the nativeness cross-filter still read the trees: the
+  network search marked every summary filter-sensitive for a WHERE on
+  `native_locality_bucket`, a species property, without the
+  property-of-a-grain-key exemption the select path already applies
+  (`Cover.joined_case_exact`). The existence shapes in
+  `tests/discovery/test_cheapest_source_laws.py` found two more:
+  - `select species where city in ('A', 'B')` read the trees: a literal
+    `in` list reports one empty existence group, which the condition prune
+    read as a subselect the summary could not apply.
+  - a `partial datasource` summary (no arm, or an arm the WHERE does not
+    imply) joined between a city-grain summary and the species table paired
+    every city with the species of its own rows only: `select form where
+    city in ('A', 'B')` lost city B's linden. A source holding an unknown
+    subset of its rows (no `~` claim) may end a join path but is no longer
+    the only link between two others.
 
 
 ## Limits

@@ -39,6 +39,7 @@ from _preql_import_resolver import enumerate_network_covers
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildDatasource,
     BuildUnionDatasource,
     BuildWhereClause,
 )
@@ -287,24 +288,67 @@ def _stored_key(candidate: SourceCandidate, address: str) -> bool:
     return binding is not None and binding.stored
 
 
-def _has_filtered_twin(network: SourceNetwork, node: str, read: frozenset[str]) -> bool:
-    """Another source the WHERE pre-filters (IMPLIED_EXACT) reads every value
-    `node` provides or joins on from the same column, so it holds the rows of
-    `node` the query keeps."""
-    candidate = network.candidates[node]
-    if not read or candidate.condition.partial_is_full:
-        return False
-    return any(
-        other.condition.partial_is_full
-        and all(
-            (mine := candidate.bindings.get(address)) is not None
-            and (theirs := other.bindings.get(address)) is not None
-            and mine.address == theirs.address
-            for address in read
-        )
-        for name, other in network.candidates.items()
-        if name != node
+def _reads_alike(
+    candidate: SourceCandidate, other: SourceCandidate, read: frozenset[str]
+) -> bool:
+    return all(
+        (mine := candidate.bindings.get(address)) is not None
+        and (theirs := other.bindings.get(address)) is not None
+        and mine.address == theirs.address
+        for address in read
     )
+
+
+def _arm_columns(network: SourceNetwork, candidate: SourceCandidate) -> frozenset[str]:
+    datasource = candidate.datasource
+    if datasource is None or datasource.non_partial_for is None:
+        return frozenset()
+    return frozenset(
+        network.equivalence.get(c.address, c.address)
+        for c in datasource.non_partial_for.conditional.concept_arguments
+    )
+
+
+def _filters_coarser(
+    network: SourceNetwork, coarse: SourceCandidate, filtered: SourceCandidate
+) -> bool:
+    """`coarse`'s grain is a function of `filtered`'s rows and `coarse` binds
+    the WHERE columns `filtered`'s arm reads, so under that WHERE it reads no
+    more rows (`Cost.filtered_dominated_le`)."""
+    arm = _arm_columns(network, filtered)
+    return (
+        bool(arm)
+        and coarse.grain != filtered.grain
+        and all(filtered.binds(address) for address in coarse.grain)
+        and all(coarse.binds(address) for address in arm)
+    )
+
+
+def _dominated_read(network: SourceNetwork, node: str, read: frozenset[str]) -> bool:
+    """Another candidate reading every value `node` provides or joins on, from
+    the same columns, holds no more of the rows the query keeps: a source the
+    WHERE pre-filters (IMPLIED_EXACT) beside one read in full, unless the full
+    one is the coarser and applies that WHERE itself; or a row-complete source
+    at a coarser grain applying the arm of a pre-filtered `node`."""
+    candidate = network.candidates[node]
+    if not read:
+        return False
+    filtered = candidate.condition.partial_is_full
+    for name, other in network.candidates.items():
+        if name == node or not _reads_alike(candidate, other, read):
+            continue
+        if filtered:
+            if (
+                network.row_complete(name)
+                and all(other.binds_fully(address) for address in read)
+                and _filters_coarser(network, other, candidate)
+            ):
+                return True
+        elif other.condition.partial_is_full and not _filters_coarser(
+            network, candidate, other
+        ):
+            return True
+    return False
 
 
 def _solution_for(
@@ -364,10 +408,10 @@ def _solution_for(
             for address in addresses
             if not _stored_key(network.candidates[node], address)
         ),
-        unfiltered_sources=sum(
+        dominated_reads=sum(
             1
             for node in sources
-            if _has_filtered_twin(network, node, assignments[node] | joined_on[node])
+            if _dominated_read(network, node, assignments[node] | joined_on[node])
         ),
         connectors=len(connectors),
         derived_joins=derived_joins,
@@ -478,7 +522,11 @@ def search_sources(network: SourceNetwork) -> SearchResult:
             continue
         connected = _reduce(network, cover, targets)
         key = tuple(sorted(connected))
-        if key in seen or not _reads_a_scan(network, connected):
+        if (
+            key in seen
+            or not _reads_a_scan(network, connected)
+            or _bridges_unclaimed_rows(network, connected)
+        ):
             continue
         seen.add(key)
         reduced.append((connected, _binding_profile(network, connected, targets)))
@@ -499,6 +547,34 @@ def search_sources(network: SourceNetwork) -> SearchResult:
         return SearchResult(limit=limit)
     best = min(solutions, key=lambda s: (s.cost.axes(), s.sources))
     return SearchResult(solution=best, limit=limit)
+
+
+def _unclaimed_partial(candidate: SourceCandidate) -> bool:
+    """A `partial datasource` the WHERE does not complete: every grain column
+    holds only some rows, and no `~` claims the rest have none."""
+    datasource = candidate.datasource
+    if candidate.condition.partial_is_full or not isinstance(
+        datasource, BuildDatasource
+    ):
+        return False
+    grain = [candidate.bindings.get(address) for address in candidate.grain]
+    return bool(grain) and all(
+        binding is not None
+        and binding.partial
+        and binding.address not in datasource.column_level_partial_addresses
+        for binding in grain
+    )
+
+
+def _bridges_unclaimed_rows(network: SourceNetwork, sources: frozenset[str]) -> bool:
+    """A source holding an unknown subset of its rows relates the sources on
+    either side of it only for that subset (`Cost.unimplied_partial_summary_loses_rows`):
+    it may end a join path, never be the only link between two others."""
+    return len(sources) > 2 and any(
+        _unclaimed_partial(network.candidates[node])
+        and not is_connected(network, sources - {node})
+        for node in sources
+    )
 
 
 def _reads_a_scan(network: SourceNetwork, sources: frozenset[str]) -> bool:

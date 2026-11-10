@@ -1000,9 +1000,13 @@ dominates. Open leads:
 - `source_dominance.dominates` compares grains by component subset, not the FD
   closure, so a summary at `(city)` does not count as coarser than a row table
   at `(tree_id)`. Sound, only incomplete.
-- The network search's only dominance axis is `unfiltered_sources`
-  (an IMPLIED_EXACT twin with the same columns). Two rollup bindings at
-  different grains tie there; the matrix has no shape that reaches it yet.
+- The network search's dominance axis is `dominated_reads`: a source read
+  in full beside an IMPLIED_EXACT twin with the same columns, or an
+  IMPLIED_EXACT table beside a row-complete coarser source applying its arm
+  (`Cost.filtered_dominated_le`, 0.3.485; the `lookup-*` shapes of the
+  matrix reach it). It reads grains by binding, not the FD closure, like
+  `source_dominance.dominates`; two rollup bindings at different grains with
+  no arm still tie.
 - Done in #821: stacked summary families serve rollups
   (`summary_family` in `tests/discovery/test_partition_family_laws.py`), and
   an arm binding its discriminator outside its grain no longer claims the
