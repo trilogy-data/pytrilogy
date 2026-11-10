@@ -2344,7 +2344,13 @@ def build_group_graph(
         environment,
         rollup_padded,
     )
-    _rehome_groups(group_graph, group_edges, attrs, buckets, concept_attrs, environment)
+    grouping = _elect_grouping_providers(
+        group_graph, group_edges, attrs, concept_attrs, environment
+    )
+    _state_projection_grains(attrs, buckets, grouping)
+    _rehome_groups(
+        group_graph, group_edges, attrs, buckets, concept_attrs, environment, grouping
+    )
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
@@ -2452,13 +2458,12 @@ def trace_group_graph(
 @dataclass(frozen=True)
 class RowProvider:
     """The row source a regraftable group is re-homed onto: the parent it
-    reads, the grain it adopts from a grouping provider, the lineage parents
-    that parent replaces, the dimension ROOT minted for it, and whether the
-    parent renders the group inline. Once elected (`_as_rewrite`) it holds
-    only what the graph lacks: `parent` is None when already a parent."""
+    reads, the lineage parents that parent replaces, the dimension ROOT minted
+    for it, and whether the parent renders the group inline. Once elected
+    (`_as_rewrite`) it holds only what the graph lacks: `parent` is None when
+    already a parent."""
 
     parent: str | None
-    grain: frozenset[str] | None = None
     drop: frozenset[str] = frozenset()
     minted: GroupBucket | None = None
     # the parent renders the group in its own SELECT: the group folds into it
@@ -2473,7 +2478,6 @@ def _regraft_candidate(
     *,
     allow_partial: bool,
     environment: BuildEnvironment | None = None,
-    grain: frozenset[str] | None = None,
 ) -> str | None:
     """Find the richest row-compatible sibling to source `gid`'s inputs.
 
@@ -2506,8 +2510,7 @@ def _regraft_candidate(
     merge.
     """
     current = attrs[gid]
-    if grain is None:
-        grain = current.grain_components
+    grain = current.grain_components
     needed = set(current.input_concepts)
     if not needed:
         return None
@@ -2586,14 +2589,16 @@ def _grain_needed_by_independent_sibling(
     attrs: dict[str, GroupAttrs],
     gid: str,
     provider_gid: str,
+    grouping: dict[str, str],
 ) -> bool:
     """Whether an independent FINAL-bound group co-grains on the provider's grain.
 
     Grafting the projection onto the provider fuses it into that group, which
     re-labels the provider's grouping key as this alias. Groups inside the
-    provider's own lineage follow that relabeling, but one that merges with it as
-    a separate arm does not: it would look for a key that no longer exists and
-    the merge would degenerate to a cross join.
+    provider's own lineage follow that relabeling, and so does a projection
+    placed at the same provider, but one that merges with it as a separate arm
+    does not: it would look for a key that no longer exists and the merge
+    would degenerate to a cross join.
     """
     provider_grain = attrs[provider_gid].grain_components
     if not provider_grain:
@@ -2601,6 +2606,7 @@ def _grain_needed_by_independent_sibling(
     related = (
         nx.ancestors(group_graph, provider_gid)
         | nx.descendants(group_graph, provider_gid)
+        | {g for g, p in grouping.items() if p == provider_gid}
         | {gid, provider_gid, FINAL_NODE_ID}
     )
     for other in group_graph.nodes:
@@ -2680,7 +2686,6 @@ def _synthetic_dimension_regraft_parent(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
-    grain: frozenset[str],
 ) -> RowProvider | None:
     current = attrs[gid]
     if current.derivation != Derivation.BASIC:
@@ -2691,7 +2696,7 @@ def _synthetic_dimension_regraft_parent(
     # condition's derived arg needs.
     if current.depth_label == DepthLabel.D1:
         return None
-    key = set(grain)
+    key = set(current.grain_components)
     if not key:
         return None
     lineage_preds = lineage_predecessors(group_graph, group_edges, gid)
@@ -2860,6 +2865,45 @@ def _inline_window(
     return parent
 
 
+def _elect_grouping_providers(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+) -> dict[str, str]:
+    """Each terminal scalar projection's grouping provider, elected over the
+    graph stage 2 built. A WINDOW that renders the projection inline outranks
+    it: that projection folds and keeps its grain."""
+    providers: dict[str, str] = {}
+    for gid in group_graph.nodes:
+        if gid == FINAL_NODE_ID:
+            continue
+        provider = _terminal_basic_grouping_provider(
+            group_graph, attrs, gid, environment
+        )
+        if provider is None or _inline_window(
+            group_graph, group_edges, attrs, concept_attrs, gid
+        ):
+            continue
+        providers[gid] = provider
+    return providers
+
+
+def _state_projection_grains(
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    grouping: dict[str, str],
+) -> None:
+    """Place each terminal projection at its grouping provider's grain. No
+    provider is a BASIC, so no statement reads another."""
+    for gid, provider in grouping.items():
+        grain = attrs[provider].grain_components
+        attrs[gid].grain_components = grain
+        if gid in buckets:
+            buckets[gid].grain_components = grain
+
+
 def _elect_row_provider(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2867,45 +2911,42 @@ def _elect_row_provider(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
+    grouping: dict[str, str],
     gid: str,
 ) -> RowProvider | None:
     """Pick `gid`'s row source over the graph; mutates nothing. The choices,
-    in order: a WINDOW that renders it inline, a terminal BASIC's grouping
-    provider, a full-coverage sibling, a dimension ROOT, a partial spine."""
-    window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
-    if window is not None:
-        return RowProvider(window, inline=True)
-    grain = None
-    provider_gid = _terminal_basic_grouping_provider(
-        group_graph, attrs, gid, environment
-    )
-    if provider_gid is not None:
-        grain = attrs[provider_gid].grain_components
-        if not _grain_needed_by_independent_sibling(
-            group_graph, attrs, gid, provider_gid
-        ):
-            # Placed at the provider's grain, the projection has no use for
-            # a finer relation the provider was built from. Joined back, it
-            # pairs the provider's groups on a non-key (a region domain on
-            # a nullable description) and drops or multiplies them.
-            provider_ancestors = nx.ancestors(group_graph, provider_gid)
-            drop = frozenset(
-                pred
-                for pred in lineage_predecessors(group_graph, group_edges, gid)
-                if pred in provider_ancestors
-            )
-            return RowProvider(provider_gid, grain, drop)
-    own_grain = attrs[gid].grain_components if grain is None else grain
+    in order: a WINDOW that renders it inline, its grouping provider (whose
+    grain it already stands at), a full-coverage sibling, a dimension ROOT, a
+    partial spine."""
+    grouping_provider = grouping.get(gid)
+    if grouping_provider is None:
+        window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
+        if window is not None:
+            return RowProvider(window, inline=True)
+    elif not _grain_needed_by_independent_sibling(
+        group_graph, attrs, gid, grouping_provider, grouping
+    ):
+        # Placed at the provider's grain, the projection has no use for a
+        # finer relation the provider was built from. Joined back, it pairs
+        # the provider's groups on a non-key (a region domain on a nullable
+        # description) and drops or multiplies them.
+        provider_ancestors = nx.ancestors(group_graph, grouping_provider)
+        drop = frozenset(
+            pred
+            for pred in lineage_predecessors(group_graph, group_edges, gid)
+            if pred in provider_ancestors
+        )
+        return RowProvider(grouping_provider, drop)
     parent_gid = _regraft_candidate(
         group_graph, group_edges, attrs, gid, allow_partial=False
     )
     if parent_gid is not None:
-        return RowProvider(parent_gid, grain)
+        return RowProvider(parent_gid)
     dimension = _synthetic_dimension_regraft_parent(
-        group_graph, group_edges, attrs, buckets, concept_attrs, gid, own_grain
+        group_graph, group_edges, attrs, buckets, concept_attrs, gid
     )
     if dimension is not None:
-        return replace(dimension, grain=grain)
+        return dimension
     parent_gid = _regraft_candidate(
         group_graph,
         group_edges,
@@ -2913,11 +2954,8 @@ def _elect_row_provider(
         gid,
         allow_partial=True,
         environment=environment,
-        grain=own_grain,
     )
-    if parent_gid is None and grain is None:
-        return None
-    return RowProvider(parent_gid, grain)
+    return None if parent_gid is None else RowProvider(parent_gid)
 
 
 def _apply_row_provider(
@@ -2928,10 +2966,6 @@ def _apply_row_provider(
     gid: str,
     provider: RowProvider,
 ) -> None:
-    if provider.grain is not None:
-        attrs[gid].grain_components = provider.grain
-        if gid in buckets:
-            buckets[gid].grain_components = provider.grain
     minted = provider.minted
     if minted is not None and minted.group_id not in group_graph:
         group_graph.add_node(minted.group_id)
@@ -2947,23 +2981,13 @@ def _apply_row_provider(
 
 
 def _as_rewrite(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    gid: str,
-    provider: RowProvider,
+    group_graph: nx.DiGraph, gid: str, provider: RowProvider
 ) -> RowProvider | None:
     """`provider` less what the graph stage 2 built already holds, or None
-    when it changes nothing: its parent is already a parent, its grain is
-    already the group's, and it drops and mints nothing."""
+    when it changes nothing: its parent is already a parent, and it drops and
+    mints nothing."""
     if provider.inline:
         return provider
-    grain = provider.grain
-    bucket = buckets.get(gid)
-    if grain == attrs[gid].grain_components and (
-        bucket is None or grain == bucket.grain_components
-    ):
-        grain = None
     drop = frozenset(p for p in provider.drop if group_graph.has_edge(p, gid))
     minted = provider.minted
     if minted is not None and minted.group_id in group_graph:
@@ -2971,9 +2995,9 @@ def _as_rewrite(
     parent = provider.parent
     if parent is not None and group_graph.has_edge(parent, gid):
         parent = None
-    if parent is None and grain is None and not drop and minted is None:
+    if parent is None and not drop and minted is None:
         return None
-    return RowProvider(parent, grain, drop, minted)
+    return RowProvider(parent, drop, minted)
 
 
 def _elect_row_providers(
@@ -2983,6 +3007,7 @@ def _elect_row_providers(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
+    grouping: dict[str, str],
 ) -> dict[str, RowProvider]:
     """Each regraftable group whose best row source is already built, elected
     over the graph as stage 2 built it, as the rewrite it makes of that graph.
@@ -3000,10 +3025,17 @@ def _elect_row_providers(
         ):
             continue
         provider = _elect_row_provider(
-            group_graph, group_edges, attrs, buckets, concept_attrs, environment, gid
+            group_graph,
+            group_edges,
+            attrs,
+            buckets,
+            concept_attrs,
+            environment,
+            grouping,
+            gid,
         )
         if provider is not None:
-            provider = _as_rewrite(group_graph, attrs, buckets, gid, provider)
+            provider = _as_rewrite(group_graph, gid, provider)
         if provider is not None:
             providers[gid] = provider
     folded = _folds(providers)
@@ -3029,12 +3061,14 @@ def _rehome_groups(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
+    grouping: dict[str, str],
 ) -> None:
     """Elect every group's row provider over the graph as stage 2 built it,
-    then fold each group its provider renders inline and apply the rest: no
-    election reads another's fold, edges or adopted grain."""
+    each projection already at its grouping provider's grain, then fold each
+    group its provider renders inline and apply the rest: no election reads
+    another's fold or edges."""
     providers = _elect_row_providers(
-        group_graph, group_edges, attrs, buckets, concept_attrs, environment
+        group_graph, group_edges, attrs, buckets, concept_attrs, environment, grouping
     )
     for gid, parent in _folds(providers).items():
         _absorb_group(gid, parent, group_graph, group_edges, attrs, buckets)

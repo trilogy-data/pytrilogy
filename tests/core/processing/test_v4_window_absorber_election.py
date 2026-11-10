@@ -139,10 +139,11 @@ class _OutrankLog(_FoldLog):
     def __init__(self) -> None:
         super().__init__()
         self.grouping: dict[str, str | None] = {}
+        self.elected_grouping: dict[str, str] = {}
 
     def elect(self, group_graph, group_edges, attrs, *rest):
         providers = super().elect(group_graph, group_edges, attrs, *rest)
-        environment = rest[-1]
+        environment, self.elected_grouping = rest[-2:]
         self.grouping = {
             gid: gg._terminal_basic_grouping_provider(
                 group_graph, attrs, gid, environment
@@ -164,4 +165,5 @@ def test_an_inline_window_outranks_a_grouping_provider(monkeypatch, tmp_path):
     for gid, grouping in log.grouping.items():
         assert grouping is not None
         assert grouping != log.elected[gid].parent
+        assert gid not in log.elected_grouping
         assert gid not in log.folded

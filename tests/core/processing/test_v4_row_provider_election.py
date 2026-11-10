@@ -67,12 +67,11 @@ def test_each_elected_provider_becomes_its_groups_lineage_parent(log):
 
 
 def test_a_pick_the_graph_already_holds_is_not_elected(log):
-    edges, _, grains = log.built
+    edges, _, _ = log.built
     held = {
         gid
         for gid, p in log.elected.items()
         if (p.parent, gid) in edges
-        and p.grain in (None, grains[gid])
         and not {(d, gid) for d in p.drop} & edges
         and p.minted is None
     }
