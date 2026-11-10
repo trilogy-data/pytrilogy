@@ -13,6 +13,11 @@ from trilogy import Dialects, Environment
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
+from trilogy.core.processing.v4_helper.edges import (
+    EdgeKind,
+    add_edge,
+    lineage_predecessors,
+)
 
 _ELECT_PROVIDER = gg._elect_row_provider
 
@@ -45,28 +50,37 @@ def test_folds_and_providers_are_elected_over_one_graph(log):
     assert all(state == log.seen[0] for state in log.seen)
 
 
-def _elect(*args) -> gg.RowProvider:
-    if args[-1] == "b":
-        return gg.RowProvider("w", inline=True)
-    return gg.RowProvider("p", drop=frozenset({"b", "r"}))
+def _fold_b(*args) -> gg.RowProvider | None:
+    return gg.RowProvider("w", inline=True) if args[-1] == "b" else None
 
 
-def test_a_dropped_parent_that_is_folded_is_dropped_as_its_window(monkeypatch):
+def test_a_parent_a_placement_drops_is_gone_before_it_folds(monkeypatch):
     group_graph = nx.DiGraph()
-    group_graph.add_nodes_from(["g", "b", "r", gg.FINAL_NODE_ID])
-    group_graph.add_edges_from([("b", "g"), ("r", "g")])
+    edges: dict = {}
+    for u, v in [("b", "p"), ("b", "g"), ("r", "g"), ("g", gg.FINAL_NODE_ID)]:
+        add_edge(group_graph, edges, u, v, EdgeKind.LINEAGE)
+    group_graph.add_node("w")
     attrs = {
-        gid: SimpleNamespace(derivation=d, grain_components=frozenset())
+        gid: SimpleNamespace(
+            derivation=d,
+            grain_components=frozenset(),
+            primary_members=(gid,),
+            member_depths={},
+        )
         for gid, d in [
             ("g", Derivation.BASIC),
             ("b", Derivation.BASIC),
+            ("p", Derivation.AGGREGATE),
             ("r", Derivation.ROOT),
+            ("w", Derivation.WINDOW),
         ]
     }
-    monkeypatch.setattr(gg, "_elect_row_provider", _elect)
-    providers = gg._elect_row_providers(group_graph, {}, attrs, {}, {}, None, {})
-    assert providers["b"].inline
-    assert providers["g"].drop == {"w", "r"}
+    grouping = {"g": "p"}
+    placed = gg._place_projections(group_graph, edges, attrs, {}, grouping)
+    monkeypatch.setattr(gg, "_elect_row_provider", _fold_b)
+    gg._rehome_groups(group_graph, edges, attrs, {}, {}, None, grouping, placed)
+    assert "b" not in group_graph
+    assert set(lineage_predecessors(group_graph, edges, "g")) == {"p", "r"}
 
 
 def _graph(*edges) -> nx.DiGraph:
