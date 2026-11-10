@@ -291,10 +291,11 @@ def test_membership_beside_rolled_up_expression(
 
 
 # `Rollup.count_distinct_grain_column_exact`: the distinct values of a column
-# of the summary's grain are the ones its rows list. A filter over `tree_form`
-# is correct but reads the base rows (the joined dimension makes the row table
-# the cheaper plan), and a total of `species` alone, or filtered on itself,
-# is read from its dimension.
+# of the summary's grain are the ones its rows list. A filter over `tree_form`,
+# a property of the grain's `species`, selects whole groups and reads the
+# summary joined to its dimension (`Cover.joined_case_exact`); a total of
+# `species` alone, or filtered on itself or on `tree_form`, is read from its
+# dimension or the base rows.
 DISTINCT_GRAIN_COLUMNS = {
     "species": ["total", "city"],
     "city": ["total", "species"],
@@ -313,9 +314,13 @@ DISTINCT_GRAIN_COLUMNS = {
 def test_count_distinct_of_grain_column(column: str, grain: str, where: str):
     _assert_same_answer(
         _select(GRAINS[grain], f"count_distinct({column}) as v", FILTERS[where]),
-        served="form" not in where
-        and (column, grain, where)
-        not in {("species", "total", "none"), ("species", "total", "species")},
+        served=(column, grain, where)
+        not in {
+            ("species", "total", "none"),
+            ("species", "total", "species"),
+            ("species", "total", "form"),
+            ("species", "total", "form_null"),
+        },
     )
 
 
