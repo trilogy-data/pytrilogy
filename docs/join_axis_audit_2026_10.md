@@ -1749,6 +1749,49 @@ count of `test_validate_fix_types` and `test_a_rust_binary_is_a_datasource`.
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 Fuzzer: 522 of 522.
 
+**A row provider is the rewrite it makes (part 50).** Part 49's census found
+most applied picks change nothing. The election now states only the change:
+`_as_rewrite` keeps what the graph stage 2 built lacks, and
+`_elect_row_providers` keeps a pick only when something is left.
+
+- A parent that is already a lineage parent becomes `None`.
+- A grain the group (and its bucket) already holds becomes `None`.
+- A drop with no edge left is removed, and so is a mint already in the graph.
+- A pick left with nothing is not elected. A fold always rewrites, so it is
+  kept as elected.
+
+Applying a pick was already a no-op for every part it drops (`_apply_row_provider`
+checks each edge and node first), so no graph can move. A census over one
+suite run applied every rehome both ways, unfiltered and rewrite-only, and
+compared the resulting graphs (nodes, edges and their kinds, every grain,
+member list and member depths, the buckets): 70,902 passes, no graph
+differed. Of 7,393 picks, 2,301 are rewrites:
+
+| rewrite | picks |
+|---|---|
+| new parent, grain and drop | 876 |
+| grain only | 553 |
+| new parent only | 360 |
+| new parent, drop and minted ROOT | 237 |
+| new parent and grain | 161 |
+| fold | 80 |
+| grain and drop | 18 |
+| new parent and drop | 10 |
+| drop only | 6 |
+
+`test_a_pick_the_graph_already_holds_is_not_elected` pins the filter over
+part 46's statement: it holds a pick the graph already has, and that pick is
+not elected. It fails with the filter removed. The `_as_rewrite` unit tests
+pin each part it drops.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (`test_persisted_value_reads_back`,
+the window laws, gcat, `test_derived_key_domain`, the declared-join pairing,
+CLI ingest, config bootstrap), the dashboard statement counts, the GCS name,
+the statement count of `test_validate_fix` and `test_a_rust_binary_is_a_datasource`.
+Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1770,11 +1813,12 @@ not built yet:
    part 41, none moving a plan).
 3. Every group's rehome, a window fold included, is one row-provider pick
    over the graph stage 2 built, and no pick reads another (parts 46-49).
-   About 70% of applied picks change nothing (part 49). Applying the picks still
-   rewrites the graph: a fold deletes the BASIC and repoints its readers; a
-   provider adds a lineage edge, drops the parents it replaces, overwrites
-   the group's `grain_components` and may mint a ROOT. Then
-   `_compute_concept_sets` runs again.
+   A pick is elected only as the rewrite it makes (part 50): 2,301 of 7,393
+   suite picks. Those still rewrite the graph: a fold deletes the BASIC and
+   repoints its readers; a provider adds a lineage edge, drops the parents
+   it replaces, overwrites the group's `grain_components` and may mint a
+   ROOT. 1,608 of the rewrites change a grain, which stage 2 could state
+   when it groups. Then `_compute_concept_sets` runs again.
 
 ## 8. Not claimed
 
