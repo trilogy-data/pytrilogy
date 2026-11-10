@@ -32,20 +32,20 @@ class _ElectionLog:
             self.elected[rest[-1]] = provider
         return provider
 
-    def regraft(self, group_graph, group_edges, attrs, *rest):
-        _REGRAFT(group_graph, group_edges, attrs, *rest)
+    def rehome(self, group_graph, group_edges, attrs, *rest):
+        _REHOME(group_graph, group_edges, attrs, *rest)
         self.applied.append((group_graph, group_edges))
 
 
 _ELECT = gg._elect_row_provider
-_REGRAFT = gg._regraft_group_sources
+_REHOME = gg._rehome_groups
 
 
 @pytest.fixture
 def log(monkeypatch) -> _ElectionLog:
     log = _ElectionLog()
     monkeypatch.setattr(gg, "_elect_row_provider", log.elect)
-    monkeypatch.setattr(gg, "_regraft_group_sources", log.regraft)
+    monkeypatch.setattr(gg, "_rehome_groups", log.rehome)
     env = Environment()
     env.parse(_MODEL)
     Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)

@@ -2453,12 +2453,15 @@ def trace_group_graph(
 class RowProvider:
     """The row source a regraftable group is re-homed onto: the parent it
     reads, the grain it adopts from a grouping provider, the lineage parents
-    that parent replaces, and the dimension ROOT minted for it."""
+    that parent replaces, the dimension ROOT minted for it, and whether the
+    parent renders the group inline."""
 
     parent: str | None
     grain: frozenset[str] | None = None
     drop: frozenset[str] = frozenset()
     minted: GroupBucket | None = None
+    # the parent renders the group in its own SELECT: the group folds into it
+    inline: bool = False
 
 
 def _regraft_candidate(
@@ -2799,19 +2802,45 @@ def _absorb_group(
     buckets.pop(gid, None)
 
 
-def _elect_window_absorber(
+def _renders_inline(
+    attrs: dict[str, GroupAttrs],
+    concept_attrs: dict[str, ConceptAttrs],
+    gid: str,
+    parent: str,
+) -> bool:
+    """Whether WINDOW `parent` renders scalar BASIC `gid` in its own SELECT, so
+    the group folds into it instead of forcing the window to materialize every
+    passthrough column for a separate projection node.
+
+    Gated to the one case the optimizer cannot express: `CollapseSingleParent`
+    blocks BASIC-into-WINDOW, since a row projection can't ride a window
+    node's SELECT through a generic fold (an AGGREGATE parent is its
+    `basic_fold_into_group_is_safe`). A post-window filter needs no handling:
+    none is injected yet, and placement never hosts a filter on a window
+    group's own output."""
+    a = attrs[gid]
+    pa = attrs[parent]
+    if pa.derivation != Derivation.WINDOW:
+        return False
+    if pa.grain_components != a.grain_components:
+        return False
+    # the window must already source every input, from its outputs or its
+    # inputs: a spine lacking one needs a real join the fold can't create
+    return set(a.input_concepts) <= set(pa.output_concepts) | set(pa.input_concepts)
+
+
+def _inline_window(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
 ) -> str | None:
-    """The WINDOW parent that renders BASIC `gid` inline; mutates nothing."""
+    """The WINDOW that renders scalar BASIC `gid` inline, if any."""
     a = attrs[gid]
     if a.derivation != Derivation.BASIC or a.condition_atoms:
         return None
-    # pure scalar projection only: a member that is itself a row-shape
-    # barrier (aggregate/window output) can't render in the parent's SELECT.
+    # an aggregate or window member can't render in the parent's SELECT
     if any(
         m in concept_attrs
         and concept_attrs[m].derivation in ROW_SHAPE_BARRIER_DERIVATIONS
@@ -2819,76 +2848,15 @@ def _elect_window_absorber(
     ):
         return None
     # The BASIC may also read a sibling the window already sources
-    # (`round(lag(x))` references `x` directly AND via the lag, so the round
-    # group's parents are the window + the BASIC the window itself reads).
-    # Full coverage misses this; fall back to a partial spine and gate on the
-    # window carrying every remaining input.
-    parent_gid = _regraft_candidate(
+    # (`round(lag(x))` reads `x` directly AND via the lag, so its parents are
+    # the window and the BASIC the window reads): fall back to a partial
+    # spine, which `_renders_inline` gates on carrying every input.
+    parent = _regraft_candidate(
         group_graph, group_edges, attrs, gid, allow_partial=False
     ) or _regraft_candidate(group_graph, group_edges, attrs, gid, allow_partial=True)
-    if parent_gid is None or parent_gid == gid:
+    if parent is None or not _renders_inline(attrs, concept_attrs, gid, parent):
         return None
-    pa = attrs[parent_gid]
-    if pa.derivation != Derivation.WINDOW:
-        return None
-    if pa.grain_components != a.grain_components:
-        return None
-    # Absorption renders gid inline in the window's own SELECT, so the window
-    # must already source every input gid needs, from its outputs or its
-    # inputs. A spine whose missing inputs the window doesn't carry would need
-    # a real join the absorb can't create, so leave it as a separate joined
-    # node.
-    if not set(a.input_concepts) <= set(pa.output_concepts) | set(pa.input_concepts):
-        return None
-    return parent_gid
-
-
-def _elect_window_absorbers(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    concept_attrs: dict[str, ConceptAttrs],
-) -> dict[str, str]:
-    """Each same-grain scalar BASIC's WINDOW parent that already supplies all
-    of its inputs, so the projection renders inline in the window's own
-    SELECT instead of a separate node that forces the window to materialize
-    every passthrough column.
-
-    This is the node-MERGE generalization of the row provider (which only
-    routes a source edge). It is gated to the one case the optimizer cannot
-    express: `CollapseSingleParent` blocks BASIC-into-WINDOW because a row
-    projection can't ride a window node's SELECT through a generic fold. An
-    AGGREGATE parent is excluded; that fold is handled by
-    `CollapseSingleParent`'s `basic_fold_into_group_is_safe`.
-
-    A post-window filter (`x is not null`) needs no handling here: it has not
-    been injected yet (this runs before `_inject_conditions`), and placement
-    refuses to host a filter on a window group's own output, so it defers to
-    FINAL."""
-    return {
-        gid: parent_gid
-        for gid in list(group_graph.nodes)
-        if gid != FINAL_NODE_ID
-        and (
-            parent_gid := _elect_window_absorber(
-                group_graph, group_edges, attrs, concept_attrs, gid
-            )
-        )
-        is not None
-    }
-
-
-def _merge_basic_into_window_parent(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    absorbers: dict[str, str],
-) -> None:
-    """Fold each elected BASIC into its WINDOW. An absorber is a WINDOW,
-    never itself absorbed, so no fold removes another's parent."""
-    for gid, parent_gid in absorbers.items():
-        _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
+    return parent
 
 
 def _elect_row_provider(
@@ -2900,7 +2868,12 @@ def _elect_row_provider(
     environment: BuildEnvironment,
     gid: str,
 ) -> RowProvider | None:
-    """Pick `gid`'s row source over the graph; mutates nothing."""
+    """Pick `gid`'s row source over the graph; mutates nothing. The choices,
+    in order: a WINDOW that renders it inline, a terminal BASIC's grouping
+    provider, a full-coverage sibling, a dimension ROOT, a partial spine."""
+    window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
+    if window is not None:
+        return RowProvider(window, inline=True)
     grain = None
     provider_gid = _terminal_basic_grouping_provider(
         group_graph, attrs, gid, environment
@@ -2979,21 +2952,19 @@ def _elect_row_providers(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    absorbers: dict[str, str],
 ) -> dict[str, RowProvider]:
-    """Each surviving group whose best row source is already built.
+    """Each regraftable group whose best row source is already built, elected
+    over the graph as stage 2 built it.
 
-    A folded BASIC takes no provider: its WINDOW renders it. No provider is a
-    BASIC, so none is folded away; a parent it drops that is folded is
-    dropped as the WINDOW its edge moves to. Concrete datasource selection
-    remains in `source_planning` and StrategyNode construction in
+    No provider is a BASIC, so no fold removes one; a parent a provider drops
+    that folds is dropped as the WINDOW its edge moves to. Concrete datasource
+    selection remains in `source_planning` and StrategyNode construction in
     `strategy_builder`.
     """
     providers: dict[str, RowProvider] = {}
     for gid in list(group_graph.nodes):
         if (
             gid == FINAL_NODE_ID
-            or gid in absorbers
             or attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS
         ):
             continue
@@ -3001,20 +2972,21 @@ def _elect_row_providers(
             group_graph, group_edges, attrs, buckets, concept_attrs, environment, gid
         )
         if provider is not None:
-            drop = frozenset(absorbers.get(pred, pred) for pred in provider.drop)
-            providers[gid] = replace(provider, drop=drop)
-    return providers
+            providers[gid] = provider
+    folded = _folds(providers)
+    return {
+        gid: replace(p, drop=frozenset(folded.get(pred, pred) for pred in p.drop))
+        for gid, p in providers.items()
+    }
 
 
-def _regraft_group_sources(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    providers: dict[str, RowProvider],
-) -> None:
-    for gid, provider in providers.items():
-        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
+def _folds(providers: dict[str, RowProvider]) -> dict[str, str]:
+    """Each group its provider renders inline, to that provider."""
+    return {
+        gid: p.parent
+        for gid, p in providers.items()
+        if p.inline and p.parent is not None
+    }
 
 
 def _rehome_groups(
@@ -3025,18 +2997,14 @@ def _rehome_groups(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
 ) -> None:
-    """Elect every window absorber and row provider over the graph as stage 2
-    built it, then fold the absorbed BASICs and apply the providers: no
+    """Elect every group's row provider over the graph as stage 2 built it,
+    then fold each group its provider renders inline and apply the rest: no
     election reads another's fold, edges or adopted grain."""
-    absorbers = _elect_window_absorbers(group_graph, group_edges, attrs, concept_attrs)
     providers = _elect_row_providers(
-        group_graph,
-        group_edges,
-        attrs,
-        buckets,
-        concept_attrs,
-        environment,
-        absorbers,
+        group_graph, group_edges, attrs, buckets, concept_attrs, environment
     )
-    _merge_basic_into_window_parent(group_graph, group_edges, attrs, buckets, absorbers)
-    _regraft_group_sources(group_graph, group_edges, attrs, buckets, providers)
+    for gid, parent in _folds(providers).items():
+        _absorb_group(gid, parent, group_graph, group_edges, attrs, buckets)
+    for gid, provider in providers.items():
+        if not provider.inline:
+            _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
