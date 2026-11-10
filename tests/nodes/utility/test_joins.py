@@ -783,6 +783,14 @@ datasource c (id:id) grain(id) address c;
     assert status[ds_b.identifier] == 1
     assert status[ds_c.identifier] == 1
 
+    joins = [
+        Join(left=ds_a, right=ds_b, join_type=JoinType.LEFT_OUTER, concepts=[]),
+        Join(left=ds_b, right=ds_c, join_type=JoinType.LEFT_OUTER, concepts=[]),
+    ]
+    status = compute_outer_null_status(joins)
+    assert status[ds_b.identifier] == 1
+    assert status[ds_c.identifier] == 2
+
 
 def test_prune_outer_join_pairs_drops_nullable_side():
     """When a LEFT/RIGHT OUTER join has multi-left pairs sharing the same

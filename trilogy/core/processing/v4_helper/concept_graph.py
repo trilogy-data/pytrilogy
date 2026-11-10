@@ -204,6 +204,21 @@ def _walk_aggregate_grain_inputs(
     return collected
 
 
+def _derived_key_row_grain(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> frozenset[str]:
+    """The rows a derived key is computed on: its inputs'. Its values are its
+    own grain, but the stream deriving it holds one per input row, and pairs
+    with its siblings on those rows' keys (`crown2` by `cls` and `genus`
+    joins back to the trees on both)."""
+    out: set[str] = set()
+    for arg in concept.lineage.concept_arguments if concept.lineage else ():
+        resolved = environment.concepts.get(arg.address) or arg
+        if resolved.grain:
+            out |= resolved.grain.components
+    return frozenset(out)
+
+
 def derived_key(concept: BuildConcept) -> bool:
     """A key computed by an expression is its own row identity, not its
     inputs'. A rename of a key is not: it has its source's rows."""
@@ -1787,6 +1802,8 @@ def _add_concept(
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    if not is_materialized_root and derived_key(concept):
+        out_grain = _derived_key_row_grain(concept, environment)
     if not is_materialized_root:
         out_grain = axis_scalar_reads(concept, environment) or out_grain
     if _scalar_of_materialized(concept, materialized_roots, environment):

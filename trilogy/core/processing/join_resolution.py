@@ -59,6 +59,7 @@ from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
     NodeType,
+    join_left_sources,
     left_deep_joins,
     padded_by,
 )
@@ -94,11 +95,23 @@ def held_region_spans(source: DataSource) -> frozenset[str]:
 def compute_outer_null_status(
     joins: list[SourceJoin | UnnestJoin],
 ) -> dict[str, int]:
-    """Score how often each datasource is null-extended by outer joins."""
+    """Score how often each datasource is null-extended by outer joins. A
+    padded right side scores past every source it is joined from: down a
+    chain of LEFT joins each side can only lose rows the earlier ones carry."""
     score: dict[str, int] = defaultdict(int)
     for join, left in left_deep_joins(joins):
-        for identifier in padded_by(join, left):
+        padded = padded_by(join, left)
+        for identifier in padded:
             score[identifier] += 1
+        right = join.right.identifier
+        if right in padded and join.join_type not in PADS_LEFT_JOIN_TYPES:
+            score[right] = max(
+                score[right],
+                1
+                + max(
+                    (score[s.identifier] for s in join_left_sources(join)), default=0
+                ),
+            )
     return score
 
 
