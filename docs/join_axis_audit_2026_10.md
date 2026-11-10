@@ -1690,8 +1690,12 @@ graph. It fails in part 47's order. `test_a_folded_basic_takes_no_row_provider`
 and `test_a_dropped_parent_that_is_folded_is_dropped_as_its_window` pin the
 two hand-offs.
 
-Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522. Full suite: the same 25
-failures as `main`. Suite capture: pending.
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat, the declared-join
+pairing, config bootstrap), CLI ingest, the dashboard statement counts, the
+GCS name and `test_a_rust_binary_is_a_datasource`. Full suite: the same 25
+failures as `main`. Corpus: 0 of 205 plans moved. Fuzzer: 522 of 522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
