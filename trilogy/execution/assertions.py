@@ -36,11 +36,16 @@ from typing import TYPE_CHECKING, Any
 from trilogy.constants import MagicConstants, logger
 from trilogy.core.assertions import (
     AssertionPlan,
+    AssertionSpecError,
     AssertionTerm,
     plan_assertion,
     substitute,
 )
 from trilogy.core.enums import DatasourceState, Modifier
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.models.author import ConceptRef, Grain
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
@@ -74,6 +79,10 @@ class DatasourceAssertionError(RuntimeError):
             f"{datasource_id}: {len(failures)} assertion(s) failed; the asset"
             f" was not replaced.\n{lines}"
         )
+
+
+class UnanswerableAssertionError(AssertionSpecError):
+    """An assertion the asset cannot answer from its own columns."""
 
 
 @contextmanager
@@ -127,19 +136,10 @@ def _fetch_sides(
     result. A filtered aggregate renders as a ``CASE`` inside the shared
     ``GROUP BY``, so it reports 0 for a group it filters empty rather than
     dropping the group."""
-    keys: list[ConceptRef] = []
-    for group_keys, _ in requests.values():
-        keys.extend(k for k in group_keys if k.address not in {x.address for x in keys})
+    keys = _side_keys(requests)
     position = {k.address: i for i, k in enumerate(keys)}
-    columns = [
-        (index, term, f"__a{index}{term.placeholder}")
-        for index, (_, terms) in requests.items()
-        for term in terms
-    ]
-    items = [_render(k) for k in keys] + [
-        f"{_render(term.expr)} as {alias}" for _, term, alias in columns
-    ]
-    text = "select " + ", ".join(items) + scope_where(datasource) + ";"
+    columns = _side_columns(requests)
+    text = _side_select(datasource, requests)
     with pinned_datasource(executor.environment, datasource, address):
         result = executor.execute_ephemeral(text)
     rows = result.fetchall() if result is not None else []
@@ -150,6 +150,54 @@ def _fetch_sides(
             group = tuple(row[position[k.address]] for k in requests[index][0])
             sides[index].setdefault(group, {})[term.placeholder] = row[width + offset]
     return sides
+
+
+def _side_keys(requests: dict[int, SideRequest]) -> list[ConceptRef]:
+    keys: list[ConceptRef] = []
+    for group_keys, _ in requests.values():
+        keys.extend(k for k in group_keys if k.address not in {x.address for x in keys})
+    return keys
+
+
+def _side_columns(
+    requests: dict[int, SideRequest],
+) -> list[tuple[int, AssertionTerm, str]]:
+    return [
+        (index, term, f"__a{index}{term.placeholder}")
+        for index, (_, terms) in requests.items()
+        for term in terms
+    ]
+
+
+def _side_select(datasource: Datasource, requests: dict[int, SideRequest]) -> str:
+    items = [_render(k) for k in _side_keys(requests)] + [
+        f"{_render(term.expr)} as {alias}" for _, term, alias in _side_columns(requests)
+    ]
+    return "select " + ", ".join(items) + scope_where(datasource) + ";"
+
+
+def check_answerable(
+    executor: Executor, datasource: Datasource, assertion: DatasourceAssertion
+) -> None:
+    """Plan the assertion's reads against the asset alone, with no I/O: a term
+    its columns cannot answer fails every build, previous asset or not."""
+    plan = plan_assertion(assertion.condition)
+    text = _side_select(datasource, {0: (plan.group_keys, plan.terms)})
+    try:
+        with pinned_datasource(executor.environment, datasource, _address(datasource)):
+            executor.plan_ephemeral(text)
+    except (UnresolvableQueryException, DisconnectedConceptsException) as exc:
+        raise UnanswerableAssertionError(
+            f"{datasource.identifier}: `{_render(assertion.condition)}` cannot be"
+            f" answered from the asset's own columns, which is all an assertion"
+            f" reads ({exc})"
+        ) from exc
+
+
+def _address(datasource: Datasource) -> Address:
+    if isinstance(datasource.address, Address):
+        return datasource.address
+    return Address(location=datasource.address)
 
 
 def _fetch_side(
@@ -184,12 +232,10 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
     Must run before the write: a table build replaces the asset in place.
     """
     prior: PriorValues = {}
-    address = (
-        datasource.address
-        if isinstance(datasource.address, Address)
-        else Address(location=datasource.address)
-    )
+    address = _address(datasource)
     assertions = datasource.assertions
+    for assertion in assertions:
+        check_answerable(executor, datasource, assertion)
     plans = [(i, p) for i, (_, p) in enumerate(_plans(datasource)) if p.uses_prior]
     if plans and address.is_missing_locally:
         logger.warning(

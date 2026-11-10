@@ -164,6 +164,17 @@ query (chunked at 200), not one per group. If the shared `prior` read fails
 because the previous asset lacks a column, the assertions are read one at a
 time, so only those naming that column lose their history.
 
+An assertion reads the asset and nothing else, so each term must be answerable
+from the asset's own columns. Before every build, previous asset or not, each
+assertion is planned against the pinned asset with no I/O (`check_answerable`).
+A term that needs a column the asset does not store raises
+`UnanswerableAssertionError` naming it, and `validate datasources` reports the
+same, `prior` assertions included. On a table at `grain (crown_class)`, where
+`crown_class` is derived from a tree's species, `count(crown_class)` counts
+trees, which one row per class cannot answer. `count_distinct(crown_class)`,
+`min`/`max`, and `sum`/`count` of an aggregate stored at that grain read the
+asset's own rows.
+
 `prior` is `FunctionType.PRIOR` so it rides the ordinary expression
 machinery (namespacing, argument validation, rendering); it has no SQL form,
 and rendering it outside an assertion raises.

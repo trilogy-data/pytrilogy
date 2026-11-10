@@ -652,10 +652,16 @@ def validate_assertions(
 
     A refresh checks them against a staged build; here there is one asset and
     no previous one, so an assertion that reads ``prior(...)`` is reported but
-    not run.
+    not run. Every assertion is still planned against the asset, so one its
+    columns cannot answer fails here rather than at the next build.
     """
     from trilogy.core.assertions import plan_assertion
-    from trilogy.execution.assertions import evaluate_assertion, render_assertion
+    from trilogy.execution.assertions import (
+        UnanswerableAssertionError,
+        check_answerable,
+        evaluate_assertion,
+        render_assertion,
+    )
 
     declared = env.datasources.get(datasource.identifier)
     if declared is None or not declared.assertions:
@@ -663,6 +669,19 @@ def validate_assertions(
     results: list[ValidationTest] = []
     for assertion in declared.assertions:
         spelled = render_assertion(assertion)
+        if exec is not None:
+            try:
+                check_answerable(exec, declared, assertion)
+            except UnanswerableAssertionError as exc:
+                results.append(
+                    ValidationTest(
+                        check_type=ExpectationType.ASSERTION,
+                        expected=spelled,
+                        ran=True,
+                        result=DatasourceModelValidationError(str(exc)),
+                    )
+                )
+                continue
         if exec is None or plan_assertion(assertion.condition).uses_prior:
             results.append(
                 ValidationTest(

@@ -2327,6 +2327,14 @@ def _report_chain(chain: Sequence[Workspace], resolved: bool) -> None:
     is_flag=True,
     help="With --wait, print the log tail even on success (a failure always does).",
 )
+@click.option(
+    "--force",
+    "force",
+    multiple=True,
+    help="Rebuild these datasources (by name, repeatable or comma-separated)"
+    " whether or not they look stale: `trilogy refresh --force` on the worker."
+    " Refresh jobs only.",
+)
 @click.pass_context
 def jobs_run(
     ctx: click.Context,
@@ -2335,6 +2343,7 @@ def jobs_run(
     timeout: int,
     poll_seconds: int,
     logs: bool,
+    force: tuple[str, ...],
 ) -> None:
     """Trigger a run of a job (by name or id).
 
@@ -2343,7 +2352,9 @@ def jobs_run(
     """
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
-    run = client.post_one(f"/orgs/{org}/jobs/{found.id}/run", JobRun)
+    forced = [name.strip() for entry in force for name in entry.split(",")]
+    body = {"force": [name for name in forced if name]} if force else None
+    run = client.post_one(f"/orgs/{org}/jobs/{found.id}/run", JobRun, body)
     if is_json_mode():
         emit_event("run_triggered", org=org, run=run.model_dump(mode="json"))
     else:
