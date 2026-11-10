@@ -2361,6 +2361,27 @@ class TestJobCommands:
         assert "Triggered run run-new" in result.output
         assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run")
 
+    def test_run_sends_no_body_without_force(self, logged_in, run_cloud):
+        run_cloud("jobs", "run", "nightly")
+        assert (
+            logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run") is None
+        )
+
+    def test_run_forces_named_datasources(self, logged_in, run_cloud):
+        result = run_cloud(
+            "jobs",
+            "run",
+            "nightly",
+            "--force",
+            "age_class_fits,age_genus_fits",
+            "--force",
+            "height_fit_sample",
+        )
+        assert result.exit_code == 0
+        assert logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run") == {
+            "force": ["age_class_fits", "age_genus_fits", "height_fit_sample"]
+        }
+
     def test_run_rejects_an_unknown_job_before_calling_the_api(
         self, logged_in, run_cloud
     ):

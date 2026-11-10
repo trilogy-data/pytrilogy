@@ -20,7 +20,11 @@ from trilogy.core.enums import FunctionType
 from trilogy.core.exceptions import InvalidSyntaxException, ModelValidationError
 from trilogy.core.models.author import ConceptRef, Function
 from trilogy.core.models.environment import Environment
-from trilogy.execution.assertions import DatasourceAssertionError
+from trilogy.execution.assertions import (
+    DatasourceAssertionError,
+    UnanswerableAssertionError,
+    pinned_datasource,
+)
 from trilogy.execution.staged_write import STAGING_DIR
 from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.lark_backend import parse_lark
@@ -537,3 +541,94 @@ assert count(species) >= 0.75 * prior(count(species));
         assert executor.execute_raw_sql(
             "SELECT count(*) FROM enrichment"
         ).fetchall() == [(4,)]
+
+
+DERIVED_GRAIN_MODEL = """
+key id int;
+property id.species string;
+auto cls <- case when species = 'a' then 'x' else 'y' end;
+auto n_by_cls <- count(id) by cls;
+root datasource raw (id: id, species: species) grain (id) address raw;
+datasource fits (fit_class: cls, n: n_by_cls)
+grain (cls)
+address fits
+"""
+
+
+def _derived_grain(asserts: str) -> tuple[Executor, object]:
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.execute_raw_sql(
+        "CREATE TABLE raw AS SELECT i AS id, CASE WHEN i % 3 = 0 THEN 'a'"
+        " WHEN i % 3 = 1 THEN 'b' ELSE 'c' END AS species FROM range(30) t(i)"
+    )
+    executor.parse_text(DERIVED_GRAIN_MODEL + asserts + ";")
+    return executor, executor.environment.datasources["fits"]
+
+
+class TestDerivedGrainTarget:
+    @pytest.mark.parametrize(
+        "query, expected",
+        [
+            ("select count_distinct(cls) as v;", 2),
+            ("select min(cls) as v;", "x"),
+            ("select max(cls) as v;", "y"),
+            ("select sum(n_by_cls) as v;", 30),
+            ("select count(n_by_cls) as v;", 2),
+            ("select count(id) as v;", 30),
+        ],
+    )
+    def test_pinned_asset_answers_its_own_columns(self, query, expected) -> None:
+        executor, fits = _derived_grain("")
+        executor.update_datasource(fits)
+        with pinned_datasource(executor.environment, fits, fits.address):
+            assert executor.execute_ephemeral(query).fetchall() == [(expected,)]
+
+    def test_assertions_on_derived_grain_keys_check_the_asset(self) -> None:
+        executor, fits = _derived_grain(
+            "assert count_distinct(cls) >= prior(count_distinct(cls))\n"
+            "assert sum(n_by_cls) >= 0.75 * prior(sum(n_by_cls))"
+        )
+        executor.update_datasource(fits)
+        executor.execute_raw_sql("DELETE FROM raw WHERE species = 'a'")
+        with pytest.raises(DatasourceAssertionError) as info:
+            executor.update_datasource(fits)
+        message = str(info.value)
+        assert "= 1, prior(" in message and "= 2" in message
+        assert "= 20, prior(" in message and "= 30" in message
+        assert executor.execute_raw_sql(
+            "SELECT fit_class, n FROM fits ORDER BY 1"
+        ).fetchall() == [("x", 10), ("y", 20)]
+
+    def test_unanswerable_assertion_fails_the_first_build(self) -> None:
+        executor, fits = _derived_grain("assert count(cls) >= 0.75 * prior(count(cls))")
+        with pytest.raises(UnanswerableAssertionError, match=r"count\(cls\)"):
+            executor.update_datasource(fits)
+
+    def test_validate_reports_an_unanswerable_assertion(self) -> None:
+        executor, fits = _derived_grain("assert count(cls) >= 0.75 * prior(count(cls))")
+        executor.update_datasource(fits, check_assertions=False)
+        with pytest.raises(ModelValidationError, match="cannot be answered"):
+            executor.execute_text("validate datasources fits;")
+
+
+def test_asset_keyed_by_a_stored_property_answers_its_distinct_values() -> None:
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.execute_raw_sql(
+        "CREATE TABLE raw AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'oak'"
+        " ELSE 'elm' END AS genus FROM range(10) t(i)"
+    )
+    executor.parse_text("""
+key id int;
+property id.genus string;
+auto n_by_genus <- count(id) by genus;
+root datasource raw (id: id, genus: genus) grain (id) address raw;
+datasource genus_fits (genus: genus, n: n_by_genus)
+grain (genus)
+address genus_fits
+assert count_distinct(genus) >= prior(count_distinct(genus));
+""")
+    fits = executor.environment.datasources["genus_fits"]
+    executor.update_datasource(fits)
+    executor.execute_raw_sql("DELETE FROM raw WHERE genus = 'oak'")
+    with pytest.raises(DatasourceAssertionError, match=r"= 1, prior\(.*\) = 2"):
+        executor.update_datasource(fits)
