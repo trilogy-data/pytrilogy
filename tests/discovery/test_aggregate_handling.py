@@ -292,23 +292,32 @@ SELECT
     avg_distance
 ;
 """)[-1]
-    distinct_generated = exec.generate_sql("""
-SELECT
-    origin_code,
-    flight_date,
-    distinct_destinations
-;
-""")[-1]
-
     assert "flight_count_by_source_dest_date" not in avg_generated, avg_generated
+
+
+DISTINCT_BY_DATE = "select origin_code, flight_date, distinct_destinations;"
+DISTINCT_BY_ORIGIN = "select origin_code, distinct_destinations;"
+
+
+def test_distinct_key_count_is_additive_over_a_partition_of_the_key():
+    """A distinct count of a key re-sums wherever the grain summed away
+    partitions the key (`Cover.count_distinct_of_key_exact`): dropping the
+    counted key itself puts each destination in one group. Dropping the date
+    too does not (a destination flies on many dates), so that reads the rows."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(PARTIAL_AGG_SETUP)
+    raw = Dialects.DUCK_DB.default_executor()
+    raw.parse_text(PARTIAL_AGG_SETUP.split("datasource flight_count_by")[0])
+    for query in (DISTINCT_BY_DATE, DISTINCT_BY_ORIGIN):
+        assert sorted(exec.execute_text(query)[-1].fetchall()) == sorted(
+            raw.execute_text(query)[-1].fetchall()
+        )
+    partitioned = exec.generate_sql(DISTINCT_BY_DATE)[-1]
     assert (
-        'count(distinct "flight_count_by_source_dest_date"."destination_code")'
-        in distinct_generated
-    ), distinct_generated
-    assert (
-        '"flight_count_by_source_dest_date"."distinct_destinations"'
-        not in distinct_generated
-    ), distinct_generated
+        'sum("flight_count_by_source_dest_date"."distinct_destinations")' in partitioned
+    ), partitioned
+    overlapping = exec.generate_sql(DISTINCT_BY_ORIGIN)[-1]
+    assert "flight_count_by_source_dest_date" not in overlapping, overlapping
 
 
 def test_partial_aggregate_rollup_requires_dropped_grain_to_depend_on_input_key():

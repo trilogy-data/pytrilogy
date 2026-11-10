@@ -99,6 +99,7 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     logical operation of a SELECT, so the child's limit and ORDER BY apply
     unchanged to the merged CTE."""
     parent.distinct_counts = parent.distinct_counts | cte.distinct_counts
+    parent.partial_sources = {**parent.partial_sources, **cte.partial_sources}
     nullable_addresses = {c.address for c in parent.nullable_concepts}
     for column in cte.nullable_concepts:
         if column.address not in nullable_addresses:

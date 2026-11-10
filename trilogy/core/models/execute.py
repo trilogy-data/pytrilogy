@@ -157,6 +157,8 @@ class CTE:
     zero_filled: frozenset[str] = frozenset()
     # See `QueryDatasource.distinct_counts`.
     distinct_counts: frozenset[str] = frozenset()
+    # See `QueryDatasource.partial_sources`.
+    partial_sources: dict[str, BuildConcept] = field(default_factory=dict)
     order_by: BuildOrderBy | None = None
     limit: int | None = None
     base_name_override: Address | str | None = None
@@ -372,6 +374,7 @@ class CTE:
         )
         self.zero_filled = self.zero_filled | other.zero_filled
         self.distinct_counts = self.distinct_counts | other.distinct_counts
+        self.partial_sources = {**self.partial_sources, **other.partial_sources}
         self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
             **self.existence_source_map,
@@ -1472,6 +1475,14 @@ class QueryDatasource:
     # the concept is never rewritten and a consumer re-deriving it here renders
     # it the same way. Not identity.
     distinct_counts: frozenset[str] = frozenset()
+    # Each rollup output this source re-aggregates from a parent's column
+    # under another address: the finer partial of the same aggregate the
+    # statement also demands (`aggregate_rollup.elect_partials`), where a
+    # summary table would hold it under the aggregate's own. A sourcing choice
+    # for this source; the concept keeps its lineage. Not identity.
+    partial_sources: dict[str, BuildConcept] = field(
+        default_factory=dict, compare=False
+    )
     # The region domains under this source (`nodes.base_node.region_reads`):
     # the spans whose extension rows are rows of it. A join between a side
     # holding a region's rows and one that does not preserves the holder.
@@ -1782,6 +1793,7 @@ class QueryDatasource:
             extent_free_carried=self.extent_free_carried,
             zero_filled=self.zero_filled | other.zero_filled,
             distinct_counts=self.distinct_counts | other.distinct_counts,
+            partial_sources={**self.partial_sources, **other.partial_sources},
             region_spans=self.region_spans | other.region_spans,
         )
         logger.debug(

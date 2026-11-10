@@ -53,6 +53,7 @@ from trilogy.core.processing.aggregate_rollup import (
     filter_finer_row_args,
     holds_every_kept_row,
     source_rollup_concepts,
+    sourced_arguments,
 )
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
@@ -900,6 +901,7 @@ def _nested_rollup_roots(
         mandatory_list,
         descend=lambda c: c.address not in roots,
         resolve=lambda c: environment.concepts.get(c.address) or c,
+        partials=environment.partial_sources,
     ):
         if (
             concept.address in mandatory
@@ -958,11 +960,10 @@ def _nested_row_grains(
         out.setdefault(concept.address, []).append(grain)
         if concept.lineage is None or concept.address in roots:
             continue
-        # resolved as `_nested_rollup_roots` walks: a statement-local rewrite
-        # (`reaggregate_partials`) can give the environment's copy other args
+        # read as `_nested_rollup_roots` walks: what the plan reads
         args = {
             c.address: environment.concepts.get(c.address) or c
-            for c in concept.lineage.concept_arguments
+            for c in sourced_arguments(concept, environment.partial_sources)
         }
         below = args if concept.derivation == Derivation.AGGREGATE else beside | args
         stack.extend((arg, below) for arg in args.values())
@@ -998,6 +999,7 @@ def _finer_filter_reaches_rollup(
         [c for c in mandatory_list if c.address not in rolled_roots],
         descend=lambda c: c.address not in rolled_roots,
         resolve=lambda c: environment.concepts.get(c.address) or c,
+        partials=environment.partial_sources,
     )
     leaves = [c for c in reached if c.lineage is None]
     if BuildGrain.from_concepts([*mandatory_list, *leaves]) in (
@@ -1029,17 +1031,21 @@ def _aggregates_rolled_groups(
     environment: BuildEnvironment,
 ) -> bool:
     """An aggregate over the rolled groups (`count(species ? count(tree_id)
-    by species > 0)`) reads one row per group, so it rides the pinned scan.
-    One over the summary's raw rows would count each group once per row it
-    rolls up, and one the summary stores a partial of must be rolled itself."""
-    if any(
+    by species > 0)`) reads one row per group, so it rides the pinned scan,
+    as does a re-aggregate of a rolled partial (`count(tree_id) by *` beside
+    the per-species count). One over the summary's raw rows would count each
+    group once per row it rolls up, and one the summary stores a partial of
+    must be rolled itself."""
+    if concept.address not in environment.partial_sources and any(
         _datasource_has_matching_rollup_aggregate(ds, concept) for ds in rollup_sources
     ):
         return False
     return any(
         c.address in rolled_roots
         for c in walk_lineage(
-            [concept], resolve=lambda c: environment.concepts.get(c.address) or c
+            [concept],
+            resolve=lambda c: environment.concepts.get(c.address) or c,
+            partials=environment.partial_sources,
         )
     )
 
@@ -1059,6 +1065,7 @@ def _summary_leaves(
         descend=lambda c: c.address not in rolled_roots
         and c.canonical_address not in bound,
         resolve=lambda c: environment.concepts.get(c.address) or c,
+        partials=environment.partial_sources,
     )
     return [c for c in reached if c.lineage is None or c.canonical_address in bound]
 

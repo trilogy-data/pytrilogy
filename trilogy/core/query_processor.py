@@ -74,10 +74,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing import null_provenance, plan_trace
-from trilogy.core.processing.aggregate_rollup import (
-    distinct_key_counts,
-    reaggregate_partials,
-)
+from trilogy.core.processing.aggregate_rollup import elect_partials
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     append_existence_check,
@@ -508,6 +505,7 @@ def datasource_to_cte(
         hidden_concepts=query_datasource.hidden_concepts,
         zero_filled=query_datasource.zero_filled,
         distinct_counts=query_datasource.distinct_counts,
+        partial_sources=query_datasource.partial_sources,
         base_name_override=base_name,
         base_alias_override=base_alias,
         order_by=query_datasource.ordering,
@@ -1045,35 +1043,6 @@ def _session_build_caches(
     return caches
 
 
-def _reaggregate_partials(
-    statement: BuildSelectLineage, environment: BuildEnvironment
-) -> BuildSelectLineage:
-    """Point every coarser aggregate the statement demands at a finer demanded
-    partial of it, in this statement's own environment."""
-    rewritten = distinct_key_counts(
-        statement.output_components,
-        statement.where_clause,
-        environment.concepts,
-        environment.datasources.values(),
-    )
-    for address, concept in rewritten.items():
-        environment.concepts[address] = concept
-    rewritten |= reaggregate_partials(
-        statement.output_components,
-        environment.concepts,
-        environment.datasources.values(),
-    )
-    if not rewritten:
-        return statement
-    for address, concept in rewritten.items():
-        environment.concepts[address] = concept
-        environment.canonical_concepts[concept.canonical_address] = concept
-    return replace(
-        statement,
-        selection=[rewritten.get(c.address, c) for c in statement.selection],
-    )
-
-
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
@@ -1136,7 +1105,11 @@ def get_query_node(
         scoped_joins=caches.scoped_joins,
     )
     if isinstance(build_statement, BuildSelectLineage):
-        build_statement = _reaggregate_partials(build_statement, build_environment)
+        build_environment.partial_sources = elect_partials(
+            build_statement.output_components,
+            build_environment.concepts,
+            build_environment.datasources.values(),
+        )
     carried = _carry_order_by_concepts(build_statement)
     graph = generate_scope_graph(
         build_environment, statement, environment, build_statement

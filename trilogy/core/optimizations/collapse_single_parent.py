@@ -397,6 +397,9 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
                 parent.source_map[column.address] = []
 
     carry_child_state(parent, cte)
+    # a re-aggregate the child computed reads its partial where the parent does
+    for address, partial in cte.partial_sources.items():
+        parent.source_map[address] = list(parent.source_map.get(partial.address, []))
 
     # AND-combine the child's WHERE into the parent. For AGGREGATE merges the
     # child's condition is the pre-aggregation WHERE and the parent becomes the
@@ -678,6 +681,12 @@ class CollapseSingleParent(OptimizationRule):
                 # A rename whose referent the parent exposes renders from
                 # lineage after the fold and needs no source_map entry.
                 and address not in renders_from_lineage
+                # A re-aggregate reads its partial, which the parent outputs
+                # and `apply_child_merge` rebinds.
+                and not (
+                    (partial := cte.partial_sources.get(address)) is not None
+                    and partial.address in parent_outputs
+                )
             ):
                 self.log(
                     f"CTE {cte.name} sources {address} from parent {parent.name} "

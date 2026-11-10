@@ -287,8 +287,10 @@ a design decision or a bug.
   twins) proves that re-aggregating a GROUP BY at grain `g` to a coarser grain
   `h ∘ g` gives the table a GROUP BY at `h ∘ g` stores, so a query's own
   groups are a summary for every coarser grain it asks for. The planner now
-  rewrites `sum(x) by city` beside `sum(x) by city, species` as the `SUM` of
-  the finer value, and a chain of grains reads the rows once. The new
+  computes `sum(x) by city` beside `sum(x) by city, species` as the `SUM` of
+  the finer value, and a chain of grains reads the rows once (a rewrite of
+  the concept until 0.3.483; since then a sourcing election,
+  `aggregate_rollup.elect_partials`, that changes no lineage). The new
   multi-grain axis of the law matrix (438 cells) found five wrong answers on
   main, all with a summary in scope and an aggregate whose grain is not the
   select's: `select tree_form, count(tree_id) by *` read 12 for a two-species
@@ -550,7 +552,9 @@ a design decision or a bug.
   beside a stored `year(plant_date)` was bound by name only, so its WHERE ran on
   the tree rows and joined the summary count. `count_distinct(tree_id)` now reads
   as `count(tree_id)` wherever every grouping and WHERE column is a function of
-  `tree_id` (`Cover.count_distinct_of_key_exact`). A re-summed partial read
+  `tree_id` (`Cover.count_distinct_of_key_exact`); since 0.3.483 the two
+  share a rollup signature instead, additive wherever the grain summed away
+  partitions the key. A re-summed partial read
   inside an expression (`n / count(x) by *`) was put in the GROUP BY and failed
   to bind, as did a grand total joined beside it; both shapes raised on main.
   Filtered counts, totals under a WHERE the target does not determine,
@@ -764,7 +768,7 @@ a design decision or a bug.
   partials already filtered below is a plain one. The query's concepts are
   never rewritten. A count over the filter's rows guards its fan-out on the
   rows of `x`, not of `x ? c`. `count_distinct(k ? c)` follows, through
-  `distinct_key_counts`. A summary storing `agg(x ? c)` itself is read as
+  `rollup_operator`. A summary storing `agg(x ? c)` itself is read as
   stored, with no CASE on top: it answers a condition on any column, a
   property of its key included (`test_stored_filtered_aggregate_is_read_as_stored`),
   and now beside a target that is such a property too, which read the rows on

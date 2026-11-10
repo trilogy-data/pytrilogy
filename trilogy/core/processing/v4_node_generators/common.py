@@ -1,8 +1,12 @@
 """Shared helpers for v4 node generators."""
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import sourced_arguments
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.history import V4History
@@ -60,14 +64,15 @@ def parent_outputs_needed(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
     conditions: BuildWhereClause | None = None,
+    partials: Mapping[str, BuildConcept] = MappingProxyType({}),
 ) -> list[BuildConcept]:
-    """Which parent outputs do `outputs` consume (via their lineage), plus
-    any concepts the optional `conditions` references? Returned in parent
-    order, deduped by address."""
+    """Which parent outputs do `outputs` consume (via their lineage, or the
+    partial one is re-aggregated from), plus any concepts the optional
+    `conditions` references? Returned in parent order, deduped by address."""
     referenced: set[str] = set()
     for c in outputs:
         if c.lineage is not None:
-            for arg in c.lineage.concept_arguments:
+            for arg in sourced_arguments(c, partials):
                 referenced.add(arg.address)
         # Also pass-through: an output may be a direct parent output.
         referenced.add(c.address)

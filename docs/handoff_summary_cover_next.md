@@ -55,12 +55,13 @@ Each round:
 Gotchas:
 - A summary's inline query embeds the tree SQL, so detect "reads the trees"
   by the quoted alias `"trees"`, not by the SQL text.
-- The statement's lineage objects go stale after `_reaggregate_partials`
-  (query_processor.py) rewrites concepts in the environment. A walk
-  that doesn't `resolve` through `environment.concepts` sees the old
-  lineage. `_nested_rollup_roots`, `_summary_leaves` and the rollup render
-  resolve it since 0.3.450; resolving only `_summary_leaves` was what the
-  K3 warning here was about, and with all three no wrong rows were found.
+- No concept is rewritten since 0.3.483. A coarser aggregate that
+  re-aggregates a finer demanded partial is an election
+  (`BuildEnvironment.partial_sources`, `aggregate_rollup.elect_partials`):
+  a walk that asks what the plan reads passes it
+  (`walk_lineage(partials=...)`, `sourced_arguments`), one that asks what a
+  concept means reads its lineage. `count_distinct(k)` of a key shares
+  `count(k)`'s `rollup_signature` (`build.rollup_operator`).
 - Before 0.3.457, `count(tree_id) by ecoregion_id` counted a list repeating
   an element once per repeat, while `by biome` deduped. That was a bug (the
   group disagreed with its own WHERE); both dedupe now.
@@ -87,7 +88,7 @@ enrichment join, not at the summary scan, so the rollup render in
 `dialect/base.py` `_render_concept_sql` needs the condition in scope.
 Ruled out: a build-time rewrite to `sum(count(x) by A ? c)`. It misses too,
 and a filtered count is 0 for an empty group where the rewrite is NULL.
-Once this lands, `count_distinct(k ? c)` follows through `distinct_key_counts`
+Once this lands, `count_distinct(k ? c)` follows through `rollup_operator`
 (the F2 KPIs).
 
 ### 2. Rule 4 under a WHERE the target does not determine (DONE in 0.3.450)
