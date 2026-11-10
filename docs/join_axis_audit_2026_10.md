@@ -1792,6 +1792,60 @@ the statement count of `test_validate_fix` and `test_a_rust_binary_is_a_datasour
 Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
 Fuzzer: 522 of 522.
 
+**A projection's grain is stated before the rehome (part 51).** Part 50
+left 1,608 rewrites changing a grain. Every one is a terminal scalar
+projection adopting its grouping provider's grain, and that grain does not
+depend on which row provider the projection is then given. Stage 2 now
+states it as its own step, before any provider is elected:
+
+- `_elect_grouping_providers` elects each terminal projection's grouping
+  provider over the graph stage 2 built. A projection a WINDOW renders inline
+  takes none, as before: it folds and keeps its grain.
+- `_state_projection_grains` places each such projection, and its bucket, at
+  its provider's grain. No provider is a BASIC, so no statement reads
+  another.
+- The row-provider election reads the elected provider instead of electing
+  it, and its grain is the group's own. `RowProvider` has no `grain`; a rehome
+  only adds lineage edges, drops parents, mints a ROOT or folds.
+- `_regraft_candidate` and `_synthetic_dimension_regraft_parent` no longer
+  take a grain override: the group's own grain is the stated one.
+
+Once the grain is stated, only one read in the provider election can see
+it: `_grain_needed_by_independent_sibling`, which reads the grain of other
+FINAL-bound groups. Some of those are projections that have just been given
+a new grain. A census over one suite run rehomed every pass both ways: as
+on main (the grain adopted inside the election) and with the stated grain.
+It then compared the resulting graphs: nodes, edges and their kinds, every
+grain, member list and member depths, and the buckets. The first run found 5
+passes in 3 ROLLUP and window tests (q70's window over a ROLLUP,
+`test_derived_key_domain`'s rollup over a carried key, and a rollup region
+domain). In each, two projections are placed at the same provider. Stated
+at its grain, each projection read the other as an independent arm
+co-graining on it, and so kept a ROOT edge that main drops. A projection
+placed at the same provider is grafted onto it too, so it follows the
+relabeling, and the check now counts it as related. With that change:
+70,880 passes, 1,650 projections stated at a grouping provider's grain
+(1,606 of them at a new one), and 1,722 rewrites left in the election. No
+graph differed. A control run that skipped main's rehome on its copy did
+differ, so the comparison can see a grain.
+
+`test_each_projection_stands_at_its_providers_grain_when_providers_are_elected`
+pins the order over `select region, coalesce(sum(amount), 0)`: when the
+providers are elected, the projection already stands at its provider's
+grain, and that grain is not the one stage 2 grouped it at.
+`test_a_folded_projection_takes_no_grouping_provider` and
+`test_an_inline_window_outranks_a_grouping_provider` pin that a fold keeps
+its grain. `test_a_sibling_placed_at_the_same_provider_is_not_independent`
+pins the census finding.
+
+Suite capture against `main`, with the worktree path masked: no plan moved.
+What moved is the known noise: column and GROUP BY order (grain checks,
+`test_persisted_value_reads_back`, the window laws, gcat,
+`test_derived_key_domain`, CLI ingest), the dashboard statement counts, the
+GCS name, the BigQuery temp table and `test_a_rust_binary_is_a_datasource`.
+Full suite: the same 25 failures as `main`. Corpus: 0 of 205 plans moved.
+Fuzzer: 522 of 522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1813,12 +1867,14 @@ not built yet:
    part 41, none moving a plan).
 3. Every group's rehome, a window fold included, is one row-provider pick
    over the graph stage 2 built, and no pick reads another (parts 46-49).
-   A pick is elected only as the rewrite it makes (part 50): 2,301 of 7,393
-   suite picks. Those still rewrite the graph: a fold deletes the BASIC and
-   repoints its readers; a provider adds a lineage edge, drops the parents
-   it replaces, overwrites the group's `grain_components` and may mint a
-   ROOT. 1,608 of the rewrites change a grain, which stage 2 could state
-   when it groups. Then `_compute_concept_sets` runs again.
+   A pick is elected only as the rewrite it makes (part 50), and a
+   projection's grain is stated before any pick (part 51), so a rewrite never
+   changes a grain. Those rewrites still change the graph: a fold deletes the
+   BASIC and repoints its readers; a provider adds a lineage edge, drops the
+   parents it replaces and may mint a ROOT. The stated grain still follows
+   `_compute_concept_sets`, since the grouping provider is read off the
+   groups' input and output sets; stating it when stage 2 groups needs those
+   sets first. Then `_compute_concept_sets` runs again.
 
 ## 8. Not claimed
 

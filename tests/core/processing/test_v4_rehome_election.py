@@ -64,7 +64,7 @@ def test_a_dropped_parent_that_is_folded_is_dropped_as_its_window(monkeypatch):
         ]
     }
     monkeypatch.setattr(gg, "_elect_row_provider", _elect)
-    providers = gg._elect_row_providers(group_graph, {}, attrs, {}, {}, None)
+    providers = gg._elect_row_providers(group_graph, {}, attrs, {}, {}, None, {})
     assert providers["b"].inline
     assert providers["g"].drop == {"w", "r"}
 
@@ -76,33 +76,30 @@ def _graph(*edges) -> nx.DiGraph:
     return group_graph
 
 
-_ATTRS = {"g": SimpleNamespace(grain_components=frozenset({"k"}))}
-
-
 def test_a_provider_the_graph_already_holds_is_no_rewrite():
-    provider = gg.RowProvider("p", frozenset({"k"}), frozenset({"r"}))
-    assert gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider) is None
+    provider = gg.RowProvider("p", frozenset({"r"}))
+    assert gg._as_rewrite(_graph(("p", "g")), "g", provider) is None
 
 
 def test_a_rewrite_keeps_only_what_the_graph_lacks():
-    provider = gg.RowProvider("p", frozenset({"k"}), frozenset({"r"}))
-    rewrite = gg._as_rewrite(_graph(("r", "g")), _ATTRS, {}, "g", provider)
-    assert rewrite == gg.RowProvider("p", None, frozenset({"r"}))
+    provider = gg.RowProvider("p", frozenset({"r", "q"}))
+    rewrite = gg._as_rewrite(_graph(("r", "g")), "g", provider)
+    assert rewrite == gg.RowProvider("p", frozenset({"r"}))
 
 
-def test_a_new_grain_on_a_held_parent_is_a_rewrite():
-    provider = gg.RowProvider("p", frozenset({"j"}))
-    rewrite = gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider)
-    assert rewrite == gg.RowProvider(None, frozenset({"j"}))
+def test_a_drop_on_a_held_parent_is_a_rewrite():
+    provider = gg.RowProvider("p", frozenset({"r"}))
+    rewrite = gg._as_rewrite(_graph(("p", "g"), ("r", "g")), "g", provider)
+    assert rewrite == gg.RowProvider(None, frozenset({"r"}))
 
 
 def test_an_inline_provider_is_always_a_rewrite():
     provider = gg.RowProvider("p", inline=True)
-    assert gg._as_rewrite(_graph(("p", "g")), _ATTRS, {}, "g", provider) == provider
+    assert gg._as_rewrite(_graph(("p", "g")), "g", provider) == provider
 
 
 def test_a_minted_root_already_in_the_graph_is_not_minted_again():
     minted = SimpleNamespace(group_id="p")
     provider = gg.RowProvider("p", minted=minted)
-    rewrite = gg._as_rewrite(_graph(("r", "g")), _ATTRS, {}, "g", provider)
+    rewrite = gg._as_rewrite(_graph(("r", "g")), "g", provider)
     assert rewrite == gg.RowProvider("p")
