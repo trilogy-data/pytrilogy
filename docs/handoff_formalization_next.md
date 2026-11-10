@@ -64,7 +64,12 @@ and an instant cast to a string have one text on every engine that reads back
 as the value, and a decimal quotient is a double on ClickHouse; area 11), and
 `Sharing.lean` (0.3.476: a cast or a clamped substring evaluates its operand
 once, so nested casts grow linearly, a random operand is drawn once, and the
-SQLite reads parse on SQLite 3.45; area 12).
+SQLite reads parse on SQLite 3.45; area 12), and `ValueSet.lean` (0.3.477:
+a table at its own grain answers repeat-blind aggregates of its columns, and
+aggregates of a column it stores at that grain, from its own rows; area 1).
+`count(cls)` beside a stored `count(id) by cls` is the re-sum over the
+non-null classes (`ValueSet.count_column_from_row_count`) but the planner
+does not rewrite it; that rewrite is open.
 
 ## The recipe
 

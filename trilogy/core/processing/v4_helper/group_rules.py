@@ -25,7 +25,7 @@ from trilogy.core.enums import (
 )
 
 from .concept_graph import _scope_and_phase
-from .constants import DepthLabel, EdgeKind
+from .constants import REPEAT_BLIND_AGGREGATES, DepthLabel, EdgeKind
 from .edges import (
     EdgeMap,
     edge_kind,
@@ -528,21 +528,6 @@ def _partition_grouped_aggregates(
     return buckets
 
 
-# a repeated input row cannot change these
-_REPEAT_BLIND_AGGREGATES = frozenset(
-    {
-        FunctionType.MIN,
-        FunctionType.MAX,
-        FunctionType.BOOL_OR,
-        FunctionType.BOOL_AND,
-        FunctionType.ANY,
-        FunctionType.COUNT_DISTINCT,
-        FunctionType.GROUPING,
-        FunctionType.GROUPING_ID,
-    }
-)
-
-
 def _first_row_grains(
     members: list[ConceptAttrs], grain: frozenset[str]
 ) -> dict[str, frozenset[str]]:
@@ -565,7 +550,7 @@ def _first_row_grains(
     return {
         m.address: m.aggregate_input_grain | grain
         for m in members
-        if m.aggregate_operator not in _REPEAT_BLIND_AGGREGATES
+        if m.aggregate_operator not in REPEAT_BLIND_AGGREGATES
         and m.counted_key is None
         and m.aggregate_input_grain - grain
         and not stream <= m.aggregate_input_grain | grain

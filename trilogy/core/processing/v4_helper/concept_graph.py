@@ -47,9 +47,11 @@ from trilogy.core.processing.node_generators.presence_probe import (
     member_binding_datasources,
     probe_member_address,
 )
+from trilogy.core.processing.node_generators.select_node import root_is_unsourced
 from trilogy.utility import unique
 
 from .constants import (
+    REPEAT_BLIND_AGGREGATES,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
@@ -642,6 +644,8 @@ def _walk_scoped_aggregate_grain_inputs(
                 )
             else:
                 out.append(c)
+        if _reads_value_set(aggregate, concept, out, environment):
+            return [concept]
         return out
     # Counting a key counts its own values; anything else ranges over the
     # rowset's identity.
@@ -662,6 +666,31 @@ def _walk_scoped_aggregate_grain_inputs(
         _rowset_local_grain_identity(c, lineage.rowset.name, environment, keep_rowsets)
         for c in inputs
     ]
+
+
+def _reads_value_set(
+    aggregate: BuildConcept,
+    argument: BuildConcept,
+    identity: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """A repeat-blind aggregate over one column, bare or in a scalar of it
+    alone, reads only the column's set of values (`ValueSet.value_set_min_exact`
+    and its siblings), which a complete binding holds at whatever grain it is
+    stored. The row identity stays the preferred read, since sibling
+    aggregates share its stream; where no datasource binds a component of it,
+    the column's own values are its identity. A repeat-sensitive aggregate has
+    no such reading (`ValueSet.value_set_misses_repeats`)."""
+    lineage = aggregate.lineage
+    return (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.function.operator in REPEAT_BLIND_AGGREGATES
+        and {c.address for c in lineage.function.concept_arguments}
+        == {argument.address}
+        and argument.canonical_address
+        in environment.non_partial_materialized_canonical_concepts
+        and any(root_is_unsourced(c, environment) for c in identity)
+    )
 
 
 def _aggregate_authored_grain(
@@ -1067,6 +1096,16 @@ _UPSTREAM: dict[Derivation, UpstreamFetcher] = {
     Derivation.WINDOW: _upstream_window,
     Derivation.SUBSELECT: _upstream_subselect,
 }
+
+
+def upstream_concepts(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Every concept the graph walks from `concept`: its lineage arguments and
+    the row identities, grain keys and partition keys its derivation reads."""
+    return list(
+        _UPSTREAM.get(concept.derivation, _upstream_default)(concept, environment)
+    )
 
 
 def node_id(label: str, address: str) -> str:
@@ -1880,8 +1919,7 @@ def _add_concept(
     # row identity intact through the SUM. Same story for window
     # partition keys and filter property keys. So every fetcher result
     # gets a lineage edge, not just `concept_arguments`.
-    fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
-    upstreams = list(fetcher(concept, environment))
+    upstreams = upstream_concepts(concept, environment)
     upstreams.extend(_rowset_key_handles(concept, upstreams, environment))
     # A BASIC whose grain is the coalesced axis of a rowset-crossing preserving
     # relation reads the COMPLETED axis row: a null-sensitive scalar

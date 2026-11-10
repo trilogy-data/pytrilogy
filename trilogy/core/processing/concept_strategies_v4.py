@@ -80,6 +80,7 @@ from trilogy.core.processing.v4_helper import (
     build_group_graph,
     build_strategy_node,
 )
+from trilogy.core.processing.v4_helper.concept_graph import upstream_concepts
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_closure,
     build_fd_determines,
@@ -391,9 +392,15 @@ def _binding_only_roots(
         ):
             out.add(concept.address)
             continue
-        # A rowset's content is planned by its own search.
+        # A rowset's content is planned by its own search. Elsewhere the walk
+        # follows the graph's own edges, so a grain key a consumer reads a
+        # stored aggregate on (`sum(n)` over `n <- count(id) by cls`) is
+        # judged like a lineage argument.
         if concept.derivation != Derivation.ROWSET:
-            stack.extend(args)
+            stack.extend(
+                environment.concepts.get(c.address) or c
+                for c in upstream_concepts(concept, environment)
+            )
     return out
 
 
