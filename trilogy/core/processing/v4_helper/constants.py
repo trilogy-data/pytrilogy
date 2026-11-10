@@ -1,10 +1,25 @@
 from enum import Enum
 
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
 
 # `V4History.witness_floor` when no live rowset-witness placeholder was read:
 # deeper than any witness depth
 NO_WITNESS_FLOOR = 1 << 30
+
+# a repeated input row cannot change these: each is a function of its input's
+# set of values (`ValueSet.value_set_min_exact`)
+REPEAT_BLIND_AGGREGATES = frozenset(
+    {
+        FunctionType.MIN,
+        FunctionType.MAX,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
+        FunctionType.ANY,
+        FunctionType.COUNT_DISTINCT,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
+    }
+)
 
 
 class DepthLabel(Enum):

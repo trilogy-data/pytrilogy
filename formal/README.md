@@ -56,6 +56,7 @@ a design decision or a bug.
 | `Instants.lean` | a string cast to a datetime or a timestamp, and `date(s)` / `datetime(s)` / `timestamp(s)` of a string: the day count, zones, UTC, each engine's precision | the day count is linear in the day of the month, so a rolled day has the written day's count and only reading it back tells them apart (`roll_keeps_count`, bounded); under one zone a read keeps the order of local times and a zone is a shift (`utc_monotone`, `utc_shift`), which can cross midnight (`read_instant_exact`); truncating to an engine's precision composes, keeps order, and decides a comparison with a value the engine holds as the exact instant does (`trunc_trunc`, `trunc_monotone`, `trunc_ge_exact`) (checked by `tests/core/test_instant_read_laws.py` on DuckDB, SQLite and ClickHouse, and `tests/dialect/test_text_read_renderings.py`) |
 | `Writings.lean` | a float, a decimal or an instant cast to a string: shortest digits laid out as `repr`, a declared scale, a fraction without trailing zeros, a timestamp at UTC; a decimal quotient | a decimal's text reads back as its value and carries its scale (`decimal_read_write`, `decimal_scale_written`, bounded); `repr`'s layout reads back as the digits and exponent it laid out (`layout_read_exact`, bounded) and is fixed exactly for an exponent in [-4, 16) (`fixed_iff`); rounding to 15 places keeps a value of 15 digits or fewer (`round15_exact`, bounded); the stripped fraction reads back and does not depend on the precision the engine holds (`fraction_read_write`, `fraction_precision_free`, bounded) (checked by `tests/core/test_text_write_laws.py` on DuckDB, SQLite and ClickHouse) |
 | `Sharing.lean` | a rendering's operand: how many times a cast or a clamped substring names it, its size when nested, the draws a volatile operand reads, SQLite's flattener | inlined, `n` levels hold `k ^ n` copies of the operand (`inline_nested_ge`) and bound they grow linearly (`bound_nested`), so binding wins once its own text is under the copies it saves (`bound_le_inline`); bound, every use reads one draw (`bind_draws_once`), and a binding that reads its row's column draws per row (`correlated_per_row`); flattening a binding is inlining it (`flattened_is_inline`) (checked by `tests/core/test_bound_operand_laws.py` on DuckDB, SQLite and ClickHouse, and on SQLite 3.45 where `/usr/bin/python3` has it) |
+| `ValueSet.lean` | aggregates of a column a table stores at its own grain: a complete binding's values, repeat-blind and repeat-sensitive aggregates, `count` of a column against a stored row count | `min`, `max` and `count_distinct` are functions of their input's set of values (`value_set_min_exact`, `value_set_max_exact`, `value_set_count_distinct_exact`), and so is a scalar of the column alone (`SameValues.map`), so a complete binding answers them at any grain, and a column its table's grain determines holds the base rows' values under any predicate on that grain (`grain_column_values`, `grain_column_min_exact`); `count` and `sum` read repeats (`value_set_misses_repeats`); `count(cls)` is the re-sum of `count(id) by cls` over the non-null classes (`count_column_from_row_count`), and over every class it counts the NULL class's rows (`count_column_counts_null_group`) | (checked by `tests/discovery/test_value_set_laws.py`, with the row table in scope and hidden) |
 
 ## What it found
 
@@ -1354,6 +1355,28 @@ a design decision or a bug.
   `tests/core/test_bound_operand_laws.py` runs fail (the SQLite nesting case
   runs out of memory), and 37 of 126 SQLite cases of the read and write law
   suites fail on SQLite 3.45; none now.
+
+- **A table at its own grain could not answer an aggregate of its own
+  columns alone** (0.3.477; `ValueSet.lean`). `fits (fit_class: cls, n:
+  n_by_cls) grain (cls)`, with `cls` derived from a row property or a
+  property of a key `fits` does not store, answered `select cls, n_by_cls`
+  but raised `NoDatasourceException` for `count_distinct(cls)`, `min(cls)`,
+  `sum(n_by_cls)` and `count(n_by_cls)` once the row table was hidden, as a
+  datasource `assert` hides it. Two rules were missing:
+  - the binding-only walk followed lineage arguments, while the graph also
+    reads a stored aggregate on its grain keys, so `cls` under `sum(n_by_cls)`
+    was rebuilt from `species` instead of read from `fits`. The walk now
+    follows the graph's own upstream edges (`concept_graph.upstream_concepts`).
+  - a repeat-blind aggregate reads only its argument's values
+    (`ValueSet.value_set_min_exact`, `value_set_max_exact`,
+    `value_set_count_distinct_exact`), so where no datasource binds the
+    argument's row identity, a complete binding of the argument is the
+    identity it is read at (`concept_graph._reads_value_set`). `count(cls)`
+    reads repeats (`ValueSet.value_set_misses_repeats`) and is still
+    refused. It equals the re-sum of `count(id) by cls` over the non-null
+    classes (`ValueSet.count_column_from_row_count`), not over every class
+    (`ValueSet.count_column_counts_null_group`); that rewrite is not
+    implemented.
 
 
 ## Limits
