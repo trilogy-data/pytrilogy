@@ -80,7 +80,10 @@ from trilogy.core.processing.v4_helper import (
     build_group_graph,
     build_strategy_node,
 )
-from trilogy.core.processing.v4_helper.concept_graph import upstream_concepts
+from trilogy.core.processing.v4_helper.concept_graph import (
+    derived_key,
+    upstream_concepts,
+)
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_closure,
     build_fd_determines,
@@ -546,6 +549,14 @@ def materialized_root_addresses(
         if sources:
             rolled_roots.add(concept.address)
             rollup_sources.extend(sources)
+    out |= {
+        key.address
+        for key in _aggregated_derived_keys(mandatory_list, environment)
+        if target_grain.components <= key.grain.components
+        and _exactly_materialized(
+            key, key.grain, where, environment, datasources, unions
+        )
+    }
     nested_exact, nested = _nested_rollup_roots(
         mandatory_list, out | rolled_roots, where, environment, datasources, unions
     )
@@ -569,6 +580,21 @@ def materialized_root_addresses(
             rollup_sources,
         )
     )
+
+
+def _aggregated_derived_keys(
+    mandatory_list: list[BuildConcept], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Derived keys a demanded aggregate reads as its own input rows
+    (`count(cls)` over `key cls <- ...`): their values, not their inputs' rows,
+    so a table at the key's grain answers them without a re-derivation."""
+    return [
+        key
+        for concept in mandatory_list
+        if concept.derivation == Derivation.AGGREGATE and concept.lineage
+        for arg in concept.lineage.concept_arguments
+        if derived_key(key := environment.concepts.get(arg.address) or arg)
+    ]
 
 
 def _related_unnest_roots(

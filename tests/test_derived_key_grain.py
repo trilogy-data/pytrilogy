@@ -54,3 +54,65 @@ def test_derived_key_count_beside_parent_count():
     with hidden_datasources(ex.environment, ["fits"]):
         assert ex.execute_text(query)[-1].fetchall() == expected
     assert ex.execute_text(query)[-1].fetchall() == expected
+
+
+@pytest.mark.parametrize(
+    "query", ["select count(cls) as v;", "select count_distinct(cls) as v;"]
+)
+def test_count_derived_key_reads_key_table(query: str):
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment())
+    ex.execute_raw_sql(RAW)
+    ex.parse_text(MODEL)
+    ex.update_datasource(ex.environment.datasources["fits"])
+    sql = ex.generate_sql(query)[-1]
+    assert '"fits"' in sql and '"raw"' not in sql
+    assert ex.execute_text(query)[-1].fetchall() == [(2,)]
+
+
+RENAMED_MODEL = """
+key id int;
+property id.species string;
+key sp <- species;
+key id2 <- id;
+root datasource raw (id: id, species: species) grain (id) address raw;
+auto n_by_sp <- count(id) by sp;
+datasource fits (sp: sp, n: n_by_sp) grain (sp) address fits;
+"""
+
+
+def test_renamed_key_is_its_own_grain():
+    env, _ = parse(RENAMED_MODEL)
+    for name in ("sp", "id2"):
+        concept = env.concepts[name]
+        assert concept.purpose == Purpose.KEY
+        assert concept.grain.components == {f"local.{name}"}
+        assert concept.keys is None
+
+
+SP_QUERIES = ["select count(sp) as v;", "select count_distinct(sp) as v;"]
+
+
+@pytest.mark.parametrize("query", SP_QUERIES)
+@pytest.mark.parametrize("hidden", [[], ["fits"], ["raw"]])
+def test_renamed_key_counts_values(query: str, hidden: list[str]):
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment())
+    ex.execute_raw_sql(RAW)
+    ex.parse_text(RENAMED_MODEL)
+    ex.update_datasource(ex.environment.datasources["fits"])
+    if not hidden:
+        assert '"raw"' not in ex.generate_sql(query)[-1]
+    with hidden_datasources(ex.environment, hidden):
+        assert ex.execute_text(query)[-1].fetchall() == [(3,)]
+
+
+def test_renamed_key_beside_parent_count():
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment())
+    ex.execute_raw_sql(RAW)
+    ex.parse_text(RENAMED_MODEL)
+    ex.update_datasource(ex.environment.datasources["fits"])
+    assert ex.execute_text("select count(id2) as v;")[-1].fetchall() == [(30,)]
+    query = "select sp, count(id) as n order by sp asc;"
+    expected = [("a", 10), ("b", 10), ("c", 10)]
+    with hidden_datasources(ex.environment, ["fits"]):
+        assert ex.execute_text(query)[-1].fetchall() == expected
+    assert ex.execute_text(query)[-1].fetchall() == expected

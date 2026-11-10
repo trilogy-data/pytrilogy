@@ -257,6 +257,14 @@ def concept_property_declaration(
     return concept_value
 
 
+def _declare_key(concept: Concept) -> None:
+    """A declared key is its own grain, wherever its value comes from; it does
+    not inherit its inputs' grain or keys."""
+    concept.purpose = Purpose.KEY
+    concept.grain = Grain(components={concept.address})
+    concept.keys = None
+
+
 def concept_derivation(
     node: SyntaxNode,
     context: RuleContext,
@@ -316,11 +324,7 @@ def concept_derivation(
             metadata=metadata,
         )
         if purpose == Purpose.KEY:
-            # A declared key is its own grain, wherever its value comes from;
-            # don't inherit the inputs' grain/keys.
-            concept_value.purpose = Purpose.KEY
-            concept_value.grain = Grain(components={concept_value.address})
-            concept_value.keys = None
+            _declare_key(concept_value)
         elif (
             purpose
             and purpose != Purpose.AUTO
@@ -359,6 +363,8 @@ def concept_derivation(
             environment=context.environment,
             metadata=metadata,
         )
+        if purpose == Purpose.KEY:
+            _declare_key(concept_value)
     else:
         snippet = ""
         if (
