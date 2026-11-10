@@ -17,7 +17,7 @@ single bucket). No derivation is privileged in the orchestrator.
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -2347,9 +2347,16 @@ def build_group_graph(
     grouping = _elect_grouping_providers(
         group_graph, group_edges, attrs, concept_attrs, environment
     )
-    _state_projection_grains(attrs, buckets, grouping)
+    placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
     _rehome_groups(
-        group_graph, group_edges, attrs, buckets, concept_attrs, environment, grouping
+        group_graph,
+        group_edges,
+        attrs,
+        buckets,
+        concept_attrs,
+        environment,
+        grouping,
+        placed,
     )
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
@@ -2904,6 +2911,55 @@ def _state_projection_grains(
             buckets[gid].grain_components = grain
 
 
+def _projection_placements(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    grouping: dict[str, str],
+) -> dict[str, RowProvider]:
+    """Each stated projection's edge onto its grouping provider and the
+    lineage parents it replaces, read over the graph stage 2 built. A
+    projection whose provider's grain an independent sibling co-grains on is
+    not placed: it keeps its parents and takes a row provider."""
+    placements: dict[str, RowProvider] = {}
+    for gid, provider in grouping.items():
+        if _grain_needed_by_independent_sibling(
+            group_graph, attrs, gid, provider, grouping
+        ):
+            continue
+        # Placed at the provider's grain, the projection has no use for a
+        # finer relation the provider was built from. Joined back, it pairs
+        # the provider's groups on a non-key (a region domain on a nullable
+        # description) and drops or multiplies them.
+        provider_ancestors = nx.ancestors(group_graph, provider)
+        drop = frozenset(
+            pred
+            for pred in lineage_predecessors(group_graph, group_edges, gid)
+            if pred in provider_ancestors
+        )
+        placements[gid] = RowProvider(provider, drop)
+    return placements
+
+
+def _place_projections(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    grouping: dict[str, str],
+) -> frozenset[str]:
+    """State each terminal projection's grain and, where no independent
+    sibling needs that grain, its lineage: an edge from its grouping provider
+    in place of the parents the provider was built from. Every projection
+    feeds only FINAL, so no placement moves another group's ancestors.
+    Returns the projections placed."""
+    _state_projection_grains(attrs, buckets, grouping)
+    placements = _projection_placements(group_graph, group_edges, attrs, grouping)
+    for gid, placement in placements.items():
+        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, placement)
+    return frozenset(placements)
+
+
 def _elect_row_provider(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2915,28 +2971,13 @@ def _elect_row_provider(
     gid: str,
 ) -> RowProvider | None:
     """Pick `gid`'s row source over the graph; mutates nothing. The choices,
-    in order: a WINDOW that renders it inline, its grouping provider (whose
-    grain it already stands at), a full-coverage sibling, a dimension ROOT, a
+    in order: a WINDOW that renders it inline (never for a projection stated
+    at a grouping provider), a full-coverage sibling, a dimension ROOT, a
     partial spine."""
-    grouping_provider = grouping.get(gid)
-    if grouping_provider is None:
+    if gid not in grouping:
         window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
         if window is not None:
             return RowProvider(window, inline=True)
-    elif not _grain_needed_by_independent_sibling(
-        group_graph, attrs, gid, grouping_provider, grouping
-    ):
-        # Placed at the provider's grain, the projection has no use for a
-        # finer relation the provider was built from. Joined back, it pairs
-        # the provider's groups on a non-key (a region domain on a nullable
-        # description) and drops or multiplies them.
-        provider_ancestors = nx.ancestors(group_graph, grouping_provider)
-        drop = frozenset(
-            pred
-            for pred in lineage_predecessors(group_graph, group_edges, gid)
-            if pred in provider_ancestors
-        )
-        return RowProvider(grouping_provider, drop)
     parent_gid = _regraft_candidate(
         group_graph, group_edges, attrs, gid, allow_partial=False
     )
@@ -3008,19 +3049,21 @@ def _elect_row_providers(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     grouping: dict[str, str],
+    placed: frozenset[str],
 ) -> dict[str, RowProvider]:
-    """Each regraftable group whose best row source is already built, elected
-    over the graph as stage 2 built it, as the rewrite it makes of that graph.
+    """Each regraftable group not placed at its grouping provider whose best
+    row source is already built, elected over one graph (stage 2's, with the
+    projections placed), as the rewrite it makes of that graph.
 
-    No provider is a BASIC, so no fold removes one; a parent a provider drops
-    that folds is dropped as the WINDOW its edge moves to. Concrete datasource
-    selection remains in `source_planning` and StrategyNode construction in
-    `strategy_builder`.
+    A provider drops only ROOT parents (a dimension pick), and no fold removes
+    a ROOT. Concrete datasource selection remains in `source_planning` and
+    StrategyNode construction in `strategy_builder`.
     """
     providers: dict[str, RowProvider] = {}
     for gid in list(group_graph.nodes):
         if (
             gid == FINAL_NODE_ID
+            or gid in placed
             or attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS
         ):
             continue
@@ -3038,11 +3081,7 @@ def _elect_row_providers(
             provider = _as_rewrite(group_graph, gid, provider)
         if provider is not None:
             providers[gid] = provider
-    folded = _folds(providers)
-    return {
-        gid: replace(p, drop=frozenset(folded.get(pred, pred) for pred in p.drop))
-        for gid, p in providers.items()
-    }
+    return providers
 
 
 def _folds(providers: dict[str, RowProvider]) -> dict[str, str]:
@@ -3062,13 +3101,19 @@ def _rehome_groups(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     grouping: dict[str, str],
+    placed: frozenset[str],
 ) -> None:
-    """Elect every group's row provider over the graph as stage 2 built it,
-    each projection already at its grouping provider's grain, then fold each
-    group its provider renders inline and apply the rest: no election reads
-    another's fold or edges."""
+    """Elect every unplaced group's row provider over one graph, then fold each group its provider renders inline and apply the
+    rest: no election reads another's fold or edges."""
     providers = _elect_row_providers(
-        group_graph, group_edges, attrs, buckets, concept_attrs, environment, grouping
+        group_graph,
+        group_edges,
+        attrs,
+        buckets,
+        concept_attrs,
+        environment,
+        grouping,
+        placed,
     )
     for gid, parent in _folds(providers).items():
         _absorb_group(gid, parent, group_graph, group_edges, attrs, buckets)

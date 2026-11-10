@@ -143,7 +143,7 @@ class _OutrankLog(_FoldLog):
 
     def elect(self, group_graph, group_edges, attrs, *rest):
         providers = super().elect(group_graph, group_edges, attrs, *rest)
-        environment, self.elected_grouping = rest[-2:]
+        environment, self.elected_grouping = rest[-3:-1]
         self.grouping = {
             gid: gg._terminal_basic_grouping_provider(
                 group_graph, attrs, gid, environment
