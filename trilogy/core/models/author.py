@@ -1449,9 +1449,13 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 where_clause=grain.where_clause,
             )
             keys = set(keys or ()) | set(raw)
-        elif self.derivation == Derivation.BASIC and self.purpose == Purpose.KEY:
-            # a derived or renamed key is its own grain, whatever its inputs
-            # are keyed on
+        elif (
+            self.derivation == Derivation.BASIC
+            and self.purpose == Purpose.KEY
+            and not _renames_key(new_lineage, environment)
+        ):
+            # a derived key is its own grain, whatever its inputs are keyed on;
+            # a renamed key keeps its source's rows
             final_grain = Grain(components={self.address})
             keys = None
         elif self.derivation == Derivation.BASIC:
@@ -2780,6 +2784,13 @@ def _pin_anchors(expr: Any) -> set[str]:
 
 def _is_alias(expr: Any) -> bool:
     return isinstance(expr, Function) and expr.operator == FunctionType.ALIAS
+
+
+def _renames_key(expr: Any, environment: Environment) -> bool:
+    if not _is_alias(expr):
+        return False
+    source = environment.concepts.get(expr.concept_arguments[0].address)
+    return source is not None and source.purpose == Purpose.KEY
 
 
 def _case_or_function_parts(

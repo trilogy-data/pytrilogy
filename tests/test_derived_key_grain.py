@@ -80,13 +80,15 @@ datasource fits (sp: sp, n: n_by_sp) grain (sp) address fits;
 """
 
 
-def test_renamed_key_is_its_own_grain():
+def test_renamed_value_declared_key_is_its_own_grain():
     env, _ = parse(RENAMED_MODEL)
-    for name in ("sp", "id2"):
-        concept = env.concepts[name]
-        assert concept.purpose == Purpose.KEY
-        assert concept.grain.components == {f"local.{name}"}
-        assert concept.keys is None
+    sp = env.concepts["sp"]
+    assert sp.purpose == Purpose.KEY
+    assert sp.grain.components == {"local.sp"}
+    assert sp.keys is None
+    id2 = env.concepts["id2"]
+    assert id2.purpose == Purpose.KEY
+    assert id2.grain.components == {"local.id"}
 
 
 SP_QUERIES = ["select count(sp) as v;", "select count_distinct(sp) as v;"]

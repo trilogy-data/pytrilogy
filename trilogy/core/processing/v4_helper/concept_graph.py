@@ -205,9 +205,16 @@ def _walk_aggregate_grain_inputs(
 
 
 def derived_key(concept: BuildConcept) -> bool:
-    """A key computed by (or renamed from) an expression is its own row
-    identity, not its inputs'."""
-    return concept.purpose == Purpose.KEY and concept.derivation == Derivation.BASIC
+    """A key computed by an expression is its own row identity, not its
+    inputs'. A rename of a key is not: it has its source's rows."""
+    if concept.purpose != Purpose.KEY or concept.derivation != Derivation.BASIC:
+        return False
+    lineage = concept.lineage
+    return not (
+        isinstance(lineage, BuildFunction)
+        and lineage.operator == FunctionType.ALIAS
+        and all(arg.purpose == Purpose.KEY for arg in lineage.concept_arguments)
+    )
 
 
 def _split_condition_label(label: str) -> tuple[str, int | None] | None:

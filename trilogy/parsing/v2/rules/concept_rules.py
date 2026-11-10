@@ -364,7 +364,12 @@ def concept_derivation(
             metadata=metadata,
         )
         if purpose == Purpose.KEY:
-            _declare_key(concept_value)
+            source = context.environment.concepts.get(source_value.address)
+            if source is not None and source.purpose == Purpose.KEY:
+                # a renamed key has its source's rows
+                concept_value.purpose = Purpose.KEY
+            else:
+                _declare_key(concept_value)
     else:
         snippet = ""
         if (
