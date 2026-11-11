@@ -1,6 +1,6 @@
 """A terminal projection is placed at its grouping provider before any row
-provider is elected: stage 2 states its grain and its lineage edge, and the
-rehome neither adopts the grain nor elects the edge."""
+read is elected: stage 2 states its grain and its lineage edge, and no read
+adopts the grain or elects the edge."""
 
 from types import SimpleNamespace
 
@@ -53,14 +53,14 @@ class _GrainLog:
 
 
 _STATE = gg._state_projection_grains
-_ELECT = gg._elect_spines
+_ELECT = gg._elect_reads
 
 
 @pytest.fixture
 def log(monkeypatch) -> _GrainLog:
     log = _GrainLog()
     monkeypatch.setattr(gg, "_state_projection_grains", log.state)
-    monkeypatch.setattr(gg, "_elect_spines", log.elect)
+    monkeypatch.setattr(gg, "_elect_reads", log.elect)
     env = Environment()
     env.parse(_MODEL)
     Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
@@ -146,16 +146,17 @@ def test_a_placed_projection_is_not_elected(monkeypatch):
         ("r", Derivation.ROOT),
     ]:
         attrs[gid].derivation = derivation
-    monkeypatch.setattr(gg, "_elect_spine", lambda *a: "x")
-    spines = gg._elect_spines(group_graph, edges, attrs, None, frozenset({"g"}))
-    assert spines == {}
+    monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("x"))
+    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset({"g"}))
+    assert reads == {}
 
 
-def test_the_spine_election_takes_no_inline_window(monkeypatch):
+def test_a_read_takes_no_inline_window(monkeypatch):
     group_graph, edges, attrs = _placement_graph()
     monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
-    assert gg._elect_spine(group_graph, edges, attrs, None, "g") is None
+    monkeypatch.setattr(gg, "_synthetic_dimension_regraft_parent", lambda *a: None)
+    assert gg._elect_read(group_graph, edges, attrs, {}, {}, None, "g") is None
 
 
 def test_a_folded_projection_takes_no_grouping_provider(monkeypatch):

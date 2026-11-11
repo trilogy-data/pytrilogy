@@ -2348,8 +2348,9 @@ def build_group_graph(
     grouping = _elect_grouping_providers(group_graph, attrs, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
     _fold_groups(group_graph, group_edges, attrs, buckets, folds)
-    read = _apply_reads(group_graph, group_edges, attrs, buckets, concept_attrs, placed)
-    _rehome_groups(group_graph, group_edges, attrs, environment, placed | read)
+    _apply_reads(
+        group_graph, group_edges, attrs, buckets, concept_attrs, environment, placed
+    )
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
@@ -2458,8 +2459,8 @@ def trace_group_graph(
 class RowProvider:
     """The row source a group is re-homed onto: the parent it reads, the
     lineage parents that parent replaces, and the dimension ROOT minted for
-    it. A placement drops; a dimension read drops and mints; a sibling read
-    holds only the parent."""
+    it. A placement drops; a dimension read drops and mints; a sibling or
+    spine read holds only the parent."""
 
     parent: str | None
     drop: frozenset[str] = frozenset()
@@ -2935,7 +2936,7 @@ def _projection_placements(
     """Each stated projection's edge onto its grouping provider and the
     lineage parents it replaces, read over the graph stage 2 built. A
     projection whose provider's grain an independent sibling co-grains on is
-    not placed: it keeps its parents and takes a row provider."""
+    not placed: it keeps its parents and takes a read."""
     placements: dict[str, RowProvider] = {}
     for gid, provider in grouping.items():
         if _grain_needed_by_independent_sibling(
@@ -2975,15 +2976,36 @@ def _place_projections(
     return frozenset(placements)
 
 
-def _elect_spine(
+def _rehomeable(attrs: dict[str, GroupAttrs], gid: str, placed: frozenset[str]) -> bool:
+    return (
+        gid != FINAL_NODE_ID
+        and gid not in placed
+        and attrs[gid].derivation in _REGRAFTABLE_DERIVATIONS
+    )
+
+
+def _elect_read(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     gid: str,
-) -> str | None:
-    """`gid`'s partial spine over the graph; mutates nothing."""
-    return _regraft_candidate(
+) -> RowProvider | None:
+    """`gid`'s read over the graph, in rank order: a full-coverage sibling,
+    the dimension ROOT a BASIC reads its inputs off, a partial spine."""
+    sibling = _regraft_candidate(
+        group_graph, group_edges, attrs, gid, allow_partial=False
+    )
+    if sibling is not None:
+        return RowProvider(sibling)
+    dimension = _synthetic_dimension_regraft_parent(
+        group_graph, group_edges, attrs, buckets, concept_attrs, gid
+    )
+    if dimension is not None:
+        return dimension
+    spine = _regraft_candidate(
         group_graph,
         group_edges,
         attrs,
@@ -2991,16 +3013,7 @@ def _elect_spine(
         allow_partial=True,
         environment=environment,
     )
-
-
-def _rehomeable(
-    attrs: dict[str, GroupAttrs], gid: str, settled: frozenset[str]
-) -> bool:
-    return (
-        gid != FINAL_NODE_ID
-        and gid not in settled
-        and attrs[gid].derivation in _REGRAFTABLE_DERIVATIONS
-    )
+    return RowProvider(spine) if spine is not None else None
 
 
 def _elect_reads(
@@ -3009,24 +3022,21 @@ def _elect_reads(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
     placed: frozenset[str],
 ) -> dict[str, RowProvider]:
     """Each unplaced regraftable group's read, elected over the folded graph:
-    a full-coverage sibling, else the dimension ROOT a BASIC reads its inputs
-    off. A sibling outranks a dimension."""
+    no election reads another's.
+
+    Concrete datasource selection remains in `source_planning` and
+    StrategyNode construction in `strategy_builder`.
+    """
     reads: dict[str, RowProvider] = {}
     for gid in group_graph.nodes:
         if not _rehomeable(attrs, gid, placed):
             continue
-        sibling = _regraft_candidate(
-            group_graph, group_edges, attrs, gid, allow_partial=False
-        )
-        read = (
-            RowProvider(sibling)
-            if sibling is not None
-            else _synthetic_dimension_regraft_parent(
-                group_graph, group_edges, attrs, buckets, concept_attrs, gid
-            )
+        read = _elect_read(
+            group_graph, group_edges, attrs, buckets, concept_attrs, environment, gid
         )
         if read is not None:
             reads[gid] = read
@@ -3039,18 +3049,17 @@ def _apply_reads(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
     placed: frozenset[str],
-) -> frozenset[str]:
-    """Re-home each read onto its sibling or dimension ROOT, minting the ROOT
-    when none covers its inputs, in place of the ROOT parents it replaces.
-    Every read is elected before any is applied. Returns the groups read, a
-    pick that changes nothing included: the rehome elects none of them."""
+) -> None:
+    """Re-home each read onto its sibling, dimension ROOT or spine, minting
+    the ROOT when none covers its inputs, in place of the ROOT parents it
+    replaces. Every read is elected before any is applied."""
     reads = _elect_reads(
-        group_graph, group_edges, attrs, buckets, concept_attrs, placed
+        group_graph, group_edges, attrs, buckets, concept_attrs, environment, placed
     )
     for gid, read in reads.items():
         _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, read)
-    return frozenset(reads)
 
 
 def _apply_row_provider(
@@ -3073,41 +3082,3 @@ def _apply_row_provider(
     if parent is None or group_graph.has_edge(parent, gid):
         return
     add_edge(group_graph, group_edges, parent, gid, EdgeKind.LINEAGE)
-
-
-def _elect_spines(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-    settled: frozenset[str],
-) -> dict[str, str]:
-    """Each unsettled group's partial spine the graph does not already hold,
-    elected over one graph (stage 2's, with the projections placed, the folds
-    made and the reads applied).
-
-    Concrete datasource selection remains in `source_planning` and
-    StrategyNode construction in `strategy_builder`.
-    """
-    spines: dict[str, str] = {}
-    for gid in group_graph.nodes:
-        if not _rehomeable(attrs, gid, settled):
-            continue
-        spine = _elect_spine(group_graph, group_edges, attrs, environment, gid)
-        if spine is not None and not group_graph.has_edge(spine, gid):
-            spines[gid] = spine
-    return spines
-
-
-def _rehome_groups(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-    settled: frozenset[str],
-) -> None:
-    """Elect every unsettled group's spine over one graph, then add each as a
-    lineage edge: no election reads another's."""
-    spines = _elect_spines(group_graph, group_edges, attrs, environment, settled)
-    for gid, spine in spines.items():
-        add_edge(group_graph, group_edges, spine, gid, EdgeKind.LINEAGE)
