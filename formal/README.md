@@ -1448,7 +1448,7 @@ a design decision or a bug.
   does not group by (`... and species != 'Tilia'` at `tree_form`) widens the
   pinned request past the target, and the search that took over re-maxed the
   gate at `(species, tree_form)` (wrong) or failed to bind it, so those
-  shapes still read the trees (`_coarse_gate_beside_row_columns`). 175 of the
+  shapes still read the trees (`_coarse_gate_beside_row_columns`). 172 of the
   280 cases in `test_coarse_group_value_filter_reads_summary` read the base
   rows on main; answers are the same either way.
 

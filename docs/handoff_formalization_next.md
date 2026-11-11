@@ -943,9 +943,11 @@ a filter its grain does not determine. Open questions:
     (`... and species != 'Tilia'` at `tree_form`; `... or tree_form =
     'linden'` at `city`) adds the column to the pinned request, whose
     aggregates are then not at its grain; the search that takes over
-    re-aggregates the gate at the widened grain. `_within_target`-style
-    guards on the bridge emitter turn that into a planning error, not a
-    plan; `_coarse_gate_beside_row_columns` declines these shapes;
+    re-aggregates the gate at the widened grain (wrong rows). A guard on the
+    bridge emitter (`_local_concept_nodes_for_datasource` emitting a rolled
+    aggregate only where the bridge grain holds its grain) turned that into
+    a planning error, not a plan, so it was dropped;
+    `_coarse_gate_beside_row_columns` declines these shapes;
   - a gate at a grain the summary's grain does not hold (`sum(height) by
     tree_form > 6`) reads the trees;
   - the gate's value is summed from the summary when it stores the
