@@ -268,12 +268,13 @@ def test_group_value_filter_applies_before_rollup(
 
 # `Rollup.coarse_group_value_filter_exact`: a WHERE over an aggregate at a grain
 # inside the summary's (`sum(height) by city`) is the re-sum of the summary rows
-# sharing that key, joined back onto each summary row before the re-sum. Read
-# as each row's stored partial, it misfilters
-# (`Rollup.coarse_gate_on_partial_misfilters`). The summary's own grain, a CASE
+# sharing that key, joined back onto each summary row before the re-sum, at the
+# summary's own grain too, where the re-sum is an identity. Read as each row's
+# stored partial, it misfilters (`Rollup.coarse_gate_on_partial_misfilters`).
+# A gate over a re-sum of the stored column (`nested`) is the same value. A CASE
 # over `tree_form`, a row column beside the gate the target does not group by,
 # and an OR joining `tree_form` outside the target still read the base rows.
-COARSE_GATE_GRAINS = {"total", "city", "species", "form", "city_form"}
+COARSE_GATE_GRAINS = {"total", "city", "species", "form", "city_form", "city_species"}
 COARSE_GATES = {
     "sum": ("sum(height) by city > 6", COARSE_GATE_GRAINS),
     "count_species": ("count(tree_id) by species > 1", COARSE_GATE_GRAINS),
@@ -289,7 +290,12 @@ COARSE_GATES = {
         "sum(height) by city > 9 or count(tree_id) by species > 1",
         COARSE_GATE_GRAINS,
     ),
-    "and_species": ("max(height) by city >= 7 and species != 'Tilia'", {"species"}),
+    "nested": ("sum(sum(height) by city, species) by city > 6", COARSE_GATE_GRAINS),
+    "nested_max": ("max(sum(height) by city, species) by city > 6", COARSE_GATE_GRAINS),
+    "and_species": (
+        "max(height) by city >= 7 and species != 'Tilia'",
+        {"species", "city_species"},
+    ),
     "or_form": (
         "sum(height) by city > 9 or tree_form = 'linden'",
         {"form", "city_form"},
@@ -306,6 +312,43 @@ def test_coarse_group_value_filter_reads_summary(grain: str, gate: str, aggregat
     _assert_same_answer(
         _select(GRAINS[grain], AGGREGATES[aggregate], where), served=grain in served
     )
+
+
+# `Rollup.partial_is_not_a_key`: a re-sum of the summary's partials beside a
+# value at another grain (`sum(sum(height) by city) by *`) joined the node
+# holding each partial to the node holding its re-sum on the value itself, so a
+# group whose partials differ from their total (`broadleaf` in both cities) or
+# are NULL lost its row. They join on the group key alone
+# (`Rollup.resum_lookup_exact`). A count beside a bare total reads the base
+# rows, as in `MIXED_GRAINS`.
+BESIDE_SELECTS = {
+    "form": "tree_form",
+    "species": "species",
+    "city": "city",
+    "city_form": "city, tree_form",
+}
+BESIDE_VALUES = {
+    "nested_city_total": "sum(sum(height) by city) by *",
+    "nested_species_total": "sum(sum(height) by species) by *",
+    "count_city_total": "sum(count(tree_id) by city) by *",
+    "max_city_total": "max(sum(height) by city) by *",
+    "total": "sum(height) by *",
+}
+
+
+@pytest.mark.parametrize(
+    "select,value,aggregate,where",
+    list(itertools.product(BESIDE_SELECTS, BESIDE_VALUES, ["count", "sum"], FILTERS)),
+)
+def test_resum_beside_other_grain_keeps_every_group(
+    select: str, value: str, aggregate: str, where: str
+):
+    query = _select(
+        [BESIDE_SELECTS[select]],
+        f"{AGGREGATES[aggregate]}, {BESIDE_VALUES[value]} as w",
+        FILTERS[where],
+    )
+    _assert_same_answer(query, served=(value, aggregate) != ("total", "count"))
 
 
 # A membership whose key the summary's grain holds widens the scan to that key;

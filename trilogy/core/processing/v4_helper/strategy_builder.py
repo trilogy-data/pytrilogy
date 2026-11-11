@@ -2528,6 +2528,9 @@ def _widen_scan_chain(
     descending to it the declared key stops being carryable and the merge
     cross-joins ON 1=1."""
     if concept.address in {o.address for o in node.output_concepts}:
+        # a hidden join handle is carried, but no consumer reads it
+        if concept.address in node.hidden_concepts:
+            node.unhide_output_concepts([concept])
         return True
     if not isinstance(node, _WIDENABLE_PROJECTIONS) or _pads_null_sensitive(
         node, concept
