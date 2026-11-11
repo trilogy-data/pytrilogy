@@ -2382,6 +2382,46 @@ class TestJobCommands:
             "force": ["age_class_fits", "age_genus_fits", "height_fit_sample"]
         }
 
+    def test_run_skips_validation_on_named_datasources(self, logged_in, run_cloud):
+        result = run_cloud(
+            "jobs",
+            "run",
+            "nightly",
+            "--force",
+            "tree_predictions",
+            "--skip-validation",
+            "tree_predictions,ns.orders",
+        )
+        assert result.exit_code == 0
+        assert logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run") == {
+            "force": ["tree_predictions"],
+            "flags": {"skip-validation": ["tree_predictions", "ns.orders"]},
+        }
+
+    def test_run_passes_generic_flags(self, logged_in, run_cloud):
+        result = run_cloud(
+            "jobs",
+            "run",
+            "nightly",
+            "--flag",
+            "--skip-validation=a",
+            "--flag",
+            "skip-validation=b",
+            "--flag",
+            "include-imports",
+        )
+        assert result.exit_code == 0
+        assert logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run") == {
+            "flags": {"skip-validation": ["a", "b"], "include-imports": []}
+        }
+
+    def test_run_refuses_a_flag_with_no_name(self, logged_in, run_cloud):
+        result = run_cloud("jobs", "run", "nightly", "--flag", "=x")
+        assert result.exit_code != 0
+        assert not logged_in.requests_for(
+            "POST", f"/orgs/{logged_in.org}/jobs/job-1/run"
+        )
+
     def test_run_rejects_an_unknown_job_before_calling_the_api(
         self, logged_in, run_cloud
     ):
