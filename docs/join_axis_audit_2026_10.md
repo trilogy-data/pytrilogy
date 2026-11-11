@@ -2038,7 +2038,9 @@ ignored, as CI runs it) rehomed every pass both ways: part 55's order
 (sibling and dimension reads, then the spine election over the read graph)
 and the spines elected with the reads. It then compared the resulting graphs:
 nodes, edges and their kinds, every grain and group attribute, and the
-buckets, all by value. CENSUS_RESULTS A control over `tests/core/processing`
+buckets, all by value. 12,513 passes, no graph differed. 172 spine reads were
+elected; 72 of them add an edge, in 54 tests, the same 72 part 55's election
+added. In 21 passes a spine edge sits beside a sibling or dimension read. A control over `tests/core/processing`
 that left the spine reads unapplied differed in all 6 passes with a spine
 edge, so the comparison can see one.
 
