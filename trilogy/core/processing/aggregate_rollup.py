@@ -242,6 +242,19 @@ def _keyed_aggregate(concept: BuildConcept, grain: set[str]) -> bool:
     )
 
 
+def _coarse_gated(
+    datasource: BuildDatasource, conditions: BuildWhereClause | None
+) -> bool:
+    """The WHERE gates on an aggregate at a grain inside the summary's: even
+    at the summary's own grain, its rows are joined to the gate's value before
+    their (identity) re-sum (`Rollup.coarse_group_value_filter_exact`)."""
+    grain = set(datasource.grain.components)
+    return conditions is not None and any(
+        _keyed_aggregate(c, grain) and c.grain.components != grain
+        for c in conditions.row_arguments
+    )
+
+
 def filter_finer_row_args(
     conditions: BuildWhereClause | None,
     target_grain: BuildGrain,
@@ -403,7 +416,11 @@ def get_rollup_concepts(
         for component in target_grain.components
         if component in concepts_by_address
     ]
-    if datasource_grain.issubset(target_grain):
+    if datasource_grain.issubset(target_grain) and not (
+        joined
+        and datasource_grain == target_grain
+        and _coarse_gated(datasource, conditions)
+    ):
         return []
     # The table must be able to GROUP BY the target grain: every component bound
     # here or a function of its rows.

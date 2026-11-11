@@ -66,7 +66,10 @@ as the value, and a decimal quotient is a double on ClickHouse; area 11), and
 once, so nested casts grow linearly, a random operand is drawn once, and the
 SQLite reads parse on SQLite 3.45; area 12), and `ValueSet.lean` (0.3.477:
 a table at its own grain answers repeat-blind aggregates of its columns, and
-aggregates of a column it stores at that grain, from its own rows; area 1).
+aggregates of a column it stores at that grain, from its own rows; area 1),
+and the coarse-gate follow-on (0.3.488: a re-sum is never joined on its
+partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
+summary's own grain reads it; area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -937,8 +940,6 @@ a filter its grain does not determine. Open questions:
   summary's (`sum(height) by city > 6` beside a `(city, species)` summary)
   reads the summary (`Rollup.coarse_group_value_filter_exact`): the joined
   plan computes the gate in its own group and joins it back on `city`. Left:
-  - at the summary's own grain (`select city, species, ... where sum(height)
-    by city > 6`) the exact scan has no joined plan, so it reads the trees;
   - a row column beside the gate that the target does not group by
     (`... and species != 'Tilia'` at `tree_form`; `... or tree_form =
     'linden'` at `city`) adds the column to the pinned request, whose
@@ -949,10 +950,31 @@ a filter its grain does not determine. Open questions:
     a planning error, not a plan, so it was dropped;
     `_coarse_gate_beside_row_columns` declines these shapes;
   - a gate at a grain the summary's grain does not hold (`sum(height) by
-    tree_form > 6`) reads the trees;
+    tree_form > 6`) reads the trees. Relaxing `_keyed_aggregate` and
+    `_coarse_gate` to any grain the summary reaches (a property keyed in its
+    grain) gave WRONG rows in 0.3.488's probe: `_plan_joined_filter_rollup`
+    grouped the gate by `species`, the key `tree_form` is a property of, not
+    by `tree_form` (lesson 17's substitution). The joined plan must group a
+    gate by the dimension column itself before this can be served;
   - the gate's value is summed from the summary when it stores the
     argument (`sum`, `count`), from the trees otherwise (`avg`,
-    `count_distinct`); the `by *` total gate always reads the trees.
+    `count_distinct`); the `by *` total gate always reads the trees (a
+    condition-only aggregate, which the rollup branch of
+    `_root_derived_concepts` never marks).
+- Done in 0.3.488: a re-sum beside the rows holding its partials is joined
+  on the group key, never on the partial (`Rollup.partial_is_not_a_key`; the
+  join on `v` lost every group whose partials differ from their total once a
+  WHERE stopped the dedup that folded the re-sum away); a gate on a re-sum of
+  a stored value (`sum(sum(height) by city, species) by city > 6`) plans at
+  `tree_form` (a hidden join handle is unhidden when carried); a coarse gate
+  at the summary's own grain reads the summary
+  (`Rollup.coarse_gate_at_summary_grain`). Left:
+  - `select city, sum(height) as v having sum(height) by city > 6` raises
+    "Missing source reference to local.height" with the summary in scope:
+    the HAVING renders the gate from `height`, which the summary scan does
+    not carry. `having sum(height) > 6` and `having v > 6` plan;
+  - `count(tree_id)` beside `sum(height) by *` reads the base rows
+    (`MIXED_GRAINS`, `test_resum_beside_other_grain_keeps_every_group`).
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

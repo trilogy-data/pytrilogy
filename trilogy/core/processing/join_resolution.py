@@ -45,6 +45,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
+from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
@@ -2158,8 +2159,21 @@ def get_node_joins(
         nullable_keys: set[str] = set()
         rollup_keys: set[str] = set()
         value_keys: set[str] = set()
+        # a partial still to be re-aggregated is not a value of any key
+        # (`Rollup.partial_is_not_a_key`)
+        unfinished = (
+            {
+                c.address
+                for c in pending_rollups(datasource.rollup_concepts, datasource.grain)
+            }
+            if isinstance(datasource, QueryDatasource)
+            else set()
+        )
         for concept in datasource.output_concepts:
-            if concept.address in datasource.hidden_concepts:
+            if (
+                concept.address in datasource.hidden_concepts
+                or concept.address in unfinished
+            ):
                 continue
             node = canon_node(concept.address)
             graph.add_node(node, type=NodeType.CONCEPT)

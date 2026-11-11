@@ -718,6 +718,66 @@ theorem Rollup.coarse_gate_on_partial_misfilters :
         some 8 := by
   decide
 
+/-! ## A re-sum beside the rows holding its partials
+
+A plan that needs one aggregate at two grains (`sum(height)` per `tree_form`
+beside `sum(sum(height) by city) by *`) can hold the partials per `(tree_form,
+city)` in one node and their re-sum per `tree_form` in another, both under the
+aggregate's address. The two are joined on the coarse key `h k` alone: each
+partial row then reads its group's re-summed value
+(`Rollup.reaggregate_partial_sum`). The partial is no value of any key, so
+pairing on it as well keeps only the groups whose partial equals their total
+(`Rollup.partial_is_not_a_key`). -/
+
+/-- SQL `=`: UNKNOWN, so no match, when either side is NULL. -/
+def sqlEq : Option Int → Option Int → Bool
+  | some a, some b => a == b
+  | _, _ => false
+
+/-- **A partial joined to its re-sum on the group key reads the group's
+value.** -/
+theorem Rollup.resum_lookup_exact {τ : Type} [DecidableEq τ]
+    (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h : κ → τ) (k : κ) :
+    let resum : τ → Option Int := fun t =>
+      sqlSum (stored g ks rows (sumAgg v) (fun k' => decide (h k' = t)))
+    resum (h k) = sumAgg v (slice (fun r => h (g r)) (h k) rows) :=
+  Rollup.reaggregate_partial_sum g ks hnd rows hcov v h (h k)
+
+/-- Pairing the partial rows with the re-sum on the value as well drops a
+group: `broadleaf` holds 3 in one city and 7 in the other, totalling 10, so no
+partial row equals the total and the group has no row; a group whose partials
+are all NULL is dropped too. -/
+theorem Rollup.partial_is_not_a_key :
+    let rows : List (Nat × Option Int) := [(1, some 3), (2, some 7)]
+    let nulls : List (Nat × Option Int) := [(1, none)]
+    let v : Nat × Option Int → Option Int := (·.2)
+    let resum : List (Nat × Option Int) → Option Int := fun rs =>
+      sqlSum (stored (·.1) [1, 2] rs (sumAgg v) (fun _ => true))
+    ((stored (·.1) [1, 2] rows (sumAgg v) (fun _ => true)).filter
+        (fun p => sqlEq p (resum rows))).isEmpty ∧
+      resum rows = some 10 ∧
+      ((stored (·.1) [1, 2] nulls (sumAgg v) (fun _ => true)).filter
+        (fun p => sqlEq p (resum nulls))).isEmpty ∧
+      (stored (·.1) [1, 2] nulls (sumAgg v) (fun _ => true)).length = 1 := by
+  decide
+
+/-- At the summary's own grain a coarse gate keeps whole summary rows: the
+identity re-sum of `Rollup.coarse_group_value_filter_exact` with the target
+group `k` itself. -/
+theorem Rollup.coarse_gate_at_summary_grain {σ : Type} [DecidableEq σ]
+    (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v w : α → Option Int) (c : κ → σ) (p : Option Int → Bool) (k : κ) :
+    let coarse : κ → Option Int := fun k =>
+      sqlSum (stored g ks rows (sumAgg w) (fun k' => decide (c k' = c k)))
+    sqlSum (stored g ks rows (sumAgg v) (fun k' => p (coarse k') && decide (k' = k))) =
+      sumAgg v (keep g
+        (fun k' => p (sumAgg w (slice (fun r => c (g r)) (c k') rows)) && decide (k' = k))
+        rows) :=
+  Rollup.coarse_group_value_filter_exact g ks hnd rows hcov v w c p _
+
 /-! ## COUNT DISTINCT of a grain column
 
 `count_distinct` does not re-aggregate (`Rollup.count_distinct_not_additive`),
