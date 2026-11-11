@@ -21,7 +21,11 @@ from trilogy.core.processing.v4_helper.constants import (
     EdgeKind,
 )
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
-from trilogy.core.processing.v4_helper.group_graph import _compute_concept_sets
+from trilogy.core.processing.v4_helper.group_graph import (
+    ConceptSets,
+    _compute_concept_sets,
+    _concept_sets,
+)
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     GroupAttrs,
@@ -467,3 +471,31 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally(
     assert "agg_sum" in basic_in
     # The primary (round_result) is computed locally; it isn't sourced.
     assert "round_result" not in basic_in
+
+
+def test_a_lineage_cycle_states_no_sets(empty_environment: BuildEnvironment):
+    cg = nx.DiGraph()
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "x")
+    _add_concept(cg, cattrs, "y")
+    graph = nx.DiGraph()
+    attrs: dict[str, GroupAttrs] = {}
+    gedges: EdgeMap = {}
+    _gg_node(graph, attrs, "a", Derivation.BASIC, primary=["x"])
+    _gg_node(graph, attrs, "b", Derivation.BASIC, primary=["y"])
+    _final_node(graph, attrs)
+    add_edge(graph, gedges, "a", "b", EdgeKind.LINEAGE)
+    add_edge(graph, gedges, "b", "a", EdgeKind.LINEAGE)
+    sets = _concept_sets(
+        graph,
+        gedges,
+        attrs,
+        cg,
+        {},
+        cattrs,
+        {},
+        [_FakeConcept("x")],
+        empty_environment,
+        frozenset(),
+    )
+    assert sets == ConceptSets()
