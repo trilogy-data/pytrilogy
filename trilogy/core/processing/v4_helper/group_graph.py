@@ -1280,6 +1280,23 @@ class GroupIOPlan:
         )
 
 
+@dataclass(frozen=True)
+class ConceptSets:
+    """What the demand pass states for each non-FINAL group: the columns it
+    emits, the columns it reads, and the anchors its pinned values evaluate
+    on. The rehome reads these before they are written onto the groups."""
+
+    outputs: dict[str, frozenset[str]] = field(default_factory=dict)
+    inputs: dict[str, frozenset[str]] = field(default_factory=dict)
+    pin_anchors: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def outputs_of(self, gid: str) -> frozenset[str]:
+        return self.outputs.get(gid, frozenset())
+
+    def inputs_of(self, gid: str) -> frozenset[str]:
+        return self.inputs.get(gid, frozenset())
+
+
 def _lineage_parents_by_address(
     concept_edges: EdgeMap, concept_attrs: dict[str, ConceptAttrs]
 ) -> dict[str, set[str]]:
@@ -1973,6 +1990,56 @@ def _compute_concept_sets(
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
+    sets = _concept_sets(
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        buckets,
+        mandatory_list,
+        environment,
+        rollup_padded,
+        scoped_axis_mates,
+        relation_edge_members,
+    )
+    _write_concept_sets(attrs, buckets, sets)
+
+
+def _write_concept_sets(
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    sets: ConceptSets,
+) -> None:
+    """Write the stated sets onto the groups still in the graph; a group
+    folded since they were stated is gone."""
+    for gid, anchors in sets.pin_anchors.items():
+        if gid in attrs:
+            attrs[gid].grain_pin_anchors = anchors
+    for gid, outputs in sets.outputs.items():
+        if gid not in attrs:
+            continue
+        attrs[gid].output_concepts = tuple(sorted(outputs))
+        attrs[gid].input_concepts = tuple(sorted(sets.inputs[gid]))
+        if gid in buckets:
+            buckets[gid].output_concepts = attrs[gid].output_concepts
+
+
+def _concept_sets(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    buckets: dict[str, GroupBucket],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    rollup_padded: frozenset[str],
+    scoped_axis_mates: dict[str, frozenset[str]] | None = None,
+    relation_edge_members: frozenset[str] = frozenset(),
+) -> ConceptSets:
     """Per-group input/output concept sets.
 
     The pass has three explicit pieces:
@@ -2025,7 +2092,7 @@ def _compute_concept_sets(
     )
     topo = _topological_dependency_order(group_graph, group_edges)
     if topo is None:
-        return
+        return ConceptSets()
     pin_anchors = {
         gid: frozenset().union(
             *(
@@ -2036,9 +2103,6 @@ def _compute_concept_sets(
         )
         for gid, bucket in buckets.items()
     }
-    for gid, anchors in pin_anchors.items():
-        if gid in attrs:
-            attrs[gid].grain_pin_anchors = anchors
 
     mate_accumulator: dict[str, set[str]] = {}
     for ca in concept_attrs.values():
@@ -2246,13 +2310,12 @@ def _compute_concept_sets(
     for gid in reversed(topo):
         _group_inputs(gid, ctx)
 
-    for gid in group_graph.nodes:
-        if gid == FINAL_NODE_ID:
-            continue
-        attrs[gid].output_concepts = tuple(sorted(io.outputs[gid]))
-        attrs[gid].input_concepts = tuple(sorted(io.inputs[gid]))
-        if gid in buckets:
-            buckets[gid].output_concepts = attrs[gid].output_concepts
+    stated = [gid for gid in group_graph.nodes if gid != FINAL_NODE_ID]
+    return ConceptSets(
+        outputs={gid: frozenset(io.outputs[gid]) for gid in stated},
+        inputs={gid: frozenset(io.inputs[gid]) for gid in stated},
+        pin_anchors=pin_anchors,
+    )
 
 
 def build_group_graph(
@@ -2332,7 +2395,7 @@ def build_group_graph(
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
     _add_final_node(group_graph, group_edges, attrs, buckets, mandatory_list)
-    _compute_concept_sets(
+    sets = _concept_sets(
         group_graph,
         group_edges,
         attrs,
@@ -2344,13 +2407,22 @@ def build_group_graph(
         environment,
         rollup_padded,
     )
-    folds = _elect_folds(group_graph, group_edges, attrs, concept_attrs)
-    grouping = _elect_grouping_providers(group_graph, attrs, environment, folds)
+    folds = _elect_folds(group_graph, group_edges, attrs, sets, concept_attrs)
+    grouping = _elect_grouping_providers(group_graph, attrs, sets, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
     _fold_groups(group_graph, group_edges, attrs, buckets, folds)
     _apply_reads(
-        group_graph, group_edges, attrs, buckets, concept_attrs, environment, placed
+        group_graph,
+        group_edges,
+        attrs,
+        sets,
+        buckets,
+        concept_attrs,
+        environment,
+        placed,
     )
+    # injection reads what the demand pass had each group emit
+    _write_concept_sets(attrs, buckets, sets)
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
@@ -2471,6 +2543,7 @@ def _regraft_candidate(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     gid: str,
     *,
     allow_partial: bool,
@@ -2508,14 +2581,14 @@ def _regraft_candidate(
     """
     current = attrs[gid]
     grain = current.grain_components
-    needed = set(current.input_concepts)
+    needed = sets.inputs_of(gid)
     if not needed:
         return None
     # Concepts a partial-coverage spine may lean on for the inputs it lacks.
     pred_outputs: set[str] = set()
     if allow_partial:
         for pred in lineage_predecessors(group_graph, group_edges, gid):
-            pred_outputs |= set(attrs[pred].output_concepts)
+            pred_outputs |= sets.outputs_of(pred)
     my_ancestors = nx.ancestors(group_graph, gid)
     best_gid: str | None = None
     best_score: tuple[int, ...] = ()
@@ -2532,7 +2605,7 @@ def _regraft_candidate(
             continue
         if gid in candidate_ancestors:
             continue
-        covered = needed & set(cattrs.output_concepts)
+        covered = needed & sets.outputs_of(candidate)
         if not covered:
             continue
         full = covered >= needed
@@ -2559,7 +2632,7 @@ def _regraft_candidate(
             len(candidate_ancestors),
             len(covered),
             int(cattrs.derivation in GROUPING_DERIVATIONS),
-            len(cattrs.output_concepts),
+            len(sets.outputs_of(candidate)),
         )
         if score > best_score:
             best_score = score
@@ -2619,6 +2692,7 @@ def _grain_needed_by_independent_sibling(
 def _terminal_basic_grouping_provider(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     gid: str,
     environment: BuildEnvironment,
 ) -> str | None:
@@ -2644,9 +2718,9 @@ def _terminal_basic_grouping_provider(
         if member is not None and member.lineage is not None
         for c in member.lineage.concept_arguments
     }
-    expression_inputs = (
-        set(current.input_concepts) - set(current.grain_components)
-    ) | (read_by_expression & set(current.grain_components))
+    expression_inputs = (sets.inputs_of(gid) - current.grain_components) | (
+        read_by_expression & current.grain_components
+    )
     if not expression_inputs:
         return None
     my_ancestors = nx.ancestors(group_graph, gid)
@@ -2665,11 +2739,12 @@ def _terminal_basic_grouping_provider(
             continue
         if gid in candidate_ancestors:
             continue
-        if not expression_inputs <= set(candidate_attrs.output_concepts):
+        candidate_outputs = sets.outputs_of(candidate)
+        if not expression_inputs <= candidate_outputs:
             continue
         if not candidate_attrs.grain_components <= expression_inputs:
             continue
-        score = (len(candidate_ancestors), len(candidate_attrs.output_concepts))
+        score = (len(candidate_ancestors), len(candidate_outputs))
         if best_score is None or score > best_score:
             best_score = score
             best_gid = candidate
@@ -2680,6 +2755,7 @@ def _synthetic_dimension_regraft_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
@@ -2702,7 +2778,7 @@ def _synthetic_dimension_regraft_parent(
     ]
     if not root_preds or len(root_preds) != len(lineage_preds):
         return None
-    inputs = list(current.input_concepts)
+    inputs = sorted(sets.inputs_of(gid))
     if not inputs:
         return None
     if not all(
@@ -2807,7 +2883,7 @@ def _absorb_group(
 
 def _renders_inline(
     attrs: dict[str, GroupAttrs],
-    concept_attrs: dict[str, ConceptAttrs],
+    sets: ConceptSets,
     gid: str,
     parent: str,
 ) -> bool:
@@ -2829,13 +2905,14 @@ def _renders_inline(
         return False
     # the window must already source every input, from its outputs or its
     # inputs: a spine lacking one needs a real join the fold can't create
-    return set(a.input_concepts) <= set(pa.output_concepts) | set(pa.input_concepts)
+    return sets.inputs_of(gid) <= sets.outputs_of(parent) | sets.inputs_of(parent)
 
 
 def _inline_window(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     concept_attrs: dict[str, ConceptAttrs],
     gid: str,
 ) -> str | None:
@@ -2855,9 +2932,11 @@ def _inline_window(
     # the window and the BASIC the window reads): fall back to a partial
     # spine, which `_renders_inline` gates on carrying every input.
     parent = _regraft_candidate(
-        group_graph, group_edges, attrs, gid, allow_partial=False
-    ) or _regraft_candidate(group_graph, group_edges, attrs, gid, allow_partial=True)
-    if parent is None or not _renders_inline(attrs, concept_attrs, gid, parent):
+        group_graph, group_edges, attrs, sets, gid, allow_partial=False
+    ) or _regraft_candidate(
+        group_graph, group_edges, attrs, sets, gid, allow_partial=True
+    )
+    if parent is None or not _renders_inline(attrs, sets, gid, parent):
         return None
     return parent
 
@@ -2866,6 +2945,7 @@ def _elect_folds(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     concept_attrs: dict[str, ConceptAttrs],
 ) -> dict[str, str]:
     """Each scalar BASIC a WINDOW renders inline, to that WINDOW, elected over
@@ -2875,7 +2955,9 @@ def _elect_folds(
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID:
             continue
-        window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
+        window = _inline_window(
+            group_graph, group_edges, attrs, sets, concept_attrs, gid
+        )
         if window is not None:
             folds[gid] = window
     return folds
@@ -2895,6 +2977,7 @@ def _fold_groups(
 def _elect_grouping_providers(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     environment: BuildEnvironment,
     folds: dict[str, str],
 ) -> dict[str, str]:
@@ -2906,7 +2989,7 @@ def _elect_grouping_providers(
         if gid == FINAL_NODE_ID or gid in folds:
             continue
         provider = _terminal_basic_grouping_provider(
-            group_graph, attrs, gid, environment
+            group_graph, attrs, sets, gid, environment
         )
         if provider is not None:
             providers[gid] = provider
@@ -2988,6 +3071,7 @@ def _elect_read(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
@@ -2996,12 +3080,12 @@ def _elect_read(
     """`gid`'s read over the graph, in rank order: a full-coverage sibling,
     the dimension ROOT a BASIC reads its inputs off, a partial spine."""
     sibling = _regraft_candidate(
-        group_graph, group_edges, attrs, gid, allow_partial=False
+        group_graph, group_edges, attrs, sets, gid, allow_partial=False
     )
     if sibling is not None:
         return RowProvider(sibling)
     dimension = _synthetic_dimension_regraft_parent(
-        group_graph, group_edges, attrs, buckets, concept_attrs, gid
+        group_graph, group_edges, attrs, sets, buckets, concept_attrs, gid
     )
     if dimension is not None:
         return dimension
@@ -3009,6 +3093,7 @@ def _elect_read(
         group_graph,
         group_edges,
         attrs,
+        sets,
         gid,
         allow_partial=True,
         environment=environment,
@@ -3020,6 +3105,7 @@ def _elect_reads(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
@@ -3036,7 +3122,14 @@ def _elect_reads(
         if not _rehomeable(attrs, gid, placed):
             continue
         read = _elect_read(
-            group_graph, group_edges, attrs, buckets, concept_attrs, environment, gid
+            group_graph,
+            group_edges,
+            attrs,
+            sets,
+            buckets,
+            concept_attrs,
+            environment,
+            gid,
         )
         if read is not None:
             reads[gid] = read
@@ -3047,6 +3140,7 @@ def _apply_reads(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
+    sets: ConceptSets,
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
@@ -3056,7 +3150,14 @@ def _apply_reads(
     the ROOT when none covers its inputs, in place of the ROOT parents it
     replaces. Every read is elected before any is applied."""
     reads = _elect_reads(
-        group_graph, group_edges, attrs, buckets, concept_attrs, environment, placed
+        group_graph,
+        group_edges,
+        attrs,
+        sets,
+        buckets,
+        concept_attrs,
+        environment,
+        placed,
     )
     for gid, read in reads.items():
         _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, read)

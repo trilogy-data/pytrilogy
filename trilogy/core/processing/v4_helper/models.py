@@ -231,7 +231,8 @@ class GroupAttrs(_HeldKeys):
     # their grouping keys on the subtotal rows they add, which is what
     # `nulls_grouping_keys` exists to ask about.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
-    # Populated by `_compute_concept_sets`. Empty tuples until then.
+    # Written from the demand pass's `ConceptSets` once the rehome is made,
+    # and again after injection. Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
     # Populated only for FINAL: the logical output/grain contract Stage 3
