@@ -933,13 +933,24 @@ a filter its grain does not determine. Open questions:
   only a lineage-free property), and for a grand total under an OR that
   joins `tree_form`, whose request carries `tree_form` beside a total `v`
   (`GROUP_VALUE_GRAINS` in the harness).
-- A WHERE over a stored aggregate at a grain COARSER than the summary's
-  (`sum(height) by city > 6` beside a `(city, species)` summary) reads the
-  base rows. Filtering the summary needs the condition's value joined back on
-  `city`; `_plan_joined_filter_rollup` could source it. The blocker is
-  `materialized_root_addresses`: a condition-only aggregate never takes the
-  rollup branch (filtering a finer scan by a rolled value would misfilter,
-  `Rollup.resummed_condition_misfilters`), so it needs its own group.
+- Done in 0.3.487: a WHERE over an aggregate at a grain COARSER than the
+  summary's (`sum(height) by city > 6` beside a `(city, species)` summary)
+  reads the summary (`Rollup.coarse_group_value_filter_exact`): the joined
+  plan computes the gate in its own group and joins it back on `city`. Left:
+  - at the summary's own grain (`select city, species, ... where sum(height)
+    by city > 6`) the exact scan has no joined plan, so it reads the trees;
+  - a row column beside the gate that the target does not group by
+    (`... and species != 'Tilia'` at `tree_form`; `... or tree_form =
+    'linden'` at `city`) adds the column to the pinned request, whose
+    aggregates are then not at its grain; the search that takes over
+    re-aggregates the gate at the widened grain. `_within_target`-style
+    guards on the bridge emitter turn that into a planning error, not a
+    plan; `_coarse_gate_beside_row_columns` declines these shapes;
+  - a gate at a grain the summary's grain does not hold (`sum(height) by
+    tree_form > 6`) reads the trees;
+  - the gate's value is summed from the summary when it stores the
+    argument (`sum`, `count`), from the trees otherwise (`avg`,
+    `count_distinct`); the `by *` total gate always reads the trees.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

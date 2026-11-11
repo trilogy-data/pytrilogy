@@ -676,6 +676,48 @@ theorem Rollup.joined_group_filter_after_resum_misfilters :
       sumAgg v (slice (fun r => d r.1) 0 (keep (·.1) gate rows)) = some 5 := by
   decide
 
+/-! ## Filters on a group value at a coarser grain
+
+A WHERE over an aggregate at a grain the summary's grain refines (`sum(x) by
+city > 6` beside a `(city, species)` summary) reads one value per coarse key
+`c k`. That value is itself a re-sum of the summary rows sharing `c k`
+(`Rollup.reaggregate_partial_sum`), so the gate is again a predicate on the
+summary key: filter the summary rows by the coarse value joined back on `c`,
+then re-sum. -/
+
+/-- **A filter on a coarser group value rolls up.** The coarse value is the
+re-sum of the summary's partials over the rows sharing `c k`; gating each
+summary row by it and re-summing is the base rows the gate keeps. -/
+theorem Rollup.coarse_group_value_filter_exact {σ : Type} [DecidableEq σ]
+    (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v w : α → Option Int) (c : κ → σ) (p : Option Int → Bool) (q : κ → Bool) :
+    let coarse : κ → Option Int := fun k =>
+      sqlSum (stored g ks rows (sumAgg w) (fun k' => decide (c k' = c k)))
+    sqlSum (stored g ks rows (sumAgg v) (fun k => p (coarse k) && q k)) =
+      sumAgg v (keep g
+        (fun k => p (sumAgg w (slice (fun r => c (g r)) (c k) rows)) && q k) rows) := by
+  intro coarse
+  have hc : coarse = fun k => sumAgg w (slice (fun r => c (g r)) (c k) rows) :=
+    funext fun k => Rollup.reaggregate_partial_sum g ks hnd rows hcov w c (c k)
+  rw [hc]
+  exact Rollup.sum_exact g ks hnd rows hcov v _
+
+/-- The gate reads the coarse value, never the partial a summary row stores
+under the same name: two species of one city summing to 3 and 5 pass
+`sum(x) by city > 4` together (8), while gating each row by its own partial
+keeps only the 5. -/
+theorem Rollup.coarse_gate_on_partial_misfilters :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    let c : Nat → Nat := fun _ => 0
+    sqlSum (stored (·.1) [1, 2] rows (sumAgg v)
+        (fun k => (sumAgg v (slice (·.1) k rows)).any (· > 4))) = some 5 ∧
+      sumAgg v (keep (·.1)
+        (fun k => (sumAgg v (slice (fun r => c r.1) (c k) rows)).any (· > 4)) rows) =
+        some 8 := by
+  decide
+
 /-! ## COUNT DISTINCT of a grain column
 
 `count_distinct` does not re-aggregate (`Rollup.count_distinct_not_additive`),

@@ -169,6 +169,23 @@ def _parent_holds_the_same_concepts(candidate: BuildConceptArgs, parent: CTE) ->
     )
 
 
+def _parent_holds_partial(
+    candidate: BuildConceptArgs,
+    parent: CTE,
+    inverse_map: dict[str, list[CTE | UnionCTE]],
+) -> bool:
+    """A child of `parent` re-aggregates a column the predicate reads under
+    the same address, so `parent` holds one partial per finer group, not the
+    value the predicate tests (`Rollup.coarse_gate_on_partial_misfilters`)."""
+    rolled = {
+        c.address
+        for child in inverse_map.get(parent.name, [])
+        if isinstance(child, CTE) and child.group_to_grain
+        for c in child.rollup_concepts
+    }
+    return any(arg.address in rolled for arg in candidate.row_arguments)
+
+
 def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
     """Addresses a parent CTE exposes as plain output columns: a non-empty
     ``source_map`` entry means the concept is pulled from upstream rather than
@@ -568,6 +585,12 @@ class PredicatePushdown(OptimizationRule):
             )
             return False
         if not _parent_holds_the_same_concepts(candidate, parent_cte):
+            return False
+        if _parent_holds_partial(candidate, parent_cte, inverse_map):
+            self.debug(
+                f"{parent_cte.name} holds a partial of {candidate}'s value that a "
+                "child re-aggregates under the same address; not pushing"
+            )
             return False
         materialized = _rendered_source_columns(parent_cte)
 
