@@ -1931,6 +1931,42 @@ and `test_the_row_provider_election_takes_no_inline_window` pin the
 hand-off, and `test_a_parent_a_placement_drops_is_gone_before_it_folds` now
 reads `_fold_groups`.
 
+**A dimension is read before the rehome (part 54).** Part 53 left the
+dimension pick as the only rewrite that drops parents or mints a group. It
+ranks below a full-coverage sibling and reads nothing a sibling or spine pick
+writes, so stage 2 now makes it as its own step, after the folds and before
+the row-provider election:
+
+- `_elect_dimension_reads` picks, for each unplaced BASIC with no
+  full-coverage sibling, the dimension ROOT it reads
+  (`_synthetic_dimension_regraft_parent`, gates unchanged), over the folded
+  graph. `_read_dimensions` elects every read before applying any.
+- A read that changes nothing still settles its group: as before, a group
+  given a dimension pick never falls through to a partial spine.
+- `_rehome_groups` skips placed and read groups (`settled`). The row-provider
+  election picks only a full-coverage sibling or a partial spine, and no
+  longer takes buckets or concept attributes. Every rewrite it makes adds a
+  lineage edge and nothing else.
+
+What can move: a sibling or spine pick is now elected over the graph where
+the reads are applied, so a group downstream of a read sees the minted ROOT
+in its ancestors and not the ROOTs dropped. A census over one suite run
+(CENSUS_SCOPE) rehomed every pass both ways: part 53's order (one election of
+sibling, dimension and spine, then apply) and the dimensions read first. It
+then compared the resulting graphs: nodes, edges and their kinds, every
+grain, member list and member depths, and the buckets (compared by value).
+CENSUS_NUMBERS A control run that skipped the reads differed in every pass
+with a dimension rewrite, so the comparison can see one.
+
+`test_every_dimension_is_read_before_any_row_provider_is_elected` pins the
+order over `adhoc04`, which mints a dimension ROOT: when the row providers are
+elected, each minted ROOT is already its reader's parent and every ROOT it
+replaces is gone. It fails with the reads applied after the election.
+`test_a_full_coverage_sibling_outranks_a_dimension`,
+`test_a_read_that_changes_nothing_still_settles_its_group`,
+`test_a_dimension_read_takes_no_row_provider` and
+`test_the_row_provider_election_takes_no_dimension` pin the hand-off.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1956,12 +1992,14 @@ not built yet:
    grain is stated before any pick (part 51), and so is its edge onto its
    grouping provider (part 52), so a rewrite never changes a grain and the
    election never places a projection. Every window fold is made before
-   the election too (part 53), so no rewrite deletes a group. The rewrites
-   left still change the graph: a sibling or spine adds a lineage edge; a
-   dimension pick drops ROOT parents and may mint a ROOT. The stated grain,
-   placement and folds still follow `_compute_concept_sets`, since the grouping provider is read off the
-   groups' input and output sets; stating them when stage 2 groups needs
-   those sets first. Then `_compute_concept_sets` runs again.
+   the election too (part 53), so no rewrite deletes a group, and so is
+   every dimension read (part 54), so no rewrite drops a parent or mints a
+   group. What the election still writes is one lineage edge per group: a
+   full-coverage sibling or a partial spine. The stated grain, placement,
+   folds and reads still follow `_compute_concept_sets`, since the grouping
+   provider and the sibling are read off the groups' input and output sets;
+   stating them when stage 2 groups needs those sets first. Then
+   `_compute_concept_sets` runs again.
 
 ## 8. Not claimed
 

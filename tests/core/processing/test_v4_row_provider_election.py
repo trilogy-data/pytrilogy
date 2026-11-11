@@ -35,7 +35,9 @@ class _ElectionLog:
 
     def rehome(self, group_graph, group_edges, attrs, *rest):
         self.built = _graph_state(group_graph, group_edges, attrs)
-        self.rewrites = gg._elect_row_providers(group_graph, group_edges, attrs, *rest)
+        self.rewrites = gg._elect_row_providers(
+            group_graph, group_edges, attrs, *rest[1:]
+        )
         _REHOME(group_graph, group_edges, attrs, *rest)
         self.applied.append((group_graph, group_edges))
 
