@@ -36,7 +36,7 @@ def _executor_with_refreshable_root(probe_path: str, refresh_path: str):
 
     raw = e.environment.datasources["raw"]
     e.environment.datasources["raw"] = replace(
-        raw, **{"freshness_probe": probe_path, "refresh_script": refresh_path}
+        raw, freshness_probe=probe_path, refresh_script=refresh_path
     )
     return e
 
@@ -87,7 +87,7 @@ def test_root_with_only_probe_no_script_is_still_skipped():
         query '''SELECT 1 as rid''';
         """)
     ds = e.environment.datasources["r"]
-    e.environment.datasources["r"] = replace(ds, **{"freshness_probe": "/fake/p.py"})
+    e.environment.datasources["r"] = replace(ds, freshness_probe="/fake/p.py")
 
     with patch(
         "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
@@ -256,10 +256,8 @@ def test_cross_script_cascade_dependent_refreshes():
     raw = e.environment.datasources["r"]
     e.environment.datasources["r"] = replace(
         raw,
-        **{
-            "freshness_probe": "/fake/probe.py",
-            "refresh_script": "/fake/refresh.py",
-        },
+        freshness_probe="/fake/probe.py",
+        refresh_script="/fake/refresh.py",
     )
 
     def fake_refresh(_path, cwd=None):
@@ -315,10 +313,8 @@ def test_probe_memoization_same_path_called_once():
         ds = e.environment.datasources[name]
         e.environment.datasources[name] = replace(
             ds,
-            **{
-                "freshness_probe": "/fake/shared_probe.py",
-                "refresh_script": f"/fake/{name}_refresh.py",
-            },
+            freshness_probe="/fake/shared_probe.py",
+            refresh_script=f"/fake/{name}_refresh.py",
         )
 
     with patch(

@@ -244,6 +244,20 @@ def filter_finer_row_args(
     ]
 
 
+def joinable_property(
+    concept: BuildConcept | None, datasource: BuildDatasource
+) -> bool:
+    """A dimension's column keyed on `datasource`'s grain: a join onto its rows
+    supplies it at that grain."""
+    return (
+        concept is not None
+        and concept.lineage is None
+        and concept.purpose == Purpose.PROPERTY
+        and bool(concept.keys)
+        and set(concept.keys or ()) <= set(datasource.grain.components)
+    )
+
+
 def finer_than_grain(
     concept: BuildConcept,
     grain: BuildGrain,

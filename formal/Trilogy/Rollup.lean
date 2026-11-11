@@ -644,6 +644,38 @@ theorem Rollup.resummed_condition_misfilters :
       sumAgg v (keep (·.1) gate rows) = some 5 := by
   decide
 
+/-- **Grouped by a dimension's column, a filter on a stored group value still
+rolls up.** `d` reads a column of a dimension keyed on the summary's grain
+(`tree_form` of `species`): the target group `t` is the key predicate
+`d k = t`, so the summary rows the gate keeps, joined to `d` and re-summed per
+`t`, are the base rows the gate keeps in that group. -/
+theorem Rollup.group_value_filter_joined_exact {τ : Type} [DecidableEq τ]
+    (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v : α → Option Int) (agg : List α → Option Int) (p : Option Int → Bool)
+    (d : κ → τ) (t : τ) :
+    let gate : κ → Bool := fun k => p (agg (slice g k rows))
+    sqlSum (stored g ks rows (sumAgg v) (fun k => gate k && decide (d k = t))) =
+      sumAgg v (slice (fun r => d (g r)) t (keep g gate rows)) := by
+  intro gate
+  rw [Rollup.group_value_filter_exact g ks hnd rows hcov v agg p
+    (fun k => decide (d k = t))]
+  simp only [keep, slice, List.filter_filter, Bool.and_comm, gate]
+
+/-- The joined plan filters before it groups by `d`: filtering after a re-sum
+per `t` applies `sum(x) by k > 3` to each form's total, keeping a group whose
+own sum is 3 beside one summing to 5 in the same form. -/
+theorem Rollup.joined_group_filter_after_resum_misfilters :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    let d : Nat → Nat := fun _ => 0
+    let gate : Nat → Bool := fun k =>
+      (sumAgg v (slice (·.1) k rows)).any (· > 3)
+    (if (sumAgg v (slice (fun r => d r.1) 0 rows)).any (· > 3)
+      then sumAgg v rows else none) = some 8 ∧
+      sumAgg v (slice (fun r => d r.1) 0 (keep (·.1) gate rows)) = some 5 := by
+  decide
+
 /-! ## COUNT DISTINCT of a grain column
 
 `count_distinct` does not re-aggregate (`Rollup.count_distinct_not_additive`),

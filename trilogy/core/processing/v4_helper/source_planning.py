@@ -16,7 +16,7 @@ from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.constants import parent_axis_keys
-from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
+from trilogy.core.enums import Derivation, Granularity, JoinType
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
@@ -33,6 +33,7 @@ from trilogy.core.processing.aggregate_rollup import (
     at_own_grain,
     filter_finer_row_args,
     holds_every_kept_row,
+    joinable_property,
     joined_condition_columns,
     merge_rollup_concepts,
     source_rollup_concepts,
@@ -1705,7 +1706,8 @@ def _finer_filter_rollup_source(
         if not all(
             c in canonicals
             or (
-                _joinable_property(environment.concepts.get(c), arms)
+                len(arms) == 1
+                and joinable_property(environment.concepts.get(c), arms[0])
                 and all(
                     at_own_grain(a, target_grain, environment.concepts)
                     for a in aggregates
@@ -1742,19 +1744,6 @@ def _finer_filter_rollup_source(
         )
     )
     return matches[0]
-
-
-def _joinable_property(
-    concept: BuildConcept | None, arms: list[BuildDatasource]
-) -> bool:
-    return (
-        concept is not None
-        and concept.lineage is None
-        and concept.purpose == Purpose.PROPERTY
-        and bool(concept.keys)
-        and len(arms) == 1
-        and set(concept.keys or ()) <= set(arms[0].grain.components)
-    )
 
 
 def _rolls_every_aggregate(
