@@ -2302,6 +2302,32 @@ def _report_chain(chain: Sequence[Workspace], resolved: bool) -> None:
     )
 
 
+def _split_names(entries: tuple[str, ...]) -> list[str]:
+    """Repeatable, comma-separated names, as `trilogy refresh` reads them."""
+    names = (name.strip() for entry in entries for name in entry.split(","))
+    return [name for name in names if name]
+
+
+def _run_flags(
+    skip_validation: tuple[str, ...], flags: tuple[str, ...]
+) -> dict[str, list[str]]:
+    """The run's ``flags`` body: flag name (no ``--``) to values. ``--flag
+    NAME`` without a value is a bare flag (an empty list); the API decides
+    which flags and values it accepts."""
+    run_flags: dict[str, list[str]] = {}
+    if skip_validation:
+        run_flags["skip-validation"] = _split_names(skip_validation)
+    for entry in flags:
+        name, sep, value = entry.partition("=")
+        name = name.strip().removeprefix("--")
+        if not name:
+            raise CloudError(f"--flag {entry!r} names no flag; expected NAME=VALUE.")
+        values = run_flags.setdefault(name, [])
+        if sep:
+            values.append(value)
+    return run_flags
+
+
 @jobs.command("run")
 @click.argument("job")
 @click.option(
@@ -2335,6 +2361,24 @@ def _report_chain(chain: Sequence[Workspace], resolved: bool) -> None:
     " whether or not they look stale: `trilogy refresh --force` on the worker."
     " Refresh jobs only.",
 )
+@click.option(
+    "--skip-validation",
+    "skip_validation",
+    multiple=True,
+    help="Build these datasources (by name, repeatable or comma-separated)"
+    " without evaluating their `assert` clauses: `trilogy refresh"
+    " --skip-validation` on the worker. Refresh jobs only; refused to scoped"
+    " tokens.",
+)
+@click.option(
+    "--flag",
+    "flags",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help="Pass `--NAME=VALUE` to the job's CLI on the worker, repeatable. Only"
+    " the flags trilogy-cloud allows per run are accepted, so this reaches a"
+    " flag the cloud allows before this CLI has an option for it.",
+)
 @click.pass_context
 def jobs_run(
     ctx: click.Context,
@@ -2344,17 +2388,23 @@ def jobs_run(
     poll_seconds: int,
     logs: bool,
     force: tuple[str, ...],
+    skip_validation: tuple[str, ...],
+    flags: tuple[str, ...],
 ) -> None:
     """Trigger a run of a job (by name or id).
 
     Without ``--wait`` this returns as soon as the run is queued, so a zero
     exit means "accepted", not "succeeded". CI wants ``--wait``.
     """
+    run_flags = _run_flags(skip_validation, flags)
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
-    forced = [name.strip() for entry in force for name in entry.split(",")]
-    body = {"force": [name for name in forced if name]} if force else None
-    run = client.post_one(f"/orgs/{org}/jobs/{found.id}/run", JobRun, body)
+    body: dict[str, object] = {}
+    if force:
+        body["force"] = _split_names(force)
+    if run_flags:
+        body["flags"] = run_flags
+    run = client.post_one(f"/orgs/{org}/jobs/{found.id}/run", JobRun, body or None)
     if is_json_mode():
         emit_event("run_triggered", org=org, run=run.model_dump(mode="json"))
     else:
