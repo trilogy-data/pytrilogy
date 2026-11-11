@@ -1974,6 +1974,49 @@ replaces is gone. It fails with the reads applied after the election.
 `test_a_dimension_read_takes_no_row_provider` and
 `test_the_row_provider_election_takes_no_dimension` pin the hand-off.
 
+**A full-coverage sibling is read before the rehome (part 55).** Part 54
+left two picks in the election: a full-coverage sibling and a partial spine.
+The sibling pick was already computed over the folded graph, as the reason a
+group takes no dimension read, so stage 2 now makes it there, in the same
+step as the dimension reads:
+
+- `_elect_reads` picks, for each unplaced regraftable group, a full-coverage
+  sibling (`_regraft_candidate`, gates unchanged), else the dimension ROOT a
+  BASIC reads. `_apply_reads` elects every read before applying any, and a
+  read that changes nothing still settles its group, as before.
+- The rehome elects only a spine (`_elect_spine`, `_elect_spines`) over the
+  graph with the reads applied, and adds it as one lineage edge.
+  `_rehome_groups` no longer takes buckets; `_as_rewrite` is gone, since a
+  spine never drops or mints. `RowProvider` is now only a placement or a
+  read.
+
+What can move: a sibling is now elected over the folded graph, not the graph
+with the dimension reads applied, and a spine is elected over the graph with
+the sibling edges added. A census over one suite run
+(`-m "not adventureworks_execution and not cloud_live"`, `*_laws.py`
+ignored, as CI runs it) rehomed every pass both ways: part 54's order
+(dimension reads, then one election of sibling and spine) and the siblings
+read with the dimensions. It then compared the resulting graphs: nodes,
+edges and their kinds, every grain and group attribute, and the buckets
+(compared by value). 12,542 passes, no graph differed. 1,162 sibling reads
+were elected; 304 of them add an edge, in 149 tests, the same 304 part 54's
+election made. 72 spine edges are added either way. In 17 passes a sibling
+edge sits beside a spine or a dimension rewrite. No spine elected was a
+full-coverage sibling: in this run every group a sibling covers was read
+before the rehome. A control over `tests/core/processing` that left the
+sibling reads unapplied differed in all 4 passes with a sibling edge.
+
+`test_every_sibling_is_read_before_any_spine_is_elected` pins the order over
+a HAVING on an aggregate grouped by a BASIC key: when the spines are elected,
+each sibling read is already its reader's parent. It fails with the sibling
+edges added after the election. `test_a_sibling_read_takes_no_spine`,
+`test_a_sibling_read_adds_only_its_edge`,
+`test_a_held_sibling_still_settles_its_group` and
+`test_a_full_coverage_sibling_outranks_a_dimension` pin the hand-off;
+`test_a_spine_is_one_lineage_edge` and
+`test_a_spine_the_graph_already_holds_is_no_rewrite` replace the
+`_as_rewrite` tests.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2001,9 +2044,9 @@ not built yet:
    election never places a projection. Every window fold is made before
    the election too (part 53), so no rewrite deletes a group, and so is
    every dimension read (part 54), so no rewrite drops a parent or mints a
-   group. What the election still writes is one lineage edge per group: a
-   full-coverage sibling or a partial spine. The stated grain, placement,
-   folds and reads still follow `_compute_concept_sets`, since the grouping
+   group. So is every full-coverage sibling (part 55): the rehome elects
+   only a partial spine, one lineage edge per group. The stated grain,
+   placement, folds and reads still follow `_compute_concept_sets`, since the grouping
    provider and the sibling are read off the groups' input and output sets;
    stating them when stage 2 groups needs those sets first. Then
    `_compute_concept_sets` runs again.

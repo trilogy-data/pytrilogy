@@ -52,13 +52,13 @@ class _FoldLog:
 
 _ELECT = gg._elect_folds
 _GROUPING = gg._elect_grouping_providers
-_PROVIDERS = gg._elect_row_providers
+_PROVIDERS = gg._elect_spines
 
 
 def _patch(monkeypatch, log: _FoldLog) -> _FoldLog:
     monkeypatch.setattr(gg, "_elect_folds", log.elect)
     monkeypatch.setattr(gg, "_elect_grouping_providers", log.elect_grouping)
-    monkeypatch.setattr(gg, "_elect_row_providers", log.elect_providers)
+    monkeypatch.setattr(gg, "_elect_spines", log.elect_providers)
     return log
 
 
