@@ -2079,10 +2079,12 @@ about the graph stage 2 built. Now they are passed as a value:
 What can move: nothing, if the rehome read no set it had already changed. A
 fold leaves the WINDOW's sets as they were, a placement changes only a
 grain, and a minted ROOT is never asked for its sets. A census over one
-suite run (CENSUS_SCOPE) built every group graph twice, with `main`'s
+suite run (`-m "not adventureworks_execution and not cloud_live"`,
+`*_laws.py` ignored, as CI runs it) built every group graph twice, with `main`'s
 `group_graph` and with this one. It compared the results by value: nodes,
-edges and their kinds, and every group attribute. CENSUS_RESULT
-Within `tests/core/processing`, `main` compared against itself differs in
+edges and their kinds, and every group attribute. 12,410 passes, no graph differed. Over them, 67 folds, 1,124 grouping
+providers and 1,457 reads were elected (106 of them mint a ROOT), across
+1,301 tests. Within `tests/core/processing`, `main` compared against itself differs in
 none of 512 passes, so the comparison is stable. A control that skips
 `main`'s reads differs in 21 of them, so it can see a change.
 
