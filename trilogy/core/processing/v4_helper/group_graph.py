@@ -2348,10 +2348,8 @@ def build_group_graph(
     grouping = _elect_grouping_providers(group_graph, attrs, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
     _fold_groups(group_graph, group_edges, attrs, buckets, folds)
-    read = _read_dimensions(
-        group_graph, group_edges, attrs, buckets, concept_attrs, placed
-    )
-    _rehome_groups(group_graph, group_edges, attrs, buckets, environment, placed | read)
+    read = _apply_reads(group_graph, group_edges, attrs, buckets, concept_attrs, placed)
+    _rehome_groups(group_graph, group_edges, attrs, environment, placed | read)
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
@@ -2460,9 +2458,8 @@ def trace_group_graph(
 class RowProvider:
     """The row source a group is re-homed onto: the parent it reads, the
     lineage parents that parent replaces, and the dimension ROOT minted for
-    it. A placement drops; a dimension read drops and mints; a row provider
-    elected in the rehome (`_as_rewrite`) holds only the edge the graph
-    lacks."""
+    it. A placement drops; a dimension read drops and mints; a sibling read
+    holds only the parent."""
 
     parent: str | None
     drop: frozenset[str] = frozenset()
@@ -2978,18 +2975,15 @@ def _place_projections(
     return frozenset(placements)
 
 
-def _elect_row_provider(
+def _elect_spine(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     gid: str,
-) -> RowProvider | None:
-    """Pick `gid`'s row source over the graph; mutates nothing. The choices,
-    in order: a full-coverage sibling, a partial spine."""
-    parent_gid = _regraft_candidate(
-        group_graph, group_edges, attrs, gid, allow_partial=False
-    ) or _regraft_candidate(
+) -> str | None:
+    """`gid`'s partial spine over the graph; mutates nothing."""
+    return _regraft_candidate(
         group_graph,
         group_edges,
         attrs,
@@ -2997,7 +2991,6 @@ def _elect_row_provider(
         allow_partial=True,
         environment=environment,
     )
-    return None if parent_gid is None else RowProvider(parent_gid)
 
 
 def _rehomeable(
@@ -3010,7 +3003,7 @@ def _rehomeable(
     )
 
 
-def _elect_dimension_reads(
+def _elect_reads(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
@@ -3018,26 +3011,29 @@ def _elect_dimension_reads(
     concept_attrs: dict[str, ConceptAttrs],
     placed: frozenset[str],
 ) -> dict[str, RowProvider]:
-    """Each unplaced BASIC with no full-coverage sibling that reads its inputs
-    off a dimension ROOT, elected over the folded graph. A sibling outranks
-    a dimension, so a group with one is left to the rehome."""
+    """Each unplaced regraftable group's read, elected over the folded graph:
+    a full-coverage sibling, else the dimension ROOT a BASIC reads its inputs
+    off. A sibling outranks a dimension."""
     reads: dict[str, RowProvider] = {}
     for gid in group_graph.nodes:
         if not _rehomeable(attrs, gid, placed):
             continue
-        if _regraft_candidate(
+        sibling = _regraft_candidate(
             group_graph, group_edges, attrs, gid, allow_partial=False
-        ):
-            continue
-        read = _synthetic_dimension_regraft_parent(
-            group_graph, group_edges, attrs, buckets, concept_attrs, gid
+        )
+        read = (
+            RowProvider(sibling)
+            if sibling is not None
+            else _synthetic_dimension_regraft_parent(
+                group_graph, group_edges, attrs, buckets, concept_attrs, gid
+            )
         )
         if read is not None:
             reads[gid] = read
     return reads
 
 
-def _read_dimensions(
+def _apply_reads(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
@@ -3045,11 +3041,11 @@ def _read_dimensions(
     concept_attrs: dict[str, ConceptAttrs],
     placed: frozenset[str],
 ) -> frozenset[str]:
-    """Re-home each dimension read onto its ROOT, minting it when none covers
-    its inputs, in place of the ROOT parents it replaces. Every read is
-    elected before any is applied. Returns the groups read, a pick that
-    changes nothing included: the rehome elects none of them."""
-    reads = _elect_dimension_reads(
+    """Re-home each read onto its sibling or dimension ROOT, minting the ROOT
+    when none covers its inputs, in place of the ROOT parents it replaces.
+    Every read is elected before any is applied. Returns the groups read, a
+    pick that changes nothing included: the rehome elects none of them."""
+    reads = _elect_reads(
         group_graph, group_edges, attrs, buckets, concept_attrs, placed
     )
     for gid, read in reads.items():
@@ -3079,65 +3075,39 @@ def _apply_row_provider(
     add_edge(group_graph, group_edges, parent, gid, EdgeKind.LINEAGE)
 
 
-def _as_rewrite(
-    group_graph: nx.DiGraph, gid: str, provider: RowProvider
-) -> RowProvider | None:
-    """`provider` less what the graph already holds, or None when it changes
-    nothing: its parent is already a parent, and it drops and mints nothing."""
-    drop = frozenset(p for p in provider.drop if group_graph.has_edge(p, gid))
-    minted = provider.minted
-    if minted is not None and minted.group_id in group_graph:
-        minted = None
-    parent = provider.parent
-    if parent is not None and group_graph.has_edge(parent, gid):
-        parent = None
-    if parent is None and not drop and minted is None:
-        return None
-    return RowProvider(parent, drop, minted)
-
-
-def _elect_row_providers(
+def _elect_spines(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     settled: frozenset[str],
-) -> dict[str, RowProvider]:
-    """Each regraftable group not placed at its grouping provider nor read
-    off a dimension whose best row source is already built, elected over one
-    graph (stage 2's, with the projections placed, the folds made and the
-    dimensions read), as the rewrite it makes of that graph. A provider only
-    adds a lineage edge.
+) -> dict[str, str]:
+    """Each unsettled group's partial spine the graph does not already hold,
+    elected over one graph (stage 2's, with the projections placed, the folds
+    made and the reads applied).
 
     Concrete datasource selection remains in `source_planning` and
     StrategyNode construction in `strategy_builder`.
     """
-    providers: dict[str, RowProvider] = {}
-    for gid in list(group_graph.nodes):
+    spines: dict[str, str] = {}
+    for gid in group_graph.nodes:
         if not _rehomeable(attrs, gid, settled):
             continue
-        provider = _elect_row_provider(
-            group_graph, group_edges, attrs, environment, gid
-        )
-        if provider is not None:
-            provider = _as_rewrite(group_graph, gid, provider)
-        if provider is not None:
-            providers[gid] = provider
-    return providers
+        spine = _elect_spine(group_graph, group_edges, attrs, environment, gid)
+        if spine is not None and not group_graph.has_edge(spine, gid):
+            spines[gid] = spine
+    return spines
 
 
 def _rehome_groups(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
     environment: BuildEnvironment,
     settled: frozenset[str],
 ) -> None:
-    """Elect every unsettled group's row provider over one graph, then apply
-    them all: no election reads another's edges."""
-    providers = _elect_row_providers(
-        group_graph, group_edges, attrs, environment, settled
-    )
-    for gid, provider in providers.items():
-        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
+    """Elect every unsettled group's spine over one graph, then add each as a
+    lineage edge: no election reads another's."""
+    spines = _elect_spines(group_graph, group_edges, attrs, environment, settled)
+    for gid, spine in spines.items():
+        add_edge(group_graph, group_edges, spine, gid, EdgeKind.LINEAGE)

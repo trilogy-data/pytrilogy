@@ -53,14 +53,14 @@ class _GrainLog:
 
 
 _STATE = gg._state_projection_grains
-_ELECT = gg._elect_row_providers
+_ELECT = gg._elect_spines
 
 
 @pytest.fixture
 def log(monkeypatch) -> _GrainLog:
     log = _GrainLog()
     monkeypatch.setattr(gg, "_state_projection_grains", log.state)
-    monkeypatch.setattr(gg, "_elect_row_providers", log.elect)
+    monkeypatch.setattr(gg, "_elect_spines", log.elect)
     env = Environment()
     env.parse(_MODEL)
     Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
@@ -146,19 +146,16 @@ def test_a_placed_projection_is_not_elected(monkeypatch):
         ("r", Derivation.ROOT),
     ]:
         attrs[gid].derivation = derivation
-    monkeypatch.setattr(gg, "_elect_row_provider", lambda *a: gg.RowProvider("x"))
-    providers = gg._elect_row_providers(
-        group_graph, edges, attrs, None, frozenset({"g"})
-    )
-    assert providers == {}
+    monkeypatch.setattr(gg, "_elect_spine", lambda *a: "x")
+    spines = gg._elect_spines(group_graph, edges, attrs, None, frozenset({"g"}))
+    assert spines == {}
 
 
-def test_the_row_provider_election_takes_no_inline_window(monkeypatch):
+def test_the_spine_election_takes_no_inline_window(monkeypatch):
     group_graph, edges, attrs = _placement_graph()
     monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
-    provider = gg._elect_row_provider(group_graph, edges, attrs, None, "g")
-    assert provider is None
+    assert gg._elect_spine(group_graph, edges, attrs, None, "g") is None
 
 
 def test_a_folded_projection_takes_no_grouping_provider(monkeypatch):
