@@ -1951,12 +1951,19 @@ the row-provider election:
 What can move: a sibling or spine pick is now elected over the graph where
 the reads are applied, so a group downstream of a read sees the minted ROOT
 in its ancestors and not the ROOTs dropped. A census over one suite run
-(CENSUS_SCOPE) rehomed every pass both ways: part 53's order (one election of
+(`-m "not adventureworks_execution and not cloud_live"`,
+`*_laws.py` ignored, as CI runs it) rehomed every pass both ways: part 53's order (one election of
 sibling, dimension and spine, then apply) and the dimensions read first. It
 then compared the resulting graphs: nodes, edges and their kinds, every
 grain, member list and member depths, and the buckets (compared by value).
-CENSUS_NUMBERS A control run that skipped the reads differed in every pass
-with a dimension rewrite, so the comparison can see one.
+12,563 passes, no graph differed, and in every pass the
+groups read were exactly the groups part 53 gave a dimension pick. 192 reads
+were elected; 103 of them rewrite the graph, in 103 passes over 73 tests, and
+101 of those mint a ROOT. 488 rewrites are elected in all. In 73 passes a
+dimension pick sits beside another group's row-provider pick, the case where
+the order could matter. A control run over `tests/core/processing` that
+skipped the reads differed in all 10 passes with a dimension rewrite, so the
+comparison can see one.
 
 `test_every_dimension_is_read_before_any_row_provider_is_elected` pins the
 order over `adhoc04`, which mints a dimension ROOT: when the row providers are

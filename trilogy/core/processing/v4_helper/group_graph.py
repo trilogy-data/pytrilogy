@@ -2458,10 +2458,11 @@ def trace_group_graph(
 
 @dataclass(frozen=True)
 class RowProvider:
-    """The row source a regraftable group is re-homed onto: the parent it
-    reads, the lineage parents that parent replaces, and the dimension ROOT
-    minted for it. Once elected (`_as_rewrite`) it holds only what the graph
-    lacks: `parent` is None when already a parent."""
+    """The row source a group is re-homed onto: the parent it reads, the
+    lineage parents that parent replaces, and the dimension ROOT minted for
+    it. A placement drops; a dimension read drops and mints; a row provider
+    elected in the rehome (`_as_rewrite`) holds only the edge the graph
+    lacks."""
 
     parent: str | None
     drop: frozenset[str] = frozenset()
