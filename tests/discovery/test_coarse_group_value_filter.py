@@ -26,3 +26,12 @@ def test_coarse_gate_total():
     sql, rows = _run("select sum(height) as v where sum(height) by city > 8;")
     assert "trees" not in sql, sql
     assert rows == [(9,)]
+
+
+def test_row_column_beside_gate_reads_base_rows():
+    sql, rows = _run(
+        "select form, sum(height) as v where sum(height) by city > 4"
+        " and species != 'Tilia' order by form;"
+    )
+    assert "trees" in sql, sql
+    assert rows == [("broad", 15)]
