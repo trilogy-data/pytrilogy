@@ -51,6 +51,9 @@ nor the tuple it ranks.
   its first argument alone (`first_argument_pin_misreads`), and the tuple
   the window ranks (`window_tuple_pin_misreads`), for a select at a finer
   grain than that tuple.
+- A membership's member is read at its own `by` too: built at the select
+  grain, `count(id) by species in (1)` gated each city on its own count
+  (`membership_pin_misreads`).
 -/
 
 namespace Trilogy.SelectGrain
@@ -149,6 +152,22 @@ theorem window_tuple_pin_misreads :
     let tuple : Int × Int × Int → Key := fun r => [r.2.1]
     eval (.by_ tuple) grain y rows (0, 0, 10) = 30 ∧
       eval .bare grain y rows (0, 0, 10) = 10 ∧ eval .bare grain y rows (1, 0, 20) = 20 := by
+  decide
+
+/-- A membership reads its member at the member's own `by`, as a comparison
+does. Rows `(city, species)` and `select city, count(id) where count(id) by
+species in (1)`: species 1 and 2 hold one row each, so each city keeps one
+row. Read at the select grain the member is each city's count, 3 and 2, which
+`(1)` does not hold, and every row is dropped: the IN form built its member
+inline, losing the `by`. -/
+theorem membership_pin_misreads :
+    let rows : List (Int × Int) := [(0, 0), (0, 0), (0, 1), (1, 0), (1, 2)]
+    let one : Int × Int → Int := fun _ => 1
+    let grain : Int × Int → Key := fun r => [r.1]
+    let species : Int × Int → Key := fun r => [r.2]
+    (rows.filter (fun r => eval (.by_ species) grain one rows r ∈ [1])).map (·.1) =
+        [0, 1] ∧
+      (rows.filter (fun r => eval .bare grain one rows r ∈ [1])).isEmpty := by
   decide
 
 /-! ## An aggregate `by` fixed keys in a select -/

@@ -221,36 +221,59 @@ def _conditions_supported(
     would read the stored partial as that value."""
     if not conditions:
         return True
-    grain = set(datasource.grain.components)
     return _concepts_reachable(
         datasource,
         [
             c
             for c in conditions.row_arguments
             if c.granularity != Granularity.SINGLE_ROW
-            and not (joined and _keyed_aggregate(c, grain))
+            and not (joined and keyed_aggregate(c, datasource, concepts_by_address))
         ],
         concepts_by_address,
     )
 
 
-def _keyed_aggregate(concept: BuildConcept, grain: set[str]) -> bool:
-    return (
-        concept.derivation == Derivation.AGGREGATE
-        and bool(concept.grain.components)
-        and concept.grain.components <= grain
+def keyed_aggregate(
+    concept: BuildConcept,
+    datasource: BuildDatasource,
+    concepts_by_address: Mapping[str, BuildConcept] | None,
+) -> bool:
+    """An aggregate grouped by the summary's keys or by dimension columns keyed
+    on them (`sum(x) by tree_form` beside `(city, species)`): a function of
+    each summary row, which the joined plan computes in its own group and
+    joins back on that grain (`Rollup.coarse_group_value_filter_exact`)."""
+    if concept.derivation != Derivation.AGGREGATE or not concept.grain.components:
+        return False
+    grain = set(datasource.grain.components)
+    lookup = concepts_by_address or {}
+    return all(
+        c in grain or joinable_property(lookup.get(c), datasource)
+        for c in concept.grain.components
     )
 
 
-def _coarse_gated(
-    datasource: BuildDatasource, conditions: BuildWhereClause | None
+def coarse_gate(
+    concept: BuildConcept,
+    datasource: BuildDatasource,
+    concepts_by_address: Mapping[str, BuildConcept] | None,
 ) -> bool:
-    """The WHERE gates on an aggregate at a grain inside the summary's: even
+    """A keyed aggregate not at the summary's own grain: its value is a
+    re-sum over several summary rows, never the partial one row stores."""
+    return keyed_aggregate(concept, datasource, concepts_by_address) and set(
+        concept.grain.components
+    ) != set(datasource.grain.components)
+
+
+def _coarse_gated(
+    datasource: BuildDatasource,
+    conditions: BuildWhereClause | None,
+    concepts_by_address: Mapping[str, BuildConcept] | None,
+) -> bool:
+    """The WHERE gates on an aggregate coarser than the summary's grain: even
     at the summary's own grain, its rows are joined to the gate's value before
     their (identity) re-sum (`Rollup.coarse_group_value_filter_exact`)."""
-    grain = set(datasource.grain.components)
     return conditions is not None and any(
-        _keyed_aggregate(c, grain) and c.grain.components != grain
+        coarse_gate(c, datasource, concepts_by_address)
         for c in conditions.row_arguments
     )
 
@@ -419,7 +442,7 @@ def get_rollup_concepts(
     if datasource_grain.issubset(target_grain) and not (
         joined
         and datasource_grain == target_grain
-        and _coarse_gated(datasource, conditions)
+        and _coarse_gated(datasource, conditions, concepts_by_address)
     ):
         return []
     # The table must be able to GROUP BY the target grain: every component bound

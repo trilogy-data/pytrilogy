@@ -341,3 +341,16 @@ select brand, sum(qty) as q
 order by brand asc;
 """)[0].fetchall()
     assert [tuple(r) for r in results] == [(100, 55), (200, 7)]
+
+
+@pytest.mark.parametrize("operator,members", [("in", "(1)"), ("not in", "(2)")])
+def test_aggregate_member_keeps_its_grain(operator: str, members: str):
+    """`SelectGrain.membership_pin_misreads`: `count(x) by k in (...)` gates
+    each row on its `k` group's count, as `=` does, not on the select's."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_FIXTURE)
+    results = executor.execute_text(
+        f"where count(sale_id) by brand {operator} {members}"
+        " select cls, count(sale_id) as n order by cls asc;"
+    )[0].fetchall()
+    assert [tuple(r) for r in results] == [(2, 1), (9, 1)]

@@ -67,3 +67,37 @@ def test_resum_is_not_joined_on_its_partial():
     sql, rows = run_rollup(BASE + SUMMARY, query)
     assert "tree_summary" in sql, sql
     assert rows == [("broadleaf", 10, 10)]
+
+
+def test_having_on_output_grain_aggregate_reads_summary():
+    sql, rows = _run(
+        "select city, sum(height) as v having sum(height) by city > 8 order by city;"
+    )
+    assert "trees" not in sql, sql
+    assert rows == [("B", 9)]
+
+
+def test_gate_by_dimension_column_reads_summary():
+    sql, rows = _run(
+        "select city, sum(height) as v where sum(height) by form > 2 order by city;"
+    )
+    assert "trees" not in sql, sql
+    assert rows == [("A", 8), ("B", 7)]
+
+
+def test_gate_by_key_and_dimension_column_joins_on_both():
+    sql, rows = _run(
+        "select city, sum(height) as v where sum(height) by city, form > 4"
+        " order by city;"
+    )
+    assert "trees" not in sql, sql
+    assert rows == [("A", 8), ("B", 7)]
+
+
+def test_in_list_gate_reads_its_own_grain():
+    sql, rows = _run(
+        "select species, sum(height) as v where sum(height) by city in (8)"
+        " order by species;"
+    )
+    assert "trees" not in sql, sql
+    assert rows == [("Acer", 3), ("Quercus", 5)]

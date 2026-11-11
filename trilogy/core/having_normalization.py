@@ -702,11 +702,15 @@ class _HavingNormalization:
         from trilogy.parsing.common import arbitrary_to_concept
 
         rename = self.rename_map()
-        existing: set[tuple[Any, tuple[str, ...], tuple[str, ...]]] = set()
-        for _, lineage in self.derived_lineages():
+        # an output whose lineage is the HAVING aggregate (`sum(x)` pinned to
+        # the select grain, beside `having sum(x) by <grain>`) is read by its
+        # reference: re-inlined, the aggregate reads rows a rolled-up source
+        # never carries
+        existing: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
+        for address, lineage in self.derived_lineages():
             sig = _aggregate_full_signature(lineage, rename)
             if sig is not None:
-                existing.add(sig)
+                existing.setdefault(sig, self.local_concepts[address].reference)
         base_targets: list[Any] | None = None
         base_components: set[str] = set()
         sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
@@ -719,7 +723,10 @@ class _HavingNormalization:
             ):
                 continue
             sig = _aggregate_full_signature(node, rename)
-            if sig is None or sig in existing or sig in sig_to_ref:
+            if sig is None or sig in sig_to_ref:
+                continue
+            if sig in existing:
+                sig_to_ref[sig] = existing[sig]
                 continue
             concept = arbitrary_to_concept(node, self.environment)
             if base_targets is None:

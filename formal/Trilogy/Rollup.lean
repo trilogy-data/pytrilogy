@@ -778,6 +778,59 @@ theorem Rollup.coarse_gate_at_summary_grain {σ : Type} [DecidableEq σ]
         rows) :=
   Rollup.coarse_group_value_filter_exact g ks hnd rows hcov v w c p _
 
+/-! ## A gate grouped by a dimension's column
+
+`sum(x) by tree_form > 6` beside a `(city, species)` summary reads one value
+per `d (s k)`: `s` projects the summary key to the dimension's key (`species`)
+and `d` reads the column off it. That is a coarse key like any other, so the
+joined plan computes the gate in its own group, joins `d` onto the summary
+rows, and joins the gate back on `d`'s value. Grouped by the key `d` hangs off
+(`Rollup.dimension_gate_by_its_key_misfilters`), or joined back on part of its
+grain (`Rollup.gate_joined_on_part_of_its_grain_misfilters`), it misfilters. -/
+
+/-- **A gate at a dimension's column rolls up.** `coarse_group_value_filter_exact`
+with the coarse key `d ∘ s`. -/
+theorem Rollup.dimension_gate_exact {β σ : Type} [DecidableEq σ]
+    (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v w : α → Option Int) (s : κ → β) (d : β → σ) (p : Option Int → Bool)
+    (q : κ → Bool) :
+    let gate : κ → Option Int := fun k =>
+      sqlSum (stored g ks rows (sumAgg w) (fun k' => decide (d (s k') = d (s k))))
+    sqlSum (stored g ks rows (sumAgg v) (fun k => p (gate k) && q k)) =
+      sumAgg v (keep g
+        (fun k => p (sumAgg w (slice (fun r => d (s (g r))) (d (s k)) rows)) && q k)
+        rows) :=
+  Rollup.coarse_group_value_filter_exact g ks hnd rows hcov v w (fun k => d (s k)) p q
+
+/-- Two species of one form summing to 3 and 5 pass `sum(x) by form > 6`
+together (8); grouped by species, neither passes. -/
+theorem Rollup.dimension_gate_by_its_key_misfilters :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    let d : Nat → Nat := fun _ => 0
+    sumAgg v (keep (·.1)
+        (fun k => (sumAgg v (slice (fun r => d r.1) (d k) rows)).any (· > 6)) rows) =
+        some 8 ∧
+      sumAgg v (keep (·.1)
+        (fun k => (sumAgg v (slice (·.1) k rows)).any (· > 6)) rows) = none := by
+  decide
+
+/-- Summary rows `((city, species), x)` with species 1 and 2 of different
+forms in one city: `sum(x) by city, form > 4` keeps only the 5. Joined back on
+`city` alone, a row is kept when any form of its city passes, and the 2 is
+kept too. -/
+theorem Rollup.gate_joined_on_part_of_its_grain_misfilters :
+    let rows : List ((Nat × Nat) × Int) := [((0, 1), 5), ((0, 2), 2)]
+    let v : (Nat × Nat) × Int → Option Int := fun r => some r.2
+    let form : Nat × Nat → Nat × Nat := fun k => (k.1, k.2 % 2)
+    let gate : Nat × Nat → Bool := fun k =>
+      (sumAgg v (slice (fun r => form r.1) (form k) rows)).any (· > 4)
+    sumAgg v (keep (·.1) gate rows) = some 5 ∧
+      sumAgg v (keep (·.1)
+        (fun k => rows.any (fun r => r.1.1 == k.1 && gate r.1)) rows) = some 7 := by
+  decide
+
 /-! ## COUNT DISTINCT of a grain column
 
 `count_distinct` does not re-aggregate (`Rollup.count_distinct_not_additive`),

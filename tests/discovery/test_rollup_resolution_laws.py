@@ -82,6 +82,15 @@ GRAINS = {
     "city_form": ["city", "tree_form"],
 }
 
+GRAINS_BY = {
+    "total": "*",
+    "city": "city",
+    "species": "species",
+    "form": "tree_form",
+    "city_species": "city, species",
+    "city_form": "city, tree_form",
+}
+
 FILTERS = {
     "none": None,
     "city": "city = 'A'",
@@ -225,6 +234,28 @@ def test_having_reads_rolled_up_value(grain: str, where: str):
     )
 
 
+# A HAVING aggregate an output already computes (`sum(height)` pinned to the
+# select grain, beside `having sum(height) by <grain>`) reads that output: built
+# inline, it read rows the summary scan never carries.
+@pytest.mark.parametrize(
+    "grain,where,aggregate",
+    list(itertools.product(GRAINS_BY, FILTERS, ["sum", "count", "max"])),
+)
+def test_having_on_own_grain_aggregate_reads_output(
+    grain: str, where: str, aggregate: str
+):
+    function = AGGREGATES[aggregate].removesuffix(" as v")
+    _assert_same_answer(
+        _select(
+            GRAINS[grain],
+            AGGREGATES[aggregate],
+            FILTERS[where],
+            having=f"{function} by {GRAINS_BY[grain]} > 1",
+        ),
+        served=True,
+    )
+
+
 @pytest.mark.parametrize("name", sorted(NESTED))
 def test_nested_aggregate_rolls_up(name: str):
     _assert_same_answer(NESTED[name], served=True)
@@ -271,9 +302,13 @@ def test_group_value_filter_applies_before_rollup(
 # sharing that key, joined back onto each summary row before the re-sum, at the
 # summary's own grain too, where the re-sum is an identity. Read as each row's
 # stored partial, it misfilters (`Rollup.coarse_gate_on_partial_misfilters`).
-# A gate over a re-sum of the stored column (`nested`) is the same value. A CASE
-# over `tree_form`, a row column beside the gate the target does not group by,
-# and an OR joining `tree_form` outside the target still read the base rows.
+# A gate over a re-sum of the stored column (`nested`) is the same value. A gate
+# grouped by a dimension's column (`tree_form`) joins that column onto the
+# summary rows and the gate back on its whole grain
+# (`Rollup.dimension_gate_exact`). An IN-list member is read at its own `by`
+# (`SelectGrain.membership_pin_misreads`). A CASE over `tree_form`, a row
+# column beside the gate the target does not group by, and an OR joining
+# `tree_form` outside the target still read the base rows.
 COARSE_GATE_GRAINS = {"total", "city", "species", "form", "city_form", "city_species"}
 COARSE_GATES = {
     "sum": ("sum(height) by city > 6", COARSE_GATE_GRAINS),
@@ -292,6 +327,24 @@ COARSE_GATES = {
     ),
     "nested": ("sum(sum(height) by city, species) by city > 6", COARSE_GATE_GRAINS),
     "nested_max": ("max(sum(height) by city, species) by city > 6", COARSE_GATE_GRAINS),
+    "in_list": ("sum(height) by city in (8, 9)", COARSE_GATE_GRAINS),
+    "form": ("sum(height) by tree_form > 6", COARSE_GATE_GRAINS),
+    "form_count": ("count(tree_id) by tree_form >= 3", COARSE_GATE_GRAINS),
+    "form_min_null": ("min(height) by tree_form is null", COARSE_GATE_GRAINS),
+    "form_in_list": ("max(height) by tree_form in (7, 2)", COARSE_GATE_GRAINS),
+    "city_form": ("sum(height) by city, tree_form > 4", COARSE_GATE_GRAINS),
+    "form_nested": (
+        "sum(sum(height) by city, species) by tree_form > 6",
+        COARSE_GATE_GRAINS - {"total"},
+    ),
+    "form_beside_city": (
+        "sum(height) by tree_form > 6 and sum(height) by city > 8",
+        COARSE_GATE_GRAINS,
+    ),
+    "form_vs_city": (
+        "sum(height) by tree_form > sum(height) by city",
+        COARSE_GATE_GRAINS,
+    ),
     "and_species": (
         "max(height) by city >= 7 and species != 'Tilia'",
         {"species", "city_species"},

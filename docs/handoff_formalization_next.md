@@ -975,6 +975,31 @@ a filter its grain does not determine. Open questions:
     not carry. `having sum(height) > 6` and `having v > 6` plan;
   - `count(tree_id)` beside `sum(height) by *` reads the base rows
     (`MIXED_GRAINS`, `test_resum_beside_other_grain_keeps_every_group`).
+- Done in 0.3.489: a gate at a dimension's column (`sum(height) by
+  tree_form > 6`, `sum(height) by city, tree_form > 4`) reads the summary
+  (`Rollup.dimension_gate_exact`): the gate is grouped by its own grain and
+  joined back on all of it, onto summary rows that already carry the
+  dimension column. A HAVING over an output's own aggregate (`having
+  sum(height) by city > 6` beside `sum(height) as v`) reads `v`. An
+  aggregate member of an IN list (`count(x) by k in (1)`) keeps its grain
+  (`SelectGrain.membership_pin_misreads`; wrong rows on main with or without
+  a summary). Probed and correct, left as leads:
+  - `select sum(height) where sum(sum(height) by city, species) by tree_form
+    > 6` reads the trees at the grand total, and at `city` reads the summary
+    and the trees (`form_nested` in the harness). The same gate by `city` is
+    served at every grain;
+  - a HAVING gate at another grain beside a `count`/`max` target (`select
+    city, tree_form, count(tree_id) having sum(height) by city > 8`, `select
+    city, max(height) having sum(height) by * > 10`) reads the trees, where
+    a `sum` target is served;
+  - `select city, species, sum(height) by city as v` (a coarser aggregate
+    projected at the summary's grain) and `select city, sum(height),
+    sum(height) by species` read the trees;
+  - `agg(x ? <group-value gate>)` (`sum(height ? sum(height) by city > 6)`)
+    reads the trees;
+  - `select city, sum(height) where sum(height) by city > 6` renders the
+    gate as a grouped CTE with a HAVING, joined back and filtered again; at
+    the target's own grain it is one HAVING.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

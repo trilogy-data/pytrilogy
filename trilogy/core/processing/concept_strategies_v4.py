@@ -50,6 +50,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _datasource_has_matching_rollup_aggregate,
     _is_rollable_aggregate,
     at_own_grain,
+    coarse_gate,
     filter_finer_row_args,
     holds_every_kept_row,
     joinable_property,
@@ -855,7 +856,7 @@ def _rollup_sources(
         if (
             gated
             and isinstance(source, BuildDatasource)
-            and _coarse_gate(where, source)
+            and _coarse_gate(where, source, environment)
         ):
             continue
         if not holds_every_kept_row(source, where):
@@ -890,16 +891,16 @@ def _rollup_sources(
     return out
 
 
-def _coarse_gate(where: BuildWhereClause | None, source: BuildDatasource) -> bool:
-    """The WHERE reads an aggregate at a grain inside `source`'s but not at
-    it (`sum(x) by city` beside `(city, species)`): its value is a re-sum the
-    joined plan computes in its own group."""
-    grain = set(source.grain.components)
+def _coarse_gate(
+    where: BuildWhereClause | None,
+    source: BuildDatasource,
+    environment: BuildEnvironment,
+) -> bool:
+    """The WHERE reads an aggregate coarser than `source`'s grain (`sum(x) by
+    city` beside `(city, species)`): its value is a re-sum the joined plan
+    computes in its own group."""
     return where is not None and any(
-        c.derivation == Derivation.AGGREGATE
-        and c.granularity != Granularity.SINGLE_ROW
-        and set(c.grain.components) < grain
-        for c in where.row_arguments
+        coarse_gate(c, source, environment.concepts) for c in where.row_arguments
     )
 
 
