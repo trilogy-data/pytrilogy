@@ -52,6 +52,7 @@ from trilogy.core.processing.aggregate_rollup import (
     at_own_grain,
     filter_finer_row_args,
     holds_every_kept_row,
+    joinable_property,
     source_rollup_concepts,
     sourced_arguments,
 )
@@ -988,13 +989,10 @@ def _finer_filter_reaches_rollup(
     demands = [c for c in mandatory_list if c.address not in rolled_roots]
     assert where is not None
     # an atom over a stored aggregate filters only the pinned scan's own rows,
-    # so every other demand must be a column of that scan
+    # so every other demand must be a column of that scan, or a dimension's
+    # column keyed on its grain (`_plan_joined_filter_rollup` joins it on)
     if not is_scalar_condition(where.conditional):
-        return any(
-            {c.canonical_address for c in demands}
-            <= {c.canonical_address for c in ds.output_concepts}
-            for ds in rollup_sources
-        )
+        return any(_rides_summary_scan(demands, ds) for ds in rollup_sources)
     reached = walk_lineage(
         [c for c in mandatory_list if c.address not in rolled_roots],
         descend=lambda c: c.address not in rolled_roots,
@@ -1021,6 +1019,13 @@ def _finer_filter_reaches_rollup(
             environment.concepts,
         )
         for ds in rollup_sources
+    )
+
+
+def _rides_summary_scan(demands: list[BuildConcept], ds: BuildDatasource) -> bool:
+    bound = {c.canonical_address for c in ds.output_concepts}
+    return all(
+        c.canonical_address in bound or joinable_property(c, ds) for c in demands
     )
 
 

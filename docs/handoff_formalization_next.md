@@ -926,15 +926,20 @@ a filter its grain does not determine. Open questions:
   rows, as the `sum` versions of those shapes do (`MIXED_GRAINS`).
 - `select tree_form, sum(sum(height) by city, species) where sum(height) by *
   > 100` reads the base rows; the same shape without `tree_form` is served.
-- A WHERE over a stored group value declines to the base rows at a grain
-  the summary does not bind (`tree_form`, a CASE over it), and for a grand
-  total under an OR that joins `tree_form` (`GROUP_VALUE_GRAINS` in the
-  harness). Serving them needs `_plan_joined_filter_rollup` to also group by
-  a joined dimension's column.
+- Done in 0.3.486: a WHERE over a stored group value at a dimension's
+  column keyed on the grain (`tree_form`) reads the summary
+  (`Rollup.group_value_filter_joined_exact`). It still declines to the base
+  rows for a CASE over `tree_form` (`form_case`: the gate and the pin accept
+  only a lineage-free property), and for a grand total under an OR that
+  joins `tree_form`, whose request carries `tree_form` beside a total `v`
+  (`GROUP_VALUE_GRAINS` in the harness).
 - A WHERE over a stored aggregate at a grain COARSER than the summary's
   (`sum(height) by city > 6` beside a `(city, species)` summary) reads the
   base rows. Filtering the summary needs the condition's value joined back on
-  `city`; `_plan_joined_filter_rollup` could source it.
+  `city`; `_plan_joined_filter_rollup` could source it. The blocker is
+  `materialized_root_addresses`: a condition-only aggregate never takes the
+  rollup branch (filtering a finer scan by a rolled value would misfilter,
+  `Rollup.resummed_condition_misfilters`), so it needs its own group.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

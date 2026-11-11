@@ -1220,7 +1220,7 @@ def test_a_targeted_slice_survives_the_post_script_re_evaluation(executor):
     executor.execute_text(BUILD_ONE_DAY)
     raw = executor.environment.datasources["raw_orders"]
     executor.environment.datasources["raw_orders"] = replace(
-        raw, **{"freshness_probe": "/fake/probe.py", "refresh_script": "/fake/ref.py"}
+        raw, freshness_probe="/fake/probe.py", refresh_script="/fake/ref.py"
     )
     policy = RefreshPolicy(
         force_sources=frozenset({"raw_orders"}),

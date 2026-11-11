@@ -239,10 +239,11 @@ def test_unservable_query_reads_base_rows(name: str):
 # stores at its own grain filters the summary rows, then they are re-summed.
 # Dropped (`Rollup.dropped_group_filter_overcounts`) or re-summed at a grain
 # that does not determine it (`Rollup.resummed_condition_misfilters`), the
-# answer was wrong. Only a scan of the summary applies such a filter, so a
-# grain the summary does not bind (`tree_form`) reads the base rows, as does
-# a grand total under the OR that joins `tree_form`.
-GROUP_VALUE_GRAINS = {"total", "city", "species", "city_species"}
+# answer was wrong. A dimension's column keyed on the grain (`tree_form`) is
+# joined onto the filtered summary rows before the re-sum
+# (`Rollup.group_value_filter_joined_exact`); a CASE over it, and a grand
+# total under the OR that joins `tree_form`, read the base rows.
+GROUP_VALUE_GRAINS = {"total", "city", "species", "city_species", "form", "city_form"}
 GROUP_VALUE_FILTERS = {
     "sum": "sum(height) by city, species > 3",
     "count": "count(tree_id) by city, species = 1",
