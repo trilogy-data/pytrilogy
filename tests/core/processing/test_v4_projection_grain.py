@@ -148,7 +148,7 @@ def test_a_placed_projection_is_not_elected(monkeypatch):
         attrs[gid].derivation = derivation
     monkeypatch.setattr(gg, "_elect_row_provider", lambda *a: gg.RowProvider("x"))
     providers = gg._elect_row_providers(
-        group_graph, edges, attrs, {}, {}, None, frozenset({"g"})
+        group_graph, edges, attrs, None, frozenset({"g"})
     )
     assert providers == {}
 
@@ -157,8 +157,7 @@ def test_the_row_provider_election_takes_no_inline_window(monkeypatch):
     group_graph, edges, attrs = _placement_graph()
     monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
-    monkeypatch.setattr(gg, "_synthetic_dimension_regraft_parent", lambda *a: None)
-    provider = gg._elect_row_provider(group_graph, edges, attrs, {}, {}, None, "g")
+    provider = gg._elect_row_provider(group_graph, edges, attrs, None, "g")
     assert provider is None
 
 

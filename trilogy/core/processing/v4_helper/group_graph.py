@@ -2348,15 +2348,10 @@ def build_group_graph(
     grouping = _elect_grouping_providers(group_graph, attrs, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
     _fold_groups(group_graph, group_edges, attrs, buckets, folds)
-    _rehome_groups(
-        group_graph,
-        group_edges,
-        attrs,
-        buckets,
-        concept_attrs,
-        environment,
-        placed,
+    read = _read_dimensions(
+        group_graph, group_edges, attrs, buckets, concept_attrs, placed
     )
+    _rehome_groups(group_graph, group_edges, attrs, buckets, environment, placed | read)
     trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
@@ -2463,10 +2458,11 @@ def trace_group_graph(
 
 @dataclass(frozen=True)
 class RowProvider:
-    """The row source a regraftable group is re-homed onto: the parent it
-    reads, the lineage parents that parent replaces, and the dimension ROOT
-    minted for it. Once elected (`_as_rewrite`) it holds only what the graph
-    lacks: `parent` is None when already a parent."""
+    """The row source a group is re-homed onto: the parent it reads, the
+    lineage parents that parent replaces, and the dimension ROOT minted for
+    it. A placement drops; a dimension read drops and mints; a row provider
+    elected in the rehome (`_as_rewrite`) holds only the edge the graph
+    lacks."""
 
     parent: str | None
     drop: frozenset[str] = frozenset()
@@ -2986,24 +2982,14 @@ def _elect_row_provider(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     gid: str,
 ) -> RowProvider | None:
     """Pick `gid`'s row source over the graph; mutates nothing. The choices,
-    in order: a full-coverage sibling, a dimension ROOT, a partial spine."""
+    in order: a full-coverage sibling, a partial spine."""
     parent_gid = _regraft_candidate(
         group_graph, group_edges, attrs, gid, allow_partial=False
-    )
-    if parent_gid is not None:
-        return RowProvider(parent_gid)
-    dimension = _synthetic_dimension_regraft_parent(
-        group_graph, group_edges, attrs, buckets, concept_attrs, gid
-    )
-    if dimension is not None:
-        return dimension
-    parent_gid = _regraft_candidate(
+    ) or _regraft_candidate(
         group_graph,
         group_edges,
         attrs,
@@ -3012,6 +2998,63 @@ def _elect_row_provider(
         environment=environment,
     )
     return None if parent_gid is None else RowProvider(parent_gid)
+
+
+def _rehomeable(
+    attrs: dict[str, GroupAttrs], gid: str, settled: frozenset[str]
+) -> bool:
+    return (
+        gid != FINAL_NODE_ID
+        and gid not in settled
+        and attrs[gid].derivation in _REGRAFTABLE_DERIVATIONS
+    )
+
+
+def _elect_dimension_reads(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    placed: frozenset[str],
+) -> dict[str, RowProvider]:
+    """Each unplaced BASIC with no full-coverage sibling that reads its inputs
+    off a dimension ROOT, elected over the folded graph. A sibling outranks
+    a dimension, so a group with one is left to the rehome."""
+    reads: dict[str, RowProvider] = {}
+    for gid in group_graph.nodes:
+        if not _rehomeable(attrs, gid, placed):
+            continue
+        if _regraft_candidate(
+            group_graph, group_edges, attrs, gid, allow_partial=False
+        ):
+            continue
+        read = _synthetic_dimension_regraft_parent(
+            group_graph, group_edges, attrs, buckets, concept_attrs, gid
+        )
+        if read is not None:
+            reads[gid] = read
+    return reads
+
+
+def _read_dimensions(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    placed: frozenset[str],
+) -> frozenset[str]:
+    """Re-home each dimension read onto its ROOT, minting it when none covers
+    its inputs, in place of the ROOT parents it replaces. Every read is
+    elected before any is applied. Returns the groups read, a pick that
+    changes nothing included: the rehome elects none of them."""
+    reads = _elect_dimension_reads(
+        group_graph, group_edges, attrs, buckets, concept_attrs, placed
+    )
+    for gid, read in reads.items():
+        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, read)
+    return frozenset(reads)
 
 
 def _apply_row_provider(
@@ -3057,36 +3100,24 @@ def _elect_row_providers(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    placed: frozenset[str],
+    settled: frozenset[str],
 ) -> dict[str, RowProvider]:
-    """Each regraftable group not placed at its grouping provider whose best
-    row source is already built, elected over one graph (stage 2's, with the
-    projections placed and the folds made), as the rewrite it makes of that
-    graph. A provider only adds a lineage edge, drops ROOT parents and mints
-    a ROOT.
+    """Each regraftable group not placed at its grouping provider nor read
+    off a dimension whose best row source is already built, elected over one
+    graph (stage 2's, with the projections placed, the folds made and the
+    dimensions read), as the rewrite it makes of that graph. A provider only
+    adds a lineage edge.
 
     Concrete datasource selection remains in `source_planning` and
     StrategyNode construction in `strategy_builder`.
     """
     providers: dict[str, RowProvider] = {}
     for gid in list(group_graph.nodes):
-        if (
-            gid == FINAL_NODE_ID
-            or gid in placed
-            or attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS
-        ):
+        if not _rehomeable(attrs, gid, settled):
             continue
         provider = _elect_row_provider(
-            group_graph,
-            group_edges,
-            attrs,
-            buckets,
-            concept_attrs,
-            environment,
-            gid,
+            group_graph, group_edges, attrs, environment, gid
         )
         if provider is not None:
             provider = _as_rewrite(group_graph, gid, provider)
@@ -3100,20 +3131,13 @@ def _rehome_groups(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
-    concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    placed: frozenset[str],
+    settled: frozenset[str],
 ) -> None:
-    """Elect every unplaced group's row provider over one graph, then apply
+    """Elect every unsettled group's row provider over one graph, then apply
     them all: no election reads another's edges."""
     providers = _elect_row_providers(
-        group_graph,
-        group_edges,
-        attrs,
-        buckets,
-        concept_attrs,
-        environment,
-        placed,
+        group_graph, group_edges, attrs, environment, settled
     )
     for gid, provider in providers.items():
         _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
