@@ -2017,6 +2017,42 @@ edges added after the election. `test_a_sibling_read_takes_no_spine`,
 `test_a_spine_the_graph_already_holds_is_no_rewrite` replace the
 `_as_rewrite` tests.
 
+**A spine is a read (part 56).** Part 55 left one pick in the rehome
+election, the partial spine, elected over the graph with the reads applied.
+A spine adds one lineage edge and nothing else, and ranks below a sibling and
+a dimension, so stage 2 now elects it in the same step as them:
+
+- `_elect_read` picks, for each unplaced regraftable group, a full-coverage
+  sibling, else the dimension ROOT a BASIC reads, else a partial spine
+  (`_regraft_candidate` with `allow_partial`, gates unchanged), over the
+  folded graph. `_apply_reads` elects every read before applying any.
+- `_rehome_groups`, `_elect_spines`, `_elect_spine` and the `settled` hand-off
+  are gone. The rehome is now three steps over the graph stage 2 built: place
+  the projections, make the folds, apply the reads.
+
+What can move: a spine is now elected over the folded graph, not the graph
+with the sibling and dimension reads applied, so a candidate downstream of a
+read is scored on its ancestors before that read. A census over one suite run
+(`-m "not adventureworks_execution and not cloud_live"`, `*_laws.py`
+ignored, as CI runs it) rehomed every pass both ways: part 55's order
+(sibling and dimension reads, then the spine election over the read graph)
+and the spines elected with the reads. It then compared the resulting graphs:
+nodes, edges and their kinds, every grain and group attribute, and the
+buckets, all by value. 12,513 passes, no graph differed. 172 spine reads were
+elected; 72 of them add an edge, in 54 tests, the same 72 part 55's election
+added. In 21 passes a spine edge sits beside a sibling or dimension read. A control over `tests/core/processing`
+that left the spine reads unapplied differed in all 6 passes with a spine
+edge, so the comparison can see one.
+
+`test_every_read_is_elected_over_one_graph` pins the order over
+`test_v4_window_input_carry`'s model, which elects spines: every read is
+elected over the graph the reads are applied to, and none mutates it. It
+fails with each read applied as it is elected.
+`test_a_spine_is_asked_for_only_after_a_sibling_and_a_dimension`,
+`test_a_sibling_takes_no_spine` and `test_a_dimension_takes_no_spine` pin
+the rank; `test_a_spine_is_one_lineage_edge` and
+`test_a_spine_the_graph_already_holds_is_no_rewrite` now read `_apply_reads`.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2044,12 +2080,13 @@ not built yet:
    election never places a projection. Every window fold is made before
    the election too (part 53), so no rewrite deletes a group, and so is
    every dimension read (part 54), so no rewrite drops a parent or mints a
-   group. So is every full-coverage sibling (part 55): the rehome elects
-   only a partial spine, one lineage edge per group. The stated grain,
-   placement, folds and reads still follow `_compute_concept_sets`, since the grouping
-   provider and the sibling are read off the groups' input and output sets;
-   stating them when stage 2 groups needs those sets first. Then
-   `_compute_concept_sets` runs again.
+   group. So is every full-coverage sibling (part 55), and every partial
+   spine is a read elected with them (part 56): there is no rehome election
+   left. The stated grain, placement, folds and reads still follow
+   `_compute_concept_sets`, since the grouping provider, the sibling and the
+   spine are read off the groups' input and output sets; stating them when
+   stage 2 groups needs those sets first. Then `_compute_concept_sets` runs
+   again.
 
 ## 8. Not claimed
 

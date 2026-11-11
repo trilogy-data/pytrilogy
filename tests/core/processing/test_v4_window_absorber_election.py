@@ -1,6 +1,6 @@
 """A scalar BASIC folds into the WINDOW that renders it inline. Every fold is
 elected over the graph stage 2 built, outranks a grouping provider, and is
-made before any row provider is elected."""
+made before any read is elected."""
 
 from types import SimpleNamespace
 
@@ -52,13 +52,13 @@ class _FoldLog:
 
 _ELECT = gg._elect_folds
 _GROUPING = gg._elect_grouping_providers
-_PROVIDERS = gg._elect_spines
+_PROVIDERS = gg._elect_reads
 
 
 def _patch(monkeypatch, log: _FoldLog) -> _FoldLog:
     monkeypatch.setattr(gg, "_elect_folds", log.elect)
     monkeypatch.setattr(gg, "_elect_grouping_providers", log.elect_grouping)
-    monkeypatch.setattr(gg, "_elect_spines", log.elect_providers)
+    monkeypatch.setattr(gg, "_elect_reads", log.elect_providers)
     return log
 
 
@@ -80,7 +80,7 @@ def test_each_fold_renders_its_basic_in_its_window(log):
         assert set(log.members[gid]) <= set(attrs[window].primary_members)
 
 
-def test_every_fold_is_made_before_any_row_provider_is_elected(log):
+def test_every_fold_is_made_before_any_read_is_elected(log):
     assert log.folds
     assert not set(log.folds) & log.at_election
     assert set(log.folds.values()) <= log.at_election

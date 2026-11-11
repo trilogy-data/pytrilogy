@@ -1,6 +1,5 @@
-"""A group a sibling covers in full is re-homed onto it before the rehome,
-elected with the dimension reads over one graph: the spine election sees it
-read and takes none."""
+"""A group a sibling covers in full is re-homed onto it, elected with the
+dimension and spine reads over one graph: it takes no other read."""
 
 from types import SimpleNamespace
 
@@ -18,56 +17,43 @@ from trilogy.core.processing.v4_helper.edges import (
     lineage_predecessors,
 )
 
-_READ = gg._apply_reads
-_SPINES = gg._elect_spines
+_APPLY = gg._apply_reads
 
 
 class _ReadLog:
     def __init__(self) -> None:
         self.passes: list[dict] = []
 
-    def read(self, group_graph, group_edges, attrs, buckets, concept_attrs, placed):
-        reads = gg._elect_reads(
-            group_graph, group_edges, attrs, buckets, concept_attrs, placed
-        )
+    def apply(self, group_graph, group_edges, attrs, *rest):
+        reads = gg._elect_reads(group_graph, group_edges, attrs, *rest)
         siblings = {
             gid: r.parent
             for gid, r in reads.items()
             if r.parent is not None
-            and attrs[r.parent].derivation != Derivation.ROOT
+            and attrs[r.parent].derivation not in (Derivation.ROOT, Derivation.BASIC)
             and not group_graph.has_edge(r.parent, gid)
         }
-        self.passes.append({"siblings": siblings})
-        return _READ(group_graph, group_edges, attrs, buckets, concept_attrs, placed)
-
-    def spines(self, group_graph, group_edges, attrs, environment, settled):
-        self.passes[-1]["settled"] = settled
-        self.passes[-1]["parents"] = {
+        _APPLY(group_graph, group_edges, attrs, *rest)
+        parents = {
             gid: set(lineage_predecessors(group_graph, group_edges, gid))
-            for gid in self.passes[-1]["siblings"]
+            for gid in siblings
         }
-        return _SPINES(group_graph, group_edges, attrs, environment, settled)
+        self.passes.append({"siblings": siblings, "parents": parents})
 
 
 @pytest.fixture
 def log(monkeypatch) -> _ReadLog:
     log = _ReadLog()
-    monkeypatch.setattr(gg, "_apply_reads", log.read)
-    monkeypatch.setattr(gg, "_elect_spines", log.spines)
+    monkeypatch.setattr(gg, "_apply_reads", log.apply)
     _gen_having_basic_key_sql()
     return log
 
 
-def test_every_sibling_is_read_before_any_spine_is_elected(log):
+def test_each_sibling_read_becomes_its_readers_parent(log):
     assert any(p["siblings"] for p in log.passes)
     for p in log.passes:
         for gid, sibling in p["siblings"].items():
             assert sibling in p["parents"][gid]
-
-
-def test_a_sibling_read_takes_no_spine(log):
-    for p in log.passes:
-        assert set(p["siblings"]) <= p["settled"]
 
 
 def _graph() -> tuple[nx.DiGraph, dict, dict]:
@@ -89,28 +75,16 @@ def _graph() -> tuple[nx.DiGraph, dict, dict]:
 def test_a_sibling_read_adds_only_its_edge(monkeypatch):
     group_graph, edges, attrs = _graph()
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: "s")
-    settled = gg._apply_reads(group_graph, edges, attrs, {}, {}, frozenset())
-    assert settled == {"g"}
+    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
     assert set(lineage_predecessors(group_graph, edges, "g")) == {"r", "s"}
 
 
-def test_a_held_sibling_still_settles_its_group(monkeypatch):
+def test_a_held_sibling_is_no_rewrite(monkeypatch):
     group_graph, edges, attrs = _graph()
     add_edge(group_graph, edges, "s", "g", EdgeKind.LINEAGE)
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: "s")
     before = dict(edges)
-    settled = gg._apply_reads(group_graph, edges, attrs, {}, {}, frozenset())
-    assert settled == {"g"}
+    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    assert reads == {"g": gg.RowProvider("s")}
     assert edges == before
-
-
-def test_the_spine_election_asks_only_for_a_spine(monkeypatch):
-    calls: list[bool] = []
-
-    def candidate(*args, allow_partial, **kwargs):
-        calls.append(allow_partial)
-
-    group_graph, edges, attrs = _graph()
-    monkeypatch.setattr(gg, "_regraft_candidate", candidate)
-    gg._elect_spine(group_graph, edges, attrs, None, "g")
-    assert calls == [True]

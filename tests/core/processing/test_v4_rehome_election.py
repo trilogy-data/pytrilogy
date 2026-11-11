@@ -1,50 +1,60 @@
-"""One election re-homes every unsettled group over one graph, as the edge
-it adds, applied only once all are elected."""
+"""A partial spine is a read: elected with the siblings and dimensions, ranked
+below both, and applied as one lineage edge."""
 
 from types import SimpleNamespace
 
-import pytest
-
-from tests.core.processing.test_v4_row_provider_election import (
-    _MODEL,
-    _QUERY,
-    _graph_state,
-)
-from trilogy import Dialects, Environment
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
 from trilogy.core.processing.v4_helper.edges import EdgeAttrs, EdgeKind
 
-_ELECT_SPINE = gg._elect_spine
+
+class _Candidates:
+    def __init__(self, sibling=None, dimension=None, spine=None) -> None:
+        self.answers = {False: sibling, True: spine}
+        self.dimension = dimension
+        self.asked: list[object] = []
+
+    def regraft(self, *args, allow_partial, **kwargs):
+        self.asked.append(
+            ("spine", kwargs.get("environment")) if allow_partial else "sibling"
+        )
+        return self.answers[allow_partial]
+
+    def dimension_read(self, *args):
+        self.asked.append("dimension")
+        return self.dimension
 
 
-class _RehomeLog:
-    def __init__(self) -> None:
-        self.seen: list[tuple] = []
-        self.provided: set[str] = set()
-
-    def provider(self, group_graph, group_edges, attrs, *rest):
-        self.seen.append(_graph_state(group_graph, group_edges, attrs))
-        provider = _ELECT_SPINE(group_graph, group_edges, attrs, *rest)
-        if provider is not None:
-            self.provided.add(rest[-1])
-        return provider
+def _elect(monkeypatch, candidates: _Candidates):
+    monkeypatch.setattr(gg, "_regraft_candidate", candidates.regraft)
+    monkeypatch.setattr(
+        gg, "_synthetic_dimension_regraft_parent", candidates.dimension_read
+    )
+    return gg._elect_read(None, {}, {}, {}, {}, "env", "g")
 
 
-@pytest.fixture
-def log(monkeypatch) -> _RehomeLog:
-    log = _RehomeLog()
-    monkeypatch.setattr(gg, "_elect_spine", log.provider)
-    env = Environment()
-    env.parse(_MODEL)
-    Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
-    return log
+def test_a_spine_is_asked_for_only_after_a_sibling_and_a_dimension(monkeypatch):
+    candidates = _Candidates(spine="p")
+    assert _elect(monkeypatch, candidates) == gg.RowProvider("p")
+    assert candidates.asked == ["sibling", "dimension", ("spine", "env")]
 
 
-def test_spines_are_elected_over_one_graph(log):
-    assert len(log.provided) >= 2
-    assert all(state == log.seen[0] for state in log.seen)
+def test_a_sibling_takes_no_spine(monkeypatch):
+    candidates = _Candidates(sibling="s", spine="p")
+    assert _elect(monkeypatch, candidates) == gg.RowProvider("s")
+    assert candidates.asked == ["sibling"]
+
+
+def test_a_dimension_takes_no_spine(monkeypatch):
+    read = gg.RowProvider("r", frozenset({"q"}))
+    candidates = _Candidates(dimension=read, spine="p")
+    assert _elect(monkeypatch, candidates) is read
+    assert candidates.asked == ["sibling", "dimension"]
+
+
+def test_a_group_with_no_candidate_takes_no_read(monkeypatch):
+    assert _elect(monkeypatch, _Candidates()) is None
 
 
 def _graph(*edges) -> nx.DiGraph:
@@ -54,21 +64,22 @@ def _graph(*edges) -> nx.DiGraph:
     return group_graph
 
 
-def test_a_spine_the_graph_already_holds_is_no_rewrite(monkeypatch):
-    monkeypatch.setattr(gg, "_elect_spine", lambda *a: "p")
-    attrs = {
-        "g": SimpleNamespace(derivation=Derivation.BASIC),
-        "p": SimpleNamespace(derivation=Derivation.AGGREGATE),
-    }
-    assert gg._elect_spines(_graph(("p", "g")), {}, attrs, None, frozenset()) == {}
+_ATTRS = {
+    "g": SimpleNamespace(derivation=Derivation.BASIC),
+    "p": SimpleNamespace(derivation=Derivation.AGGREGATE),
+}
 
 
 def test_a_spine_is_one_lineage_edge(monkeypatch):
-    monkeypatch.setattr(gg, "_elect_spine", lambda *a: "p")
-    attrs = {
-        "g": SimpleNamespace(derivation=Derivation.BASIC),
-        "p": SimpleNamespace(derivation=Derivation.AGGREGATE),
-    }
+    monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("p"))
     group_graph, edges = _graph(), {}
-    gg._rehome_groups(group_graph, edges, attrs, None, frozenset())
+    gg._apply_reads(group_graph, edges, _ATTRS, {}, {}, None, frozenset())
     assert edges == {("p", "g"): EdgeAttrs(EdgeKind.LINEAGE)}
+
+
+def test_a_spine_the_graph_already_holds_is_no_rewrite(monkeypatch):
+    monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("p"))
+    group_graph, edges = _graph(("p", "g")), {}
+    gg._apply_reads(group_graph, edges, _ATTRS, {}, {}, None, frozenset())
+    assert edges == {}
+    assert set(group_graph.edges) == {("p", "g")}
