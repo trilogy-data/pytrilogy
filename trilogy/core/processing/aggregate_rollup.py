@@ -212,17 +212,33 @@ def _conditions_supported(
     datasource: BuildDatasource,
     conditions: BuildWhereClause | None,
     concepts_by_address: Mapping[str, BuildConcept] | None = None,
+    joined: bool = False,
 ) -> bool:
+    """With `joined`, an aggregate at a grain inside the summary's
+    (`sum(x) by city` beside `(city, species)`) is a function of its key, which
+    the joined plan computes in its own group and joins back
+    (`Rollup.coarse_group_value_filter_exact`). A scan of the summary alone
+    would read the stored partial as that value."""
     if not conditions:
         return True
+    grain = set(datasource.grain.components)
     return _concepts_reachable(
         datasource,
         [
             c
             for c in conditions.row_arguments
             if c.granularity != Granularity.SINGLE_ROW
+            and not (joined and _keyed_aggregate(c, grain))
         ],
         concepts_by_address,
+    )
+
+
+def _keyed_aggregate(concept: BuildConcept, grain: set[str]) -> bool:
+    return (
+        concept.derivation == Derivation.AGGREGATE
+        and bool(concept.grain.components)
+        and concept.grain.components <= grain
     )
 
 
@@ -365,7 +381,7 @@ def get_rollup_concepts(
     """The requested aggregates `datasource` rolls up to `target_grain`. With
     `joined`, `agg(x ? c)` may read `c` from a join onto the summary's rows
     (`_datasource_has_matching_rollup_aggregate`)."""
-    if not _conditions_supported(datasource, conditions, concepts_by_address):
+    if not _conditions_supported(datasource, conditions, concepts_by_address, joined):
         return []
     reach = concepts_by_address if joined else None
 

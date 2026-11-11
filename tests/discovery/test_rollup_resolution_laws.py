@@ -266,6 +266,48 @@ def test_group_value_filter_applies_before_rollup(
     )
 
 
+# `Rollup.coarse_group_value_filter_exact`: a WHERE over an aggregate at a grain
+# inside the summary's (`sum(height) by city`) is the re-sum of the summary rows
+# sharing that key, joined back onto each summary row before the re-sum. Read
+# as each row's stored partial, it misfilters
+# (`Rollup.coarse_gate_on_partial_misfilters`). The summary's own grain, a CASE
+# over `tree_form`, a row column beside the gate the target does not group by,
+# and an OR joining `tree_form` outside the target still read the base rows.
+COARSE_GATE_GRAINS = {"total", "city", "species", "form", "city_form"}
+COARSE_GATES = {
+    "sum": ("sum(height) by city > 6", COARSE_GATE_GRAINS),
+    "count_species": ("count(tree_id) by species > 1", COARSE_GATE_GRAINS),
+    "min_null": ("min(height) by city is null", COARSE_GATE_GRAINS),
+    "avg": ("avg(height) by city > 4", COARSE_GATE_GRAINS),
+    "count_distinct": ("count_distinct(tag) by city = 2", COARSE_GATE_GRAINS),
+    "not": ("not sum(height) by city > 9", COARSE_GATE_GRAINS),
+    "beside_exact_gate": (
+        "sum(height) by city > 6 and sum(height) by city, species > 3",
+        COARSE_GATE_GRAINS,
+    ),
+    "or_species_gate": (
+        "sum(height) by city > 9 or count(tree_id) by species > 1",
+        COARSE_GATE_GRAINS,
+    ),
+    "and_species": ("max(height) by city >= 7 and species != 'Tilia'", {"species"}),
+    "or_form": (
+        "sum(height) by city > 9 or tree_form = 'linden'",
+        {"form", "city_form"},
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "grain,gate,aggregate",
+    list(itertools.product(GRAINS, COARSE_GATES, ["count", "sum", "max", "bool_or"])),
+)
+def test_coarse_group_value_filter_reads_summary(grain: str, gate: str, aggregate: str):
+    where, served = COARSE_GATES[gate]
+    _assert_same_answer(
+        _select(GRAINS[grain], AGGREGATES[aggregate], where), served=grain in served
+    )
+
+
 # A membership whose key the summary's grain holds widens the scan to that key;
 # the partial each summary row holds is still re-summed before the expression
 # reads it (`Rollup.unsummed_partial_splits_a_group`).

@@ -29,7 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
-| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument, a filter on a stored group value is a filter on the summary key (`group_value_filter_exact`), also grouped by a dimension's column keyed on the grain (`group_value_filter_joined_exact`), and a grain column's distinct values are the summary's (`count_distinct_grain_column_exact`) (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument, a filter on a stored group value is a filter on the summary key (`group_value_filter_exact`), also grouped by a dimension's column keyed on the grain (`group_value_filter_joined_exact`), and a filter on a group value at a coarser grain is the re-sum of the summary rows sharing its key, never a row's own partial (`coarse_group_value_filter_exact`, `coarse_gate_on_partial_misfilters`), and a grain column's distinct values are the summary's (`count_distinct_grain_column_exact`) (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect; ClickHouse's `sign(x) * floor(abs(x) + 0.5)` is `round` (`sign_round_is_round`), and its Monday-boundary `week` is not whole spans (`monday_boundaries_is_not_week_diff`) (checked by `tests/core/test_function_laws.py` on DuckDB, SQLite and ClickHouse) |
 | `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order by what they store but do by what they read: under a WHERE implying the table's arm, the coarser source applying it reads no more rows (`Cost.filtered_dominated_le`, `Cost.filtered_summary_strict`), a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
@@ -1427,6 +1427,30 @@ a design decision or a bug.
   `city_form` grains) read the trees on main; answers were right either way.
   A CASE over `tree_form`, and a grand total under `... or tree_form =
   'linden'`, still read the base rows.
+
+- **A WHERE on a coarser group value read the trees, and the pushdown that
+  serving it exposed read a partial as the value** (0.3.487; `Rollup.lean`,
+  "Filters on a group value at a coarser grain"). `select species,
+  sum(height) where sum(height) by city > 6` beside a `(city, species)`
+  summary is the summary rows gated by the city's re-sum, joined back on
+  `city`, then re-summed (`Rollup.coarse_group_value_filter_exact`). The root
+  gate never offered the summary: `_conditions_supported` read
+  `sum(height) by city` as a column the summary must bind. Under `joined`
+  (the pinned joined plan) an aggregate at a grain inside the summary's now
+  passes, since that plan computes it in its own group. Serving it surfaced
+  a wrong answer in predicate pushdown: the gate's group re-sums the
+  summary's `h` under the gate's own address, so the scan below it holds one
+  partial per species, and the WHERE was pushed onto it (`select sum(height)
+  where sum(height) by city > 6` answered 7, not 17;
+  `Rollup.coarse_gate_on_partial_misfilters`). A predicate no longer pushes
+  into a parent whose child re-aggregates a column it reads
+  (`_parent_holds_partial`). A row column beside the gate that the target
+  does not group by (`... and species != 'Tilia'` at `tree_form`) widens the
+  pinned request past the target, and the search that took over re-maxed the
+  gate at `(species, tree_form)` (wrong) or failed to bind it, so those
+  shapes still read the trees (`_coarse_gate_beside_row_columns`). 172 of the
+  280 cases in `test_coarse_group_value_filter_reads_summary` read the base
+  rows on main; answers are the same either way.
 
 
 ## Limits
