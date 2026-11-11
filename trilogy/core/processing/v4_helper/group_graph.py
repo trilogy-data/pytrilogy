@@ -2344,10 +2344,10 @@ def build_group_graph(
         environment,
         rollup_padded,
     )
-    grouping = _elect_grouping_providers(
-        group_graph, group_edges, attrs, concept_attrs, environment
-    )
+    folds = _elect_folds(group_graph, group_edges, attrs, concept_attrs)
+    grouping = _elect_grouping_providers(group_graph, attrs, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
+    _fold_groups(group_graph, group_edges, attrs, buckets, folds)
     _rehome_groups(
         group_graph,
         group_edges,
@@ -2355,7 +2355,6 @@ def build_group_graph(
         buckets,
         concept_attrs,
         environment,
-        grouping,
         placed,
     )
     trace_group_graph(
@@ -2465,16 +2464,13 @@ def trace_group_graph(
 @dataclass(frozen=True)
 class RowProvider:
     """The row source a regraftable group is re-homed onto: the parent it
-    reads, the lineage parents that parent replaces, the dimension ROOT minted
-    for it, and whether the parent renders the group inline. Once elected
-    (`_as_rewrite`) it holds only what the graph lacks: `parent` is None when
-    already a parent."""
+    reads, the lineage parents that parent replaces, and the dimension ROOT
+    minted for it. Once elected (`_as_rewrite`) it holds only what the graph
+    lacks: `parent` is None when already a parent."""
 
     parent: str | None
     drop: frozenset[str] = frozenset()
     minted: GroupBucket | None = None
-    # the parent renders the group in its own SELECT: the group folds into it
-    inline: bool = False
 
 
 def _regraft_candidate(
@@ -2872,28 +2868,54 @@ def _inline_window(
     return parent
 
 
-def _elect_grouping_providers(
+def _elect_folds(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
 ) -> dict[str, str]:
-    """Each terminal scalar projection's grouping provider, elected over the
-    graph stage 2 built. A WINDOW that renders the projection inline outranks
-    it: that projection folds and keeps its grain."""
-    providers: dict[str, str] = {}
+    """Each scalar BASIC a WINDOW renders inline, to that WINDOW, elected over
+    the graph stage 2 built. A fold target is a WINDOW, so no fold removes
+    another's."""
+    folds: dict[str, str] = {}
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID:
+            continue
+        window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
+        if window is not None:
+            folds[gid] = window
+    return folds
+
+
+def _fold_groups(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    folds: dict[str, str],
+) -> None:
+    for gid, window in folds.items():
+        _absorb_group(gid, window, group_graph, group_edges, attrs, buckets)
+
+
+def _elect_grouping_providers(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    folds: dict[str, str],
+) -> dict[str, str]:
+    """Each terminal scalar projection's grouping provider, elected over the
+    graph stage 2 built. A fold outranks it: that projection keeps its grain
+    and renders in its WINDOW."""
+    providers: dict[str, str] = {}
+    for gid in group_graph.nodes:
+        if gid == FINAL_NODE_ID or gid in folds:
             continue
         provider = _terminal_basic_grouping_provider(
             group_graph, attrs, gid, environment
         )
-        if provider is None or _inline_window(
-            group_graph, group_edges, attrs, concept_attrs, gid
-        ):
-            continue
-        providers[gid] = provider
+        if provider is not None:
+            providers[gid] = provider
     return providers
 
 
@@ -2967,17 +2989,10 @@ def _elect_row_provider(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    grouping: dict[str, str],
     gid: str,
 ) -> RowProvider | None:
     """Pick `gid`'s row source over the graph; mutates nothing. The choices,
-    in order: a WINDOW that renders it inline (never for a projection stated
-    at a grouping provider), a full-coverage sibling, a dimension ROOT, a
-    partial spine."""
-    if gid not in grouping:
-        window = _inline_window(group_graph, group_edges, attrs, concept_attrs, gid)
-        if window is not None:
-            return RowProvider(window, inline=True)
+    in order: a full-coverage sibling, a dimension ROOT, a partial spine."""
     parent_gid = _regraft_candidate(
         group_graph, group_edges, attrs, gid, allow_partial=False
     )
@@ -3024,11 +3039,8 @@ def _apply_row_provider(
 def _as_rewrite(
     group_graph: nx.DiGraph, gid: str, provider: RowProvider
 ) -> RowProvider | None:
-    """`provider` less what the graph stage 2 built already holds, or None
-    when it changes nothing: its parent is already a parent, and it drops and
-    mints nothing."""
-    if provider.inline:
-        return provider
+    """`provider` less what the graph already holds, or None when it changes
+    nothing: its parent is already a parent, and it drops and mints nothing."""
     drop = frozenset(p for p in provider.drop if group_graph.has_edge(p, gid))
     minted = provider.minted
     if minted is not None and minted.group_id in group_graph:
@@ -3048,15 +3060,15 @@ def _elect_row_providers(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    grouping: dict[str, str],
     placed: frozenset[str],
 ) -> dict[str, RowProvider]:
     """Each regraftable group not placed at its grouping provider whose best
     row source is already built, elected over one graph (stage 2's, with the
-    projections placed), as the rewrite it makes of that graph.
+    projections placed and the folds made), as the rewrite it makes of that
+    graph. A provider only adds a lineage edge, drops ROOT parents and mints
+    a ROOT.
 
-    A provider drops only ROOT parents (a dimension pick), and no fold removes
-    a ROOT. Concrete datasource selection remains in `source_planning` and
+    Concrete datasource selection remains in `source_planning` and
     StrategyNode construction in `strategy_builder`.
     """
     providers: dict[str, RowProvider] = {}
@@ -3074,7 +3086,6 @@ def _elect_row_providers(
             buckets,
             concept_attrs,
             environment,
-            grouping,
             gid,
         )
         if provider is not None:
@@ -3084,15 +3095,6 @@ def _elect_row_providers(
     return providers
 
 
-def _folds(providers: dict[str, RowProvider]) -> dict[str, str]:
-    """Each group its provider renders inline, to that provider."""
-    return {
-        gid: p.parent
-        for gid, p in providers.items()
-        if p.inline and p.parent is not None
-    }
-
-
 def _rehome_groups(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -3100,11 +3102,10 @@ def _rehome_groups(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
-    grouping: dict[str, str],
     placed: frozenset[str],
 ) -> None:
-    """Elect every unplaced group's row provider over one graph, then fold each group its provider renders inline and apply the
-    rest: no election reads another's fold or edges."""
+    """Elect every unplaced group's row provider over one graph, then apply
+    them all: no election reads another's edges."""
     providers = _elect_row_providers(
         group_graph,
         group_edges,
@@ -3112,11 +3113,7 @@ def _rehome_groups(
         buckets,
         concept_attrs,
         environment,
-        grouping,
         placed,
     )
-    for gid, parent in _folds(providers).items():
-        _absorb_group(gid, parent, group_graph, group_edges, attrs, buckets)
     for gid, provider in providers.items():
-        if not provider.inline:
-            _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)
+        _apply_row_provider(group_graph, group_edges, attrs, buckets, gid, provider)

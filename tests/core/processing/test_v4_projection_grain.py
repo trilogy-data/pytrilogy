@@ -38,10 +38,11 @@ class _GrainLog:
 
     def state(self, attrs, buckets, grouping):
         self.built = {gid: a.grain_components for gid, a in attrs.items()}
+        self.grouping = grouping
         _STATE(attrs, buckets, grouping)
 
     def elect(self, group_graph, group_edges, attrs, *rest):
-        self.grouping, self.placed = rest[-2:]
+        self.placed = rest[-1]
         self.at_election = {gid: a.grain_components for gid, a in attrs.items()}
         self.parents = {
             gid: set(lineage_predecessors(group_graph, group_edges, gid))
@@ -147,19 +148,17 @@ def test_a_placed_projection_is_not_elected(monkeypatch):
         attrs[gid].derivation = derivation
     monkeypatch.setattr(gg, "_elect_row_provider", lambda *a: gg.RowProvider("x"))
     providers = gg._elect_row_providers(
-        group_graph, edges, attrs, {}, {}, None, {"g": "p"}, frozenset({"g"})
+        group_graph, edges, attrs, {}, {}, None, frozenset({"g"})
     )
     assert providers == {}
 
 
-def test_an_unplaced_projection_takes_no_inline_window(monkeypatch):
+def test_the_row_provider_election_takes_no_inline_window(monkeypatch):
     group_graph, edges, attrs = _placement_graph()
     monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
     monkeypatch.setattr(gg, "_synthetic_dimension_regraft_parent", lambda *a: None)
-    provider = gg._elect_row_provider(
-        group_graph, edges, attrs, {}, {}, None, {"g": "p"}, "g"
-    )
+    provider = gg._elect_row_provider(group_graph, edges, attrs, {}, {}, None, "g")
     assert provider is None
 
 
@@ -167,9 +166,8 @@ def test_a_folded_projection_takes_no_grouping_provider(monkeypatch):
     group_graph = nx.DiGraph()
     group_graph.add_nodes_from(["g", gg.FINAL_NODE_ID])
     monkeypatch.setattr(gg, "_terminal_basic_grouping_provider", lambda *a: "p")
-    monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     attrs = {"g": SimpleNamespace(derivation=Derivation.BASIC)}
-    assert gg._elect_grouping_providers(group_graph, {}, attrs, {}, None) == {}
+    assert gg._elect_grouping_providers(group_graph, attrs, None, {"g": "w"}) == {}
 
 
 def _siblings() -> tuple[nx.DiGraph, dict]:

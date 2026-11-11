@@ -1885,6 +1885,52 @@ and `test_a_parent_a_placement_drops_is_gone_before_it_folds` pin the rest.
 Full suite: the same 25 failures as `main` (the credential-gated BigQuery,
 Snowflake, GCS and NCAA tests, and `the_look::test_wrapped_aggregate_with_dependent_by_grain`).
 
+**A window fold is made before the rehome (part 53).** Part 52 left the
+fold as the election's first pick, and the only one that deletes a group.
+Whether a WINDOW renders a scalar BASIC inline reads nothing a placement or
+another fold writes, so stage 2 now elects every fold once, with the
+grouping providers, and makes them before any row provider is elected:
+
+- `_elect_folds` maps each scalar BASIC a WINDOW renders inline
+  (`_inline_window`, gates unchanged) to that WINDOW, over the graph stage 2
+  built. A fold target is a WINDOW, so no fold removes another's.
+- `_elect_grouping_providers` takes those folds and skips them: a fold
+  outranks a grouping provider (part 49), so a folded projection keeps its
+  grain. It no longer computes the inline window itself.
+- `_fold_groups` folds them after `_place_projections` and before
+  `_rehome_groups`. A placement's drop is still applied first, so the folded
+  BASIC's edge is gone when its readers are repointed.
+- A placement cannot change an inline pick: it moves only edges into a
+  terminal projection, which feeds only FINAL and is a BASIC, never a
+  candidate. So electing the folds over the graph stage 2 built picks what
+  part 52 picked over the placed graph.
+- The row-provider election runs over the folded graph and picks only a
+  full-coverage sibling, a dimension ROOT or a partial spine. `RowProvider`
+  has no `inline` flag; `_folds` is gone, and `_as_rewrite` has no fold
+  case. A rewrite now only adds a lineage edge, drops ROOT parents or mints
+  a ROOT: none deletes a group.
+
+What can move: a reader of a folded BASIC is now elected over the graph
+where that BASIC is gone and its edge comes from the WINDOW. A census over
+one suite run (`-m "not adventureworks_execution and not cloud_live"`,
+`*_laws.py` ignored, as CI runs it) rehomed every pass both ways: part 52's
+order (elect over the placed graph, then fold, then apply) and the folds
+made first. It then compared the resulting graphs: nodes, edges and their
+kinds, every grain, member list and member depths, and the buckets. 12,540
+passes, no graph differed. 66 passes in 52 tests fold 74 BASICs; 2 of them
+also elect a row provider, and 467 rewrites are elected in all. Part 47's
+census, which elected over the unfolded and the folded graph, found the same
+providers for every surviving group.
+
+`test_every_fold_is_made_before_any_row_provider_is_elected` pins the order
+over part 47's statement: when the row providers are elected, no folded
+BASIC is in the graph and every fold target is. It fails with the fold
+applied after the election. `test_a_fold_outranks_a_grouping_provider`
+carries part 49's window HAVING guard over, `test_a_folded_basic_takes_no_grouping_provider`
+and `test_the_row_provider_election_takes_no_inline_window` pin the
+hand-off, and `test_a_parent_a_placement_drops_is_gone_before_it_folds` now
+reads `_fold_groups`.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -1909,11 +1955,11 @@ not built yet:
    A pick is elected only as the rewrite it makes (part 50). A projection's
    grain is stated before any pick (part 51), and so is its edge onto its
    grouping provider (part 52), so a rewrite never changes a grain and the
-   election never places a projection. The rewrites left still change the
-   graph: a fold deletes the BASIC and repoints its readers; a sibling or
-   spine adds a lineage edge; a dimension pick drops ROOT parents and may
-   mint a ROOT. The stated grain and placement still follow
-   `_compute_concept_sets`, since the grouping provider is read off the
+   election never places a projection. Every window fold is made before
+   the election too (part 53), so no rewrite deletes a group. The rewrites
+   left still change the graph: a sibling or spine adds a lineage edge; a
+   dimension pick drops ROOT parents and may mint a ROOT. The stated grain,
+   placement and folds still follow `_compute_concept_sets`, since the grouping provider is read off the
    groups' input and output sets; stating them when stage 2 groups needs
    those sets first. Then `_compute_concept_sets` runs again.
 
