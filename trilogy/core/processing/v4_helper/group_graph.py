@@ -1687,7 +1687,7 @@ def _hosted_condition_outputs(
 
 @dataclass
 class _InputPass:
-    """What `_compute_concept_sets` derives before its reverse pass, read by
+    """What `_concept_sets` derives before its reverse pass, read by
     each group's inputs (`_group_inputs`)."""
 
     attrs: dict[str, GroupAttrs]
@@ -1709,7 +1709,7 @@ class _InputPass:
     region_join_keys: frozenset[str]
     relation_edge_members: frozenset[str]
     rollup_padded: frozenset[str]
-    scoped_axis_mates: dict[str, frozenset[str]] | None
+    scoped_axis_mates: dict[str, frozenset[str]]
     solid: set[str]
     source_grain_of: dict[str, frozenset[str]]
     pin_anchors: dict[str, frozenset[str]]
@@ -1907,7 +1907,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
         # substitution (an unbound `merge` key whose only physical column is
         # its rowset rename).
         for missing in fact.grain - cap_gid:
-            mates = set((scoped_axis_mates or {}).get(missing, frozenset()))
+            mates = set(scoped_axis_mates.get(missing, frozenset()))
             mates |= pseudonym_mates.get(missing, frozenset())
             for mate in sorted(mates):
                 if mate in cap_gid:
@@ -1964,37 +1964,50 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
     io.inputs[gid] = ins
 
 
-def _compute_concept_sets(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
+@dataclass(frozen=True)
+class Demand:
+    """What every demand pass over one statement reads besides the group
+    graph: the concept graph, the select, and the axes the statement relates.
+    Both passes, before the rehome and after injection, read the same one."""
+
+    concept_graph: nx.DiGraph
+    concept_edges: EdgeMap
+    concept_attrs: dict[str, ConceptAttrs]
+    mandatory_list: list[BuildConcept]
+    environment: BuildEnvironment
+    rollup_padded: frozenset[str]
+    scoped_axis_mates: dict[str, frozenset[str]] = field(default_factory=dict)
+    relation_edge_members: frozenset[str] = frozenset()
+
+
+def statement_demand(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
-    buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
-    rollup_padded: frozenset[str],
-    scoped_axis_mates: dict[str, frozenset[str]] | None = None,
-    relation_edge_members: frozenset[str] = frozenset(),
-    stated: ConceptSets | None = None,
-) -> None:
-    sets = _concept_sets(
-        group_graph,
-        group_edges,
-        attrs,
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        buckets,
-        mandatory_list,
-        environment,
-        rollup_padded,
-        scoped_axis_mates,
-        relation_edge_members,
-        stated,
+) -> Demand:
+    # Members of an authored join-axis equality whose collapsed side keeps
+    # its computed lineage as a first-class node (the concept graph's
+    # RELATION edges). These relations join above a computation, so the
+    # axis members must surface as group outputs and the FINAL merge grain:
+    # the same edges that drove the root-side partition.
+    relation_edge_members = frozenset(
+        concept_attrs[n].address
+        for u, v in concept_graph.edges
+        if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
+        for n in (u, v)
     )
-    _write_concept_sets(attrs, sets)
+    return Demand(
+        concept_graph=concept_graph,
+        concept_edges=concept_edges,
+        concept_attrs=concept_attrs,
+        mandatory_list=mandatory_list,
+        environment=environment,
+        rollup_padded=rollup_padded_keys(environment),
+        scoped_axis_mates=_scoped_axis_mates(environment),
+        relation_edge_members=relation_edge_members,
+    )
 
 
 def _write_concept_sets(attrs: dict[str, GroupAttrs], sets: ConceptSets) -> None:
@@ -2014,15 +2027,8 @@ def _concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    rollup_padded: frozenset[str],
-    scoped_axis_mates: dict[str, frozenset[str]] | None = None,
-    relation_edge_members: frozenset[str] = frozenset(),
+    demand: Demand,
     stated: ConceptSets | None = None,
 ) -> ConceptSets:
     """Per-group input/output concept sets.
@@ -2035,6 +2041,14 @@ def _concept_sets(
     `stated` is the statement a previous pass made, read where a group's
     columns are asked for (the FINAL spine)."""
     stated = stated or ConceptSets()
+    concept_graph = demand.concept_graph
+    concept_edges = demand.concept_edges
+    concept_attrs = demand.concept_attrs
+    mandatory_list = demand.mandatory_list
+    environment = demand.environment
+    rollup_padded = demand.rollup_padded
+    scoped_axis_mates = demand.scoped_axis_mates
+    relation_edge_members = demand.relation_edge_members
     mandatory_addresses = {c.address for c in mandatory_list}
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
@@ -2175,8 +2189,7 @@ def _concept_sets(
         grain_mates: set[str] = set()
         if fact.derivation in GROUPING_DERIVATIONS:
             for component in fact.grain:
-                if scoped_axis_mates:
-                    grain_mates |= scoped_axis_mates.get(component, frozenset())
+                grain_mates |= scoped_axis_mates.get(component, frozenset())
                 grain_mates |= pseudonym_mates.get(component, frozenset())
         # a region's span riding HIDDEN on a solid fact scan (one of a ROOT's
         # `carried_spans`, `region_join_keys`) has no concept attributes of
@@ -2351,7 +2364,9 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
     trace_buckets("buckets assigned", buckets, primary_group)
-    rollup_padded = rollup_padded_keys(environment)
+    demand = statement_demand(
+        concept_graph, concept_edges, concept_attrs, mandatory_list, environment
+    )
     partition = partition_root_demand(
         buckets,
         primary_group,
@@ -2363,7 +2378,7 @@ def build_group_graph(
         environment,
         datasources,
         keyspace,
-        rollup_padded,
+        demand.rollup_padded,
     )
     split_carried_only_row_streams(
         buckets, primary_group, partition.domains, keyspace, environment
@@ -2384,18 +2399,7 @@ def build_group_graph(
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
     _add_final_node(group_graph, group_edges, attrs, buckets, mandatory_list)
-    sets = _concept_sets(
-        group_graph,
-        group_edges,
-        attrs,
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        buckets,
-        mandatory_list,
-        environment,
-        rollup_padded,
-    )
+    sets = _concept_sets(group_graph, group_edges, attrs, buckets, demand)
     folds = _elect_folds(group_graph, group_edges, attrs, sets, concept_attrs)
     grouping = _elect_grouping_providers(group_graph, attrs, sets, environment, folds)
     placed = _place_projections(group_graph, group_edges, attrs, buckets, grouping)
@@ -2441,31 +2445,9 @@ def build_group_graph(
         [_scan_columns(ds, environment) for ds in datasources],
     )
     _color_phases(group_graph, group_edges, condition_group_ids)
-    # Members of an authored join-axis equality whose collapsed side keeps
-    # its computed lineage as a first-class node (the concept graph's
-    # RELATION edges). These relations join above a computation, so the
-    # axis members must surface as group outputs and the FINAL merge grain:
-    # the same edges that drove the root-side partition.
-    relation_edge_members = frozenset(
-        concept_attrs[n].address
-        for u, v in concept_graph.edges
-        if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
-        for n in (u, v)
-    )
-    _compute_concept_sets(
-        group_graph,
-        group_edges,
+    _write_concept_sets(
         attrs,
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        buckets,
-        mandatory_list,
-        environment,
-        rollup_padded,
-        scoped_axis_mates=_scoped_axis_mates(environment),
-        relation_edge_members=relation_edge_members,
-        stated=sets,
+        _concept_sets(group_graph, group_edges, attrs, buckets, demand, stated=sets),
     )
     _refresh_input_contracts(
         group_graph,
@@ -2481,7 +2463,7 @@ def build_group_graph(
         attrs,
         mandatory_list,
         environment,
-        relation_edge_members=relation_edge_members,
+        relation_edge_members=demand.relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph,
@@ -2841,7 +2823,7 @@ def _absorb_group(
     """Fold group `gid`'s members into `parent_gid` and delete `gid`, so the
     parent node renders `gid`'s outputs in its own SELECT. Repoints `gid`'s
     consumers onto the parent; IO/contract refresh is left to the caller's
-    `_compute_concept_sets` rerun."""
+    `_concept_sets` rerun."""
     a = attrs[gid]
     pa = attrs[parent_gid]
 

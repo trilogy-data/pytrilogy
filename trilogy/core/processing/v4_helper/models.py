@@ -231,8 +231,8 @@ class GroupAttrs(_HeldKeys):
     # their grouping keys on the subtotal rows they add, which is what
     # `nulls_grouping_keys` exists to ask about.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
-    # Written from the demand pass's `ConceptSets` once the rehome is made,
-    # and again after injection. Empty tuples until then.
+    # Written from the demand pass's `ConceptSets` once, after injection.
+    # Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
     # Populated only for FINAL: the logical output/grain contract Stage 3
@@ -249,7 +249,7 @@ class GroupAttrs(_HeldKeys):
     dim_keys: frozenset[str] = frozenset()
     # Set on a ROOT group, and on a rowset boundary's region domain.
     reason: RootReason | None = None
-    # Populated for non-FINAL groups after `_compute_concept_sets`.
+    # Populated for non-FINAL groups once the sets are written.
     input_contracts: tuple[GroupInputContract, ...] = ()
     # the grain this group's row parents are stitched on; each edge holds the
     # part its parent can carry (`GroupInputContract.required_grain`)

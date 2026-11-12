@@ -19,7 +19,7 @@ here: ``concept_graph`` already encodes per-derivation edge fetchers (see
 
 The contract is intentionally tiny so it can be unit-tested per
 derivation without standing up a full BuildEnvironment. The orchestrator
-in ``group_graph._compute_concept_sets`` is the only consumer."""
+in ``group_graph._concept_sets`` is the only consumer."""
 
 from __future__ import annotations
 
