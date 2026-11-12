@@ -13,7 +13,7 @@ root datasource tree_enrichment (
     tree_form: ?tree_form,
 )
 grain (species)
-query '''select 'Palm' species, cast(null as varchar) genus, 'palm' tree_form''';
+query '''select 'Palm' as species, cast(null as varchar) as genus, 'palm' as tree_form''';
 const shaded_crown_ratio <- 3.0;
 def fit_scale(a, s) -> 10 ** (a + s ** 2 / 2);
 def fallback_level(cls, division_passes) -> case
@@ -35,7 +35,7 @@ root datasource crown_width_coefficients (
     scale: crown_fit_scale,
     dbh_max_cm: crown_fit_dbh_max_cm,
 )
-query '''select 'global' level, 'all' taxon, 0.6 b, 0.35 scale, 770.0 dbh_max_cm'''
+query '''select * from (values ('global', 'all', 0.6, 0.35, 770.0)) t(level, taxon, b, scale, dbh_max_cm)'''
 where crown_coefficient_level = 'genus';
 key crown_fallback_class <- case
     when tree_form = 'palm' or species = 'Palm' or species = 'Cactus' then 'none'
@@ -56,7 +56,7 @@ root datasource crown_width_fallbacks (
     scale: crown_fallback_row_scale,
     dbh_max_cm: crown_fallback_row_dbh_max_cm,
 )
-query '''select 'global' level, 'all' taxon, 0.6 b, 0.35 scale, 770.0 dbh_max_cm'''
+query '''select * from (values ('global', 'all', 0.6, 0.35, 770.0)) t(level, taxon, b, scale, dbh_max_cm)'''
 where crown_fallback_row_level = 'division' or crown_fallback_row_level = 'global';
 auto crown_fallback_b <- @for_class(crown_fallback_row_b, crown_fallback_taxon);
 auto crown_fallback_scale <- @for_class(crown_fallback_row_scale, crown_fallback_taxon);
