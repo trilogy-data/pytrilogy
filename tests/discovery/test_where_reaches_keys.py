@@ -85,6 +85,30 @@ BASE_CASES = {
         ),
         [("Acer", 2)],
     ),
+    # `SelectGrain.regrouped_gate_is_applied`: the re-aggregate holds only the
+    # groups the gate kept, so FINAL does not re-apply it at `tree_form`
+    "regrouped_gate_or_row": (
+        (
+            "select tree_form, min(sum(height) by city, species, tree_form) as v0"
+            " where (min(height) by species > 1 or city = 'B');"
+        ),
+        [("broadleaf", 3), ("linden", 2)],
+    ),
+    "regrouped_gate_or_membership": (
+        (
+            "select tree_form, count(min(height) by species) as v0"
+            " where (sum(height) by species in (5, 1) or sum(height) by * < 2)"
+            " having v0 < 8;"
+        ),
+        [("broadleaf", 1)],
+    ),
+    "regrouped_gate_beside_key": (
+        (
+            "select city, tree_form, sum(sum(height) by city, species) as v0"
+            " where (city = 'A' or max(height) by species = 10);"
+        ),
+        [("A", "broadleaf", 8), ("A", None, None)],
+    ),
 }
 
 # (query, rows, served) with the summary in scope.

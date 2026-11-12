@@ -322,6 +322,21 @@ theorem kept_key_holds (k : α → Key) (p : α → Bool) (rows : List α) (t : 
   obtain ⟨hr, hp⟩ := List.mem_filter.1 hr
   exact ⟨r, hr, hp, rfl⟩
 
+/-- **A regroup of the kept groups holds only kept keys**
+(`regrouped_gate_is_applied`): grouping the WHERE's kept `(city, species)`
+groups again by a function of their key (`tree_form`) gives the keys of the
+kept rows, so a FINAL re-applying the WHERE there changes nothing. -/
+theorem regrouped_gate_is_applied (k : α → Key) (f : Key → Key) (p : α → Bool)
+    (rows : List α) (t : Key) :
+    t ∈ keptKeys (fun r => f (k r)) p rows ↔ ∃ u ∈ keptKeys k p rows, f u = t := by
+  unfold keptKeys
+  simp only [mem_dedup, List.mem_map, List.mem_filter]
+  constructor
+  · rintro ⟨r, hr, rfl⟩
+    exact ⟨k r, ⟨r, hr, rfl⟩, rfl⟩
+  · rintro ⟨u, ⟨r, hr, rfl⟩, rfl⟩
+    exact ⟨r, hr, rfl⟩
+
 /-- Membership in a literal list: identity matching against each member. -/
 def memberOf (v : Int) (cs : List Int) : Bool := cs.contains v
 

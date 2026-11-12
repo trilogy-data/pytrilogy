@@ -1569,7 +1569,8 @@ a design decision or a bug.
   checked against Python evaluating Trilogy's semantics directly
   (`tests/discovery/test_oracle_sweep_laws.py` keeps 600 of them). Main
   failed 108 (44 with wrong rows, 4 rejected by design, the rest raising);
-  this round fails 15 (1 with wrong rows, the same 4 rejected).
+  this round fails 8 (1 with wrong rows, the same 4 rejected), each of them
+  failing on main too.
   - A literal membership gate was read as a set lookup
     (`SelectGrain.literal_membership_gate_dropped`). Its existence arguments
     are `[()]`, so placement skipped the FINAL re-filter it gives the
@@ -1611,9 +1612,16 @@ a design decision or a bug.
     the grain; `_promotion_grows_grain` reads a property keyed in the select
     grain as determined (`SelectGrain.determined_by_on_grain`).
   12 of the 1,200 sweep cases and 12 of the 13 regressions in
-  `tests/discovery/test_where_reaches_keys.py` fail on main. Two sweep shapes
-  that were right on main now raise a keyless join, as their `=` spellings
-  already did on main (handoff, area 1).
+  `tests/discovery/test_where_reaches_keys.py` fail on main.
+  - A sole FINAL contributor re-aggregating a gated group re-applied the
+    gate at its own grain and raised a keyless join: `select tree_form,
+    min(sum(height) by city, species, tree_form) where (min(height) by
+    species > 1 or city = 'B')`. The re-aggregate holds only the groups the
+    gate kept (`SelectGrain.regrouped_gate_is_applied`), so
+    `_group_applies_conditions` now reads a grouping parent's atoms when
+    every input is that parent's output or a function of its grain. This
+    also plans the `in` spellings the literal-membership fix had turned
+    from accidentally right into errors.
 
 ## Limits
 

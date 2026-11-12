@@ -5460,6 +5460,7 @@ def _group_applies_conditions(
     attrs: dict[str, GroupAttrs],
     gid: str,
     where: BuildWhereClause,
+    environment: BuildEnvironment | None = None,
 ) -> bool:
     """Whether the atoms placed at `gid`, or above it and still holding on its
     rows, imply `where`.
@@ -5470,9 +5471,38 @@ def _group_applies_conditions(
     re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
     subtotal/total rows drop."""
     held = _wrap_atoms(
-        _atoms_at(attrs, gid) + accumulated_atoms_above(group_graph, attrs, gid)
+        _atoms_at(attrs, gid)
+        + accumulated_atoms_above(group_graph, attrs, gid)
+        + _atoms_of_groups_aggregated(group_graph, attrs, gid, environment)
     )
     return held is not None and condition_implies(held.conditional, where.conditional)
+
+
+def _atoms_of_groups_aggregated(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment | None,
+) -> list[BoolExpr]:
+    """The atoms of a grouping ancestor `gid` re-aggregates: when every input
+    `gid` reads is that ancestor's output or a function of its grain, `gid`
+    holds only the groups the atom kept (`sum(sum(x) by city, species) by
+    tree_form` under a WHERE placed on the `(city, species)` group). A row
+    value it read beside them would re-admit the rows the atom rejected."""
+    group = attrs[gid]
+    if environment is None or group.derivation not in GROUPING_DERIVATIONS:
+        return []
+    atoms: list[BoolExpr] = []
+    for anc in group_graph.predecessors(gid):
+        a = attrs.get(anc)
+        if a is None or a.derivation not in GROUPING_DERIVATIONS:
+            continue
+        reach = set(a.output_concepts) | build_fd_closure(
+            environment, a.grain_components, include_empty_grain=False
+        )
+        if set(group.input_concepts) <= reach:
+            atoms.extend(x for x in a.condition_atoms if x not in atoms)
+    return atoms
 
 
 def _aggregate_input_rows(
@@ -5769,7 +5799,9 @@ def _assemble_sole_contributor(
     # its join back rides the relation axis, which only the raw
     # contributor can still widen to.
     final_already_applied = final_conditions is not None and (
-        _group_applies_conditions(group_graph, attrs, gid, final_conditions)
+        _group_applies_conditions(
+            group_graph, attrs, gid, final_conditions, environment
+        )
     )
     # A row condition available on the contributor's input is
     # population-scope. Apply it there before aggregation rather than

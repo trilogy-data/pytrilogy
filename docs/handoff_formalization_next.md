@@ -581,8 +581,8 @@ does not rewrite it; that rewrite is open.
       raise); none showed up in the sweep, but they are the next place to
       look. Changing `existence_arguments` itself to `[]` broke four shapes.
     - Compare a family against its `=` twin before calling a new error a
-      regression: two shapes this round now raise, and their `=` spellings
-      already did on main.
+      regression: two `in` shapes began raising mid-round, and their `=`
+      spellings already did on main. Fixing the twin's error removed both.
     - Ablate every change against the committed sweep (a pytest plugin that
       monkeypatches one change off), not only the suite; each of this
       round's eight changes failed something when removed.
@@ -1082,17 +1082,9 @@ a filter its grain does not determine. Open questions:
   (`elect_bridges`, `_underkeyed_blends`); a WHERE row argument co-sources
   with every root bound beside it (`where_row_arg`); `agg(x ? c)` at a
   summary's own grain reads the stored partial (`get_alias`); a HAVING `by`
-  a grain the select grain determines is accepted. Left:
-  - `select tree_form, <agg> where (<gate by species> or <row atom>)` raises
-    a keyless join (`min(height) by species > 1 or city = 'B'`, and five more
-    sweep shapes). Placement adds a FINAL re-filter
-    (`FINAL_UNCOVERED_CONTRIBUTOR`, `accepts_absent` true for the OR) because
-    the root row stream could expose `tree_form`, but FINAL's elected cover
-    is the aggregate grouped off the filtered rows, and the re-filter cannot
-    be sourced at `tree_form`. Its `=` spelling raises on main; two `in`
-    spellings that were right on main by accident now raise with it
-    (seeds 1519 and 3762 of the sweep generator). The fix is likely to drop
-    the re-filter when no uncovered group is elected into the FINAL cover;
+  a grain the select grain determines is accepted; a sole FINAL
+  contributor re-aggregating a gated group does not re-apply the gate
+  (`_atoms_of_groups_aggregated`). Left (each fails on main too):
   - `select city, species, tree_form, avg(height) by * as v0, ... where
     ((sum(height) by city, species < 6 or tree_form is null) and (species =
     'Acer' and species in ('Acer', 'Ulmus')))` reads `v0` over every row
@@ -1100,6 +1092,12 @@ a filter its grain does not determine. Open questions:
   - `select sum(height ? city in ('B')), count(min(height) by tree_form)`
     raises "Missing source reference to local.city" with the summary in
     scope;
+  - two keyless joins: `select species, min(height) by tree_form where
+    ((tree_form = 'broadleaf' or count(tree_id) by city, species = 1) and
+    species = 'Acer')`, and with the summary `select city, species,
+    bool_or(tall), sum(height) where (sum(height) by tree_form > 5 or
+    sum(height) by city = 1) or (species in ('Acer', 'Ulmus') and species !=
+    'Tilia')` (sweep seeds 7162 and 6745);
   - a total beside a summary-served aggregate now reads the trees (both
     roots on one scan); the summary could serve it with the WHERE applied to
     the trees scan as well.
