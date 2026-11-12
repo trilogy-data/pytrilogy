@@ -1077,7 +1077,7 @@ a filter its grain does not determine. Open questions:
   `tests/discovery/test_oracle_sweep_laws.py` (see "What it found"): a
   literal membership is a comparison (`_reads_a_set`,
   `_literal_membership_on_absent`); a key comes off a select-phase group,
-  never the WHERE gate's (`elect_cover`); a `by` grain holding a property
+  never the WHERE gate's when a row atom misses the gate's (`elect_cover`); a `by` grain holding a property
   beside its key's grain is joined through a keying bridge
   (`elect_bridges`, `_underkeyed_blends`); a WHERE row argument co-sources
   with every root bound beside it (`where_row_arg`); `agg(x ? c)` at a

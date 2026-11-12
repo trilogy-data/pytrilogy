@@ -1581,8 +1581,9 @@ a design decision or a bug.
   - A key read off a WHERE gate's own group skipped the row atoms
     (`SelectGrain.gate_group_skips_row_atoms`): `where count_distinct(tag) by
     species = 1 and city = 'B'` returned species of city A, while the
-    parenthesized spelling was right. `elect_cover` prefers a select-phase
-    candidate to a condition-phase one, which reads every row by design.
+    parenthesized spelling was right. `elect_cover` demotes a condition-phase
+    candidate, which reads every row by design, when a WHERE row atom never
+    reaches it (it keeps a padded region's distinction otherwise).
   - A `by` grain holding a property beside its key's grain joined on the
     other columns alone (`SelectGrain.by_property_without_its_key_misjoins`;
     0.3.490's case with the property not selected): `select city, species,
