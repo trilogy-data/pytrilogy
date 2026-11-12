@@ -1569,7 +1569,7 @@ a design decision or a bug.
   checked against Python evaluating Trilogy's semantics directly
   (`tests/discovery/test_oracle_sweep_laws.py` keeps 600 of them). Main
   failed 108 (44 with wrong rows, 4 rejected by design, the rest raising);
-  this round fails 14 (1 with wrong rows, the same 4 rejected).
+  this round fails 15 (1 with wrong rows, the same 4 rejected).
   - A literal membership gate was read as a set lookup
     (`SelectGrain.literal_membership_gate_dropped`). Its existence arguments
     are `[()]`, so placement skipped the FINAL re-filter it gives the
