@@ -21,7 +21,10 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
+    BuildConditional,
+    BuildParenthetical,
     BuildRowsetItem,
+    BuildSubselectComparison,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -605,6 +608,19 @@ _ABSENT_COMPARISONS = (
 )
 
 
+def _reads_a_set(atom: object) -> bool:
+    """Whether `atom` tests membership in a set some group produces. A literal
+    list (`max(x) by k in (7, 1)`, existence `[()]`) reads none: it is decided
+    like `max(x) by k = 7` (`SelectGrain.literal_membership_is_a_comparison`)."""
+    if isinstance(atom, BuildSubselectComparison):
+        return any(atom.existence_arguments)
+    if isinstance(atom, BuildParenthetical):
+        return _reads_a_set(atom.content)
+    if isinstance(atom, BuildConditional):
+        return _reads_a_set(atom.left) or _reads_a_set(atom.right)
+    return isinstance(atom, BuildConceptArgs) and bool(atom.existence_arguments)
+
+
 def holds_on_absent_group(atom: BoolExpr) -> bool:
     """Whether `atom` can hold for a key no group of the aggregate it reads
     formed: a COUNT reads 0 there, any other aggregate NULL. Joining the rows to
@@ -625,8 +641,29 @@ def holds_on_absent_group(atom: BoolExpr) -> bool:
         for operator, test in _ABSENT_COMPARISONS:
             if atom.operator == operator:
                 return bool(test(0, atom.right))
+    if (absent := _literal_membership_on_absent(atom)) is not None:
+        return absent
     proofs = gather_non_null_proofs(atom)
     return not any(c.address in proofs and not c.zero_on_empty for c in aggregates)
+
+
+def _literal_membership_on_absent(atom: BoolExpr) -> bool | None:
+    """`agg(x) by k in (5, 3)` on a key no group formed: the aggregate reads 0
+    (a COUNT) or NULL there, and membership is identity matching."""
+    if not (
+        isinstance(atom, BuildSubselectComparison)
+        and isinstance(atom.left, BuildConcept)
+        and atom.left.is_aggregate
+        and isinstance(atom.right, (tuple, list))
+        and atom.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN)
+        and all(
+            v is None or (isinstance(v, (int, float, str)) and not isinstance(v, bool))
+            for v in atom.right
+        )
+    ):
+        return None
+    member = (0 if atom.left.zero_on_empty else None) in atom.right
+    return member if atom.operator == ComparisonOperator.IN else not member
 
 
 def _decided_per_group(
@@ -1664,7 +1701,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     )
     if (
         mandatory_list
-        and not atom.existence_arguments
+        and not _reads_a_set(atom)
         and _uncovered_exposing_output_contributor(
             chosen_groups,
             row_inputs,

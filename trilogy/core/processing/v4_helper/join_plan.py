@@ -70,6 +70,8 @@ class JoinPlan:
     coalescing: frozenset[str] = frozenset()
     # the contributors supplying outputs; the rest join to pair or filter them
     suppliers: frozenset[str] = frozenset()
+    # bridges elected to key a pairing, not to join islands
+    keying: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -980,8 +982,9 @@ def elect_bridges(
     )
     bridges: list[str] = []
     current = plan(extras=bridges)
-    while len(current.islands()) > 1:
+    while len(current.islands()) > 1 or _underkeyed_blends(current, attrs, environment):
         islands = len(current.islands())
+        blends = _underkeyed_blends(current, attrs, environment)
         # a bridge every pairing of which is keyed: shared columns that
         # identify neither side multiply both, so none is elected and the
         # keyless-join guard names the gap
@@ -991,7 +994,11 @@ def elect_bridges(
                 for gid in candidates
                 if gid not in cover
                 and gid not in bridges
-                and len((trial := plan(extras=[*bridges, gid])).islands()) < islands
+                and (
+                    len((trial := plan(extras=[*bridges, gid])).islands()),
+                    _underkeyed_blends(trial, attrs, environment),
+                )
+                < (islands, blends)
                 and all(
                     p.kind != PairingKind.BLEND
                     for p in trial.pairings
@@ -1002,6 +1009,51 @@ def elect_bridges(
         )
         if elected is None:
             return current
-        gid, current = elected
+        gid, trial = elected
+        keying = current.keying | (
+            {gid} if len(trial.islands()) == islands else frozenset()
+        )
+        current = replace(trial, keying=frozenset(keying))
         bridges.append(gid)
     return current
+
+
+def _underkeyed_blends(
+    plan: JoinPlan, attrs: dict[str, GroupAttrs], environment: BuildEnvironment
+) -> int:
+    """Pairings of two grouped suppliers on fewer keys than one's grain
+    determines of the other's (`count(id)` by city, species beside `max(x) by
+    city, tree_form`, paired on city alone): the merge needs a side holding
+    the determined key too (`SelectGrain.by_property_without_its_key_misjoins`)."""
+    count = 0
+    for p in plan.pairings:
+        if p.kind != PairingKind.BLEND or not {p.left, p.right} <= plan.suppliers:
+            continue
+        if not all(
+            attrs[g].derivation in GROUPING_DERIVATIONS for g in (p.left, p.right)
+        ):
+            continue
+        left, right = plan.identity[p.left], plan.identity[p.right]
+        if not any(
+            not b <= p.keys and b <= _determined(a, environment)
+            for a, b in ((left, right), (right, left))
+        ):
+            continue
+        if not any(
+            _bridges_on_identity(plan, extra, side)
+            and _bridges_on_identity(plan, extra, other)
+            for extra in plan.contributors
+            if extra not in plan.suppliers
+            for side, other in ((p.left, p.right),)
+        ):
+            count += 1
+    return count
+
+
+def _bridges_on_identity(plan: JoinPlan, bridge: str, side: str) -> bool:
+    return any(
+        {q.left, q.right} == {bridge, side}
+        and q.kind != PairingKind.BLEND
+        and plan.identity[side] <= q.keys | q.implied
+        for q in plan.pairings
+    )

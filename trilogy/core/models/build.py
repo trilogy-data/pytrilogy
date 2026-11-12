@@ -2505,8 +2505,9 @@ class BuildDatasource:
                 canonical_match = x
         match = native_match or exact_match or canonical_match
         if match is None:
-            # Last tier: a finer-grain aggregate this scan will roll up.
-            match = self.rollup_column_for(concept)
+            # Last tier: a finer-grain aggregate this scan will roll up, or the
+            # unfiltered partial an `agg(x ? c)` at this grain reads per row.
+            match = self.rollup_column_for(concept) or self.filtered_column_for(concept)
         if match is not None:
             if use_raw_name:
                 return match.alias

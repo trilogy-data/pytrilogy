@@ -13,6 +13,7 @@ from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
+from .concept_graph import _scope_and_phase
 from .condition_placement import feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .edges import EdgeKind, EdgeMap, edges_of_kind
@@ -264,10 +265,14 @@ def elect_cover(
         # `species`) comes with the key: a group holding it without the key
         # (`max(x) by city, tree_form`) pairs it with the key's rows on the
         # other columns alone (`SelectGrain.property_without_its_key_misjoins`).
+        # A WHERE aggregate's own group reads every row, never the rows the
+        # WHERE kept: an output read off it skips the row atoms placed on the
+        # select's rows (`SelectGrain.gate_group_skips_row_atoms`).
         keyed = _selected_keys(concept, mandatory_list)
         candidates.sort(
             key=lambda gid: (
                 keyed <= exposed[gid],
+                _scope_and_phase(attrs[gid].label)[1] != "condition",
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,

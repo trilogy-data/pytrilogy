@@ -2341,6 +2341,9 @@ def build_group_graph(
         arg.address for clause in conditions for arg in clause.row_arguments
     )
     output_addresses = frozenset(c.address for c in mandatory_list)
+    for node in concept_graph.nodes:
+        if concept_attrs[node].address in condition_arg_addresses:
+            concept_attrs[node].where_row_arg = True
     primary_group, buckets = _assign_groups(
         concept_graph,
         concept_edges,

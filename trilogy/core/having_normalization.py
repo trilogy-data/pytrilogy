@@ -43,6 +43,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     Granularity,
+    Purpose,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
@@ -531,7 +532,11 @@ def _promotion_grows_grain(
     grain. A bare/coarser aggregate broadcasts one value per grain row (grain
     unchanged); a *finer* off-grain aggregate (``agg(x) by k`` where ``k`` is
     finer than the grain) enters the grain as itself, which would fan the output
-    out — so it must be semijoined, not promoted."""
+    out — so it must be semijoined, not promoted. A grain the base grain
+    determines (`by city, tree_form` beside `city, species`, `tree_form` a
+    property of `species`) is coarser: one value per base row."""
+    if _grain_determined(concept, base_components, environment):
+        return False
     combined = Grain.from_concepts(
         base_targets + [concept],
         where_clause=None,
@@ -542,6 +547,24 @@ def _promotion_grows_grain(
     # target is a concrete Concept or resolves via the environment, so the only
     # possible new component beyond ``base_components`` is the candidate itself.
     return bool(combined.components - base_components)
+
+
+def _grain_determined(
+    concept: Concept, base_components: set[str], environment: Environment
+) -> bool:
+    components = concept.grain.components
+    if not components:
+        return False
+    for address in components - base_components:
+        found = environment.concepts.get(address)
+        if (
+            found is None
+            or found.purpose != Purpose.PROPERTY
+            or not found.keys
+            or not set(found.keys) <= base_components
+        ):
+            return False
+    return True
 
 
 class _ChainedConcepts:

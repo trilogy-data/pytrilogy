@@ -397,6 +397,9 @@ class ConceptAttrs:
     # WHERE applies on this root's own scan, so it shares the filter columns'
     # row stream and never splits off as a single row or an entity peel.
     scan_filtered: bool = False
+    # A row argument of the statement's WHERE: the WHERE filters every scan
+    # of the select's rows, so it co-sources with any root bound beside it.
+    where_row_arg: bool = False
 
     @property
     def keys_are_conditional_fd(self) -> bool:

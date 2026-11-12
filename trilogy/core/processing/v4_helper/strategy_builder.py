@@ -4943,6 +4943,7 @@ def _join_elected_bridges(
     parents: list[StrategyNode],
     bridges: Sequence[tuple[StrategyNode, frozenset[str]]],
     environment: BuildEnvironment,
+    keying: frozenset[int] = frozenset(),
 ) -> list[StrategyNode]:
     """Join the bridges the join plan elected (`join_plan.elect_bridges`),
     each with the keys the plan pairs it on, so the merge below joins on an
@@ -4953,16 +4954,28 @@ def _join_elected_bridges(
 
     The plan elects only bridges whose every pairing is keyed. A bridge that
     no longer joins two islands as built (a member widened to its key pairs
-    directly) is not joined."""
+    directly) is not joined. A keying bridge (`JoinPlan.keying`) joins
+    whatever the islands: it holds the key one side's grain determines and
+    the other side's is grouped by."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
     for bridge, keys in bridges:
         islands = _pairing_islands(outputs)
-        if len(islands) < 2:
-            break
         if any(bridge is parent for parent in parents):
+            continue
+        if id(bridge) in keying:
+            if keys:
+                _carry_join_keys(
+                    [bridge],
+                    _join_key_concepts([bridge], environment, set(keys)),
+                    environment,
+                )
+            parents.append(bridge)
+            outputs.append(_pairing_addresses(bridge, environment))
+            continue
+        if len(islands) < 2:
             continue
         if keys:
             _carry_join_keys(
@@ -6060,14 +6073,16 @@ def _gate_key_row_stream(
     address: str, attrs: dict[str, GroupAttrs], candidates: Collection[str]
 ) -> str | None:
     """The row stream computing a gate's derived key: a BASIC group, never the
-    gate's own feeder (which carries the key too). The select phase's first."""
+    gate's own feeder (which carries the key too). The select phase's first.
+    Else the scan holding a property key the sides' grain determines
+    (`count_distinct(tag) by tree_form` beside rows keyed by `species`)."""
     hosts = sorted(
-        (gid.startswith("grp:[@"), gid)
+        (attrs[gid].derivation != Derivation.BASIC, gid.startswith("grp:[@"), gid)
         for gid in candidates
-        if attrs[gid].derivation == Derivation.BASIC
+        if attrs[gid].derivation in (Derivation.BASIC, Derivation.ROOT)
         and address in attrs[gid].output_concepts
     )
-    return hosts[0][1] if hosts else None
+    return hosts[0][2] if hosts else None
 
 
 @dataclass
@@ -6256,7 +6271,7 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
-    bridges = elect_bridges(
+    bridged = elect_bridges(
         group_graph,
         attrs,
         per_group,
@@ -6264,7 +6279,8 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
-    ).extras
+    )
+    bridges = bridged.extras
     extras = _final_extra_sides(
         group_graph,
         attrs,
@@ -6374,6 +6390,7 @@ def _assemble_final_node(
         parents,
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
         environment,
+        frozenset(id(_planned_side(built, gid)) for gid in bridged.keying),
     )
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
