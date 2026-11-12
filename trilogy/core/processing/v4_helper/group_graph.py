@@ -88,6 +88,7 @@ from .join_plan import (
 )
 from .models import (
     ConceptAttrs,
+    ConceptSets,
     FinalAssemblyContract,
     GroupAttrs,
     GroupBucket,
@@ -395,6 +396,7 @@ def _inject_conditions(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
+    sets: ConceptSets,
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
     scoped_join_key_groups: dict[str, set[str]],
@@ -418,6 +420,7 @@ def _inject_conditions(
         concept_attrs,
         statement_relation_addresses,
         staged_conditions,
+        sets,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -1280,23 +1283,6 @@ class GroupIOPlan:
         )
 
 
-@dataclass(frozen=True)
-class ConceptSets:
-    """What the demand pass states for each non-FINAL group: the columns it
-    emits, the columns it reads, and the anchors its pinned values evaluate
-    on. The rehome reads these before they are written onto the groups."""
-
-    outputs: dict[str, frozenset[str]] = field(default_factory=dict)
-    inputs: dict[str, frozenset[str]] = field(default_factory=dict)
-    pin_anchors: dict[str, frozenset[str]] = field(default_factory=dict)
-
-    def outputs_of(self, gid: str) -> frozenset[str]:
-        return self.outputs.get(gid, frozenset())
-
-    def inputs_of(self, gid: str) -> frozenset[str]:
-        return self.inputs.get(gid, frozenset())
-
-
 def _lineage_parents_by_address(
     concept_edges: EdgeMap, concept_attrs: dict[str, ConceptAttrs]
 ) -> dict[str, set[str]]:
@@ -1557,6 +1543,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    stated: ConceptSets,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
     """A BASIC scalar mixing row values with a by-key aggregate
@@ -1600,6 +1587,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
         attrs,
         mandatory_list,
         authored_axes(groups, attrs, environment, relation_edge_members),
+        stated.row_columns,
     )
     # Only a spine that is the result's own row identity qualifies: every
     # spine key is a requested output, or is FD-determined by them (the by-key
@@ -1989,6 +1977,7 @@ def _compute_concept_sets(
     rollup_padded: frozenset[str],
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
+    stated: ConceptSets | None = None,
 ) -> None:
     sets = _concept_sets(
         group_graph,
@@ -2003,15 +1992,12 @@ def _compute_concept_sets(
         rollup_padded,
         scoped_axis_mates,
         relation_edge_members,
+        stated,
     )
-    _write_concept_sets(attrs, buckets, sets)
+    _write_concept_sets(attrs, sets)
 
 
-def _write_concept_sets(
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    sets: ConceptSets,
-) -> None:
+def _write_concept_sets(attrs: dict[str, GroupAttrs], sets: ConceptSets) -> None:
     """Write the stated sets onto the groups still in the graph; a group
     folded since they were stated is gone."""
     for gid, anchors in sets.pin_anchors.items():
@@ -2022,8 +2008,6 @@ def _write_concept_sets(
             continue
         attrs[gid].output_concepts = tuple(sorted(outputs))
         attrs[gid].input_concepts = tuple(sorted(sets.inputs[gid]))
-        if gid in buckets:
-            buckets[gid].output_concepts = attrs[gid].output_concepts
 
 
 def _concept_sets(
@@ -2039,6 +2023,7 @@ def _concept_sets(
     rollup_padded: frozenset[str],
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
+    stated: ConceptSets | None = None,
 ) -> ConceptSets:
     """Per-group input/output concept sets.
 
@@ -2046,7 +2031,10 @@ def _concept_sets(
     - stable graph facts (`GroupFacts`): primary members, grain, behavior
     - forward capability: which columns each group can preserve
     - reverse demand: which outputs/inputs each group must expose
-    """
+
+    `stated` is the statement a previous pass made, read where a group's
+    columns are asked for (the FINAL spine)."""
+    stated = stated or ConceptSets()
     mandatory_addresses = {c.address for c in mandatory_list}
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
@@ -2088,6 +2076,7 @@ def _concept_sets(
         attrs,
         mandatory_list,
         environment,
+        stated,
         relation_edge_members,
     )
     topo = _topological_dependency_order(group_graph, group_edges)
@@ -2310,10 +2299,10 @@ def _concept_sets(
     for gid in reversed(topo):
         _group_inputs(gid, ctx)
 
-    stated = [gid for gid in group_graph.nodes if gid != FINAL_NODE_ID]
+    groups = [gid for gid in group_graph.nodes if gid != FINAL_NODE_ID]
     return ConceptSets(
-        outputs={gid: frozenset(io.outputs[gid]) for gid in stated},
-        inputs={gid: frozenset(io.inputs[gid]) for gid in stated},
+        outputs={gid: frozenset(io.outputs[gid]) for gid in groups},
+        inputs={gid: frozenset(io.inputs[gid]) for gid in groups},
         pin_anchors=pin_anchors,
     )
 
@@ -2421,10 +2410,8 @@ def build_group_graph(
         environment,
         placed,
     )
-    # injection reads what the demand pass had each group emit
-    _write_concept_sets(attrs, buckets, sets)
     trace_group_graph(
-        "FINAL added, concept sets computed, sources regrafted",
+        "FINAL added, concept sets stated, sources regrafted",
         group_graph,
         group_edges,
         attrs,
@@ -2434,6 +2421,7 @@ def build_group_graph(
         group_edges,
         attrs,
         buckets,
+        sets,
         conditions,
         mandatory_list,
         environment.scoped_join_key_groups,
@@ -2477,6 +2465,7 @@ def build_group_graph(
         rollup_padded,
         scoped_axis_mates=_scoped_axis_mates(environment),
         relation_edge_members=relation_edge_members,
+        stated=sets,
     )
     _refresh_input_contracts(
         group_graph,

@@ -2095,6 +2095,72 @@ sets while the folds or the reads are elected, and both read one
 `test_the_stated_sets_are_written_once_the_reads_are_applied` and
 `test_a_folded_group_takes_no_sets` pin the write.
 
+**Injection reads stated sets (part 58).** After part 57, condition injection
+was the last step that read the first pass's sets off the groups. It reads what
+each group carries (`GroupBucket.carried`: what the demand pass had the group
+emit, less its members) off the buckets. So the sets were written onto every
+group before injection, and the pass after injection wrote them a second time.
+Now injection reads the same `ConceptSets` value the rehome reads:
+
+- `ConceptSets` moves to `models.py`. `ConceptSets.carried_by` replaces
+  `GroupBucket.carried` and returns the same columns: a group's stated
+  outputs less its members, or its keys if the group was minted after the
+  sets were stated (a dimension read's ROOT). `GroupBucket.output_concepts`
+  and `GroupBucket.carried` are removed.
+- `plan_condition_placements` takes the sets and computes each group's
+  carried columns once (`_PlacementScope.carried`). Its two readers of those
+  columns, `_uncovered_exposing_output_contributor` and
+  `_reads_past_region_domain`, take them from the scope.
+- `build_group_graph` no longer writes the first pass's sets onto the groups.
+  The pass after injection, `_compute_concept_sets`, now sets each group's
+  `output_concepts`, `input_concepts` and `grain_pin_anchors`, and it is the
+  only step that does.
+- The pass after injection did read the first pass's sets off the groups,
+  through a property. A BASIC scalar over the FINAL spine
+  (`_widen_mixed_scalar_basic_to_final_spine`) widens to `merge_axes`, which
+  reads each contributor's `emitted_grain`, and a non-grouping group's
+  emitted grain is its grain within `row_columns`, its inputs and outputs. In
+  the first pass those were empty; in the second, the first pass's. That pass
+  now takes the first statement as `stated`, and `merge_axes` reads a group's
+  columns off it (`ConceptSets.row_columns`, `GroupAttrs.grain_emitted_over`).
+  An empty statement reads as the unwritten attributes did. A first cut that
+  dropped the write without this changed 157 graphs and failed nine
+  `tree_reporting`-shaped builds with a keyless join.
+
+What can move: nothing. For every group, `carried_by` returns what `carried`
+returned, because both read the same stated sets and the bucket's current
+members, and the FINAL spine reads the statement that was written before.
+Raw-filter propagation and phase coloring read no sets. A census over one suite run
+(`-m "not adventureworks_execution and not cloud_live"`, `*_laws.py`
+ignored, as CI runs it) fingerprinted, by value, every group graph that
+`build_group_graph` returned: nodes, edges and their kinds, and every group
+attribute. It ran once on `main` and once on this branch, and compared the
+fingerprints test by test, pass by pass, both runs under one
+`PYTHONHASHSEED` (without one, a run differs from itself). 12,513 passes
+over 6,005 tests matched on both sides; 2 differ, both in
+`test_trilogy::test_parallel_failure`, whose scripts plan on threads, so
+two runs of this branch differ there too. The rest were unmatched because of
+the renamed tests in `test_v4_stated_sets.py` and the tpc-ds suite's shared
+planning cache, which moves passes between tests. The two runs fail the same
+34 tests: the credential-gated BigQuery, Snowflake, GCS and NCAA tests,
+`the_look::test_wrapped_aggregate_with_dependent_by_grain`, and the
+fingerprinting's own recursion limit on deep set-operation conditions. The
+first cut, without the stated spine, differed in 157 passes, so the
+comparison can see the change.
+
+`test_no_group_holds_its_sets_until_injection_is_planned` pins the order over
+`test_v4_window_input_carry`'s model, with a WHERE added. While the folds, the
+reads and the condition placements are elected, no group holds sets, and all
+three read one `ConceptSets`. `test_the_sets_are_written_once_after_injection`
+pins the single write. These two replace part 57's order tests, and both fail
+if part 57's write is restored ahead of injection.
+`test_a_group_carries_what_it_is_stated_to_emit` and
+`test_a_group_minted_since_the_statement_carries_its_keys` pin `carried_by`.
+`test_the_final_spine_reads_the_previous_statement` runs
+`test_partition_family_strict_grain_dedup`'s tree model and checks that the
+spine reads the statement the pass before it made. It fails if the second
+pass is not handed that statement.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2127,10 +2193,12 @@ not built yet:
    left. The stated grain, placement, folds and reads still follow the demand
    pass, since the grouping provider, the sibling and the spine are read off
    the groups' input and output sets. Those are now one stated `ConceptSets`
-   value that the rehome reads, not group attributes it reads back (part 57).
-   Stating the rehome when stage 2 groups needs those sets first. Condition
-   injection still reads the first pass's sets off the buckets, and the full
-   pass then runs again after injection.
+   value that the rehome reads, not group attributes it reads back (part 57),
+   and condition injection reads the same value (part 58): the sets are
+   written onto the groups once, by the pass after injection. Stating the
+   rehome when stage 2 groups needs those sets first. The demand pass still
+   runs twice, before the rehome and after injection, since injection adds
+   the condition inputs a group must emit.
 
 ## 8. Not claimed
 

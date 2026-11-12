@@ -315,9 +315,12 @@ class GroupAttrs(_HeldKeys):
         computable, which its rows hold only if it reads or outputs those keys:
         `pages_per_session + day_of_week(event_date)` is pageview-grained but
         computed off the aggregates' `(site_key, event_date)` rows."""
+        return self.grain_emitted_over(self.row_columns)
+
+    def grain_emitted_over(self, row_columns: frozenset[str]) -> frozenset[str]:
         if self.derivation in GROUPING_DERIVATIONS:
             return self.grain_components
-        return self.grain_components & self.row_columns
+        return self.grain_components & row_columns
 
 
 @dataclass
@@ -492,9 +495,6 @@ class GroupBucket(_HeldKeys):
     null_member_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
     reason: RootReason | None = None
-    # What the demand pass has the group emit (`_compute_concept_sets`), hidden
-    # pass-through columns included. Empty until it has run.
-    output_concepts: tuple[str, ...] = ()
 
     def add_member(self, address: str, node_id: str, depth: DepthLabel) -> None:
         self.primary_members.append(address)
@@ -510,14 +510,6 @@ class GroupBucket(_HeldKeys):
         self.primary_node_ids = [self.primary_node_ids[i] for i in kept]
 
     @property
-    def carried(self) -> set[str]:
-        """What the group holds that it does not compute: what the demand pass
-        has it emit once that has run, and before it its keys."""
-        if self.output_concepts:
-            return set(self.output_concepts) - set(self.primary_members)
-        return set(self.carried_keys)
-
-    @property
     def group_id(self) -> str:
         grain_key = "|".join(sorted(self.grain_components)) or "∅"
         label_prefix = f"[{self.label}]" if self.label else ""
@@ -526,3 +518,32 @@ class GroupBucket(_HeldKeys):
             f"grp:{label_prefix}{self.derivation.value}:{self.depth_label.value}:"
             f"{grain_key}{suffix}"
         )
+
+
+@dataclass(frozen=True)
+class ConceptSets:
+    """What the demand pass states for each non-FINAL group: the columns it
+    emits, the columns it reads, and the anchors its pinned values evaluate
+    on. The rehome, condition injection and the next pass's FINAL spine read
+    these; they are written onto the groups only by the pass after injection."""
+
+    outputs: dict[str, frozenset[str]] = field(default_factory=dict)
+    inputs: dict[str, frozenset[str]] = field(default_factory=dict)
+    pin_anchors: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def outputs_of(self, gid: str) -> frozenset[str]:
+        return self.outputs.get(gid, frozenset())
+
+    def inputs_of(self, gid: str) -> frozenset[str]:
+        return self.inputs.get(gid, frozenset())
+
+    def row_columns(self, gid: str) -> frozenset[str]:
+        """`GroupAttrs.row_columns` as stated: what the group reads and emits."""
+        return self.inputs_of(gid) | self.outputs_of(gid) | {ALL_ROWS_ADDRESS}
+
+    def carried_by(self, gid: str, bucket: GroupBucket) -> frozenset[str]:
+        """What the group holds that it does not compute: what it is stated to
+        emit, else (a group minted since the sets were stated) its keys."""
+        if outputs := self.outputs.get(gid):
+            return outputs - set(bucket.primary_members)
+        return frozenset(bucket.carried_keys)
