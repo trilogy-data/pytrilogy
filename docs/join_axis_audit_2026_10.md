@@ -2135,7 +2135,18 @@ Raw-filter propagation and phase coloring read no sets. A census over one suite 
 ignored, as CI runs it) fingerprinted, by value, every group graph that
 `build_group_graph` returned: nodes, edges and their kinds, and every group
 attribute. It ran once on `main` and once on this branch, and compared the
-fingerprints test by test, pass by pass. (Result pending.)
+fingerprints test by test, pass by pass, both runs under one
+`PYTHONHASHSEED` (without one, a run differs from itself). 12,513 passes
+over 6,005 tests matched on both sides; 2 differ, both in
+`test_trilogy::test_parallel_failure`, whose scripts plan on threads, so
+two runs of this branch differ there too. The rest were unmatched because of
+the renamed tests in `test_v4_stated_sets.py` and the tpc-ds suite's shared
+planning cache, which moves passes between tests. The two runs fail the same
+34 tests: the credential-gated BigQuery, Snowflake, GCS and NCAA tests,
+`the_look::test_wrapped_aggregate_with_dependent_by_grain`, and the
+fingerprinting's own recursion limit on deep set-operation conditions. The
+first cut, without the stated spine, differed in 157 passes, so the
+comparison can see the change.
 
 `test_no_group_holds_its_sets_until_injection_is_planned` pins the order over
 `test_v4_window_input_carry`'s model, with a WHERE added. While the folds, the
