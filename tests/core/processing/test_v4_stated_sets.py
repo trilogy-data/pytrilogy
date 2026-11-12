@@ -140,3 +140,19 @@ def test_the_final_spine_reads_the_previous_statement(monkeypatch):
     assert build(model) == build(MODEL)
     assert any(statement.outputs for statement, _ in spines)
     assert all(s is last for s, last in spines if s.outputs)
+
+
+def test_both_passes_read_one_demand(monkeypatch):
+    demands: list[gg.Demand] = []
+    concept_sets = gg._concept_sets
+
+    def record(group_graph, group_edges, attrs, buckets, demand, stated=None):
+        demands.append(demand)
+        return concept_sets(group_graph, group_edges, attrs, buckets, demand, stated)
+
+    monkeypatch.setattr(gg, "_concept_sets", record)
+    env = Environment()
+    env.parse(_MODEL)
+    Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
+    assert len(demands) == 2
+    assert demands[0] is demands[1]

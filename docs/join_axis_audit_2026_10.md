@@ -2161,6 +2161,44 @@ if part 57's write is restored ahead of injection.
 spine reads the statement the pass before it made. It fails if the second
 pass is not handed that statement.
 
+**Both passes read one demand (part 59).** The demand pass ran twice with
+two configurations. The pass before the rehome took neither the statement's
+scoped axis mates nor its relation-edge members (the authored join-axis
+members whose collapsed side keeps a computed lineage); the pass after
+injection took both, computed between the two passes. Now `statement_demand`
+states, once per statement and before the root partition, everything a pass
+reads besides the group graph: the concept graph, the select, the rollup-padded
+keys, the axis mates and the relation-edge members. That value is a `Demand`,
+and both `_concept_sets` calls read the same one:
+
+- `_concept_sets` takes the group graph, its buckets and a `Demand`, plus the
+  previous statement. `_compute_concept_sets`, the wrapper that stated and
+  wrote in one call, is gone: `build_group_graph` writes the second statement
+  with `_write_concept_sets`.
+- The relation-edge members are read off the concept graph, which nothing
+  after it is built adds a RELATION edge to, so computing them before the
+  partition reads the same edges. The axis mates and the rollup-padded keys
+  read only the environment.
+- The FINAL contract reads the relation-edge members off the same `Demand`.
+
+What can move: the first pass now preserves a grouping group's scoped axis
+mates and exposes a relation-edge member's mates, which it did not before. So
+the sets the rehome and injection read can differ for a statement with a
+scoped join. A census of the group graphs (as in part 58: every graph
+`build_group_graph` returned, fingerprinted by value, test by test, both runs
+under one `PYTHONHASHSEED`) over `tests/modeling`, `tests/core`,
+`tests/complex`, `tests/discovery`, `tests/engine` and the top-level tests
+(`*_laws.py` and the credential-gated NCAA suite left out) ran once on
+`main` and once on this branch: 9,542 passes over about 4,740 tests matched,
+and none differ. 61 passes were unmatched, in tests whose worker the
+container ran out of memory on in one run and not the other, and the last
+few heavy files did not finish on either side. So the first pass's added
+mates change no graph either suite builds: the rehome and injection read
+columns no statement in them depends on the mates for.
+
+`test_both_passes_read_one_demand` pins the single `Demand`: both passes over
+`test_v4_window_input_carry`'s model, with a WHERE, read the same object.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2198,7 +2236,9 @@ not built yet:
    written onto the groups once, by the pass after injection. Stating the
    rehome when stage 2 groups needs those sets first. The demand pass still
    runs twice, before the rehome and after injection, since injection adds
-   the condition inputs a group must emit.
+   the condition inputs a group must emit, but both runs read one `Demand`
+   (part 59): they differ only in the graph they read and the statement
+   before them.
 
 ## 8. Not claimed
 

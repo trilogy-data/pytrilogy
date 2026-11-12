@@ -23,8 +23,9 @@ from trilogy.core.processing.v4_helper.constants import (
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
 from trilogy.core.processing.v4_helper.group_graph import (
     ConceptSets,
-    _compute_concept_sets,
+    Demand,
     _concept_sets,
+    _write_concept_sets,
 )
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
@@ -38,7 +39,7 @@ def empty_environment() -> BuildEnvironment:
     return BuildEnvironment()
 
 
-# A minimal stand-in for BuildConcept: _compute_concept_sets only reads `.address`.
+# A minimal stand-in for BuildConcept: _concept_sets only reads `.address`.
 class _FakeConcept:
     def __init__(self, address: str, pseudonyms: set[str] | None = None):
         self.address = address
@@ -187,17 +188,15 @@ def test_q02_shape_basic_exposes_inherited_grain_key(
     }
     mandatory = [_FakeConcept("round_result"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(
-        gg,
-        gedges,
+    _write_concept_sets(
         attrs,
-        cg,
-        cedges,
-        cattrs,
-        buckets,
-        mandatory,
-        empty_environment,
-        frozenset(),
+        _concept_sets(
+            gg,
+            gedges,
+            attrs,
+            buckets,
+            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+        ),
     )
 
     basic_out = set(attrs["basic"].output_concepts)
@@ -245,17 +244,15 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate(
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(
-        gg,
-        gedges,
+    _write_concept_sets(
         attrs,
-        cg,
-        cedges,
-        cattrs,
-        buckets,
-        mandatory,
-        empty_environment,
-        frozenset(),
+        _concept_sets(
+            gg,
+            gedges,
+            attrs,
+            buckets,
+            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+        ),
     )
 
     agg_out = set(attrs["agg"].output_concepts)
@@ -330,17 +327,15 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain(
     }
     mandatory = [_FakeConcept("local_id"), _FakeConcept("local_name")]
 
-    _compute_concept_sets(
-        gg,
-        gedges,
+    _write_concept_sets(
         attrs,
-        cg,
-        cedges,
-        cattrs,
-        buckets,
-        mandatory,
-        empty_environment,
-        frozenset(),
+        _concept_sets(
+            gg,
+            gedges,
+            attrs,
+            buckets,
+            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+        ),
     )
 
     basic_out = set(attrs["basic"].output_concepts)
@@ -391,17 +386,15 @@ def test_aggregate_inputs_include_primary_lineage_args(
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(
-        gg,
-        gedges,
+    _write_concept_sets(
         attrs,
-        cg,
-        cedges,
-        cattrs,
-        buckets,
-        mandatory,
-        empty_environment,
-        frozenset(),
+        _concept_sets(
+            gg,
+            gedges,
+            attrs,
+            buckets,
+            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+        ),
     )
 
     agg_in = set(attrs["agg"].input_concepts)
@@ -453,17 +446,15 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally(
     }
     mandatory = [_FakeConcept("round_result")]
 
-    _compute_concept_sets(
-        gg,
-        gedges,
+    _write_concept_sets(
         attrs,
-        cg,
-        cedges,
-        cattrs,
-        buckets,
-        mandatory,
-        empty_environment,
-        frozenset(),
+        _concept_sets(
+            gg,
+            gedges,
+            attrs,
+            buckets,
+            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+        ),
     )
 
     basic_in = set(attrs["basic"].input_concepts)
@@ -490,12 +481,7 @@ def test_a_lineage_cycle_states_no_sets(empty_environment: BuildEnvironment):
         graph,
         gedges,
         attrs,
-        cg,
         {},
-        cattrs,
-        {},
-        [_FakeConcept("x")],
-        empty_environment,
-        frozenset(),
+        Demand(cg, {}, cattrs, [_FakeConcept("x")], empty_environment, frozenset()),
     )
     assert sets == ConceptSets()

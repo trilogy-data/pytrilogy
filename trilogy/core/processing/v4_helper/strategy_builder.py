@@ -5838,7 +5838,7 @@ def _assemble_sole_contributor(
         _bridge_pseudonyms(final_node, per_group[gid])
         return final_node
     # The contributing group's outputs include grain keys it exposed
-    # for sibling JOINs (see `_compute_concept_sets`). At the user-
+    # for sibling JOINs (see `_concept_sets`). At the user-
     # facing FINAL projection those keys aren't part of mandatory and
     # would otherwise leak into the SELECT. Mask them with
     # hidden_concepts; only valid at the FINAL layer, since hiding
