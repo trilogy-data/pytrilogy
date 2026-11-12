@@ -1,0 +1,138 @@
+# pytrilogy#947, reduced from a production model: a hand-simplified one plans differently.
+key city string;
+key tree_id string;
+key species string;
+property tree_id.diameter_at_breast_height float;
+property tree_id.height_m float;
+property tree_id.height_crown_radius_m float;
+key genus string;
+property species.tree_form string;
+root datasource tree_enrichment (
+    species: ~species,
+    genus: ?genus,
+    tree_form: ?tree_form,
+)
+grain (species)
+query '''select 'Palm' species, cast(null as varchar) genus, 'palm' tree_form''';
+const shaded_crown_ratio <- 3.0;
+def fit_scale(a, s) -> 10 ** (a + s ** 2 / 2);
+def fallback_level(cls, division_passes) -> case
+    when cls != 'all' and division_passes then 'division'
+end;
+def pick_fit(genus_passes, level, genus, division, everything) -> case
+    when genus_passes then genus
+    when level = 'division' then division
+    else null
+end;
+property genus.crown_coefficient_level string;
+property genus.crown_fit_b float;
+property genus.crown_fit_scale float;
+property genus.crown_fit_dbh_max_cm float;
+root datasource crown_width_coefficients (
+    level: crown_coefficient_level,
+    taxon: genus,
+    b: crown_fit_b,
+    scale: crown_fit_scale,
+    dbh_max_cm: crown_fit_dbh_max_cm,
+)
+query '''select 'global' level, 'all' taxon, 0.6 b, 0.35 scale, 770.0 dbh_max_cm'''
+where crown_coefficient_level = 'genus';
+key crown_fallback_class <- case
+    when tree_form = 'palm' or species = 'Palm' or species = 'Cactus' then 'none'
+end;
+def class_row(value, taxon, cls) -> max(value ? taxon = cls) by *;
+def for_class(value, taxon) -> case
+    when crown_fallback_class = 'all' then @class_row(value, taxon, 'all')
+end;
+key crown_fallback_taxon string;
+property crown_fallback_taxon.crown_fallback_row_level string;
+property crown_fallback_taxon.crown_fallback_row_b float;
+property crown_fallback_taxon.crown_fallback_row_scale float;
+property crown_fallback_taxon.crown_fallback_row_dbh_max_cm float;
+root datasource crown_width_fallbacks (
+    level: crown_fallback_row_level,
+    taxon: crown_fallback_taxon,
+    b: crown_fallback_row_b,
+    scale: crown_fallback_row_scale,
+    dbh_max_cm: crown_fallback_row_dbh_max_cm,
+)
+query '''select 'global' level, 'all' taxon, 0.6 b, 0.35 scale, 770.0 dbh_max_cm'''
+where crown_fallback_row_level = 'division' or crown_fallback_row_level = 'global';
+auto crown_fallback_b <- @for_class(crown_fallback_row_b, crown_fallback_taxon);
+auto crown_fallback_scale <- @for_class(crown_fallback_row_scale, crown_fallback_taxon);
+auto crown_fallback_dbh_max_cm <- @for_class(crown_fallback_row_dbh_max_cm, crown_fallback_taxon);
+auto crown_scale <- coalesce(crown_fit_scale, crown_fallback_scale);
+auto crown_b <- coalesce(crown_fit_b, crown_fallback_b);
+auto crown_dbh_max_cm <- coalesce(crown_fit_dbh_max_cm, crown_fallback_dbh_max_cm);
+def crown_width_at(dbh) -> case
+    else 2 * crown_scale * (least(greatest(dbh, 1.0), crown_dbh_max_cm) ** crown_b)
+end;
+auto dbh_cm <- case when diameter_at_breast_height > 0 then diameter_at_breast_height * 2.54 else null end;
+auto measured_stem_crown_width_m <- @crown_width_at(dbh_cm);
+auto height_stem_measured <- case
+end;
+auto height_shaded <- case
+    when height_crown_radius_m > shaded_crown_ratio * measured_stem_crown_width_m / 2 then true
+end;
+property genus.height_genus_a float;
+property genus.height_genus_b float;
+property genus.height_genus_sigma float;
+property genus.height_genus_passes bool;
+root datasource height_genus_fits (
+    genus: genus,
+    a: ?height_genus_a,
+    b: ?height_genus_b,
+    sigma: ?height_genus_sigma,
+    passes: ?height_genus_passes,
+)
+query '''select cast(null as VARCHAR) as genus, cast(null as DOUBLE) as a, cast(null as DOUBLE) as b, cast(null as DOUBLE) as sigma, cast(null as BOOLEAN) as passes where false''';
+key height_fit_class string;
+property height_fit_class.height_division_a float;
+property height_fit_class.height_division_b float;
+property height_fit_class.height_division_sigma float;
+property height_fit_class.height_division_passes bool;
+root datasource height_class_fits (
+    fit_class: height_fit_class,
+    division_a: ?height_division_a,
+    division_b: ?height_division_b,
+    division_sigma: ?height_division_sigma,
+    division_passes: ?height_division_passes,
+)
+query '''select cast(null as VARCHAR) as fit_class, cast(null as DOUBLE) as division_a, cast(null as DOUBLE) as division_b, cast(null as DOUBLE) as division_sigma, cast(null as BOOLEAN) as division_passes where false''';
+auto height_class_passes <- @for_class(height_division_passes, height_fit_class);
+auto height_class_a <- @for_class(height_division_a, height_fit_class);
+auto height_class_b <- @for_class(height_division_b, height_fit_class);
+auto height_class_sigma <- @for_class(height_division_sigma, height_fit_class);
+auto height_uses_genus <- case when genus is null then false else coalesce(height_genus_passes, false) end;
+auto height_fallback_level <- @fallback_level(crown_fallback_class, coalesce(height_class_passes, false));
+auto height_a <- @pick_fit(height_uses_genus, height_fallback_level, height_genus_a, height_class_a, 0);
+auto height_b <- @pick_fit(height_uses_genus, height_fallback_level, height_genus_b, height_class_b, 0);
+auto height_sigma <- @pick_fit(height_uses_genus, height_fallback_level, height_genus_sigma, height_class_sigma, 0);
+auto height_scale <- @fit_scale(height_a, height_sigma);
+auto height_dbh_cm <- case
+end;
+auto predicted_height_m <- cast(height_scale * (height_dbh_cm ** height_b) as float);
+auto height_check <- case
+    when not height_stem_measured or predicted_height_m is null then 'unchecked'
+    when height_shaded then 'shaded'
+end;
+auto accepted_height_m <- case
+    when height_check = 'accepted' or height_check = 'unchecked' then height_m
+end;
+root datasource sf_tree_info (
+    tree_id: tree_id,
+    city: city,
+    species: species,
+    diameter_at_breast_height: ?diameter_at_breast_height,
+    raw('''cast(null as float)'''): ?height_m,
+    raw('''cast(null as float)'''): ?height_crown_radius_m,
+)
+grain (tree_id)
+query '''select * from (values ('sf-1', 'USSFO', 'Acer platanoides', 30.0), ('sf-4', 'USSFO', 'Newtaxon alba', null), ('pred-1', 'USSFO', 'Unknown deciduous', null)) t(tree_id, city, species, diameter_at_breast_height)''';
+datasource ussfo_tree_predictions (
+    tree_id: ~tree_id,
+    city,
+    ?genus,
+)
+grain (tree_id)
+query '''select * from (values ('sf-1', 'USSFO', cast(null as varchar)), ('sf-7', 'USSFO', null)) t(tree_id, city, genus)''';
