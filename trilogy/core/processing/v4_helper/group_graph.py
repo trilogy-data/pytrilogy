@@ -1543,6 +1543,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    stated: ConceptSets,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
     """A BASIC scalar mixing row values with a by-key aggregate
@@ -1586,6 +1587,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
         attrs,
         mandatory_list,
         authored_axes(groups, attrs, environment, relation_edge_members),
+        stated.row_columns,
     )
     # Only a spine that is the result's own row identity qualifies: every
     # spine key is a requested output, or is FD-determined by them (the by-key
@@ -1975,6 +1977,7 @@ def _compute_concept_sets(
     rollup_padded: frozenset[str],
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
+    stated: ConceptSets | None = None,
 ) -> None:
     sets = _concept_sets(
         group_graph,
@@ -1989,6 +1992,7 @@ def _compute_concept_sets(
         rollup_padded,
         scoped_axis_mates,
         relation_edge_members,
+        stated,
     )
     _write_concept_sets(attrs, sets)
 
@@ -2019,6 +2023,7 @@ def _concept_sets(
     rollup_padded: frozenset[str],
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
+    stated: ConceptSets | None = None,
 ) -> ConceptSets:
     """Per-group input/output concept sets.
 
@@ -2026,7 +2031,10 @@ def _concept_sets(
     - stable graph facts (`GroupFacts`): primary members, grain, behavior
     - forward capability: which columns each group can preserve
     - reverse demand: which outputs/inputs each group must expose
-    """
+
+    `stated` is the statement a previous pass made, read where a group's
+    columns are asked for (the FINAL spine)."""
+    stated = stated or ConceptSets()
     mandatory_addresses = {c.address for c in mandatory_list}
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
@@ -2068,6 +2076,7 @@ def _concept_sets(
         attrs,
         mandatory_list,
         environment,
+        stated,
         relation_edge_members,
     )
     topo = _topological_dependency_order(group_graph, group_edges)
@@ -2290,10 +2299,10 @@ def _concept_sets(
     for gid in reversed(topo):
         _group_inputs(gid, ctx)
 
-    stated = [gid for gid in group_graph.nodes if gid != FINAL_NODE_ID]
+    groups = [gid for gid in group_graph.nodes if gid != FINAL_NODE_ID]
     return ConceptSets(
-        outputs={gid: frozenset(io.outputs[gid]) for gid in stated},
-        inputs={gid: frozenset(io.inputs[gid]) for gid in stated},
+        outputs={gid: frozenset(io.outputs[gid]) for gid in groups},
+        inputs={gid: frozenset(io.inputs[gid]) for gid in groups},
         pin_anchors=pin_anchors,
     )
 
@@ -2456,6 +2465,7 @@ def build_group_graph(
         rollup_padded,
         scoped_axis_mates=_scoped_axis_mates(environment),
         relation_edge_members=relation_edge_members,
+        stated=sets,
     )
     _refresh_input_contracts(
         group_graph,

@@ -8,7 +8,7 @@ joins to satisfy it instead of re-deriving it from whatever the built parents
 happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import partial
@@ -269,16 +269,25 @@ def merge_axes(
     attrs: dict[str, GroupAttrs],
     mandatory_list: Sequence[BuildConcept],
     authored: frozenset[str],
+    row_columns: Callable[[str], frozenset[str]] | None = None,
 ) -> frozenset[str]:
     """Every key some contributor's rows are identified by: a candidate join
     axis. A BASIC over aggregates (`customer_status <- case ... min(x) by
     user`) sits at user grain and emits that key; a region domain's rows are
     keyed by its spans. A grouping or rowset output's grain is the result's
     row grain (a rowset's `keys` are not: they are the FK path that determines
-    it). Authored relations hosted on both sides are axes by declaration."""
+    it). Authored relations hosted on both sides are axes by declaration.
+    `row_columns` reads a group's columns off a statement in place of its
+    attrs."""
     axes: set[str] = set()
     for gid in cover:
-        axes |= attrs[gid].emitted_grain | attrs[gid].extent_spans
+        group = attrs[gid]
+        emitted = (
+            group.grain_emitted_over(row_columns(gid))
+            if row_columns
+            else group.emitted_grain
+        )
+        axes |= emitted | group.extent_spans
     for concept in mandatory_list:
         if (
             concept.derivation in GROUPING_DERIVATIONS

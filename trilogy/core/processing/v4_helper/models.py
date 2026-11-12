@@ -315,9 +315,12 @@ class GroupAttrs(_HeldKeys):
         computable, which its rows hold only if it reads or outputs those keys:
         `pages_per_session + day_of_week(event_date)` is pageview-grained but
         computed off the aggregates' `(site_key, event_date)` rows."""
+        return self.grain_emitted_over(self.row_columns)
+
+    def grain_emitted_over(self, row_columns: frozenset[str]) -> frozenset[str]:
         if self.derivation in GROUPING_DERIVATIONS:
             return self.grain_components
-        return self.grain_components & self.row_columns
+        return self.grain_components & row_columns
 
 
 @dataclass
@@ -521,8 +524,8 @@ class GroupBucket(_HeldKeys):
 class ConceptSets:
     """What the demand pass states for each non-FINAL group: the columns it
     emits, the columns it reads, and the anchors its pinned values evaluate
-    on. The rehome and condition injection read these; they are written onto
-    the groups only by the pass after injection."""
+    on. The rehome, condition injection and the next pass's FINAL spine read
+    these; they are written onto the groups only by the pass after injection."""
 
     outputs: dict[str, frozenset[str]] = field(default_factory=dict)
     inputs: dict[str, frozenset[str]] = field(default_factory=dict)
@@ -533,6 +536,10 @@ class ConceptSets:
 
     def inputs_of(self, gid: str) -> frozenset[str]:
         return self.inputs.get(gid, frozenset())
+
+    def row_columns(self, gid: str) -> frozenset[str]:
+        """`GroupAttrs.row_columns` as stated: what the group reads and emits."""
+        return self.inputs_of(gid) | self.outputs_of(gid) | {ALL_ROWS_ADDRESS}
 
     def carried_by(self, gid: str, bucket: GroupBucket) -> frozenset[str]:
         """What the group holds that it does not compute: what it is stated to

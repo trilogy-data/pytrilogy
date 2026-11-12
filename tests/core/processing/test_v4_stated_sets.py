@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.core.processing.test_v4_window_input_carry import _MODEL
+from tests.test_partition_family_strict_grain_dedup import MODEL, build
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
@@ -114,3 +115,28 @@ def test_a_folded_group_takes_no_sets():
     gg._write_concept_sets({"w": window}, sets)
     assert window.output_concepts == ("k", "x")
     assert window.input_concepts == ("k",)
+
+
+def test_the_final_spine_reads_the_previous_statement(monkeypatch):
+    stated: list[ConceptSets] = []
+    spines: list[tuple[ConceptSets, ConceptSets | None]] = []
+    concept_sets, merge_axes = gg._concept_sets, gg.merge_axes
+
+    def record_sets(*args, **kwargs):
+        stated.append(concept_sets(*args, **kwargs))
+        return stated[-1]
+
+    def record_spine(cover, attrs, mandatory, authored, row_columns=None):
+        if row_columns is not None:
+            spines.append((row_columns.__self__, stated[-1] if stated else None))
+        return merge_axes(cover, attrs, mandatory, authored, row_columns)
+
+    monkeypatch.setattr(gg, "_concept_sets", record_sets)
+    monkeypatch.setattr(gg, "merge_axes", record_spine)
+    model = MODEL.replace(
+        "key src enum<string>['MUNI_A', 'OSM_A'];",
+        "property tree_id.src enum<string>['MUNI_A', 'OSM_A'];",
+    )
+    assert build(model) == build(MODEL)
+    assert any(statement.outputs for statement, _ in spines)
+    assert all(s is last for s, last in spines if s.outputs)

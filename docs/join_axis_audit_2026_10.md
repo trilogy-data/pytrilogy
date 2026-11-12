@@ -2114,13 +2114,23 @@ Now injection reads the same `ConceptSets` value the rehome reads:
 - `build_group_graph` no longer writes the first pass's sets onto the groups.
   The pass after injection, `_compute_concept_sets`, now sets each group's
   `output_concepts`, `input_concepts` and `grain_pin_anchors`, and it is the
-  only step that does. Nothing between the rehome and that pass reads them:
-  raw-filter propagation and phase coloring read neither.
+  only step that does.
+- The pass after injection did read the first pass's sets off the groups,
+  through a property. A BASIC scalar over the FINAL spine
+  (`_widen_mixed_scalar_basic_to_final_spine`) widens to `merge_axes`, which
+  reads each contributor's `emitted_grain`, and a non-grouping group's
+  emitted grain is its grain within `row_columns`, its inputs and outputs. In
+  the first pass those were empty; in the second, the first pass's. That pass
+  now takes the first statement as `stated`, and `merge_axes` reads a group's
+  columns off it (`ConceptSets.row_columns`, `GroupAttrs.grain_emitted_over`).
+  An empty statement reads as the unwritten attributes did. A first cut that
+  dropped the write without this changed 157 graphs and failed nine
+  `tree_reporting`-shaped builds with a keyless join.
 
 What can move: nothing. For every group, `carried_by` returns what `carried`
 returned, because both read the same stated sets and the bucket's current
-members. The pass after injection reads no sets off the groups, so it does not
-matter that none were written before it. A census over one suite run
+members, and the FINAL spine reads the statement that was written before.
+Raw-filter propagation and phase coloring read no sets. A census over one suite run
 (`-m "not adventureworks_execution and not cloud_live"`, `*_laws.py`
 ignored, as CI runs it) fingerprinted, by value, every group graph that
 `build_group_graph` returned: nodes, edges and their kinds, and every group
@@ -2135,6 +2145,10 @@ pins the single write. These two replace part 57's order tests, and both fail
 if part 57's write is restored ahead of injection.
 `test_a_group_carries_what_it_is_stated_to_emit` and
 `test_a_group_minted_since_the_statement_carries_its_keys` pin `carried_by`.
+`test_the_final_spine_reads_the_previous_statement` runs
+`test_partition_family_strict_grain_dedup`'s tree model and checks that the
+spine reads the statement the pass before it made. It fails if the second
+pass is not handed that statement.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
