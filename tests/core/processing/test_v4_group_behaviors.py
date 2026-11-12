@@ -57,6 +57,7 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
     native_grain_declared,
 )
 from trilogy.core.processing.v4_helper.group_graph import (
+    Demand,
     _add_final_node,
     _refresh_input_contracts,
     _refresh_shapes_rows,
@@ -98,6 +99,14 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _required_final_contract,
     side_members,
 )
+
+
+def _demand(
+    concept_attrs: dict, concept_edges: EdgeMap, environment: BuildEnvironment
+) -> Demand:
+    return Demand(
+        nx.DiGraph(), concept_edges, concept_attrs, [], environment, frozenset()
+    )
 
 
 @pytest.fixture
@@ -353,7 +362,7 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
         "daily_rides": _attrs("daily_rides", {"purpose": Purpose.METRIC}),
     }
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, {}, BuildEnvironment()
+        group_graph, group_edges, attrs, _demand(concept_attrs, {}, BuildEnvironment())
     )
 
     dim_contract = next(
@@ -424,9 +433,7 @@ def test_input_contract_declares_shared_row_parent_join_key():
         group_graph,
         group_edges,
         attrs,
-        concept_attrs,
-        concept_edges,
-        BuildEnvironment(),
+        _demand(concept_attrs, concept_edges, BuildEnvironment()),
     )
 
     assert "local.order" in attrs["consumer"].sourcing_keys
@@ -463,7 +470,7 @@ def test_sibling_grains_fix_the_projection_not_the_carry_demand():
     add_edge(group_graph, group_edges, "lines", "consumer", EdgeKind.LINEAGE)
     add_edge(group_graph, group_edges, "domain", "consumer", EdgeKind.LINEAGE)
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, {}, {}, BuildEnvironment()
+        group_graph, group_edges, attrs, _demand({}, {}, BuildEnvironment())
     )
 
     assert "local.order_id" in attrs["consumer"].projection_grain
@@ -560,7 +567,7 @@ def test_input_contract_keeps_existence_parent_side_channel():
     add_edge(group_graph, group_edges, "existence_src", "consumer", EdgeKind.EXISTENCE)
 
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, {}, {}, BuildEnvironment()
+        group_graph, group_edges, attrs, _demand({}, {}, BuildEnvironment())
     )
 
     contract = attrs["consumer"].input_contracts[0]
