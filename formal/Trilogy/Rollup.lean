@@ -718,6 +718,21 @@ theorem Rollup.coarse_gate_on_partial_misfilters :
         some 8 := by
   decide
 
+/-- A coarse gate is re-summed at its own key, never at the target's: summary
+rows `((city, species), x)` with species 1 in both cities (3 and 10) and
+species 2 in city 0 (5). `select species, sum(x) where sum(x) by city > 9`
+keeps city 1 alone, and species 1 sums to 10. Read beside the target off the
+same summary scan, the gate was re-summed per species (13 for species 1), so
+species 1 passed in both cities and summed to 13. -/
+theorem Rollup.gate_resummed_at_target_misfilters :
+    let rows : List ((Nat × Nat) × Int) := [((0, 1), 3), ((0, 2), 5), ((1, 1), 10)]
+    let v : (Nat × Nat) × Int → Option Int := fun r => some r.2
+    let species1 := slice (·.1.2) 1 rows
+    sumAgg v (species1.filter fun r =>
+        (sumAgg v (slice (·.1.1) r.1.1 rows)).any (· > 9)) = some 10 ∧
+      sumAgg v (species1.filter fun _ => (sumAgg v species1).any (· > 9)) = some 13 := by
+  decide
+
 /-! ## A re-sum beside the rows holding its partials
 
 A plan that needs one aggregate at two grains (`sum(height)` per `tree_form`

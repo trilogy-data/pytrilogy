@@ -80,6 +80,7 @@ GRAINS = {
     "form_case": ["case when tree_form = 'broadleaf' then 'b' else 'o' end as fc"],
     "city_species": ["city", "species"],
     "city_form": ["city", "tree_form"],
+    "species_form": ["species", "tree_form"],
 }
 
 GRAINS_BY = {
@@ -274,7 +275,15 @@ def test_unservable_query_reads_base_rows(name: str):
 # joined onto the filtered summary rows before the re-sum
 # (`Rollup.group_value_filter_joined_exact`); a CASE over it, and a grand
 # total under the OR that joins `tree_form`, read the base rows.
-GROUP_VALUE_GRAINS = {"total", "city", "species", "city_species", "form", "city_form"}
+GROUP_VALUE_GRAINS = {
+    "total",
+    "city",
+    "species",
+    "city_species",
+    "form",
+    "city_form",
+    "species_form",
+}
 GROUP_VALUE_FILTERS = {
     "sum": "sum(height) by city, species > 3",
     "count": "count(tree_id) by city, species = 1",
@@ -309,7 +318,15 @@ def test_group_value_filter_applies_before_rollup(
 # (`SelectGrain.membership_pin_misreads`). A CASE over `tree_form`, a row
 # column beside the gate the target does not group by, and an OR joining
 # `tree_form` outside the target still read the base rows.
-COARSE_GATE_GRAINS = {"total", "city", "species", "form", "city_form", "city_species"}
+COARSE_GATE_GRAINS = {
+    "total",
+    "city",
+    "species",
+    "form",
+    "city_form",
+    "city_species",
+    "species_form",
+}
 COARSE_GATES = {
     "sum": ("sum(height) by city > 6", COARSE_GATE_GRAINS),
     "count_species": ("count(tree_id) by species > 1", COARSE_GATE_GRAINS),
@@ -347,7 +364,7 @@ COARSE_GATES = {
     ),
     "and_species": (
         "max(height) by city >= 7 and species != 'Tilia'",
-        {"species", "city_species"},
+        {"species", "city_species", "species_form"},
     ),
     "or_form": (
         "sum(height) by city > 9 or tree_form = 'linden'",

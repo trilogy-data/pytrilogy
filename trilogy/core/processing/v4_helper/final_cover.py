@@ -185,6 +185,14 @@ def output_covers(output: BuildConcept, concept: BuildConcept) -> bool:
     )
 
 
+def _selected_keys(
+    concept: BuildConcept, mandatory_list: Sequence[BuildConcept]
+) -> frozenset[str]:
+    if concept.purpose != Purpose.PROPERTY or not concept.keys:
+        return frozenset()
+    return frozenset(concept.keys) & {c.address for c in mandatory_list}
+
+
 def elect_cover(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -252,8 +260,14 @@ def elect_cover(
                 ]
         # A dim peeled off a row stream decorates the stream's keys; its own
         # key carries every entity, not the rows the stream's WHERE kept.
+        # A property read beside its selected key (`tree_form` beside
+        # `species`) comes with the key: a group holding it without the key
+        # (`max(x) by city, tree_form`) pairs it with the key's rows on the
+        # other columns alone (`SelectGrain.property_without_its_key_misjoins`).
+        keyed = _selected_keys(concept, mandatory_list)
         candidates.sort(
             key=lambda gid: (
+                keyed <= exposed[gid],
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,

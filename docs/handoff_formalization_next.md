@@ -549,6 +549,23 @@ does not rewrite it; that rewrite is open.
       the guard replaced by the bare cast before raising a size gate; here
       every query matched or beat its old size without it.
 
+28. **Lessons from the oracle sweep round (0.3.490).**
+    - A suite that compares the summary plan to the base plan cannot see a
+      bug both share. A random sweep against SQL written by hand over the
+      raw rows found one in the base plan (a property misjoined off a group
+      without its key) that 3,000 harness cases had passed.
+    - Know the language before writing the oracle: Trilogy's `not` is
+      two-valued (`not (null > 6)` holds), and a WHERE aggregate reads every
+      row, not its peers' filtered ones. The first sweep's "bugs" there were
+      the oracle's.
+    - Add the grain the planner reduces. `species, tree_form` reduces to
+      `species`, so any check written over grain components
+      (`_finer_filter_rollup_source`'s "every output is a grain key") sees a
+      projected property as a stranger. Probe a key beside its property.
+    - A pinned plan that declines hands its request to the search, which
+      has none of its guarantees. Ablate the pin (return None) and diff: the
+      search's mistakes are the ones the pin hides.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1000,6 +1017,38 @@ a filter its grain does not determine. Open questions:
   - `select city, sum(height) where sum(height) by city > 6` renders the
     gate as a grouped CTE with a HAVING, joined back and filtered again; at
     the target's own grain it is one HAVING.
+- Done in 0.3.490, from a random sweep (1,800 gate shapes) against an
+  independent SQL oracle, not the without-summary plan:
+  - a property selected beside its key comes with the key
+    (`SelectGrain.property_without_its_key_misjoins`; wrong rows on main
+    with no summary and no WHERE: `select city, species, tree_form,
+    max(height) by city, tree_form, count(tree_id)`). The FINAL cover
+    (`elect_cover`) prefers a candidate carrying the selected key;
+  - a gate beside a key and its dimension column (`select species,
+    tree_form ... where sum(height) by city > 8`) reads the summary; the
+    search had re-summed the gate per species
+    (`Rollup.gate_resummed_at_target_misfilters`);
+  - a total gate OR'd with a keyed gate reads the trees
+    (`total_gate_beside_rows`; it raised, and declining only the joined plan
+    gave wrong rows);
+  - a dimension gate beside an unstored gate at the summary's grain reads
+    the trees (`_unsourced_beside_dimension_gate`; it double counted).
+  Left:
+  - the search path a summary takes when the joined plan declines still
+    re-sums a coarse rollable gate at the target's grain, and joins a gate
+    keyed on a dimension column onto summary keys without the column. Every
+    shape that reaches it is now guarded off the summary
+    (`_coarse_gate_beside_row_columns`, `total_gate_beside_rows`,
+    `_unsourced_beside_dimension_gate`); the root fix is the bridge emitting
+    a rolled gate only at its own grain (0.3.487 tried it and got planning
+    errors). Forcing `_finer_filter_rollup_source` to return None reproduces
+    it on `select species, count(tree_id) where sum(height) by city > 8`;
+  - the guarded shapes read the trees: a total gate under an OR could be
+    cross-joined onto the summary rows, and an `avg` gate at the summary's
+    grain could be read from the trees beside summary-served targets;
+  - `select species, tree_form, max(height) by city, tree_form, count(tree_id)`
+    (a `by` key outside the select) returns rows at `(species, city)`;
+    check that against `SelectGrain` before calling it a bug.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
