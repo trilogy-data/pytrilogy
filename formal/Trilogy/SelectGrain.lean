@@ -54,6 +54,11 @@ nor the tuple it ranks.
 - A membership's member is read at its own `by` too: built at the select
   grain, `count(id) by species in (1)` gated each city on its own count
   (`membership_pin_misreads`).
+- A property selected beside its key comes with the key: read off a group
+  that holds it without the key (`max(x) by city, tree_form` beside `species`),
+  it pairs each key with every value its other columns share
+  (`property_without_its_key_misjoins`); joined on the key's own value it is
+  exact (`property_with_its_key_exact`).
 -/
 
 namespace Trilogy.SelectGrain
@@ -168,6 +173,33 @@ theorem membership_pin_misreads :
     (rows.filter (fun r => eval (.by_ species) grain one rows r ∈ [1])).map (·.1) =
         [0, 1] ∧
       (rows.filter (fun r => eval .bare grain one rows r ∈ [1])).isEmpty := by
+  decide
+
+/-- A property selected beside its key is read off the key's own rows: `select
+city, species, tree_form, max(x) by city, tree_form`, `tree_form = form
+species`, pairs each `(city, species)` with the gate rows of its own form. -/
+theorem property_with_its_key_exact (keys : List (Int × Int)) (form : Int → Int)
+    (gate : List (Int × Int)) :
+    ∀ t ∈ keys.flatMap (fun r =>
+        (gate.filter fun p => p.1 == r.1 && p.2 == form r.2).map fun p => (r.1, r.2, p.2)),
+      t.2.2 = form t.2.1 := by
+  intro t ht
+  simp only [List.mem_flatMap, List.mem_map, List.mem_filter, Bool.and_eq_true,
+    beq_iff_eq] at ht
+  obtain ⟨r, -, p, ⟨-, -, h⟩, rfl⟩ := ht
+  exact h
+
+/-- City 0 holds species 1 and 2, of forms 1 and 0. The group `(city, form)`
+holds the form without the species; read from it and joined to the `(city,
+species)` rows on `city` alone, each species is paired with both forms: four
+rows for two, two of them with the other species' form. -/
+theorem property_without_its_key_misjoins :
+    let keys : List (Int × Int) := [(0, 1), (0, 2)]
+    let form : Int → Int := fun s => s % 2
+    let gate := keys.map fun r => (r.1, form r.2)
+    let joined := keys.flatMap fun r =>
+      (gate.filter fun p => p.1 == r.1).map fun p => (r.1, r.2, p.2)
+    joined.length = 4 ∧ (joined.filter fun t => t.2.2 != form t.2.1).length = 2 := by
   decide
 
 /-! ## An aggregate `by` fixed keys in a select -/

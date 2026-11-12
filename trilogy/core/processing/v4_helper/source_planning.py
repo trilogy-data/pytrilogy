@@ -16,7 +16,7 @@ from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.constants import parent_axis_keys
-from trilogy.core.enums import Derivation, Granularity, JoinType
+from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
@@ -1666,9 +1666,15 @@ def _finer_filter_rollup_source(
     environment = request.environment
     target_grain = BuildGrain.from_concepts(outputs, environment=environment)
     target_components = set(target_grain.components)
-    # Every output must be a rolled aggregate or a target-grain key; a property
-    # or other shape would not survive the pinned scan + roll up.
-    if any(not c.is_aggregate and c.address not in target_components for c in outputs):
+    # Every output must be a rolled aggregate, a target-grain key, or a
+    # dimension's column keyed on one (`tree_form` beside `species`), which is
+    # constant within each group; another shape would not survive the roll up.
+    if any(
+        not c.is_aggregate
+        and c.address not in target_components
+        and not _keyed_on(c, target_components)
+        for c in outputs
+    ):
         return None
     finer = filter_finer_row_args(conditions, target_grain, environment.concepts)
     if not finer:
@@ -1681,7 +1687,7 @@ def _finer_filter_rollup_source(
     target_canonicals = {
         environment.concepts[c].canonical_address if c in environment.concepts else c
         for c in target_components
-    }
+    } | {c.canonical_address for c in outputs if not c.is_aggregate}
     candidates: list[tuple[str, BuildDatasource | BuildUnionDatasource]] = [
         (f"ds~{ds.name}", ds) for ds in request.graph.scope.datasources
     ] + [
@@ -1744,6 +1750,15 @@ def _finer_filter_rollup_source(
         )
     )
     return matches[0]
+
+
+def _keyed_on(concept: BuildConcept, components: set[str]) -> bool:
+    return (
+        concept.lineage is None
+        and concept.purpose == Purpose.PROPERTY
+        and bool(concept.keys)
+        and set(concept.keys or ()) <= components
+    )
 
 
 def _rolls_every_aggregate(

@@ -11,9 +11,13 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
     aggregate_filter,
+    get_concept_row_arguments,
     rollup_operator,
 )
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    decompose_condition,
+)
 
 
 def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
@@ -276,6 +280,24 @@ def _coarse_gated(
         coarse_gate(c, datasource, concepts_by_address)
         for c in conditions.row_arguments
     )
+
+
+def total_gate_beside_rows(conditions: BuildWhereClause | None) -> bool:
+    """A conjunct reading a total (`max(x) by *`) beside a row column or a
+    keyed gate (`... or count(x) by city > 6`): the caller cannot split the
+    total off, and a plan reading the summary takes the stored column as the
+    total of each target group, or never joins it on."""
+    if conditions is None:
+        return False
+    for chunk in decompose_condition(conditions.conditional):
+        args = get_concept_row_arguments(chunk)
+        if any(
+            c.granularity == Granularity.SINGLE_ROW
+            and c.derivation != Derivation.CONSTANT
+            for c in args
+        ) and any(c.granularity != Granularity.SINGLE_ROW for c in args):
+            return True
+    return False
 
 
 def filter_finer_row_args(
