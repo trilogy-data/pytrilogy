@@ -1,5 +1,5 @@
-"""The rehome reads the sets the demand pass states as a value: no group holds
-its sets until every fold, placement and read is made."""
+"""The rehome and condition injection read the sets the demand pass states as
+a value: no group holds its sets until the pass after injection writes them."""
 
 from types import SimpleNamespace
 
@@ -7,9 +7,12 @@ import pytest
 
 from tests.core.processing.test_v4_window_input_carry import _MODEL
 from trilogy import Dialects, Environment
+from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper import group_graph as gg
+from trilogy.core.processing.v4_helper.constants import DepthLabel
+from trilogy.core.processing.v4_helper.models import ConceptSets, GroupBucket
 
-_QUERY = "select vehicle, gap_class;"
+_QUERY = "select vehicle, gap_class where gap_class is not null;"
 
 
 def _held(attrs) -> set[str]:
@@ -23,16 +26,18 @@ def _held(attrs) -> set[str]:
 class _SetsLog:
     def __init__(self) -> None:
         self.held: dict[str, set[str]] = {}
-        self.sets: list[gg.ConceptSets] = []
+        self.sets: list[ConceptSets] = []
         self.steps: list[str] = []
         self.reads: dict = {}
-        self.written: list[tuple[dict[str, tuple], gg.ConceptSets]] = []
+        self.written: list[ConceptSets] = []
+        self.attrs: dict = {}
 
     def watch(self, name, fn):
         def watched(group_graph, group_edges, attrs, sets, *rest):
             self.held[name] = _held(attrs)
             self.sets.append(sets)
             self.steps.append(name)
+            self.attrs = attrs
             out = fn(group_graph, group_edges, attrs, sets, *rest)
             if name == "reads":
                 self.reads = out
@@ -40,16 +45,21 @@ class _SetsLog:
 
         return watched
 
-    def write(self, attrs, buckets, sets):
-        if not self.written:
-            self.steps.append("write")
-        _WRITE(attrs, buckets, sets)
-        outputs = {gid: a.output_concepts for gid, a in attrs.items()}
-        self.written.append((outputs, sets))
+    def place(self, *args):
+        self.held["injection"] = _held(self.attrs)
+        self.sets.append(args[-1])
+        self.steps.append("injection")
+        return _PLACE(*args)
+
+    def write(self, attrs, sets):
+        self.steps.append("write")
+        self.written.append(sets)
+        _WRITE(attrs, sets)
 
 
 _FOLDS = gg._elect_folds
 _READS = gg._elect_reads
+_PLACE = gg.plan_condition_placements
 _WRITE = gg._write_concept_sets
 
 
@@ -58,6 +68,7 @@ def log(monkeypatch) -> _SetsLog:
     log = _SetsLog()
     monkeypatch.setattr(gg, "_elect_folds", log.watch("folds", _FOLDS))
     monkeypatch.setattr(gg, "_elect_reads", log.watch("reads", _READS))
+    monkeypatch.setattr(gg, "plan_condition_placements", log.place)
     monkeypatch.setattr(gg, "_write_concept_sets", log.write)
     env = Environment()
     env.parse(_MODEL)
@@ -65,30 +76,41 @@ def log(monkeypatch) -> _SetsLog:
     return log
 
 
-def test_no_group_holds_its_sets_while_the_rehome_elects(log):
+def test_no_group_holds_its_sets_until_injection_is_planned(log):
     assert log.reads
-    assert log.held == {"folds": set(), "reads": set()}
-    assert log.sets[0] is log.sets[1]
+    assert log.held == {"folds": set(), "reads": set(), "injection": set()}
+    assert log.sets[0] is log.sets[1] is log.sets[2]
     assert log.sets[0].inputs
 
 
-def test_the_stated_sets_are_written_once_the_reads_are_applied(log):
-    assert log.steps[:3] == ["folds", "reads", "write"]
-    outputs, sets = log.written[0]
-    assert sets is log.sets[0]
-    assert {gid: o for gid, o in outputs.items() if gid in sets.outputs} == {
-        gid: tuple(sorted(o)) for gid, o in sets.outputs.items() if gid in outputs
-    }
+def test_the_sets_are_written_once_after_injection(log):
+    assert log.steps == ["folds", "reads", "injection", "write"]
+    assert log.written[0] is not log.sets[0]
+
+
+def _bucket(members: list[str], grain: set[str]) -> GroupBucket:
+    bucket = GroupBucket(DepthLabel.D0, Derivation.AGGREGATE, frozenset(grain))
+    for member in members:
+        bucket.add_member(member, member, DepthLabel.D0)
+    return bucket
+
+
+def test_a_group_carries_what_it_is_stated_to_emit():
+    sets = ConceptSets(outputs={"g": frozenset({"k", "total", "hidden"})})
+    assert sets.carried_by("g", _bucket(["total"], {"k"})) == {"k", "hidden"}
+
+
+def test_a_group_minted_since_the_statement_carries_its_keys():
+    assert ConceptSets().carried_by("g", _bucket(["total"], {"k"})) == {"k"}
 
 
 def test_a_folded_group_takes_no_sets():
     window = SimpleNamespace(output_concepts=(), input_concepts=())
-    bucket = SimpleNamespace(output_concepts=())
-    sets = gg.ConceptSets(
+    sets = ConceptSets(
         outputs={"g": frozenset({"y"}), "w": frozenset({"x", "k"})},
         inputs={"g": frozenset({"x"}), "w": frozenset({"k"})},
         pin_anchors={"g": frozenset({"k"})},
     )
-    gg._write_concept_sets({"w": window}, {"w": bucket}, sets)
-    assert window.output_concepts == bucket.output_concepts == ("k", "x")
+    gg._write_concept_sets({"w": window}, sets)
+    assert window.output_concepts == ("k", "x")
     assert window.input_concepts == ("k",)

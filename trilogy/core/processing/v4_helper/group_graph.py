@@ -88,6 +88,7 @@ from .join_plan import (
 )
 from .models import (
     ConceptAttrs,
+    ConceptSets,
     FinalAssemblyContract,
     GroupAttrs,
     GroupBucket,
@@ -395,6 +396,7 @@ def _inject_conditions(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
+    sets: ConceptSets,
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
     scoped_join_key_groups: dict[str, set[str]],
@@ -418,6 +420,7 @@ def _inject_conditions(
         concept_attrs,
         statement_relation_addresses,
         staged_conditions,
+        sets,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -1280,23 +1283,6 @@ class GroupIOPlan:
         )
 
 
-@dataclass(frozen=True)
-class ConceptSets:
-    """What the demand pass states for each non-FINAL group: the columns it
-    emits, the columns it reads, and the anchors its pinned values evaluate
-    on. The rehome reads these before they are written onto the groups."""
-
-    outputs: dict[str, frozenset[str]] = field(default_factory=dict)
-    inputs: dict[str, frozenset[str]] = field(default_factory=dict)
-    pin_anchors: dict[str, frozenset[str]] = field(default_factory=dict)
-
-    def outputs_of(self, gid: str) -> frozenset[str]:
-        return self.outputs.get(gid, frozenset())
-
-    def inputs_of(self, gid: str) -> frozenset[str]:
-        return self.inputs.get(gid, frozenset())
-
-
 def _lineage_parents_by_address(
     concept_edges: EdgeMap, concept_attrs: dict[str, ConceptAttrs]
 ) -> dict[str, set[str]]:
@@ -2004,14 +1990,10 @@ def _compute_concept_sets(
         scoped_axis_mates,
         relation_edge_members,
     )
-    _write_concept_sets(attrs, buckets, sets)
+    _write_concept_sets(attrs, sets)
 
 
-def _write_concept_sets(
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    sets: ConceptSets,
-) -> None:
+def _write_concept_sets(attrs: dict[str, GroupAttrs], sets: ConceptSets) -> None:
     """Write the stated sets onto the groups still in the graph; a group
     folded since they were stated is gone."""
     for gid, anchors in sets.pin_anchors.items():
@@ -2022,8 +2004,6 @@ def _write_concept_sets(
             continue
         attrs[gid].output_concepts = tuple(sorted(outputs))
         attrs[gid].input_concepts = tuple(sorted(sets.inputs[gid]))
-        if gid in buckets:
-            buckets[gid].output_concepts = attrs[gid].output_concepts
 
 
 def _concept_sets(
@@ -2421,10 +2401,8 @@ def build_group_graph(
         environment,
         placed,
     )
-    # injection reads what the demand pass had each group emit
-    _write_concept_sets(attrs, buckets, sets)
     trace_group_graph(
-        "FINAL added, concept sets computed, sources regrafted",
+        "FINAL added, concept sets stated, sources regrafted",
         group_graph,
         group_edges,
         attrs,
@@ -2434,6 +2412,7 @@ def build_group_graph(
         group_edges,
         attrs,
         buckets,
+        sets,
         conditions,
         mandatory_list,
         environment.scoped_join_key_groups,
