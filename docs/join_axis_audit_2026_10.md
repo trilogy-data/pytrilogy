@@ -2053,6 +2053,48 @@ fails with each read applied as it is elected.
 the rank; `test_a_spine_is_one_lineage_edge` and
 `test_a_spine_the_graph_already_holds_is_no_rewrite` now read `_apply_reads`.
 
+**The rehome reads stated sets (part 57).** Through part 56, the first
+`_compute_concept_sets` wrote every group's `output_concepts` and
+`input_concepts` onto the group, and the rehome read them back off the
+groups. The groups it was reading were also the ones it was rewriting: a
+fold absorbs a group, a placement restates a grain and a read mints a ROOT.
+So the sets were read as group attributes even though they are a statement
+about the graph stage 2 built. Now they are passed as a value:
+
+- `_concept_sets` is the demand pass. It returns a `ConceptSets` (each
+  non-FINAL group's outputs, inputs and pin anchors) and writes nothing.
+  `_write_concept_sets` writes them onto the groups. `_compute_concept_sets`
+  is the two steps together, still run once after injection.
+- `build_group_graph` states the sets, makes the folds, places the
+  projections and applies the reads, all reading that one `ConceptSets`.
+  It writes the sets onto the groups only after that. The fold, the
+  grouping provider, the sibling, the dimension read and the spine
+  (`_inline_window`, `_renders_inline`, `_terminal_basic_grouping_provider`,
+  `_regraft_candidate`, `_synthetic_dimension_regraft_parent`) take the sets
+  as an argument. None of them reads a group's sets.
+- Condition injection still reads what the demand pass had each group emit
+  (`GroupBucket.carried`), so the write stays ahead of it. A group folded
+  away since the sets were stated is skipped.
+
+What can move: nothing, if the rehome read no set it had already changed. A
+fold leaves the WINDOW's sets as they were, a placement changes only a
+grain, and a minted ROOT is never asked for its sets. A census over one
+suite run (`-m "not adventureworks_execution and not cloud_live"`,
+`*_laws.py` ignored, as CI runs it) built every group graph twice, with `main`'s
+`group_graph` and with this one. It compared the results by value: nodes,
+edges and their kinds, and every group attribute. 12,410 passes, no graph differed. Over them, 67 folds, 1,124 grouping
+providers and 1,457 reads were elected (106 of them mint a ROOT), across
+1,301 tests. Within `tests/core/processing`, `main` compared against itself differs in
+none of 512 passes, so the comparison is stable. A control that skips
+`main`'s reads differs in 21 of them, so it can see a change.
+
+`test_no_group_holds_its_sets_while_the_rehome_elects` pins the order over
+`test_v4_window_input_carry`'s model, which elects reads: no group holds
+sets while the folds or the reads are elected, and both read one
+`ConceptSets`. It fails with the sets written before the rehome.
+`test_the_stated_sets_are_written_once_the_reads_are_applied` and
+`test_a_folded_group_takes_no_sets` pin the write.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2082,11 +2124,13 @@ not built yet:
    every dimension read (part 54), so no rewrite drops a parent or mints a
    group. So is every full-coverage sibling (part 55), and every partial
    spine is a read elected with them (part 56): there is no rehome election
-   left. The stated grain, placement, folds and reads still follow
-   `_compute_concept_sets`, since the grouping provider, the sibling and the
-   spine are read off the groups' input and output sets; stating them when
-   stage 2 groups needs those sets first. Then `_compute_concept_sets` runs
-   again.
+   left. The stated grain, placement, folds and reads still follow the demand
+   pass, since the grouping provider, the sibling and the spine are read off
+   the groups' input and output sets. Those are now one stated `ConceptSets`
+   value that the rehome reads, not group attributes it reads back (part 57).
+   Stating the rehome when stage 2 groups needs those sets first. Condition
+   injection still reads the first pass's sets off the buckets, and the full
+   pass then runs again after injection.
 
 ## 8. Not claimed
 

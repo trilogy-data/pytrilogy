@@ -75,7 +75,9 @@ def test_a_full_coverage_sibling_outranks_a_dimension(monkeypatch):
     monkeypatch.setattr(
         gg, "_synthetic_dimension_regraft_parent", lambda *a: gg.RowProvider("r")
     )
-    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    reads = gg._elect_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert reads == {"g": gg.RowProvider("s")}
 
 
@@ -85,7 +87,9 @@ def test_a_placed_projection_reads_no_dimension(monkeypatch):
     monkeypatch.setattr(
         gg, "_synthetic_dimension_regraft_parent", lambda *a: gg.RowProvider("r")
     )
-    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset({"g"}))
+    reads = gg._elect_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset({"g"})
+    )
     assert reads == {}
 
 
@@ -94,7 +98,9 @@ def test_a_dimension_read_drops_the_roots_it_replaces(monkeypatch):
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
     read = gg.RowProvider("r", frozenset({"q"}))
     monkeypatch.setattr(gg, "_synthetic_dimension_regraft_parent", lambda *a: read)
-    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    gg._apply_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert set(lineage_predecessors(group_graph, edges, "g")) == {"r"}
 
 
@@ -104,5 +110,7 @@ def test_a_read_the_graph_already_holds_is_no_rewrite(monkeypatch):
     monkeypatch.setattr(
         gg, "_synthetic_dimension_regraft_parent", lambda *a: gg.RowProvider("r")
     )
-    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    gg._apply_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert set(lineage_predecessors(group_graph, edges, "g")) == {"r", "q"}

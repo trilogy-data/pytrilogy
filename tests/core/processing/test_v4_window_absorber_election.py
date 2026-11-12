@@ -34,14 +34,14 @@ class _FoldLog:
         self.grouping: dict[str, str] = {}
         self.folded: dict = {}
 
-    def elect(self, group_graph, group_edges, attrs, concept_attrs):
-        self.folds = _ELECT(group_graph, group_edges, attrs, concept_attrs)
+    def elect(self, group_graph, group_edges, attrs, sets, concept_attrs):
+        self.folds = _ELECT(group_graph, group_edges, attrs, sets, concept_attrs)
         self.members = {gid: attrs[gid].primary_members for gid in self.folds}
         return self.folds
 
-    def elect_grouping(self, group_graph, attrs, environment, folds):
+    def elect_grouping(self, group_graph, attrs, sets, environment, folds):
         self.environment = environment
-        self.grouping = _GROUPING(group_graph, attrs, environment, folds)
+        self.grouping = _GROUPING(group_graph, attrs, sets, environment, folds)
         return self.grouping
 
     def elect_providers(self, group_graph, group_edges, attrs, *rest):
@@ -124,7 +124,6 @@ def _basic(**kwargs) -> SimpleNamespace:
         "primary_members": ("m",),
         "member_depths": {},
         "grain_components": frozenset({"k"}),
-        "input_concepts": ("x",),
     }
     return SimpleNamespace(**{**base, **kwargs})
 
@@ -135,14 +134,13 @@ def _window(**kwargs) -> SimpleNamespace:
         "primary_members": ("x",),
         "member_depths": {},
         "grain_components": frozenset({"k"}),
-        "output_concepts": ("x",),
-        "input_concepts": (),
     }
     return SimpleNamespace(**{**base, **kwargs})
 
 
-def _inline(attrs) -> bool:
-    return gg._renders_inline(attrs, {}, "g", "w")
+def _inline(attrs, reads: frozenset[str] = frozenset({"x"})) -> bool:
+    sets = gg.ConceptSets(outputs={"w": frozenset({"x"})}, inputs={"g": reads})
+    return gg._renders_inline(attrs, sets, "g", "w")
 
 
 def test_a_same_grain_window_carrying_every_input_renders_inline():
@@ -152,7 +150,9 @@ def test_a_same_grain_window_carrying_every_input_renders_inline():
 def test_a_basic_holding_a_row_shape_barrier_member_has_no_inline_window():
     attrs = {"g": _basic()}
     concept_attrs = {"m": SimpleNamespace(derivation=Derivation.AGGREGATE)}
-    assert gg._inline_window(None, {}, attrs, concept_attrs, "g") is None
+    assert (
+        gg._inline_window(None, {}, attrs, gg.ConceptSets(), concept_attrs, "g") is None
+    )
 
 
 def test_a_window_at_another_grain_does_not_render_inline():
@@ -160,7 +160,7 @@ def test_a_window_at_another_grain_does_not_render_inline():
 
 
 def test_a_window_missing_an_input_does_not_render_inline():
-    assert not _inline({"g": _basic(input_concepts=("x", "y")), "w": _window()})
+    assert not _inline({"g": _basic(), "w": _window()}, frozenset({"x", "y"}))
 
 
 def test_an_aggregate_provider_does_not_render_inline():
@@ -189,14 +189,14 @@ order by store asc;
 
 
 class _OutrankLog(_FoldLog):
-    def elect_grouping(self, group_graph, attrs, environment, folds):
+    def elect_grouping(self, group_graph, attrs, sets, environment, folds):
         self.outranked = {
             gid: gg._terminal_basic_grouping_provider(
-                group_graph, attrs, gid, environment
+                group_graph, attrs, sets, gid, environment
             )
             for gid in folds
         }
-        return super().elect_grouping(group_graph, attrs, environment, folds)
+        return super().elect_grouping(group_graph, attrs, sets, environment, folds)
 
 
 def test_a_fold_outranks_a_grouping_provider(monkeypatch, tmp_path):

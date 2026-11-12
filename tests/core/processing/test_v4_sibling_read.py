@@ -75,7 +75,9 @@ def _graph() -> tuple[nx.DiGraph, dict, dict]:
 def test_a_sibling_read_adds_only_its_edge(monkeypatch):
     group_graph, edges, attrs = _graph()
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: "s")
-    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    gg._apply_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert set(lineage_predecessors(group_graph, edges, "g")) == {"r", "s"}
 
 
@@ -84,7 +86,11 @@ def test_a_held_sibling_is_no_rewrite(monkeypatch):
     add_edge(group_graph, edges, "s", "g", EdgeKind.LINEAGE)
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: "s")
     before = dict(edges)
-    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
-    gg._apply_reads(group_graph, edges, attrs, {}, {}, None, frozenset())
+    reads = gg._elect_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
+    gg._apply_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert reads == {"g": gg.RowProvider("s")}
     assert edges == before

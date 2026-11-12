@@ -147,7 +147,9 @@ def test_a_placed_projection_is_not_elected(monkeypatch):
     ]:
         attrs[gid].derivation = derivation
     monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("x"))
-    reads = gg._elect_reads(group_graph, edges, attrs, {}, {}, None, frozenset({"g"}))
+    reads = gg._elect_reads(
+        group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, frozenset({"g"})
+    )
     assert reads == {}
 
 
@@ -156,7 +158,10 @@ def test_a_read_takes_no_inline_window(monkeypatch):
     monkeypatch.setattr(gg, "_inline_window", lambda *a: "w")
     monkeypatch.setattr(gg, "_regraft_candidate", lambda *a, **k: None)
     monkeypatch.setattr(gg, "_synthetic_dimension_regraft_parent", lambda *a: None)
-    assert gg._elect_read(group_graph, edges, attrs, {}, {}, None, "g") is None
+    assert (
+        gg._elect_read(group_graph, edges, attrs, gg.ConceptSets(), {}, {}, None, "g")
+        is None
+    )
 
 
 def test_a_folded_projection_takes_no_grouping_provider(monkeypatch):
@@ -164,7 +169,12 @@ def test_a_folded_projection_takes_no_grouping_provider(monkeypatch):
     group_graph.add_nodes_from(["g", gg.FINAL_NODE_ID])
     monkeypatch.setattr(gg, "_terminal_basic_grouping_provider", lambda *a: "p")
     attrs = {"g": SimpleNamespace(derivation=Derivation.BASIC)}
-    assert gg._elect_grouping_providers(group_graph, attrs, None, {"g": "w"}) == {}
+    assert (
+        gg._elect_grouping_providers(
+            group_graph, attrs, gg.ConceptSets(), None, {"g": "w"}
+        )
+        == {}
+    )
 
 
 def _siblings() -> tuple[nx.DiGraph, dict]:

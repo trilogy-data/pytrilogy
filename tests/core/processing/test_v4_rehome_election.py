@@ -31,7 +31,7 @@ def _elect(monkeypatch, candidates: _Candidates):
     monkeypatch.setattr(
         gg, "_synthetic_dimension_regraft_parent", candidates.dimension_read
     )
-    return gg._elect_read(None, {}, {}, {}, {}, "env", "g")
+    return gg._elect_read(None, {}, {}, gg.ConceptSets(), {}, {}, "env", "g")
 
 
 def test_a_spine_is_asked_for_only_after_a_sibling_and_a_dimension(monkeypatch):
@@ -73,13 +73,17 @@ _ATTRS = {
 def test_a_spine_is_one_lineage_edge(monkeypatch):
     monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("p"))
     group_graph, edges = _graph(), {}
-    gg._apply_reads(group_graph, edges, _ATTRS, {}, {}, None, frozenset())
+    gg._apply_reads(
+        group_graph, edges, _ATTRS, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert edges == {("p", "g"): EdgeAttrs(EdgeKind.LINEAGE)}
 
 
 def test_a_spine_the_graph_already_holds_is_no_rewrite(monkeypatch):
     monkeypatch.setattr(gg, "_elect_read", lambda *a: gg.RowProvider("p"))
     group_graph, edges = _graph(("p", "g")), {}
-    gg._apply_reads(group_graph, edges, _ATTRS, {}, {}, None, frozenset())
+    gg._apply_reads(
+        group_graph, edges, _ATTRS, gg.ConceptSets(), {}, {}, None, frozenset()
+    )
     assert edges == {}
     assert set(group_graph.edges) == {("p", "g")}
