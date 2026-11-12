@@ -2199,6 +2199,49 @@ columns no statement in them depends on the mates for.
 `test_both_passes_read_one_demand` pins the single `Demand`: both passes over
 `test_v4_window_input_carry`'s model, with a WHERE, read the same object.
 
+**Stage 2 reads one demand (part 60).** Part 59 stated the `Demand` once,
+but each step of `build_group_graph` still derived its own statement facts
+from the concept graph and the environment: both demand passes rebuilt the
+lineage parents, the source grains, the pseudonym mates and the authored
+relation members a scan may advertise; the input contracts rebuilt the
+lineage parents a third time and the key set; injection, the FINAL contract
+and the extent-owner election each took the select, the concept attributes
+and the environment apart and derived what they read from them. Now the
+`Demand` holds all of it, each fact stated the first time a step reads it:
+
+- `Demand` adds `output_addresses`, `key_addresses`, `relation_only`,
+  `lineage_parents`, `source_grain`, `pseudonym_mates`,
+  `null_extending_relations` (the null-extending statement relations
+  condition placement reads) and `scan_relation_members`. A pass filters
+  the last by the members its own graph's groups hold.
+- `_inject_conditions`, `_refresh_input_contracts` and
+  `_refresh_final_contract` take the `Demand` in place of the select, the
+  concept attributes and edges, the environment, the relation addresses and
+  the relation-edge members. The extent-owner election reads
+  `Demand.relation_only`.
+- `build_group_graph` states the `Demand` before it assigns groups, which
+  read its output addresses.
+
+What can move: nothing. Each fact is the same function of the concept graph,
+the select and the environment, and nothing writes to those once the concept
+graph is built (`concept_graph.py` is the only writer of concept attributes
+and edges). So reading a fact once gives what reading it at every step gave.
+A suite capture (`local_scripts/sql_ab/sqlcap.py`, every statement every
+test compiles, under one `PYTHONHASHSEED`) ran once on `main` and once on
+this branch (`-m "not adventureworks_execution and not clickhouse_server
+and not bigquery_execution and not cloud_live"`, `*_laws.py` ignored). Of
+13,436 captured tests, every statement matched but one test's, a test that
+wrapped `_refresh_input_contracts` by its old signature and now takes the
+`Demand`. Both runs otherwise failed the same tests: DuckDB extension
+downloads and CLI ingest tests the container cannot run, plus one Rust
+build test that only ran on the second because cargo had been built by
+then.
+
+`test_every_step_reads_the_statement_once` pins it: over
+`test_v4_window_input_carry`'s model, with a WHERE, the lineage parents, the
+source grains and the null-extending relations are each derived once per
+`Demand`.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2238,7 +2281,9 @@ not built yet:
    runs twice, before the rehome and after injection, since injection adds
    the condition inputs a group must emit, but both runs read one `Demand`
    (part 59): they differ only in the graph they read and the statement
-   before them.
+   before them. Every other stage-2 step reads that `Demand` too, and each
+   statement fact in it is derived once (part 60): what is left to state
+   before the rehome is what a pass reads off the group graph.
 
 ## 8. Not claimed
 
