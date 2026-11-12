@@ -857,10 +857,11 @@ def _rollup_sources(
     total = total_gate_beside_rows(where)
     for source in sources:
         # shapes the joined plan declines: the search that takes over reads a
-        # keyed gate off the summary at the target's grain
+        # keyed gate, or a total under an OR, off the summary at the target's
+        # grain
         if isinstance(source, BuildDatasource) and (
-            (gated and _keyed_gate(where, source, environment))
-            or (total and _keyed_gate(where, source, environment, coarse=False))
+            total
+            or (gated and _coarse_gate(where, source, environment))
             or _unsourced_beside_dimension_gate(where, source, environment)
         ):
             continue
@@ -896,18 +897,16 @@ def _rollup_sources(
     return out
 
 
-def _keyed_gate(
+def _coarse_gate(
     where: BuildWhereClause | None,
     source: BuildDatasource,
     environment: BuildEnvironment,
-    coarse: bool = True,
 ) -> bool:
-    """The WHERE reads an aggregate keyed on `source`'s rows; with `coarse`,
-    one coarser than its grain (`sum(x) by city` beside `(city, species)`),
-    whose value is a re-sum the joined plan computes in its own group."""
-    test = coarse_gate if coarse else keyed_aggregate
+    """The WHERE reads an aggregate coarser than `source`'s grain (`sum(x) by
+    city` beside `(city, species)`): its value is a re-sum the joined plan
+    computes in its own group."""
     return where is not None and any(
-        test(c, source, environment.concepts) for c in where.row_arguments
+        coarse_gate(c, source, environment.concepts) for c in where.row_arguments
     )
 
 

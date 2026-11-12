@@ -37,7 +37,6 @@ from trilogy.core.processing.aggregate_rollup import (
     joined_condition_columns,
     merge_rollup_concepts,
     source_rollup_concepts,
-    total_gate_beside_rows,
 )
 from trilogy.core.processing.condition_utility import (
     and_optional,
@@ -1930,8 +1929,6 @@ def _plan_joined_filter_rollup(
     requested grain: the filter selects summary rows before any of them are
     added up, and the CASE of `agg(x ? c)` reads `c` on each summary row, at a
     grain that determines it (`Cover.joined_case_exact`)."""
-    if total_gate_beside_rows(request.conditions):
-        return None
     environment = request.environment
     outputs = list(request.outputs)
     grain = set(ds.grain.components)

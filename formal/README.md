@@ -1537,14 +1537,16 @@ a design decision or a bug.
   output keyed on the target grain and joins it on like a filter column, so
   the shape reads the summary. Every `species_form` gate in
   `test_coarse_group_value_filter_reads_summary` exercises it.
-- **A total gate under an OR beside a keyed gate failed to render, then
-  misfiltered** (0.3.490). `select city, sum(height) where count(tree_id) by
-  city > 6 or max(height) by * > 6` raised "Missing source reference to
-  local.height": the joined plan never joins a single-row gate onto the
-  summary rows, and under an OR the caller cannot split it off. Declining
-  the joined plan alone gave wrong rows (`[('B', 9)]`), the search's misread
-  above; `total_gate_beside_rows` now declines both, and the shape reads the
-  trees.
+- **A total gate under an OR misread off a summary** (0.3.490). `select
+  city, sum(height) where count(tree_id) by city > 6 or max(height) by * > 6`
+  raised "Missing source reference to local.height": the joined plan never
+  joins a single-row gate onto the summary rows, and under an OR the caller
+  cannot split it off. Declining the joined plan alone gave wrong rows
+  (`[('B', 9)]`), and `select city, tree_form, sum(height) where city = 'A'
+  or max(height) by * > 6` returned wrong rows on main too: the search read
+  the stored `max` as the total of each target group. `total_gate_beside_rows`
+  keeps the summary out of any conjunct mixing a total with row columns
+  (0 of 972 such shapes wrong, from 30), and they read the trees.
 - **A dimension gate beside an unstored gate at the summary's grain
   double counted** (0.3.490). `select city, count(tree_id) where
   count_distinct(tag) by city, species = 1 and sum(height) by city, tree_form
@@ -1555,8 +1557,9 @@ a design decision or a bug.
   `_unsourced_beside_dimension_gate` keeps the summary out of that shape.
   Across the three files (`test_rollup_resolution_laws.py`, now with a
   `species_form` grain, `test_coarse_group_value_filter.py` and
-  `test_property_beside_key.py`), 45 of 3,602 cases fail on main: 43 return
-  wrong rows and 2 raise.
+  `test_property_beside_key.py`), 47 of 3,604 cases fail on main: 44 return
+  wrong rows, 2 raise, and 1 (`city = 'A' or max(height) by * > 6` at `city`)
+  is right off the summary, which this guard now leaves for the trees.
 
 
 ## Limits

@@ -285,7 +285,8 @@ def _coarse_gated(
 def total_gate_beside_rows(conditions: BuildWhereClause | None) -> bool:
     """A conjunct reading a total (`max(x) by *`) beside a row column or a
     keyed gate (`... or count(x) by city > 6`): the caller cannot split the
-    total off, and the joined plan never joins it onto the summary's rows."""
+    total off, and a plan reading the summary takes the stored column as the
+    total of each target group, or never joins it on."""
     if conditions is None:
         return False
     for chunk in decompose_condition(conditions.conditional):

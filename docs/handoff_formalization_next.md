@@ -1028,9 +1028,10 @@ a filter its grain does not determine. Open questions:
     tree_form ... where sum(height) by city > 8`) reads the summary; the
     search had re-summed the gate per species
     (`Rollup.gate_resummed_at_target_misfilters`);
-  - a total gate OR'd with a keyed gate reads the trees
-    (`total_gate_beside_rows`; it raised, and declining only the joined plan
-    gave wrong rows);
+  - a total gate under an OR beside a row column or a keyed gate reads the
+    trees (`total_gate_beside_rows`; with a keyed gate it raised, and
+    otherwise the stored `max(height)` was read as each target group's
+    total: `city = 'B' or max(height) by * > 6` dropped city A on main);
   - a dimension gate beside an unstored gate at the summary's grain reads
     the trees (`_unsourced_beside_dimension_gate`; it double counted).
   Left:
@@ -1044,7 +1045,7 @@ a filter its grain does not determine. Open questions:
     errors). Forcing `_finer_filter_rollup_source` to return None reproduces
     it on `select species, count(tree_id) where sum(height) by city > 8`;
   - the guarded shapes read the trees: a total gate under an OR could be
-    cross-joined onto the summary rows, and an `avg` gate at the summary's
+    computed once and cross-joined onto the summary rows, and an `avg` gate at the summary's
     grain could be read from the trees beside summary-served targets;
   - `select species, tree_form, max(height) by city, tree_form, count(tree_id)`
     (a `by` key outside the select) returns rows at `(species, city)`;

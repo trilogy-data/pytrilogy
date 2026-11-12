@@ -54,7 +54,8 @@ def test_property_comes_with_its_key(name: str, model: str):
 
 # (query, rows, served): a coarse gate beside a key and its dimension column
 # reads the summary; a total gate under an OR, or an unstored gate at the
-# summary's grain beside a dimension gate, reads the trees.
+# summary's grain beside a dimension gate, reads the trees: off the summary, a
+# stored total (`max(height) by *`) was read per target group.
 SUMMARY_GATES = {
     "key_and_form_city_gate": (
         (
@@ -98,6 +99,22 @@ SUMMARY_GATES = {
             "select city, sum(height) as v"
             " where sum(height) by city, species > 6 or max(height) by * > 6"
             " order by city;"
+        ),
+        [("A", 8), ("B", 9)],
+        False,
+    ),
+    "total_gate_in_or_beside_dimension_column": (
+        (
+            "select species, sum(height) as v"
+            " where tree_form = 'linden' or max(height) by * > 6 order by species;"
+        ),
+        [("Acer", 10), ("Quercus", 5), ("Tilia", 2), ("Ulmus", None)],
+        False,
+    ),
+    "total_gate_in_or_beside_target_column": (
+        (
+            "select city, sum(height) as v"
+            " where city = 'A' or max(height) by * > 6 order by city;"
         ),
         [("A", 8), ("B", 9)],
         False,
