@@ -1929,6 +1929,16 @@ def _plan_joined_filter_rollup(
         ],
         "address",
     )
+    # a gate grouped by a dimension's column (`sum(x) by tree_form`) joins
+    # back on that column, so the column is joined onto the rows first
+    gate_dims = [
+        environment.concepts[a]
+        for c in row_args
+        if c.is_aggregate
+        for a in sorted(c.grain.components)
+        if a not in grain and a in environment.concepts
+    ]
+    row_args = unique(row_args + gate_dims, "address")
     joined = [c for c in row_args if c.canonical_address not in bound]
     joined_addresses = {c.address for c in joined}
     scan = create_select_node(
@@ -1944,23 +1954,18 @@ def _plan_joined_filter_rollup(
         depth=request.depth + 1,
     )
     parents: list[StrategyNode] = [scan]
+    gates: list[StrategyNode] = []
     # one lookup per key set: two dimensions on different keys of the grain
     # (`user.state`, `product.brand`) are two joins onto the summary's rows,
     # never one request the search must bridge
     by_keys: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
     for c in joined:
-        by_keys[
-            frozenset(
-                key
-                for key in set(c.keys or ()) | set(c.grain.components)
-                if key in grain
-            )
-        ].append(c)
+        by_keys[_join_keys(c, grain)].append(c)
     for join_keys, columns in sorted(by_keys.items(), key=lambda kv: sorted(kv[0])):
         dims = plan_source(
             SourceRequest(
                 outputs=unique(
-                    columns + [k for k in grain_keys if k.address in join_keys],
+                    columns + [environment.concepts[k] for k in sorted(join_keys)],
                     "address",
                 ),
                 environment=environment,
@@ -1973,7 +1978,11 @@ def _plan_joined_filter_rollup(
         )
         if dims is None:
             return None
-        parents.append(dims)
+        (gates if join_keys - grain else parents).append(dims)
+    if gates:
+        # a gate keyed on a dimension's column joins rows already carrying it,
+        # on its whole grain, never on the summary key the column hangs off
+        parents = [_merged(parents, environment, request.depth)] + gates
     rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
     # filtered at the summary's grain, so an atom over a stored aggregate reads
     # each summary row's value, not a re-sum of it
@@ -1993,6 +2002,33 @@ def _plan_joined_filter_rollup(
         depth=request.depth,
         force_group=True,
         rollup_concepts=[c for c in outputs if c.is_aggregate],
+    )
+
+
+def _join_keys(concept: BuildConcept, grain: set[str]) -> frozenset[str]:
+    """What a joined column pairs with the summary rows on: a gate on its
+    whole grain, a dimension's column on the summary keys it hangs off."""
+    if concept.is_aggregate:
+        return frozenset(concept.grain.components)
+    return frozenset(
+        key
+        for key in set(concept.keys or ()) | set(concept.grain.components)
+        if key in grain
+    )
+
+
+def _merged(
+    parents: list[StrategyNode], environment: BuildEnvironment, depth: int
+) -> StrategyNode:
+    if len(parents) == 1:
+        return parents[0]
+    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
+    return MergeNode(
+        input_concepts=rows,
+        output_concepts=rows,
+        environment=environment,
+        parents=parents,
+        depth=depth,
     )
 
 

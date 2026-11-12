@@ -4275,7 +4275,13 @@ class Factory:
         ):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
-        left_built = self.handle_constant(self.build(base.left))
+        # an aggregate member (`count(x) by k in (1, 2)`) is a concept at its
+        # own grain, as either side of a plain comparison is; built inline it
+        # loses its `by` and reads the select grain
+        left: Any = base.left
+        if validation := self._nests(base.left):
+            left, _ = self.instantiate_concept(validation)
+        left_built = self.handle_constant(self.build(left))
         right_built = self.handle_constant(self.build(right))
         # When both sides of `X in Y` resolve to the same concept the comparison
         # has collapsed to a self-comparison — usually because a `merge` made the
