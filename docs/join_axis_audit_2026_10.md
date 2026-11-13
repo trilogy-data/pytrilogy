@@ -2505,6 +2505,60 @@ the same 25 failures on both sides. 160 tests moved:
 So no plan moved. `test_a_bridge_through_a_chosen_connector_pairs_on_its_grain`
 and `test_a_grain_paired_side_pairs_on_its_resolved_grain` pin the plan.
 
+**Every merge between scans carries a plan (part 67).** After part 66, a
+probe over the full suite (a `get_node_joins` wrapper counting merges that
+reach it with no plan, each traced to the site that built it) found 43 such
+resolutions, from three sites:
+
+| site | resolutions |
+|---|---|
+| `gen_select_merge_node`, the pruned-graph scans | 29 |
+| a bridge side the search did not choose | 8 |
+| a recursive walk joined back to its seed row | 3 |
+
+(The probe counts every resolution, so a merge copied by the rehome or a
+consumer counts once per copy.) Each is now planned on what it already
+states:
+
+- A connector built for a concept no scan covered (a rowset key merged into
+  a dimension key, `rs2.cid` into `customer_id`) pairs with every other side
+  on the merged key it supplies (the concept, the alias and the origin) and
+  the keys it carries to join (`origin.grain` and `connector_join_keys`).
+  Like a chosen connector, it also pairs on its resolved grain. A gap-filled
+  scan pairs on the concepts the bridge graph links it to. `_bridge_plan`
+  no longer returns None: a side that is no scan or connector the bridge
+  planned raises.
+- `gen_select_merge_node`'s scans pair on the value classes the pruned graph
+  links both to (`_graph_join_plan`). The comparison is by class, never by
+  spelling: under a `union join a_x = b_x = rs.a_x` one scan links the merged
+  class's virtual concept and the other `b_x`. Scans of separate searches
+  (an abstract-grain property sourced on its own) pair on nothing
+  (`_joint_plan`).
+- A recursive walk whose WHERE reads columns the walk does not carry pairs
+  with its seed rows on the edge it walked (the `recurse_edge` arguments).
+
+With every site planned, a merge that reaches join inference with no plan
+raises (`MergeNode.generate_joins`). The full suite runs with that raise
+in place, and no test reaches it.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
+worktree paths normalized): the same 25 failures on both sides. 57 tests
+moved:
+
+- known noise: the GCS cache-bust URL, a BigQuery temp-table name,
+  `test_dashboard_served_from`, `test_cli_consistency`, `test_ingest`, and
+  a Rust-binary datasource test skipped on the base run;
+- 47 `test_complete_binding_lookup` cases whose select-list order moved, two
+  Snowflake rendering tests and `test_validate_fix_types`, whose CTE names
+  moved. Run on their own, all compile the same on both trees (0 of 277
+  statements moved).
+
+So no plan moved. `test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries`,
+`test_a_bridge_side_nothing_planned_is_a_planner_bug`,
+`test_scans_of_one_search_pair_on_the_classes_the_graph_links_both_to`,
+`test_scans_of_separate_searches_pair_on_nothing` and
+`test_a_walk_joined_back_pairs_on_the_edge_it_walked` pin the plans.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2520,9 +2574,10 @@ not built yet:
    too: a bridge pairs where the search joined its scans, and each other
    assembly on the join it states (part 65). A bridge through a
    derived connector the search chose is planned as well, with the connector
-   also pairing on its resolved grain (part 66). Left unplanned: a connector
-   the search did not choose and a gap-filled scan (12 bridge merges in the
-   suite), and the few from `gen_select_merge_node` and a recursive walk. What is left is building
+   also pairing on its resolved grain (part 66). So is a side the search did
+   not choose, `gen_select_merge_node`'s scans and a recursive walk's
+   join-back, so every merge between scans carries a plan, and one reaching
+   join inference without one raises (part 67). What is left is building
    `node_joins` from the pairings, so resolve stops ordering keys it was
    already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
