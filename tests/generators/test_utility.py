@@ -124,6 +124,13 @@ def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
     ]
 
 
+def test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots():
+    g = _shared_key_graph()
+    g.add_edge("ds~d", "c~x")
+    joins = resolve_join_order_v2(g, JoinFacts())
+    assert [(j.left, j.right, j.keys) for j in joins][-1] == ("ds~a", "ds~d", {})
+
+
 def test_empty_joins_list():
     """Test that an empty list doesn't cause any errors."""
     joins = []

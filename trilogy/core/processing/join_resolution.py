@@ -841,6 +841,16 @@ def _pivot_map(
     return out
 
 
+def _keyless_order(g: nx.Graph, ds: str) -> tuple[bool, str, str]:
+    """A keyless side joins in the order of the first column no other side
+    holds; one with none joins after."""
+    own = min(
+        (c for c in g.neighbors(ds) if sum(1 for _ in g.neighbors(c)) == 1),
+        default=None,
+    )
+    return (own is None, own or "", ds)
+
+
 def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -905,7 +915,6 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     # others are stitched: its NULL group holds their padded rows, which only
     # exist once their own stitch ran.
     held = facts.held_spans
-    solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
@@ -1029,54 +1038,24 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
             )
             eligible_left.add(right)
 
-    for concept in solo:
-        for ds in pivot_map[concept]:
-            if ds in eligible_left:
-                continue
-            if not eligible_left:
-                eligible_left.add(ds)
-                continue
-            best_left = None
-            best_keys: set[str] = set()
-            for existing_left in sorted(eligible_left):
-                connecting_keys = get_connection_keys(
-                    all_connections, existing_left, ds
+    # Every side sharing a pairable column with another joined under that
+    # column's pivot; the rest pair with nothing, so they join on nothing
+    # and the keyless-join guard judges them.
+    for ds in sorted(
+        (
+            x
+            for x in datasources
+            if x not in eligible_left and any(True for _ in g.neighbors(x))
+        ),
+        key=partial(_keyless_order, g),
+    ):
+        if eligible_left:
+            output.append(
+                JoinOrderOutput(
+                    left=min(eligible_left), right=ds, type=JoinType.FULL, keys={}
                 )
-                if connecting_keys and len(connecting_keys) > len(best_keys):
-                    best_left = existing_left
-                    best_keys = connecting_keys
-
-            if best_left and best_keys:
-                output.append(
-                    JoinOrderOutput(
-                        left=best_left,
-                        right=ds,
-                        type=JoinType.FULL,
-                        keys={best_left: best_keys},
-                    )
-                )
-            else:
-                output.append(
-                    JoinOrderOutput(
-                        left=min(eligible_left),
-                        right=ds,
-                        type=JoinType.FULL,
-                        keys={},
-                    )
-                )
-            eligible_left.add(ds)
-
-    for ds in datasources:
-        # paired on none of the columns it holds: joined on nothing, which
-        # the keyless-join guard names
-        if ds not in eligible_left and any(True for _ in g.neighbors(ds)):
-            if eligible_left:
-                output.append(
-                    JoinOrderOutput(
-                        left=min(eligible_left), right=ds, type=JoinType.FULL, keys={}
-                    )
-                )
-            eligible_left.add(ds)
+            )
+        eligible_left.add(ds)
 
     ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
     restore_full_join_providers(output)

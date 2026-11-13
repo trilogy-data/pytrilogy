@@ -2386,6 +2386,36 @@ the plan instead of from what the sides share.
 `test_sides_pair_only_on_their_own_planned_keys` now pivots on `k` between
 the two sides planned on it first, with the same pairs as before.
 
+**Resolve searches for no key after its pivots (part 64).** Every column
+two sides may pair on pivots its holders (part 63: under a plan, the holders
+the plan pairs on it), and every holder of a pivot joins under it. So once
+the pivots are joined, a side still unjoined shares no pairable column with
+any other side. Yet `resolve_join_order_v2` ran a second key search over the
+sides holding a column alone (`solo`), looking for the joined side it shared
+the most keys with. That search could never find a key, so every side it
+reached joined on nothing. A last loop then did the same for the sides with
+no column of their own.
+
+The two passes are now one keyless pass: a side the pivots leave unjoined
+joins on nothing, and the keyless-join guard judges it. The pass keeps the
+old order (`_keyless_order`): first by the first column only that side
+holds, then by identifier. Ordering by identifier alone moved 226 tests, each
+only by swapping a cross join's sides (`cte_1 INNER JOIN cte_0 on 1=1`) or a
+coalesce's arguments with them. Those moves are not worth a refactor that
+changes no key.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): the same
+25 failures on both sides (credential-gated BigQuery, Snowflake, GCS and
+NCAA tests, and `the_look::test_wrapped_aggregate_with_dependent_by_grain`).
+66 tests moved, each by a statement added or dropped, not changed: the
+tree dashboard's `test_dashboard_served_from`, `test_cli_consistency`,
+`test_ingest`, the GCS cache-bust URL, a Rust-binary datasource test skipped
+on the base run, and `test_validate_fix_types`, which compiles the same
+statement on both trees when run alone. So no plan moved.
+
+`test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots` pins the
+pass.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2396,9 +2426,10 @@ not built yet:
    and so are an unnest's element filter and a clause applied outside a
    group graph (part 62): every merge between stated rows carries a plan.
    Resolve reads that plan pair by pair, its pivots included (part 63), so
-   no key it equates is one it found by column overlap. What is left is
-   building `node_joins` from the pairings, so resolve stops ordering keys it
-   was already handed.
+   no key it equates is one it found by column overlap, and it searches
+   for no key outside its pivots (part 64). What is left is building
+   `node_joins` from the pairings, so resolve stops ordering keys it was
+   already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
