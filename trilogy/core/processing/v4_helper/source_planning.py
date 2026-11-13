@@ -2215,12 +2215,14 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         environment=environment,
         depth=request.depth + 1,
     )
-    parents: list[StrategyNode] = [scan]
+    # the scan is the hub: a lookup joins it on its grain, each list's
+    # pairs on that list's keys
+    spokes: list[tuple[StrategyNode, frozenset[str]]] = []
     if unbound:
         dims = _plan_lookup(request, unbound, set(ds.grain.components))
         if dims is None:
             return None
-        parents.append(dims)
+        spokes.append((dims, frozenset(ds.grain.components)))
     by_keys: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
     for address, keys in relations.items():
         by_keys[keys].append(related[address])
@@ -2228,7 +2230,8 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         pairs = _relation_pairs(request, columns, [concepts[k] for k in sorted(keys)])
         if pairs is None:
             return None
-        parents.append(pairs)
+        spokes.append((pairs, keys))
+    parents = [scan, *(node for node, _ in spokes)]
     rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
     joined = MergeNode(
         input_concepts=rows,
@@ -2241,6 +2244,7 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
             if all(c.derivation == Derivation.UNNEST for c in related.values())
             else JoinType.FULL
         ),
+        planned_pairs=PlannedPairs.star(scan, spokes),
     )
     return GroupNode(
         input_concepts=rows,
