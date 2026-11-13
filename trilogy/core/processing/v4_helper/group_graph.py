@@ -48,6 +48,7 @@ from .concept_graph import (
 )
 from .condition_placement import (
     PlacementReason,
+    holds_on_absent_group,
     plan_condition_placements,
 )
 from .constants import (
@@ -1797,6 +1798,46 @@ def _final_pin_anchors(ctx: _InputPass) -> frozenset[str]:
     )
 
 
+def _filtered_by(gid: str, atoms: list[BoolExpr], ctx: _InputPass) -> bool:
+    """Whether `gid` or a group upstream of it hosts one of `atoms`."""
+    groups = {gid} | nx.ancestors(ctx.group_graph, gid)
+    return any(
+        atom in ctx.attrs[g].condition_atoms
+        for g in groups
+        if g in ctx.attrs
+        for atom in atoms
+    )
+
+
+def _gate_args_filtered_here(gid: str, succ: str, ctx: _InputPass) -> set[str]:
+    """The aggregate arguments of an atom `succ` hosts that `gid` reads past a
+    host of the same atom, where an unfiltered sibling supplies them: past the
+    host they are the kept groups' values, and an atom that holds on an absent
+    group (`avg(x) by * is null`) reads a rejected one's padding as a pass. A
+    null-rejecting atom reads the same either way
+    (`SelectGrain.gate_past_host_exact_if_null_rejecting`)."""
+    atoms = [a for a in ctx.attrs[succ].condition_atoms if holds_on_absent_group(a)]
+    if not atoms or not _filtered_by(gid, atoms, ctx):
+        return set()
+    args = {
+        arg.address
+        for atom in atoms
+        for arg in atom.row_arguments
+        if arg.derivation == Derivation.AGGREGATE
+    } - ctx.facts[gid].primary
+    return {
+        addr
+        for addr in args
+        if any(
+            addr in ctx.io.capability.get(sib, set())
+            and not _filtered_by(sib, atoms, ctx)
+            for sib in ctx.group_graph.predecessors(succ)
+            if sib != gid
+            and edge_kind(ctx.group_edges, sib, succ) != EdgeKind.EXISTENCE
+        )
+    }
+
+
 def _group_inputs(gid: str, ctx: _InputPass) -> None:
     """One step of the reverse topological pass: what `gid` reads from its
     parents, given what its consumers read from it."""
@@ -1962,6 +2003,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
         if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
             continue
         demanded = io.inputs.get(succ, set()) & cap_gid
+        demanded -= _gate_args_filtered_here(gid, succ, ctx)
         if solid_root:
             # only a domain feeding `succ` supplies it: another region's
             # domain (the customers beside a bucket-fed aggregate) does not

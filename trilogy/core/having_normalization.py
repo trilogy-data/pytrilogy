@@ -555,16 +555,31 @@ def _grain_determined(
     components = concept.grain.components
     if not components:
         return False
-    for address in components - base_components:
+    bound = environment.binding_closure(base_components)
+    for address in {_rename_source(a, environment) for a in components} - bound:
         found = environment.concepts.get(address)
         if (
             found is None
             or found.purpose != Purpose.PROPERTY
             or not found.keys
-            or not set(found.keys) <= base_components
+            or not set(found.keys) <= bound
         ):
             return False
     return True
+
+
+def _rename_source(address: str, environment: Environment) -> str:
+    """The concept a pure rename (`city as v0`) spells, else `address`."""
+    found = environment.concepts.get(address)
+    lineage = found.lineage if found is not None else None
+    if (
+        isinstance(lineage, Function)
+        and lineage.operator == FunctionType.ALIAS
+        and len(lineage.arguments) == 1
+        and isinstance(lineage.arguments[0], ConceptRef)
+    ):
+        return lineage.arguments[0].address
+    return address
 
 
 class _ChainedConcepts:
