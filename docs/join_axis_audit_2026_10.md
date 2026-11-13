@@ -2223,9 +2223,11 @@ and the environment apart and derived what they read from them. Now the
   read its output addresses.
 
 What can move: nothing. Each fact is the same function of the concept graph,
-the select and the environment, and nothing writes to those once the concept
-graph is built (`concept_graph.py` is the only writer of concept attributes
-and edges). So reading a fact once gives what reading it at every step gave.
+the select and the environment, and nothing a fact reads is written once the
+concept graph is built (`concept_graph.py` writes the concept attributes and
+edges; the one later write, `build_group_graph` marking `where_row_arg` before
+it states the `Demand`, is a field no `Demand` property reads). So reading a
+fact once gives what reading it at every step gave.
 A suite capture (`local_scripts/sql_ab/sqlcap.py`, every statement every
 test compiles, under one `PYTHONHASHSEED`) ran once on `main` and once on
 this branch (`-m "not adventureworks_execution and not clickhouse_server
