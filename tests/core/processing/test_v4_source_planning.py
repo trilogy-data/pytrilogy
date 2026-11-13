@@ -7,11 +7,14 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.processing.concept_strategies_v4 import V4History
-from trilogy.core.processing.nodes import RecursiveNode, UnionNode
+from trilogy.core.processing.nodes import MergeNode, RecursiveNode, UnionNode
 from trilogy.core.processing.v4_helper.source_planning import (
+    BridgePlan,
     SourceRequest,
+    _bridge_plan,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
+    _merged,
     _network_source,
     _original_datasource_concept_nodes,
     _search_concepts_for_bridge,
@@ -587,3 +590,44 @@ def test_a_source_plan_marks_the_rows_it_groups():
     marked = _marked(_source_orders("local.customer_id"))
     assert marked and all(node.force_group for node in marked)
     assert marked[0].copy().grouped_at_source
+
+
+def test_a_bridge_merge_pairs_on_the_search_s_joins():
+    env, benv = _build_grained_bridge()
+    node = plan_source(
+        SourceRequest(
+            outputs=[
+                benv.concepts[a]
+                for a in ("local.catalog_quantity", "local.ticket_number")
+            ],
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
+        )
+    )
+    assert isinstance(node, MergeNode) and node.planned_pairs is not None
+    assert sorted(node.planned_pairs.sides.values()) == [
+        frozenset({"ds~catalog_sales"}),
+        frozenset({"ds~store_sales"}),
+    ]
+    assert node.planned_pairs.between(
+        frozenset({"ds~catalog_sales"}), frozenset({"ds~store_sales"})
+    ) == {"local.customer_id", "local.item_id"}
+
+
+def test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned():
+    _, benv = _build_grained_bridge()
+    plan = BridgePlan(
+        concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"})
+    )
+    chosen, connector, filled = object(), object(), object()
+    assert _bridge_plan(plan, [chosen], {id(chosen): "ds~a"}) is not None
+    assert _bridge_plan(plan, [chosen, connector], {id(chosen): "ds~a"}) is None
+    sides = {id(chosen): "ds~a", id(filled): "ds~b"}
+    assert _bridge_plan(plan, [chosen, filled], sides) is None
+
+
+def test_a_hub_with_no_lookups_is_its_own_merge():
+    _, benv = _build_grained_bridge()
+    hub = object()
+    assert _merged(hub, [], benv, 0) is hub

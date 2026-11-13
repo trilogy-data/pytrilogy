@@ -2416,6 +2416,56 @@ statement on both trees when run alone. So no plan moved.
 `test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots` pins the
 pass.
 
+**A ROOT's scans join where the search joined them (part 65).** Every
+merge between stated rows carries a plan (part 62), but a ROOT's own source
+plan did not. The network search picks the scans and records, pair by pair,
+the classes it joins them on (`SourceSolution.join_keys`), and the bridge
+emitter dropped that record: its MergeNode reached `get_node_joins` with no
+plan, and resolve found the keys again by column overlap. A suite probe
+counted where every unplanned merge with keys to find was built: 5,416 of
+5,790 were bridge merges (`_emit_bridge`), and the rest were the ROOT's other
+assemblies, each of which states its own join.
+
+- The bridge carries the search's joins (`BridgePlan.join_keys`), each class
+  spelled as every address it holds, and its merge is planned on them
+  (`_bridge_plan`): each scan is one side, and two scans pair only on what the
+  search joined them on. A regroup of a fanning parent keeps its side.
+- A bridge with a parent the search did not choose as a scan stays unplanned:
+  a gap-filled scan, whose joins the search never saw (`BridgePlan.scans`),
+  and a derived connector. The search binds a connector on its join keys alone, but the
+  connector's subplan emits more. Planning such a bridge on the search's keys
+  paired the rowset axis with `order_items` on `product_id` alone and gave
+  user 3 a padded row (`test_a_bridge_through_a_derived_connector_keeps_its_rows`).
+- The assemblies that state their own join are planned on it: a partial
+  key's completion against its dimension (`_complete_partial_requested`), the
+  finer-filter rollup's key lookup and its joined summary's lookups and gates
+  (`_plan_finer_filter_rollup`, `_plan_joined_filter_rollup`), a coalescing
+  axis's member sides (`gen_coalescing_axis_node`, every side on the axis
+  alone), and a lineage-related cross product, whose components pair on
+  nothing (`_cross_component_source`).
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
+worktree paths normalized): 44,175 statements, the same 25 failures on
+both sides (the credential-gated BigQuery, Snowflake, GCS and NCAA tests,
+and `the_look::test_wrapped_aggregate_with_dependent_by_grain`). 66 tests
+moved, none by a join key or a join type:
+
+- known noise: a BigQuery temp-table name, the GCS cache-bust URL, the tree
+  dashboard's `test_dashboard_served_from`, `test_cli_consistency` and
+  `test_ingest`, and a Rust-binary datasource test skipped on the base run;
+- 42 oracle-law and 15 window-law cases whose select-list, `GROUP BY` or
+  coalesce order moved, or which of two equal providers an ON clause reads.
+  Run alone, they compile the same on both trees: they move with the order
+  the workers run them in.
+
+So no plan moved. An earlier cut planned the connector bridges too, and the
+capture caught it: 3 `test_v4_root_partition` and 2 `test_recurse_edge`
+plans moved, one of them to a wrong row.
+
+`test_a_bridge_merge_pairs_on_the_search_s_joins` and
+`test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned`
+pin the bridge plan.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2427,7 +2477,12 @@ not built yet:
    group graph (part 62): every merge between stated rows carries a plan.
    Resolve reads that plan pair by pair, its pivots included (part 63), so
    no key it equates is one it found by column overlap, and it searches
-   for no key outside its pivots (part 64). What is left is building
+   for no key outside its pivots (part 64). A ROOT's source plan is planned
+   too: a bridge pairs where the search joined its scans, and each other
+   assembly on the join it states (part 65). Left unplanned: a bridge through
+   a derived connector or a gap-filled scan (3,318 merges over 1,721 tests,
+   nearly all through a connector), and the few from `gen_select_merge_node`
+   and a recursive walk. What is left is building
    `node_joins` from the pairings, so resolve stops ordering keys it was
    already handed.
 2. The contract's sets are named, and each reader reads the ones it needs

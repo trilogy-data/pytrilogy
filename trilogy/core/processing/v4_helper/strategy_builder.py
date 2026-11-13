@@ -35,6 +35,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
     FunctionType,
+    Granularity,
     JoinType,
     Ordering,
     Purpose,
@@ -3859,6 +3860,12 @@ def _fd_at_grain(
     )
 
 
+def _single_row_node(node: StrategyNode) -> bool:
+    return bool(node.output_concepts) and all(
+        c.granularity == Granularity.SINGLE_ROW for c in node.output_concepts
+    )
+
+
 def _satisfy_parent_projection_contract(
     parents: list[StrategyNode],
     shaped: list[bool],
@@ -3894,9 +3901,25 @@ def _satisfy_parent_projection_contract(
     # `event_time` and emits only `lag(event_time)`, so crediting it with its
     # inputs would strip `event_time` off the dimension parent and leave the
     # consumer computing `event_time - prior_event_time` with no source.
-    outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
     own_outputs_by_parent = [
         {output.address for output in parent.usable_outputs} for parent in parents
+    ]
+    # A leaf scan reports no inputs, which keeps it whole: its rows are the
+    # sibling's join partner. Beside only one-row constants (a `by *` total,
+    # joined on 1=1) nothing pairs on its rows, so it is projected like a
+    # merge would be (#964).
+    constants_only = all(
+        _single_row_node(parent)
+        for parent, is_shaped in zip(parents, shaped)
+        if is_shaped
+    )
+    outputs_by_parent = [
+        (
+            own
+            if constants_only and not parent.parents
+            else parent_output_addresses(parent)
+        )
+        for parent, own in zip(parents, own_outputs_by_parent)
     ]
     projected: list[StrategyNode] = []
     for idx, parent in enumerate(parents):
@@ -7567,9 +7590,14 @@ def _group_needed(
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )
-    # a dimension peel is read with its key, the axis its rows are paired on
+    # a dimension peel is read with its key, the axis its rows are paired on,
+    # unless the group projects it to a coarser grain (a value by genus off a
+    # species peel): then that grain is the axis
+    projected = _input_contract_projection_grain(a)
     for pgid in lineage_predecessors(group_graph, group_edges, gid):
-        needed |= attrs[pgid].anchor_keys
+        keys = attrs[pgid].anchor_keys
+        if not projected or keys <= projected:
+            needed |= keys
     # an aggregate over a region pairs its solid rows with the domain on the
     # domain's spans
     if derivation == Derivation.AGGREGATE:

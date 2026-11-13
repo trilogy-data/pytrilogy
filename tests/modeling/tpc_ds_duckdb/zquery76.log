@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 5583
+gen_length = 5105
 preql_size = 1833
 comp_size = 1708
 generated_sql = """
@@ -10,8 +10,6 @@ SELECT
     \"ws_item_items\".\"I_CATEGORY\" as \"___q76_results_arm_1_i_category\",
     \"ws_sale_date_date\".\"D_QOY\" as \"___q76_results_arm_1_d_qoy\",
     \"ws_sale_date_date\".\"D_YEAR\" as \"___q76_results_arm_1_d_year\",
-    :___q76_results_arm_1_channel as \"___q76_results_arm_1_channel\",
-    :___q76_results_arm_1_col_name as \"___q76_results_arm_1_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ws_web_sales\".\"WS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"ws_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___q76_results_arm_1_sales_cnt\",
     sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"___q76_results_arm_1_sales_amt\"
 FROM
@@ -30,8 +28,6 @@ SELECT
     \"ss_item_items\".\"I_CATEGORY\" as \"___q76_results_arm_0_i_category\",
     \"ss_sale_date_date\".\"D_QOY\" as \"___q76_results_arm_0_d_qoy\",
     \"ss_sale_date_date\".\"D_YEAR\" as \"___q76_results_arm_0_d_year\",
-    :___q76_results_arm_0_channel as \"___q76_results_arm_0_channel\",
-    :___q76_results_arm_0_col_name as \"___q76_results_arm_0_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ss_store_sales\".\"SS_TICKET_NUMBER\" as string),'\u001e'), coalesce(cast(\"ss_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___q76_results_arm_0_sales_cnt\",
     sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"___q76_results_arm_0_sales_amt\"
 FROM
@@ -50,8 +46,6 @@ SELECT
     \"cs_item_items\".\"I_CATEGORY\" as \"___q76_results_arm_2_i_category\",
     \"cs_sale_date_date\".\"D_QOY\" as \"___q76_results_arm_2_d_qoy\",
     \"cs_sale_date_date\".\"D_YEAR\" as \"___q76_results_arm_2_d_year\",
-    :___q76_results_arm_2_channel as \"___q76_results_arm_2_channel\",
-    :___q76_results_arm_2_col_name as \"___q76_results_arm_2_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"cs_catalog_sales\".\"CS_ITEM_SK\" as string),'\u001e')))) as \"___q76_results_arm_2_sales_cnt\",
     sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"___q76_results_arm_2_sales_amt\"
 FROM
@@ -67,8 +61,8 @@ GROUP BY
     3),
 kaput as (
 SELECT
-    \"cheerful\".\"___q76_results_arm_2_channel\" as \"_q76_results_channel\",
-    \"cheerful\".\"___q76_results_arm_2_col_name\" as \"_q76_results_col_name\",
+    :___q76_results_arm_2_channel as \"_q76_results_channel\",
+    :___q76_results_arm_2_col_name as \"_q76_results_col_name\",
     \"cheerful\".\"___q76_results_arm_2_d_year\" as \"_q76_results_d_year\",
     \"cheerful\".\"___q76_results_arm_2_d_qoy\" as \"_q76_results_d_qoy\",
     \"cheerful\".\"___q76_results_arm_2_i_category\" as \"_q76_results_i_category\",
@@ -78,8 +72,8 @@ FROM
     \"cheerful\"
 UNION ALL
 SELECT
-    \"juicy\".\"___q76_results_arm_0_channel\" as \"_q76_results_channel\",
-    \"juicy\".\"___q76_results_arm_0_col_name\" as \"_q76_results_col_name\",
+    :___q76_results_arm_0_channel as \"_q76_results_channel\",
+    :___q76_results_arm_0_col_name as \"_q76_results_col_name\",
     \"juicy\".\"___q76_results_arm_0_d_year\" as \"_q76_results_d_year\",
     \"juicy\".\"___q76_results_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
     \"juicy\".\"___q76_results_arm_0_i_category\" as \"_q76_results_i_category\",
@@ -89,8 +83,8 @@ FROM
     \"juicy\"
 UNION ALL
 SELECT
-    \"late\".\"___q76_results_arm_1_channel\" as \"_q76_results_channel\",
-    \"late\".\"___q76_results_arm_1_col_name\" as \"_q76_results_col_name\",
+    :___q76_results_arm_1_channel as \"_q76_results_channel\",
+    :___q76_results_arm_1_col_name as \"_q76_results_col_name\",
     \"late\".\"___q76_results_arm_1_d_year\" as \"_q76_results_d_year\",
     \"late\".\"___q76_results_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
     \"late\".\"___q76_results_arm_1_i_category\" as \"_q76_results_i_category\",

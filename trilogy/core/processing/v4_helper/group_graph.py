@@ -17,7 +17,7 @@ single bucket). No derivation is privileged in the orchestrator.
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 
 from trilogy.constants import logger
@@ -662,6 +662,64 @@ def _grain_determines(
     )
 
 
+def _rows_at_grain(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, "GroupFacts"],
+    gid: str,
+) -> bool:
+    """A row step's rows are one per its grain when it reads only groups."""
+    parents = lineage_predecessors(group_graph, group_edges, gid)
+    return bool(parents) and all(
+        facts[p].derivation in GROUPING_DERIVATIONS for p in parents
+    )
+
+
+def _stored_columns(environment: BuildEnvironment) -> frozenset[str]:
+    """Every address some datasource binds as a column of this plan."""
+    return frozenset().union(
+        *(_scan_columns(ds, environment) for ds in environment.datasources.values())
+    )
+
+
+def _source_asked_root_keys(
+    attrs: dict[str, GroupAttrs], environment: BuildEnvironment
+) -> None:
+    """A ROOT asked to carry a stored key its rows determine, held by no table
+    beside its outputs, sources it: a lookup keeps its rows (`tree_id` ->
+    `genus` through species, for a reader stitched on genus to a value by
+    genus), and a scan cannot be widened through a join after the fact. A key
+    its own tables bind is widened in place; a derived key (a spine, a merged
+    name) is computed where it is read; a region domain pairs on its spans
+    alone."""
+    asked: dict[str, set[str]] = defaultdict(set)
+    for group in attrs.values():
+        for contract in group.input_contracts:
+            asked[contract.parent_group_id] |= contract.required_grain
+    tables = [_scan_columns(ds, environment) for ds in environment.datasources.values()]
+    stored = frozenset().union(*tables)
+    for gid, keys in asked.items():
+        root = attrs[gid]
+        if root.derivation != Derivation.ROOT or root.extent_spans:
+            continue
+        outputs = set(root.output_concepts)
+        missing = sorted(
+            key
+            for key in keys - outputs
+            if key in stored
+            and (concept := environment.concepts.get(key)) is not None
+            and concept.purpose == Purpose.KEY
+            and concept.derivation == Derivation.ROOT
+            # a table beside the outputs that binds it widens to it in place
+            and not any(key in t and outputs <= t for t in tables)
+            and build_fd_determines(
+                environment, outputs, key, include_empty_grain=False
+            )
+        )
+        if missing:
+            root.output_concepts = (*root.output_concepts, *missing)
+
+
 def _refresh_final_contract(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -1173,6 +1231,36 @@ def shape_through_bridges(
             attrs[gid].shapes_rows = True
 
 
+def _channel_contracts(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> tuple[GroupInputContract, ...]:
+    """Each parent edge's channel, before any edge's keys are read."""
+    input_grain = attrs[gid].input_grain
+    contracts = []
+    for pred in sorted(group_graph.predecessors(gid)):
+        if pred == FINAL_NODE_ID or pred not in attrs:
+            continue
+        is_existence = edge_kind(group_edges, pred, gid) == EdgeKind.EXISTENCE
+        contracts.append(
+            GroupInputContract(
+                parent_group_id=pred,
+                consumer_group_id=gid,
+                channel=(
+                    InputChannel.EXISTENCE if is_existence else InputChannel.ROW_STREAM
+                ),
+                may_project_dimension=(
+                    bool(input_grain)
+                    and not is_existence
+                    and attrs[pred].derivation not in GROUPING_DERIVATIONS
+                ),
+            )
+        )
+    return tuple(contracts)
+
+
 def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1188,10 +1276,14 @@ def _refresh_input_contracts(
         gid for gid in group_graph.nodes if gid != FINAL_NODE_ID and gid in attrs
     ]
     _refresh_shapes_rows(group_graph, group_edges, attrs, environment)
-    # every grain first: what a parent can carry reads its own input grain
+    # every grain and channel first: what a parent can carry reads its own
+    # input grain, and the rows it is stitched on (`GroupAttrs.joined_on`)
     for gid in consumers:
         attrs[gid].input_grain = _consumer_required_input_grain(
             group_graph, group_edges, attrs, gid, rows_pair_facts
+        )
+        attrs[gid].input_contracts = _channel_contracts(
+            group_graph, group_edges, attrs, gid
         )
     for gid in consumers:
         input_grain = attrs[gid].input_grain
@@ -1210,49 +1302,32 @@ def _refresh_input_contracts(
         attrs[gid].projection_grain = sourcing_keys | _consumer_sibling_grains(
             group_graph, group_edges, attrs, gid, grouped_grains
         )
-        contracts: list[GroupInputContract] = []
-        for pred in sorted(group_graph.predecessors(gid)):
-            if pred == FINAL_NODE_ID or pred not in attrs:
-                continue
-            kind = edge_kind(group_edges, pred, gid)
-            is_existence = kind == EdgeKind.EXISTENCE
-            contracts.append(
-                GroupInputContract(
-                    parent_group_id=pred,
-                    consumer_group_id=gid,
-                    required_grain=(
-                        frozenset()
-                        if is_existence
-                        else carryable(
-                            group_graph, attrs, pred, input_grain, environment
-                        )
+        attrs[gid].input_contracts = tuple(
+            (
+                replace(
+                    contract,
+                    required_grain=carryable(
+                        group_graph,
+                        attrs,
+                        contract.parent_group_id,
+                        input_grain,
+                        environment,
                     ),
-                    relation_keys=(
-                        frozenset()
-                        if is_existence
-                        else carryable(
-                            group_graph,
-                            attrs,
-                            pred,
-                            _edge_relation_keys(
-                                relation_keys, attrs[pred], environment
-                            ),
-                            environment,
-                        )
-                    ),
-                    channel=(
-                        InputChannel.EXISTENCE
-                        if is_existence
-                        else InputChannel.ROW_STREAM
-                    ),
-                    may_project_dimension=(
-                        bool(input_grain)
-                        and not is_existence
-                        and attrs[pred].derivation not in GROUPING_DERIVATIONS
+                    relation_keys=carryable(
+                        group_graph,
+                        attrs,
+                        contract.parent_group_id,
+                        _edge_relation_keys(
+                            relation_keys, attrs[contract.parent_group_id], environment
+                        ),
+                        environment,
                     ),
                 )
+                if contract.channel == InputChannel.ROW_STREAM
+                else contract
             )
-        attrs[gid].input_contracts = tuple(contracts)
+            for contract in attrs[gid].input_contracts
+        )
 
 
 @dataclass
@@ -1888,6 +1963,28 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                             environment, fact.grain, sibling_fact.grain
                         ):
                             outs |= (sibling_fact.grain - rollup_padded) & cap_gid
+                    # A row stream beside a coarser row step over groups,
+                    # whose stored grain its own grain determines, pairs on
+                    # that grain: it carries it (a per-tree value beside a flag by city and
+                    # species, the trees holding both). A derived grain (a
+                    # class off a CASE) is computed where it is read, and a
+                    # sibling still on row-level rows is no lookup. A grouping
+                    # sibling emits its grain and pairs through the rules
+                    # above; so does one that can hold this stream's grain.
+                    if (
+                        fact.derivation not in GROUPING_DERIVATIONS
+                        and sibling_fact.grain
+                        and sibling_fact.grain <= _stored_columns(environment)
+                        and sibling_fact.derivation not in GROUPING_DERIVATIONS
+                        and _rows_at_grain(group_graph, group_edges, facts, sibling)
+                        and not fact.grain & io.capability[sibling]
+                        and not sibling_fact.grain <= fact.grain
+                        and sibling_fact.grain <= cap_gid
+                        and _grain_determines(
+                            environment, fact.grain, sibling_fact.grain
+                        )
+                    ):
+                        outs |= sibling_fact.grain - rollup_padded
                     # Same-grain sibling: the grain IS the shared row
                     # identity. A STRICTLY FINER sibling that can also
                     # produce these components is the same story one level
@@ -2528,6 +2625,7 @@ def build_group_graph(
     _refresh_input_contracts(
         group_graph, group_edges, attrs, demand, keyspace.rows_pair_facts
     )
+    _source_asked_root_keys(attrs, demand.environment)
     _refresh_final_contract(group_graph, attrs, demand)
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph, attrs, keyspace, relation_only=demand.relation_only
