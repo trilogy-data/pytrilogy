@@ -461,3 +461,16 @@ def test_padded_key_stream_is_never_built(relation: str):
 def test_padded_key_stream_kept(query: str):
     trace, _ = _trace(query)
     assert _outer_row_streams(trace)
+
+
+def test_a_bridge_through_a_derived_connector_keeps_its_rows():
+    """The search binds a derived connector on its join keys alone, but the
+    connector's subplan emits more: a bridge through one pairs on what its
+    sides share, not on the search's keys, or user 3 gains a padded row."""
+    _, rows = _trace(_REV + _REV_KEYS)
+    assert [tuple(r) for r in rows] == [
+        (1, 1, "ca", "acme", Decimal("5.0")),
+        (1, 2, "ca", "zed", Decimal("7.0")),
+        (2, 3, "ny", "acme", Decimal("3.0")),
+        (3, None, "wa", None, None),
+    ]
