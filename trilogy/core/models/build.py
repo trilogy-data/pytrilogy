@@ -773,7 +773,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     content: BuildExpr
 
     def __add__(self, other) -> BuildParenthetical | BuildConditional:
-        if other is None:
+        if other is None or str(other) == str(self):
             return self
         elif isinstance(
             other,

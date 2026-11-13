@@ -921,9 +921,26 @@ def minimize_by_bindings(
     kept = list(components)
     for address in sorted(components):
         rest = set(kept) - {address}
-        if rest and environment.binding_determines(rest, address):
+        if rest and _binding_determined(rest, address, environment):
             kept.remove(address)
     return kept
+
+
+def _binding_determined(rest: set[str], address: str, environment: Environment) -> bool:
+    """`address` is bound beside `rest`, or is an aggregate `by` keys `rest`
+    binds (`sum(x) by city` beside `tree_id`): one value per row of `rest`
+    (`SelectGrain.by_value_is_no_grain_key`)."""
+    if environment.binding_determines(rest, address):
+        return True
+    concept = environment.concepts.get(address)
+    if (
+        concept is None
+        or not isinstance(concept.lineage, AggregateWrapper)
+        or not concept.lineage.by
+    ):
+        return False
+    keys = {c.address for c in concept.lineage.by}
+    return all(k in rest or environment.binding_determines(rest, k) for k in keys)
 
 
 def concepts_to_grain_concepts(

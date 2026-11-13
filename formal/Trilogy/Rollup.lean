@@ -968,5 +968,22 @@ theorem Rollup.dimension_column_filters_every_scan :
       (rows.map v).foldl max 0 = 7 := by
   decide
 
+/-! ## A gate's partial is re-summed at the gate's grain
+
+`select species where sum(x) by city <= 2` beside a `(city, species)` summary:
+the gate is a re-sum of the summary rows sharing a city. Filtered on the
+summary scan grouped by `species`, the partials were re-summed by species. -/
+
+/-- Summary rows `(city, species, h)`: city 1 totals 9 and passes no `<= 2`
+gate. Re-summed by species, Tilia (species 3) reads its own 2 and passed
+(`Rollup.gate_partial_resummed_off_its_grain`). -/
+theorem Rollup.gate_partial_resummed_off_its_grain :
+    let rows : List (Nat × Nat × Int) := [(0, 1, 3), (0, 2, 5), (1, 1, 7), (1, 3, 2)]
+    let byCity : Nat → Int := fun c => ((rows.filter (·.1 == c)).map (·.2.2)).sum
+    let bySpecies : Nat → Int := fun s => ((rows.filter (·.2.1 == s)).map (·.2.2)).sum
+    ((rows.filter fun r => byCity r.1 <= 2).map (·.2.1)).length = 0 ∧
+      bySpecies 3 = 2 := by
+  decide
+
 end Rollup
 end Trilogy

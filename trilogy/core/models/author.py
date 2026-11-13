@@ -230,7 +230,7 @@ class Parenthetical(
             self.content = self.content.reference
 
     def __add__(self, other) -> Parenthetical | Conditional:
-        if other is None:
+        if other is None or str(other) == str(self):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)

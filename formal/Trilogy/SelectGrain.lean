@@ -471,4 +471,69 @@ theorem pair_implied_off_its_side_misjoins :
       (joined.filter fun p => p.2.2 == form p.1.2).length = 2 := by
   decide
 
+/-! ## Keys split over two filtered branches pair only kept tuples
+
+`select city, tree_form, count(id) by tree_form, count(id) by city where
+min(x) by city, species != 7`: each count's group keys are kept keys of its
+own column, but the select's rows are the kept `(city, tree_form)` tuples.
+Paired through a row stream the WHERE never filtered, every pair of kept
+columns comes back, the dropped tuples among them. -/
+
+/-- **A kept tuple's columns are kept columns**: each key row's projections are
+key rows of the projections, so pairing two filtered branches never loses a
+kept tuple, only adds dropped ones. -/
+theorem kept_pair_in_product (a b : α → Key) (p : α → Bool) (rows : List α)
+    (t : Key × Key) (h : t ∈ dedup ((rows.filter p).map fun r => (a r, b r))) :
+    t.1 ∈ keptKeys a p rows ∧ t.2 ∈ keptKeys b p rows := by
+  rw [mem_dedup] at h
+  obtain ⟨r, hr, rfl⟩ := List.mem_map.1 h
+  exact ⟨by unfold keptKeys; rw [mem_dedup]; exact List.mem_map.2 ⟨r, hr, rfl⟩,
+    by unfold keptKeys; rw [mem_dedup]; exact List.mem_map.2 ⟨r, hr, rfl⟩⟩
+
+/-- Rows `(city, form)` `[(0, 0), (1, 0), (1, 1)]` with `(1, 0)` dropped by the
+WHERE: cities 0 and 1 and forms 0 and 1 are all kept, but only `(0, 0)` and
+`(1, 1)` are kept tuples. Paired off the unfiltered rows, `(1, 0)` returned
+(`split_keys_pair_unkept`). -/
+theorem split_keys_pair_unkept :
+    let rows : List (Int × Int) := [(0, 0), (1, 0), (1, 1)]
+    let p : Int × Int → Bool := fun r => r != (1, 0)
+    let city : Int × Int → Key := fun r => [r.1]
+    let form : Int × Int → Key := fun r => [r.2]
+    let kept := dedup ((rows.filter p).map fun r => (city r, form r))
+    let paired := dedup ((rows.filter fun r =>
+      (keptKeys city p rows).contains (city r) &&
+        (keptKeys form p rows).contains (form r)).map fun r => (city r, form r))
+    kept.length = 2 ∧ paired.length = 3 := by
+  decide
+
+/-! ## A `by` value of keys the select determines is no grain key
+
+`select tree_id, sum(x) by city as v` with `tree_id` binding `city`: `v` is one
+value per `tree_id`, so the select grain stays `tree_id`. Kept as a grain key,
+it was joined on as a column, and a row's own `x` stood in for it. -/
+
+/-- **A `by` value of a determined key is a value of the select grain**
+(`by_value_is_no_grain_key`): rows sharing `tree_id` share `city`, hence `v`. -/
+theorem by_value_is_no_grain_key (grain key : α → Key) (f : Key → Key)
+    (hk : ∀ r, key r = f (grain r)) (v : α → Int) (rows : List α) (r₁ r₂ : α)
+    (h : grain r₁ = grain r₂) :
+    eval (.by_ key) grain v rows r₁ = eval (.by_ key) grain v rows r₂ :=
+  determined_by_on_grain grain key f hk v rows r₁ r₂ h
+
+/-- Rows `(id, city, x)`: `sum(x) by city` is 8 on city 0's rows. Read at the
+`id` grain the value was taken for `x` itself, and joined on, only the row
+whose `x` equals its city's total survived (`by_value_as_key_misjoins`). -/
+theorem by_value_as_key_misjoins :
+    let rows : List (Int × Int × Int) := [(1, 0, 3), (2, 0, 5), (3, 1, 2)]
+    let total : Int → Int := fun c => sumBy (·.2.2) (rows.filter (·.2.1 == c))
+    (rows.filter fun r => r.2.2 == total r.2.1).length = 1 ∧ rows.length = 3 := by
+  decide
+
+/-- **A conjunction of a condition with itself is the condition**: `city = 'B'
+and city = 'B'` keeps what `city = 'B'` keeps, so the planner folds a
+condition into itself to the same filter (`conjunction_idempotent`). -/
+theorem conjunction_idempotent (p : α → Bool) (rows : List α) :
+    rows.filter (fun r => p r && p r) = rows.filter p := by
+  simp
+
 end Trilogy.SelectGrain

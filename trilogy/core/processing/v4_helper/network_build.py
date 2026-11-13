@@ -66,6 +66,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 )
 from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.core.processing.v4_helper.functional_dependency import (
+    build_fd_determines_all,
     origin_relation_stored,
 )
 from trilogy.core.processing.v4_helper.network_coalescing import (
@@ -808,6 +809,57 @@ def _searched_terminals(
     ]
 
 
+def _gated_off_grain(
+    terminals: list[BuildConcept],
+    environment: BuildEnvironment,
+    clauses: tuple[BuildWhereClause | None, ...],
+) -> frozenset[str]:
+    """Canonical addresses of the aggregates this request's own WHERE reads at
+    a grain that is not theirs: a requested key their grain does not determine
+    (`sum(x) by city <= 2` beside `species`). A scan holding one as a partial
+    would be filtered per `(city, species)` row, the partial re-summed by
+    `species` (`Rollup.gate_partial_resummed_off_its_grain`)."""
+    read = {
+        arg.address
+        for clause in clauses
+        if clause is not None
+        for arg in clause.row_arguments
+    }
+    keys = [
+        c.address for c in terminals if not c.is_aggregate and c.address not in read
+    ]
+    return frozenset(
+        c.canonical_address
+        for c in terminals
+        if c.is_aggregate
+        and c.address in read
+        and keys
+        and not build_fd_determines_all(environment, c.grain.components, keys)
+    )
+
+
+def _graph_rollups_of(
+    graph: ReferenceGraph, node: str, canonical: frozenset[str]
+) -> set[str]:
+    """The addresses `node` offers for `canonical` only through the graph's
+    rollup edges, never a column it stores."""
+    if not canonical:
+        return set()
+    datasource = graph.datasources[node]
+    stored = (
+        {column.concept.address for column in datasource.columns}
+        if isinstance(datasource, BuildDatasource)
+        else set()
+    )
+    return {
+        address
+        for neighbor in graph.neighbors(node)
+        if (concept := graph.concepts.get(neighbor)) is not None
+        and concept.canonical_address in canonical
+        and (address := node_address(neighbor)) not in stored
+    }
+
+
 def build_source_network(
     terminals: list[BuildConcept],
     environment: BuildEnvironment,
@@ -835,11 +887,15 @@ def build_source_network(
         c.address for owed in owed_by_node.values() for cs in owed.values() for c in cs
     }
     all_addresses |= owed_addresses
+    misgrained = _gated_off_grain(
+        terminals, environment, (conditions, deferred_conditions)
+    )
     for node in graph.datasources:
         if node in graph:
-            emitted_by_node[node] = _emitted_addresses(graph, node) | {
-                concept.address for concept in rollups.get(node, [])
-            }
+            emitted_by_node[node] = (
+                _emitted_addresses(graph, node)
+                - _graph_rollups_of(graph, node, misgrained)
+            ) | {concept.address for concept in rollups.get(node, [])}
             all_addresses |= emitted_by_node[node]
     equivalence = environment.address_roots(all_addresses, spellings=True)
     owners = probe_owners(
