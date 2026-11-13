@@ -306,4 +306,105 @@ theorem rowset_member_dropped_totals :
     eval .bare v one rows 1 = 1 ∧ eval .bare (fun _ => []) one rows 1 = 2 := by
   decide
 
+/-! ## A select's keys are the keys of the rows its WHERE keeps -/
+
+/-- The key rows of `select k, ... where p`: the distinct keys of the rows `p`
+keeps, whatever grain the aggregates beside them are read at. -/
+def keptKeys (k : α → Key) (p : α → Bool) (rows : List α) : List Key :=
+  dedup ((rows.filter p).map k)
+
+/-- **Each key row holds the WHERE on one of its rows.** -/
+theorem kept_key_holds (k : α → Key) (p : α → Bool) (rows : List α) (t : Key)
+    (h : t ∈ keptKeys k p rows) : ∃ r ∈ rows, p r = true ∧ k r = t := by
+  unfold keptKeys at h
+  rw [mem_dedup] at h
+  obtain ⟨r, hr, rfl⟩ := List.mem_map.1 h
+  obtain ⟨hr, hp⟩ := List.mem_filter.1 hr
+  exact ⟨r, hr, hp, rfl⟩
+
+/-- **A regroup of the kept groups holds only kept keys**
+(`regrouped_gate_is_applied`): grouping the WHERE's kept `(city, species)`
+groups again by a function of their key (`tree_form`) gives the keys of the
+kept rows, so a FINAL re-applying the WHERE there changes nothing. -/
+theorem regrouped_gate_is_applied (k : α → Key) (f : Key → Key) (p : α → Bool)
+    (rows : List α) (t : Key) :
+    t ∈ keptKeys (fun r => f (k r)) p rows ↔ ∃ u ∈ keptKeys k p rows, f u = t := by
+  unfold keptKeys
+  simp only [mem_dedup, List.mem_map, List.mem_filter]
+  constructor
+  · rintro ⟨r, hr, rfl⟩
+    exact ⟨k r, ⟨r, hr, rfl⟩, rfl⟩
+  · rintro ⟨u, ⟨r, hr, rfl⟩, rfl⟩
+    exact ⟨r, hr, rfl⟩
+
+/-- Membership in a literal list: identity matching against each member. -/
+def memberOf (v : Int) (cs : List Int) : Bool := cs.contains v
+
+/-- **A literal membership is a disjunction of comparisons**: `agg(x) by g in
+(7, 1)` keeps exactly the rows `agg(x) by g = 7 or agg(x) by g = 1` keeps, so it
+is placed like the comparison. -/
+theorem literal_membership_is_a_comparison (v c : Int) (cs : List Int) :
+    memberOf v (c :: cs) = (v == c || memberOf v cs) := by
+  simp only [memberOf, List.contains_cons]
+
+/-- A count on a key with no rows reads 0, so a literal membership decides it
+by whether 0 is a member: `count(id) by k in (5, 3)` never holds there. -/
+theorem count_membership_on_absent [DecidableEq κ] (k : α → κ) (rows : List α)
+    (t : κ) (cs : List Int) (h : ∀ r ∈ rows, k r ≠ t) :
+    memberOf ((slice k t rows).length : Int) cs = memberOf 0 cs := by
+  have : slice k t rows = [] := by
+    unfold slice
+    exact List.filter_eq_nil_iff.2 fun r hr => by simpa using h r hr
+  simp [this]
+
+/-- **An aggregate `by` a grain the select grain determines is a value of the
+select grain**: `sum(x) by city, tree_form` beside `city, species`, with
+`tree_form` a property of `species`, is one value per select row, so a HAVING
+over it never changes the select grain. -/
+theorem determined_by_on_grain (grain key : α → Key) (f : Key → Key)
+    (hk : ∀ r, key r = f (grain r)) (v : α → Int) (rows : List α) (r₁ r₂ : α)
+    (h : grain r₁ = grain r₂) :
+    eval (.by_ key) grain v rows r₁ = eval (.by_ key) grain v rows r₂ :=
+  fixed_on_keys key grain v rows r₁ r₂ (by rw [hk, hk, h])
+
+/-- Rows `(city, species, x)` and `select species, min(x) by * where max(x) by
+city, species in (7, 1)`: only species 1 in city 1 has max 7, so the key rows
+are `[1]`. Read off the gate's own group, which holds every `(city, species)`,
+the WHERE dropped out of the key rows and all three species came back. -/
+theorem literal_membership_gate_dropped :
+    let rows : List (Int × Int × Int) := [(0, 1, 3), (0, 2, 5), (1, 1, 7), (1, 3, 2)]
+    let gate : Int × Int × Int → Bool := fun r =>
+      memberOf (((rows.filter fun q => q.1 == r.1 && q.2.1 == r.2.1).map (·.2.2)).foldl max 0) [7, 1]
+    let species : Int × Int × Int → Key := fun r => [r.2.1]
+    keptKeys species gate rows = [[1]] ∧
+      keptKeys species (fun _ => true) rows = [[2], [1], [3]] := by
+  decide
+
+/-- Rows `(city, species)` and `select species, min(x) by * where
+count_distinct(tag) by species = 1 and city = 1`: species 2 and 3 pass the gate
+but only species 3 grows in city 1. Read off the gate's group, which reads
+every row, the row atom never reached the key rows
+(`gate_group_skips_row_atoms`). -/
+theorem gate_group_skips_row_atoms :
+    let rows : List (Int × Int) := [(0, 1), (0, 2), (1, 1), (1, 3)]
+    let gate : Int × Int → Bool := fun r => r.2 != 1
+    let species : Int × Int → Key := fun r => [r.2]
+    keptKeys species (fun r => gate r && r.1 == 1) rows = [[3]] ∧
+      keptKeys species gate rows = [[2], [3]] := by
+  decide
+
+/-- City 0 holds species 1 and 2, of forms 1 and 0, and `select city, species,
+max(x) by city, tree_form, count(id)` does not select the form. The group
+`(city, form)` is joined to the `(city, species)` counts on `city` alone: four
+rows for two. Joined on the form each species determines, it is two, each with
+its own form's value (`property_with_its_key_exact`). -/
+theorem by_property_without_its_key_misjoins :
+    let keys : List (Int × Int) := [(0, 1), (0, 2)]
+    let form : Int → Int := fun s => s % 2
+    let gate := keys.map fun r => (r.1, form r.2)
+    (keys.flatMap fun r => gate.filter fun p => p.1 == r.1).length = 4 ∧
+      (keys.flatMap fun r =>
+        gate.filter fun p => p.1 == r.1 && p.2 == form r.2).length = 2 := by
+  decide
+
 end Trilogy.SelectGrain

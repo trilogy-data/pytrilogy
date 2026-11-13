@@ -69,7 +69,9 @@ a table at its own grain answers repeat-blind aggregates of its columns, and
 aggregates of a column it stores at that grain, from its own rows; area 1),
 and the coarse-gate follow-on (0.3.488: a re-sum is never joined on its
 partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
-summary's own grain reads it; area 1).
+summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 and
+0.3.491: selects checked against Python over the raw rows, not against
+another plan; area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -566,6 +568,25 @@ does not rewrite it; that rewrite is open.
       has none of its guarantees. Ablate the pin (return None) and diff: the
       search's mistakes are the ones the pin hides.
 
+29. **Lessons from the wider oracle round (0.3.491).**
+    - Generate the spellings a user writes, not one canonical form. This
+      round's first generator parenthesized every compound WHERE; the bare
+      `gate and row-atom` spelling lost the row atom on main, and the
+      parenthesized one did not.
+    - A literal `in (...)` is the cheapest variant to add and found the most:
+      its existence arguments are `[()]`, truthy, so placement read it as a
+      set lookup. Test such a list with `any(...)`. Three more sites in
+      `condition_placement.py` still test the list's truthiness (the
+      membership-producer route, the region-domain check, the disconnected
+      raise); none showed up in the sweep, but they are the next place to
+      look. Changing `existence_arguments` itself to `[]` broke four shapes.
+    - Compare a family against its `=` twin before calling a new error a
+      regression: two `in` shapes began raising mid-round, and their `=`
+      spellings already did on main. Fixing the twin's error removed both.
+    - Ablate every change against the committed sweep (a pytest plugin that
+      monkeypatches one change off), not only the suite; each of this
+      round's eight changes failed something when removed.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1050,6 +1071,36 @@ a filter its grain does not determine. Open questions:
   - `select species, tree_form, max(height) by city, tree_form, count(tree_id)`
     (a `by` key outside the select) returns rows at `(species, city)`;
     check that against `SelectGrain` before calling it a bug.
+- Done in 0.3.491, from a wider oracle sweep (8,000 selects: projected,
+  nested, `by` and `?` aggregates; literal memberships; bare top-level
+  and/or; HAVING gates), committed as 600 seeds in
+  `tests/discovery/test_oracle_sweep_laws.py` (see "What it found"): a
+  literal membership is a comparison (`_reads_a_set`,
+  `_literal_membership_on_absent`); a key comes off a select-phase group,
+  never the WHERE gate's when a row atom misses the gate's (`elect_cover`); a `by` grain holding a property
+  beside its key's grain is joined through a keying bridge
+  (`elect_bridges`, `_underkeyed_blends`); a WHERE row argument co-sources
+  with every root bound beside it (`where_row_arg`); `agg(x ? c)` at a
+  summary's own grain reads the stored partial (`get_alias`); a HAVING `by`
+  a grain the select grain determines is accepted; a sole FINAL
+  contributor re-aggregating a gated group does not re-apply the gate
+  (`_atoms_of_groups_aggregated`). Left (each fails on main too):
+  - `select city, species, tree_form, avg(height) by * as v0, ... where
+    ((sum(height) by city, species < 6 or tree_form is null) and (species =
+    'Acer' and species in ('Acer', 'Ulmus')))` reads `v0` over every row
+    (4.25 for 3.0), with or without a summary;
+  - `select sum(height ? city in ('B')), count(min(height) by tree_form)`
+    raises "Missing source reference to local.city" with the summary in
+    scope;
+  - two keyless joins: `select species, min(height) by tree_form where
+    ((tree_form = 'broadleaf' or count(tree_id) by city, species = 1) and
+    species = 'Acer')`, and with the summary `select city, species,
+    bool_or(tall), sum(height) where (sum(height) by tree_form > 5 or
+    sum(height) by city = 1) or (species in ('Acer', 'Ulmus') and species !=
+    'Tilia')` (sweep seeds 7162 and 6745);
+  - a total beside a summary-served aggregate now reads the trees (both
+    roots on one scan); the summary could serve it with the WHERE applied to
+    the trees scan as well.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

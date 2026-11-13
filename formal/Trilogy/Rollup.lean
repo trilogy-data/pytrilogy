@@ -939,5 +939,22 @@ theorem Rollup.unguarded_quotient_zero_fills :
       (sqlAvg [none]).isNone = true := by
   decide
 
+/-! ## The WHERE filters every scan of the select's rows
+
+A summary serving one aggregate and the base rows another are two scans of
+the select's rows. A WHERE row atom filters both: a total read off the base
+rows beside a summary-served aggregate is the total of the kept rows. Placed
+only on the scan carrying its column, it left the other scan whole
+(`Rollup.where_filters_every_scan`). -/
+
+/-- Rows `(species, x)` and `select species, sum(x) by * as t, max(min(x) by
+species) where species != 2`: `t` is 15 on every row. Read off a base-row scan
+the WHERE never reached, it was the total of every row, 17. -/
+theorem Rollup.where_filters_every_scan :
+    let rows : List (Nat × Int) := [(1, 3), (1, 7), (2, 2), (3, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    sumAgg v (rows.filter fun r => r.1 != 2) = some 15 ∧ sumAgg v rows = some 17 := by
+  decide
+
 end Rollup
 end Trilogy

@@ -813,6 +813,19 @@ def _cosource_component_groups(
                 node_j, data_j = main_items[j]
                 if data_i.datasource_bindings & data_j.datasource_bindings:
                     undirected.add_edge(node_i, node_j)
+        # A WHERE row argument filters every scan of the select's rows: a root
+        # bound beside it is read under it, aggregate or not. Without a shared
+        # consumer (a summary serving one aggregate, the trees another) the
+        # split would read the other scan unfiltered
+        # (`Rollup.where_filters_every_scan`).
+        for i in range(n):
+            node_i, data_i = main_items[i]
+            if not data_i.where_row_arg or not data_i.datasource_bindings:
+                continue
+            for j in range(n):
+                node_j, data_j = main_items[j]
+                if i != j and data_i.datasource_bindings & data_j.datasource_bindings:
+                    undirected.add_edge(node_i, node_j)
         comp_of: dict[str, int] = {}
         for ci, comp in enumerate(nx.connected_components(undirected)):
             for node in comp:

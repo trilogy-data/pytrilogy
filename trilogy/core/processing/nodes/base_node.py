@@ -4,6 +4,7 @@ from types import MappingProxyType
 from typing import TypeVar
 
 from trilogy.core.enums import (
+    Derivation,
     SetOperator,
     SourceType,
 )
@@ -31,6 +32,27 @@ from trilogy.utility import unique
 
 
 def resolve_concept_map(
+    inputs: list[QueryDatasource | BuildDatasource],
+    targets: list[BuildConcept],
+    inherited_inputs: list[BuildConcept],
+    full_joins: list[BuildConcept] | None = None,
+) -> dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]:
+    """Where each concept a row reads comes from. A constant an input also
+    projects is its expression on every row, so it is rendered where it is
+    read: taken as that input's column it is NULL on each row an outer join
+    pads the input onto."""
+    concept_map = _resolve_sourced_map(inputs, targets, inherited_inputs, full_joins)
+    for concept in (*targets, *(c for i in inputs for c in i.output_concepts)):
+        if concept.address in concept_map and _renders_inline(concept):
+            concept_map[concept.address] = set()
+    return concept_map
+
+
+def _renders_inline(concept: BuildConcept) -> bool:
+    return concept.derivation == Derivation.CONSTANT and concept.lineage is not None
+
+
+def _resolve_sourced_map(
     inputs: list[QueryDatasource | BuildDatasource],
     targets: list[BuildConcept],
     inherited_inputs: list[BuildConcept],
@@ -108,8 +130,9 @@ def resolve_existence_map(
         return {}
     # A set a row parent also carries (`dx in x` beside a projected `x`) reads
     # from its own feeder: the row parent's column is the probing row's value,
-    # not the set. First-wins resolution takes the feeders first.
-    raw = resolve_concept_map(
+    # not the set. First-wins resolution takes the feeders first. A set is a
+    # relation whatever it holds, so a constant one is read off its feeder too.
+    raw = _resolve_sourced_map(
         sorted(
             inputs,
             key=lambda s: not {c.address for c in s.output_concepts}

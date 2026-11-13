@@ -96,6 +96,7 @@ from .models import (
     GroupInputContract,
     InputChannel,
     RootReason,
+    pairing_keys,
 )
 from .projection import (
     iter_row_lineage,
@@ -817,7 +818,7 @@ def _consumer_required_input_grain(
             # identity; on the grouping key alone, every row of a group meets
             # every element (`Unnest.coarse_pair_overcounts`)
             grain |= attrs[gid].aggregate_input_grain
-    return frozenset(grain)
+    return pairing_keys(grain)
 
 
 # Consumers that JOIN their row parents (vs. stack/expand them). Only these need
@@ -1098,7 +1099,7 @@ def _consumer_sibling_grains(
     domain_spans: frozenset[str] = frozenset().union(
         *(attrs[pred].extent_spans for pred in rows)
     )
-    return grouping_parent_grain | domain_spans
+    return pairing_keys(grouping_parent_grain | domain_spans)
 
 
 def _rowset_body_shapes_rows(
@@ -2388,6 +2389,9 @@ def build_group_graph(
     condition_arg_addresses = frozenset(
         arg.address for clause in conditions for arg in clause.row_arguments
     )
+    for node in concept_graph.nodes:
+        if concept_attrs[node].address in condition_arg_addresses:
+            concept_attrs[node].where_row_arg = True
     demand = statement_demand(
         concept_graph, concept_edges, concept_attrs, mandatory_list, environment
     )

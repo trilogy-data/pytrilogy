@@ -1,4 +1,4 @@
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -29,6 +29,14 @@ def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
     silently drops the subtotals. This is the single question the planner
     should ask, never "what does the group id string look like"."""
     return mode is not None and mode.nulls_grouping_keys
+
+
+def pairing_keys(grain: Iterable[str]) -> frozenset[str]:
+    """The columns of a grain: what a parent can be asked to carry and a merge
+    can pair on. The all-rows marker in a grain says its value is one row for
+    the statement; it is a constant, not a column. Carried like one, it is
+    NULL on every row an outer join pads, and a pairing on it drops them."""
+    return frozenset(grain) - {ALL_ROWS_ADDRESS}
 
 
 class RootReason(Enum):
@@ -397,6 +405,9 @@ class ConceptAttrs:
     # WHERE applies on this root's own scan, so it shares the filter columns'
     # row stream and never splits off as a single row or an entity peel.
     scan_filtered: bool = False
+    # A row argument of the statement's WHERE: the WHERE filters every scan
+    # of the select's rows, so it co-sources with any root bound beside it.
+    where_row_arg: bool = False
 
     @property
     def keys_are_conditional_fd(self) -> bool:
