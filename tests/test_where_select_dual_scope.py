@@ -679,3 +679,28 @@ def test_a_root_gate_rejoins_its_rows_on_the_gate_grain(monkeypatch):
     assert rows == [(1,), (2,)], rows
     planned = [plan for plan in plans if plan is not None]
     assert planned and all(plan.permitted == {"local.cat"} for plan in planned)
+
+
+def test_a_rejoin_retried_without_its_correlation_keys_without_it(monkeypatch):
+    from types import SimpleNamespace
+
+    from trilogy.core.processing.v4_node_generators import root
+
+    env = Environment()
+    env.parse("key id int;\nkey other int;\nproperty id.cat string;\n")
+    build = env.materialize_for_select()
+    searches = []
+    found = object()
+
+    def search(concepts, *args, **kwargs):
+        searches.append({c.address for c in concepts})
+        return None if len(searches) == 1 else found
+
+    monkeypatch.setattr(root, "search_parent", search)
+    node = SimpleNamespace(grain=None, output_concepts=[build.concepts["other"]])
+    row_node, keys = root._resolve_row_arg_source(
+        node, [build.concepts["cat"]], build, None, None, None, None
+    )
+    assert row_node is found
+    assert "local.other" in searches[0] and "local.other" not in searches[1]
+    assert keys == {"local.id"}
