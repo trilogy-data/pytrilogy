@@ -18,6 +18,7 @@ single bucket). No derivation is privileged in the orchestrator.
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -399,11 +400,7 @@ def _inject_conditions(
     buckets: dict[str, GroupBucket],
     sets: ConceptSets,
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept],
-    scoped_join_key_groups: dict[str, set[str]],
-    concept_attrs: dict[str, ConceptAttrs],
-    statement_relation_addresses: frozenset[str],
-    environment: BuildEnvironment,
+    demand: "Demand",
     staged_conditions: list[BuildWhereClause] | None,
     keyspace: Keyspace,
 ) -> set[str]:
@@ -414,12 +411,12 @@ def _inject_conditions(
         group_edges,
         buckets,
         conditions,
-        mandatory_list,
-        environment,
+        demand.mandatory_list,
+        demand.environment,
         keyspace,
-        scoped_join_key_groups,
-        concept_attrs,
-        statement_relation_addresses,
+        demand.environment.scoped_join_key_groups,
+        demand.concept_attrs,
+        demand.null_extending_relations,
         staged_conditions,
         sets,
     )
@@ -667,13 +664,13 @@ def _grain_determines(
 def _refresh_final_contract(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    relation_edge_members: frozenset[str] = frozenset(),
+    demand: "Demand",
 ) -> None:
     if FINAL_NODE_ID not in attrs:
         return
-    output_addresses = frozenset(c.address for c in mandatory_list)
+    mandatory_list = demand.mandatory_list
+    environment = demand.environment
+    output_addresses = demand.output_addresses
     # A bare axis-member projection (every output is a member of a scoped
     # join-key relation) has no dedup grain of its own: the output IS the
     # joined relation row-by-row, so a same-key fan-out (two this-year weeks
@@ -703,7 +700,7 @@ def _refresh_final_contract(
     # rows the dedup to the outputs removes (`year` per sale line beside
     # `ticket`).
     groups = final_predecessors(group_graph, attrs)
-    authored = authored_axes(groups, attrs, environment, relation_edge_members)
+    authored = authored_axes(groups, attrs, environment, demand.relation_edge_members)
     if axis_only_projection and attrs[FINAL_NODE_ID].condition_atoms:
         axes = merge_axes(groups, attrs, mandatory_list, authored)
         axis_only_projection = not all(
@@ -1179,15 +1176,12 @@ def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    concept_attrs: dict[str, ConceptAttrs],
-    concept_edges: EdgeMap,
-    environment: BuildEnvironment,
+    demand: "Demand",
     rows_pair_facts: bool = False,
 ) -> None:
-    key_addresses = frozenset(
-        a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
-    )
-    lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
+    environment = demand.environment
+    key_addresses = demand.key_addresses
+    lineage_parents = demand.lineage_parents
     grouped_grains: GroupedRowMemo = {}
     consumers = [
         gid for gid in group_graph.nodes if gid != FINAL_NODE_ID and gid in attrs
@@ -1980,6 +1974,58 @@ class Demand:
     scoped_axis_mates: dict[str, frozenset[str]] = field(default_factory=dict)
     relation_edge_members: frozenset[str] = frozenset()
 
+    # Read off the concept graph, the select and the environment, which no
+    # step after the concept graph is built changes: each is stated once,
+    # whichever step reads it first.
+    @cached_property
+    def output_addresses(self) -> frozenset[str]:
+        return frozenset(c.address for c in self.mandatory_list)
+
+    @cached_property
+    def key_addresses(self) -> frozenset[str]:
+        return frozenset(
+            a.address for a in self.concept_attrs.values() if a.purpose == Purpose.KEY
+        )
+
+    @cached_property
+    def relation_only(self) -> frozenset[str]:
+        return frozenset(
+            a.address for a in self.concept_attrs.values() if a.relation_only
+        )
+
+    @cached_property
+    def lineage_parents(self) -> dict[str, set[str]]:
+        return _lineage_parents_by_address(self.concept_edges, self.concept_attrs)
+
+    @cached_property
+    def source_grain(self) -> dict[str, frozenset[str]]:
+        return _source_grain_by_address(self.concept_graph, self.concept_attrs)
+
+    @cached_property
+    def pseudonym_mates(self) -> dict[str, frozenset[str]]:
+        mates: dict[str, set[str]] = {}
+        for ca in self.concept_attrs.values():
+            for twin in ca.pseudonyms:
+                mates.setdefault(twin, set()).add(ca.address)
+                mates.setdefault(ca.address, set()).add(twin)
+        return {k: frozenset(v) for k, v in mates.items()}
+
+    @cached_property
+    def null_extending_relations(self) -> frozenset[str]:
+        return _statement_relation_addresses(self.environment)
+
+    @cached_property
+    def scan_relation_members(self) -> tuple[str, ...]:
+        """Non-ROWSET members of the statement's authored relations, the axis
+        vocabulary a fresh scan may advertise (`_concept_sets`)."""
+        environment = self.environment
+        out: list[str] = []
+        for member in sorted(_statement_scoped_relation_members(environment)):
+            concept = environment.concepts.get(member)
+            if concept is not None and concept.derivation != Derivation.ROWSET:
+                out.append(member)
+        return tuple(out)
+
 
 def statement_demand(
     concept_graph: nx.DiGraph,
@@ -2050,7 +2096,7 @@ def _concept_sets(
     rollup_padded = demand.rollup_padded
     scoped_axis_mates = demand.scoped_axis_mates
     relation_edge_members = demand.relation_edge_members
-    mandatory_addresses = {c.address for c in mandatory_list}
+    mandatory_addresses = demand.output_addresses
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
     # match those aliases so the producing group keeps the field as an output.
@@ -2068,8 +2114,8 @@ def _concept_sets(
     for c in mandatory_list:
         if c.address not in all_primary_members:
             mandatory_alias_addresses.update(c.pseudonyms)
-    lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
-    source_grain_of = _source_grain_by_address(concept_graph, concept_attrs)
+    lineage_parents = demand.lineage_parents
+    source_grain_of = demand.source_grain
     facts = _build_group_facts(
         group_graph, attrs, concept_graph, concept_edges, concept_attrs, buckets
     )
@@ -2108,12 +2154,7 @@ def _concept_sets(
         for gid, bucket in buckets.items()
     }
 
-    mate_accumulator: dict[str, set[str]] = {}
-    for ca in concept_attrs.values():
-        for twin in ca.pseudonyms:
-            mate_accumulator.setdefault(twin, set()).add(ca.address)
-            mate_accumulator.setdefault(ca.address, set()).add(twin)
-    pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
+    pseudonym_mates = demand.pseudonym_mates
 
     io = GroupIOPlan.for_groups(group_graph)
     # what a region domain carries: a solid ROOT beside it does not emit those
@@ -2137,15 +2178,9 @@ def _concept_sets(
     # already carries as a primary needs no re-sourcing, and advertising it
     # there only widens the scan and the merge keys with equalities the fact
     # grain already determines.
-    scan_advertisable_members: list[str] = []
-    for member in sorted(_statement_scoped_relation_members(environment)):
-        member_concept = environment.concepts.get(member)
-        if (
-            member_concept is not None
-            and member_concept.derivation != Derivation.ROWSET
-            and member not in all_primary_members
-        ):
-            scan_advertisable_members.append(member)
+    scan_advertisable_members = [
+        m for m in demand.scan_relation_members if m not in all_primary_members
+    ]
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
@@ -2354,23 +2389,22 @@ def build_group_graph(
     condition_arg_addresses = frozenset(
         arg.address for clause in conditions for arg in clause.row_arguments
     )
-    output_addresses = frozenset(c.address for c in mandatory_list)
     for node in concept_graph.nodes:
         if concept_attrs[node].address in condition_arg_addresses:
             concept_attrs[node].where_row_arg = True
+    demand = statement_demand(
+        concept_graph, concept_edges, concept_attrs, mandatory_list, environment
+    )
     primary_group, buckets = _assign_groups(
         concept_graph,
         concept_edges,
         concept_attrs,
-        output_addresses | condition_arg_addresses,
+        demand.output_addresses | condition_arg_addresses,
     )
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
     trace_buckets("buckets assigned", buckets, primary_group)
-    demand = statement_demand(
-        concept_graph, concept_edges, concept_attrs, mandatory_list, environment
-    )
     partition = partition_root_demand(
         buckets,
         primary_group,
@@ -2431,11 +2465,7 @@ def build_group_graph(
         buckets,
         sets,
         conditions,
-        mandatory_list,
-        environment.scoped_join_key_groups,
-        concept_attrs,
-        _statement_relation_addresses(environment),
-        environment,
+        demand,
         staged_conditions,
         keyspace,
     )
@@ -2454,28 +2484,11 @@ def build_group_graph(
         _concept_sets(group_graph, group_edges, attrs, buckets, demand, stated=sets),
     )
     _refresh_input_contracts(
-        group_graph,
-        group_edges,
-        attrs,
-        concept_attrs,
-        concept_edges,
-        environment,
-        keyspace.rows_pair_facts,
+        group_graph, group_edges, attrs, demand, keyspace.rows_pair_facts
     )
-    _refresh_final_contract(
-        group_graph,
-        attrs,
-        mandatory_list,
-        environment,
-        relation_edge_members=demand.relation_edge_members,
-    )
+    _refresh_final_contract(group_graph, attrs, demand)
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph,
-        attrs,
-        keyspace,
-        relation_only=frozenset(
-            a.address for a in concept_attrs.values() if a.relation_only
-        ),
+        group_graph, attrs, keyspace, relation_only=demand.relation_only
     )
     trace_group_graph(
         "conditions injected, phases colored, contracts and extent owners set",

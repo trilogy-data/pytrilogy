@@ -179,24 +179,9 @@ def test_no_edge_is_asked_for_a_key_its_parent_cannot_carry(
     uncarried: list[tuple[str, frozenset[str]]] = []
     refresh = group_graph._refresh_input_contracts
 
-    def capture(
-        group_graph_,
-        group_edges,
-        attrs,
-        concept_attrs,
-        concept_edges,
-        environment,
-        *rest,
-    ) -> None:
-        refresh(
-            group_graph_,
-            group_edges,
-            attrs,
-            concept_attrs,
-            concept_edges,
-            environment,
-            *rest,
-        )
+    def capture(group_graph_, group_edges, attrs, demand, *rest) -> None:
+        refresh(group_graph_, group_edges, attrs, demand, *rest)
+        environment = demand.environment
         for group in attrs.values():
             for contract in group.input_contracts:
                 pid = contract.parent_group_id
