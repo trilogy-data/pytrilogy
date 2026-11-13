@@ -6900,145 +6900,6 @@ def _merge_origin_intermediates(
     return found
 
 
-def _group_outputs_and_atoms(
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    outputs: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> tuple[list[BuildConcept], list[BoolExpr]]:
-    """`gid`'s selected outputs with the intermediates it computes, and the
-    WHERE atoms it applies."""
-    a = attrs[gid]
-    derivation = a.derivation
-    primary_addrs = set(a.primary_members)
-    if derivation not in AGGREGATING_DERIVATIONS:
-        outputs += _merge_origin_intermediates(outputs, primary_addrs, environment)
-    valued = {
-        c.address
-        for c in outputs
-        if c.address in primary_addrs and c.lineage is not None
-    }
-    atoms = _atoms_at(attrs, gid)
-    # Conjunction-coverage siblings only bind when this group recomputes
-    # its aggregate over rows; a fully twin-reused value is read through,
-    # so its input population is not this group's to filter, and keeping
-    # the atom would resurrect the redundant fact-rescan parent through
-    # its `needed` args.
-    if a.conjunction_atoms and valued and valued <= a.twin_reused:
-        atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
-    return outputs, atoms
-
-
-def _group_needed(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    outputs: list[BuildConcept],
-    injected: BuildWhereClause | None,
-    environment: BuildEnvironment,
-) -> set[str]:
-    """What `gid` reads from its parents."""
-    a = attrs[gid]
-    derivation = a.derivation
-    primary_addrs = set(a.primary_members)
-    # The "needed" set drives ancestor-dedup: a parent is kept only if
-    # it contributes something to it that no descendant parent also
-    # provides. Includes the output addresses themselves, the lineage
-    # args of *primary* outputs (the columns this group actually
-    # computes), and the inputs of any conditions applied at this
-    # group. Passthroughs' lineage is intentionally NOT walked: a
-    # passthrough output like `sum_sales` rides through this group
-    # from an aggregate parent; if we walked its lineage we'd add
-    # `sales_price` to `needed`, which ROOT provides but the aggregate
-    # doesn't, and ROOT would escape dedup. The aggregate already
-    # owns that lineage upstream.
-    needed: set[str] = set()
-    for c in outputs:
-        needed.add(c.address)
-        if c.address in primary_addrs and c.lineage is not None:
-            if derivation in AGGREGATING_DERIVATIONS:
-                # A post-condition aggregate that REUSES a same-grain twin
-                # (its pre-condition d1 sibling already materialized this
-                # value) reads the value through rather than recomputing,
-                # so its raw recompute inputs (the input-grain keys, measure
-                # columns) don't belong in `needed`. Pulling them keeps a
-                # redundant fact-rescan ROOT parent alive that only
-                # re-supplies grouping keys the twin already carries. Treat
-                # it like a passthrough: skip its lineage.
-                if c.address not in a.twin_reused:
-                    _add_aggregate_needed_concepts(
-                        needed, c, environment.partial_sources
-                    )
-            else:
-                # Recurse through args that are THEMSELVES primary members
-                # of this group (intermediates computed here, e.g. a window
-                # output exposed through a wrapping BASIC): their inputs
-                # must come from parents, so they belong in `needed`; else
-                # a parent supplying only those deep inputs reads as
-                # redundant and dedup can drop every candidate (the
-                # lead-over-derived-partition-key shape). Non-primary args
-                # stay unwalked (the passthrough rule above).
-                stack = list(c.lineage.concept_arguments)
-                walked: set[str] = set()
-                while stack:
-                    arg = stack.pop()
-                    if arg.address in walked:
-                        continue
-                    walked.add(arg.address)
-                    needed.add(arg.address)
-                    if arg.address in primary_addrs and arg.lineage is not None:
-                        stack.extend(arg.lineage.concept_arguments)
-    if injected is not None:
-        for arg in condition_row_args(injected):
-            _add_needed_concept(needed, arg)
-    # Honor the group-planning contract's declared join keys: a bridge key
-    # (e.g. `order` linking a window-derived dimension to the fact scan) is
-    # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
-    # would slice it off the root scan, leaving the merge with no shared
-    # key (ON 1=1). Pull in only the EXTRA bridge keys (those not already in
-    # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
-    # dimension) is never re-added to `needed` and forced into the SELECT
-    # outside its GROUP BY.
-    # a row derivation sliced off paired facts joins back on its own grain
-    keeps_grain = derivation not in GROUPING_DERIVATIONS and (
-        _one_entity_beside_paired_facts(a.primary_members, environment)
-    )
-    needed |= (
-        set(_input_contract_join_keys(a) | a.sourcing_keys)
-        - (set() if keeps_grain else set(a.grain_components))
-        - set(a.output_concepts)
-    )
-    # a dimension peel is read with its key, the axis its rows are paired on
-    for pgid in lineage_predecessors(group_graph, group_edges, gid):
-        needed |= attrs[pgid].anchor_keys
-    # an aggregate over a region pairs its solid rows with the domain on the
-    # domain's spans
-    if derivation == Derivation.AGGREGATE:
-        for pgid in row_parents(group_graph, group_edges, gid):
-            needed |= pairing_keys(attrs[pgid].extent_spans)
-    return needed
-
-
-def _group_demand(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    environment: BuildEnvironment,
-) -> set[str]:
-    """`_group_needed` as the build of `gid` will compute it."""
-    outputs = [
-        c
-        for addr in _select_addresses(attrs[gid])
-        if (c := _concept_at(environment, addr)) is not None
-    ]
-    outputs, atoms = _group_outputs_and_atoms(attrs, gid, outputs, environment)
-    return _group_needed(
-        group_graph, group_edges, attrs, gid, outputs, _wrap_atoms(atoms), environment
-    )
-
-
 def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     """Build one group of the plan with explicit parent nodes, under the
     group's span scope. None when it builds nothing (`ctx.unbuilt` says what
@@ -7579,6 +7440,145 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         ],
     )
     return node
+
+
+def _group_outputs_and_atoms(
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    outputs: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], list[BoolExpr]]:
+    """`gid`'s selected outputs with the intermediates it computes, and the
+    WHERE atoms it applies."""
+    a = attrs[gid]
+    derivation = a.derivation
+    primary_addrs = set(a.primary_members)
+    if derivation not in AGGREGATING_DERIVATIONS:
+        outputs += _merge_origin_intermediates(outputs, primary_addrs, environment)
+    valued = {
+        c.address
+        for c in outputs
+        if c.address in primary_addrs and c.lineage is not None
+    }
+    atoms = _atoms_at(attrs, gid)
+    # Conjunction-coverage siblings only bind when this group recomputes
+    # its aggregate over rows; a fully twin-reused value is read through,
+    # so its input population is not this group's to filter, and keeping
+    # the atom would resurrect the redundant fact-rescan parent through
+    # its `needed` args.
+    if a.conjunction_atoms and valued and valued <= a.twin_reused:
+        atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
+    return outputs, atoms
+
+
+def _group_needed(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    outputs: list[BuildConcept],
+    injected: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> set[str]:
+    """What `gid` reads from its parents."""
+    a = attrs[gid]
+    derivation = a.derivation
+    primary_addrs = set(a.primary_members)
+    # The "needed" set drives ancestor-dedup: a parent is kept only if
+    # it contributes something to it that no descendant parent also
+    # provides. Includes the output addresses themselves, the lineage
+    # args of *primary* outputs (the columns this group actually
+    # computes), and the inputs of any conditions applied at this
+    # group. Passthroughs' lineage is intentionally NOT walked: a
+    # passthrough output like `sum_sales` rides through this group
+    # from an aggregate parent; if we walked its lineage we'd add
+    # `sales_price` to `needed`, which ROOT provides but the aggregate
+    # doesn't, and ROOT would escape dedup. The aggregate already
+    # owns that lineage upstream.
+    needed: set[str] = set()
+    for c in outputs:
+        needed.add(c.address)
+        if c.address in primary_addrs and c.lineage is not None:
+            if derivation in AGGREGATING_DERIVATIONS:
+                # A post-condition aggregate that REUSES a same-grain twin
+                # (its pre-condition d1 sibling already materialized this
+                # value) reads the value through rather than recomputing,
+                # so its raw recompute inputs (the input-grain keys, measure
+                # columns) don't belong in `needed`. Pulling them keeps a
+                # redundant fact-rescan ROOT parent alive that only
+                # re-supplies grouping keys the twin already carries. Treat
+                # it like a passthrough: skip its lineage.
+                if c.address not in a.twin_reused:
+                    _add_aggregate_needed_concepts(
+                        needed, c, environment.partial_sources
+                    )
+            else:
+                # Recurse through args that are THEMSELVES primary members
+                # of this group (intermediates computed here, e.g. a window
+                # output exposed through a wrapping BASIC): their inputs
+                # must come from parents, so they belong in `needed`; else
+                # a parent supplying only those deep inputs reads as
+                # redundant and dedup can drop every candidate (the
+                # lead-over-derived-partition-key shape). Non-primary args
+                # stay unwalked (the passthrough rule above).
+                stack = list(c.lineage.concept_arguments)
+                walked: set[str] = set()
+                while stack:
+                    arg = stack.pop()
+                    if arg.address in walked:
+                        continue
+                    walked.add(arg.address)
+                    needed.add(arg.address)
+                    if arg.address in primary_addrs and arg.lineage is not None:
+                        stack.extend(arg.lineage.concept_arguments)
+    if injected is not None:
+        for arg in condition_row_args(injected):
+            _add_needed_concept(needed, arg)
+    # Honor the group-planning contract's declared join keys: a bridge key
+    # (e.g. `order` linking a window-derived dimension to the fact scan) is
+    # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
+    # would slice it off the root scan, leaving the merge with no shared
+    # key (ON 1=1). Pull in only the EXTRA bridge keys (those not already in
+    # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
+    # dimension) is never re-added to `needed` and forced into the SELECT
+    # outside its GROUP BY.
+    # a row derivation sliced off paired facts joins back on its own grain
+    keeps_grain = derivation not in GROUPING_DERIVATIONS and (
+        _one_entity_beside_paired_facts(a.primary_members, environment)
+    )
+    needed |= (
+        set(_input_contract_join_keys(a) | a.sourcing_keys)
+        - (set() if keeps_grain else set(a.grain_components))
+        - set(a.output_concepts)
+    )
+    # a dimension peel is read with its key, the axis its rows are paired on
+    for pgid in lineage_predecessors(group_graph, group_edges, gid):
+        needed |= attrs[pgid].anchor_keys
+    # an aggregate over a region pairs its solid rows with the domain on the
+    # domain's spans
+    if derivation == Derivation.AGGREGATE:
+        for pgid in row_parents(group_graph, group_edges, gid):
+            needed |= pairing_keys(attrs[pgid].extent_spans)
+    return needed
+
+
+def _group_demand(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
+) -> set[str]:
+    """`_group_needed` as the build of `gid` will compute it."""
+    outputs = [
+        c
+        for addr in _select_addresses(attrs[gid])
+        if (c := _concept_at(environment, addr)) is not None
+    ]
+    outputs, atoms = _group_outputs_and_atoms(attrs, gid, outputs, environment)
+    return _group_needed(
+        group_graph, group_edges, attrs, gid, outputs, _wrap_atoms(atoms), environment
+    )
 
 
 def _inlined_groups(
