@@ -491,6 +491,15 @@ def _choose_groups(
     return tuple(candidates)
 
 
+def _collapsing_hosts_only(
+    chosen_groups: tuple[str, ...], buckets: dict[str, GroupBucket]
+) -> bool:
+    return bool(chosen_groups) and all(
+        gid in buckets and buckets[gid].derivation in _EMITS_GROUP_BY
+        for gid in chosen_groups
+    )
+
+
 def _uncovered_exposing_output_contributor(
     chosen_groups: tuple[str, ...],
     row_inputs: set[str],
@@ -542,12 +551,22 @@ def _uncovered_exposing_output_contributor(
     # what their descendants compute. A descendant's grain keys are not
     # counted, since they may ride through from an unfiltered parent.
     covered_members: set[str] = set()
+    regrouped: set[str] = set()
     for gid in covered:
         if gid not in buckets:
             continue
         covered_members |= set(buckets[gid].primary_members)
         if gid in chosen_groups:
             covered_members |= carried[gid] | set(buckets[gid].grain_components)
+        elif buckets[gid].derivation in GROUPING_DERIVATIONS:
+            regrouped |= set(buckets[gid].grain_components)
+    # every output is the filtered branch's own, a group key it regroups the
+    # kept rows by included (`tree_form` of `min(sum(x) by city, species)`):
+    # FINAL reads nothing an unfiltered row stream adds
+    if _collapsing_hosts_only(chosen_groups, buckets) and mandatory_addrs <= (
+        covered_members | regrouped
+    ):
+        return False
     for gid, b in buckets.items():
         if gid in covered:
             continue

@@ -629,6 +629,14 @@ def _network_source(
             request.environment.concepts.get(address), request.environment
         ):
             continue
+        # a requested aggregate is read as itself: another spelling of its
+        # value (a WHERE gate's twin) is no column of the rows it is read on
+        if any(
+            concept.is_aggregate
+            and network.equivalence.get(concept.address, concept.address) == address
+            for concept in bridge_concepts
+        ):
+            continue
         # A class address is only a label: the representative may spell any
         # member (the `_virt_` canonical, the authored key, a merged key's raw
         # origin), and which one follows from naming, not semantics. Carry, per

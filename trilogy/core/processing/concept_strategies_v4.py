@@ -863,6 +863,12 @@ def _rollup_sources(
             total
             or (gated and _coarse_gate(where, source, environment))
             or _unsourced_beside_dimension_gate(where, source, environment)
+            or _dimension_gate_beside_another_grain(
+                where, source, requested, environment
+            )
+            or _unsourced_beside_rolled_gate(
+                where, source, concept, target_grain, environment
+            )
         ):
             continue
         if not holds_every_kept_row(source, where):
@@ -938,6 +944,67 @@ def _unsourced_beside_dimension_gate(
             )
         )
         and set(c.grain.components) == grain
+        for c in gates
+    )
+
+
+def _dimension_gate_beside_another_grain(
+    where: BuildWhereClause | None,
+    source: BuildDatasource,
+    requested: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """A gate grouped by a dimension's column, at a grain the select does not
+    hold (`sum(x) by city, tree_form` beside `species`), a gate within the
+    summary's grain (`count(id) by city`) and a row column
+    (`species = 'Acer'`): the WHERE is read at FINAL over the summary's rows,
+    which carry no `tree_form` to join the first gate on
+    (`Rollup.gate_joined_on_part_of_its_grain_misfilters`)."""
+    if where is None or not any(
+        not c.is_aggregate and c.granularity != Granularity.SINGLE_ROW
+        for c in where.row_arguments
+    ):
+        return False
+    gates = [c for c in where.row_arguments if c.is_aggregate]
+    grain = set(source.grain.components)
+    dimension = [
+        c
+        for c in gates
+        if keyed_aggregate(c, source, environment.concepts)
+        and not set(c.grain.components) <= grain
+        and not set(c.grain.components) <= {r.address for r in requested}
+    ]
+    return bool(dimension) and any(
+        set(other.grain.components) <= grain for other in gates
+    )
+
+
+def _unsourced_beside_rolled_gate(
+    where: BuildWhereClause | None,
+    source: BuildDatasource,
+    concept: BuildConcept,
+    target_grain: BuildGrain,
+    environment: BuildEnvironment,
+) -> bool:
+    """A gate the summary does not store (`count_distinct(tag) by city`)
+    beside a spelling of the target itself as a gate (`min(height) by species`
+    beside `species, min(height)`, off `(city, species)`): the joined plan
+    cannot source the former, and the search that takes over reads the latter
+    off the summary's rows as the target's own column."""
+    if where is None:
+        return False
+    gates = [c for c in where.row_arguments if c.is_aggregate]
+    if all(
+        _is_rollable_aggregate(c)
+        and _datasource_has_matching_rollup_aggregate(source, c, environment.concepts)
+        for c in gates
+    ):
+        return False
+    return any(
+        c.rollup_signature is not None
+        and c.rollup_signature == concept.rollup_signature
+        and set(c.grain.components) == set(target_grain.components)
+        and set(c.grain.components) < set(source.grain.components)
         for c in gates
     )
 

@@ -1221,11 +1221,37 @@ def _is_authored_pair(pair: ConceptPair, members: Collection[str]) -> bool:
     return pair.left.address in members or pair.right.address in members
 
 
+class _Agreement:
+    """Which left nodes earlier joins equated on a column: a pair read off one
+    node is implied by another node's pairs only where the two agree. Not
+    `strict`, every node agrees (a lone left side, or no join history)."""
+
+    def __init__(self, strict: bool = False) -> None:
+        self.strict = strict
+        self.parent: dict[tuple[str, str], tuple[str, str]] = {}
+
+    def _find(self, item: tuple[str, str]) -> tuple[str, str]:
+        while (up := self.parent.get(item, item)) != item:
+            item = up
+        return item
+
+    def union(self, a: tuple[str, str], b: tuple[str, str]) -> None:
+        self.parent[self._find(a)] = self._find(b)
+
+    def same(self, left: str, right: str, address: str) -> bool:
+        return (
+            not self.strict
+            or left == right
+            or self._find((left, address)) == self._find((right, address))
+        )
+
+
 def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
     domain_graph: DomainGraph | None = None,
+    agreement: _Agreement | None = None,
 ) -> list[ConceptPair]:
     left_keys = {
         pair.left.address for pair in pairs if pair.left.purpose == Purpose.KEY
@@ -1253,28 +1279,46 @@ def reduce_concept_pairs(
     # null-safe pair also matches NULL to NULL, and an FD says nothing about
     # rows with no key: two extension families both pad `item_id`, and
     # `product_id` is the one pair that still tells them apart.
+    # Equality on one left node's keys says nothing about another left node's
+    # columns unless an earlier join equated the two nodes on them
+    # (`agreement`): `d0.species = r.species` leaves `gate.tree_form` free
+    # when the gate joined on `city` alone.
     null_safe_left = {pair.left.address for pair in pairs if pair.is_nullable}
     null_safe_right = {pair.right.address for pair in pairs if pair.is_nullable}
+    agree = agreement or _Agreement()
     fd_pruned: set[int] = set()
     if domain_graph is not None and domain_graph.fd_edges:
-        working_left = set(left_keys) - null_safe_left
-        working_right = set(right_keys) - null_safe_right
+        working = [
+            pair
+            for pair in pairs
+            if pair.left.address in left_keys - null_safe_left
+            and pair.right.address in right_keys - null_safe_right
+        ]
         for index, pair in enumerate(pairs):
             left_addr, right_addr = pair.left.address, pair.right.address
             if right_addr in grain_components:
                 continue
             if _is_authored_pair(pair, authored_members):
                 continue
-            determinant_left = working_left - {left_addr}
-            determinant_right = working_right - {right_addr}
+            node = pair.node.identifier
+            determinants = [
+                other
+                for other in working
+                if agree.same(node, other.node.identifier, other.left.address)
+            ]
+            determinant_left = {o.left.address for o in determinants} - {left_addr}
+            determinant_right = {o.right.address for o in determinants} - {right_addr}
             if not (determinant_left and determinant_right):
                 continue
             if domain_graph.determines(
                 determinant_left, left_addr
             ) and domain_graph.determines(determinant_right, right_addr):
                 fd_pruned.add(index)
-                working_left.discard(left_addr)
-                working_right.discard(right_addr)
+                working = [
+                    o
+                    for o in working
+                    if (o.left.address, o.right.address) != (left_addr, right_addr)
+                ]
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     is_outer = join_type in OUTER_JOIN_TYPES
@@ -1302,11 +1346,22 @@ def reduce_concept_pairs(
         and right_source.grain.components.issubset(all_keys)
         and not right_source.grain.components & null_safe_right
     ):
+        grain_pairs = [
+            x for x in final if x.right.address in right_source.grain.components
+        ]
         return [
             x
             for x in final
             if x.right.address in right_source.grain.components
             or _is_authored_pair(x, authored_members)
+            or not all(
+                any(
+                    y.right.address == component
+                    and agree.same(x.node.identifier, y.node.identifier, y.left.address)
+                    for y in grain_pairs
+                )
+                for component in right_source.grain.components
+            )
         ]
 
     return final
@@ -2318,8 +2373,10 @@ def get_node_joins(
         ),
         environment,
     )
-    base_joins = [
-        Join(
+    agreement = _Agreement(strict=True)
+    base_joins: list[SourceJoin] = []
+    for index, j in enumerate(joins):
+        base = Join(
             left=ds_node_map[j.left] if j.left else None,
             right=ds_node_map[j.right],
             join_type=j.type,
@@ -2369,10 +2426,16 @@ def get_node_joins(
                 ds_node_map[j.right],
                 j.type,
                 domain_graph=environment.domain_graph,
+                agreement=agreement,
             ),
         )
-        for index, j in enumerate(joins)
-    ]
+        for pair in base.pairs or []:
+            if not pair.is_nullable:
+                agreement.union(
+                    (pair.node.identifier, pair.left.address),
+                    (base.right.identifier, pair.right.address),
+                )
+        base_joins.append(base)
     for base, guard in zip(
         base_joins,
         _padding_guards(

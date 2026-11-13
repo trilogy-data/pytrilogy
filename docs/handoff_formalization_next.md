@@ -69,9 +69,10 @@ a table at its own grain answers repeat-blind aggregates of its columns, and
 aggregates of a column it stores at that grain, from its own rows; area 1),
 and the coarse-gate follow-on (0.3.488: a re-sum is never joined on its
 partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
-summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 and
-0.3.491: selects checked against Python over the raw rows, not against
-another plan; area 1).
+summary's own grain reads it; area 1), and the oracle sweeps (0.3.490,
+0.3.491 and 0.3.492: selects checked against Python over the raw rows, not
+against another plan, and A/B'd against main for the summary reads and joins
+they cost; area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -587,6 +588,34 @@ does not rewrite it; that rewrite is open.
       monkeypatches one change off), not only the suite; each of this
       round's eight changes failed something when removed.
 
+30. **Lessons from the wider sweep round (0.3.492).**
+    - Run the sweep past the committed seeds before fixing anything: 20,000
+      seeds of 0.3.491's generator found eleven more bugs in four families,
+      none of which the committed 600 seeds reached. Keep the new seeds that
+      failed on main (`FOUND_SEEDS`) rather than raising `SEEDS`.
+    - Measure efficiency in the same A/B, not only correctness: per shape,
+      whether the summary is read and how many CTEs and joins the SQL has
+      (scratchpad `effsweep.py` over `shape(seed)`). The first cut of this
+      round's summary guards fixed every wrong row and lost the summary on 44
+      shapes main read correctly, and `test_rollup_resolution_laws.py` failed
+      56 cases on it; narrowing each guard to the shape that broke brought it
+      back to 1. A guard written for one repro needs a census of what else it
+      catches.
+    - The grain the planner reduces bites guards too: `city, species,
+      tree_form` reduces to `(city, species)`, so a guard asking "does the
+      select hold `tree_form`" must read the selected concepts, not
+      `BuildGrain.from_concepts` (lesson 28).
+    - Ablate per file against main's copy: copy the package to the
+      scratchpad, `git show origin/main:<file>` one changed file over it, and
+      rerun the shapes in question; a file whose revert restores main's
+      behaviour holds the change to look at.
+    - An FD that prunes a join pair is a fact about one side's rows. A pair
+      off another left side is implied only once an earlier join equated the
+      two sides on the determinant (`_Agreement` in `join_resolution.py`);
+      the tree-reporting city builds (`test_city_build_never_pairs_on_filter_columns`)
+      are the case where they were equated, the oracle sweep the case where
+      they were not.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1101,6 +1130,34 @@ a filter its grain does not determine. Open questions:
   - a total beside a summary-served aggregate now reads the trees (both
     roots on one scan); the summary could serve it with the WHERE applied to
     the trees scan as well.
+- Done in 0.3.492, from a 20,000-seed run of the same generator (see "What
+  it found"): an atom over a row column and a finer gate filters the rows
+  the aggregates read, never a peeled dimension's semijoin
+  (`SelectGrain.mixed_atom_after_count_misreads`); a join pair is implied
+  only on its own side (`SelectGrain.pair_implied_off_its_side_misjoins`);
+  a dimension's column filters every scan of its key
+  (`Rollup.dimension_column_filters_every_scan`); a filtered partial's scan
+  carries its condition column; a gate's twin is never a column of a stored
+  partial's rows; an atom over a grain key is decided before the aggregate in
+  the join plan; a regrouped branch's outputs need no FINAL re-apply. Left:
+  - `select min(height), sum(height) by * where not (sum(height) by city,
+    tree_form = 1) and (city = 'B' and city = 'B')` raises "Could not find
+    CTE for datasource ...filtered_by..." with or without a summary (sweep
+    seed 2537); the same WHERE with one `city = 'B'` plans;
+  - `select city, bool_and(tall) where ((city = 'B' and max(height) by city >
+    10) or (min(height) by city, tree_form in (4, 5) or avg(height) by city >
+    10)) having max(height) by city < 10` reads the trees with the summary in
+    scope (`_dimension_gate_beside_another_grain`); main read the summary
+    and was right. The guard's root is the search path's FINAL join of a
+    `(city, tree_form)` gate onto summary rows without `tree_form`: the root
+    fix is joining the dimension onto the summary rows when a FINAL
+    re-applies a gate keyed on its column;
+  - the summary-path guards (`_coarse_gate_beside_row_columns`,
+    `total_gate_beside_rows`, `_unsourced_beside_dimension_gate`,
+    `_dimension_gate_beside_another_grain`, `_unsourced_beside_rolled_gate`)
+    are five shapes of one gap: the search that takes over when the joined
+    plan declines. Making `_plan_joined_filter_rollup` source an unstored
+    gate from the trees (instead of declining) would retire most of them.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

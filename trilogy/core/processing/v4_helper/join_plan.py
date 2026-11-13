@@ -496,8 +496,9 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
     """The other row arguments of an atom `group` hosts that reads its own
     outputs (`date = max_date` on the `max(date)` group): it is decided after
     the value exists, against rows that still hold those arguments. An atom
-    over inputs alone (`id > 2`) filters before and leaves nothing behind."""
-    outputs = set(group.output_concepts)
+    over inputs alone (`id > 2`, `city = 'B' or ...` on a group by city) filters
+    before and leaves nothing behind."""
+    outputs = set(group.output_concepts) - set(group.grain_components)
     held: set[str] = set()
     for atom in group.condition_atoms:
         args = {c.address for c in atom.row_arguments}
