@@ -21,6 +21,7 @@ import pytest
 
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 
 # (rid, cust, amount, yr)
@@ -210,9 +211,10 @@ def test_union_join_max_plain_concepts(tmp_path: Path):
 
 
 def test_misgrained_broadcast_is_loud_not_silent(tmp_path: Path, monkeypatch):
-    """Backstop for the render layer: if planner misbehavior re-grains a
-    single-row aggregate again (here: the exposure guards disabled), SQL
-    generation must fail loudly rather than emit the identity collapse."""
+    """If planner misbehavior re-grains a single-row aggregate again (here:
+    the exposure guards disabled), SQL generation must fail loudly rather
+    than emit the identity collapse: the keyless-join guard names the
+    misgrained side, with the render layer behind it."""
     from trilogy.core.processing.v4_node_generators import aggregate
 
     monkeypatch.setattr(
@@ -231,11 +233,14 @@ def test_misgrained_broadcast_is_loud_not_silent(tmp_path: Path, monkeypatch):
         side_a=_rows_sql(A_ROWS, ("i", "v")),
         side_b=_rows_sql(B_ROWS, ("i", "v")),
     )
-    statements = engine.parse_text(
-        model
-        + "select all_totals.cust, all_totals.total_all, recent_totals.total_recent,"
-        " max(recent_totals.total_recent) by * as m "
-        "union join all_totals.cust = recent_totals.cust;"
-    )
-    with pytest.raises(ValueError, match=r"aggregate local\.m rendered in CTE"):
+    with pytest.raises(
+        (ValueError, UnresolvableQueryException),
+        match=r"aggregate local\.m rendered in CTE|keyless join between row-bearing",
+    ):
+        statements = engine.parse_text(
+            model
+            + "select all_totals.cust, all_totals.total_all, recent_totals.total_recent,"
+            " max(recent_totals.total_recent) by * as m "
+            "union join all_totals.cust = recent_totals.cust;"
+        )
         engine.generate_sql(statements[-1])

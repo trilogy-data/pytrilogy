@@ -470,11 +470,6 @@ class MergeNode(StrategyNode):
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
-                    planned_keys=(
-                        self.planned_pairs.permitted
-                        if self.planned_pairs is not None
-                        else None
-                    ),
                     planned_pairs=planned_pairs,
                 )
         elif final_joins:

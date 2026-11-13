@@ -91,8 +91,8 @@ def test_sides_pair_only_on_their_own_planned_keys():
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
+        ("ds~b", {"ds~c": {"c~k"}}),
         ("ds~a", {"ds~b": {"c~x"}}),
-        ("ds~c", {"ds~b": {"c~k"}}),
     ]
 
 
@@ -110,6 +110,17 @@ def test_a_side_waits_for_its_planned_partner():
     assert [(j.right, j.keys) for j in planned] == [
         ("ds~a", {"ds~c": {"c~k"}}),
         ("ds~b", {"ds~a": {"c~k"}}),
+    ]
+
+
+def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
+    planned = resolve_join_order_v2(
+        _shared_key_graph(),
+        JoinFacts(pair_keys={frozenset({"ds~a", "ds~b"}): frozenset({"c~k"})}),
+    )
+    assert [(j.right, j.keys) for j in planned] == [
+        ("ds~a", {"ds~b": {"c~k"}}),
+        ("ds~c", {}),
     ]
 
 

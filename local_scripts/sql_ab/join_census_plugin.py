@@ -58,7 +58,7 @@ def pytest_configure(config) -> None:
 
     def init(self, *a, **k):
         merge_init(self, *a, **k)
-        if k.get("planned_keys") is not None:
+        if k.get("planned_pairs") is not None:
             plans[id(self)] = (_state.get("plan"), _state.get("pairings"))
 
     jc.mn.MergeNode.__init__ = init  # type: ignore[method-assign]
@@ -73,13 +73,12 @@ def pytest_configure(config) -> None:
     jc.mn.MergeNode.copy = copied  # type: ignore[method-assign]
 
     def get_node_joins(datasources, *a, **k):
-        planned = k.get("planned_keys")
-        if planned is None or len(datasources) < 2:
+        pairs = k.get("planned_pairs")
+        if pairs is None or len(datasources) < 2:
             return resolved(datasources, *a, **k)
+        planned = frozenset().union(*pairs.values())
         # what resolve picks unrestricted, beside what the plan states
-        shadow = resolved(
-            datasources, *a, **{**k, "planned_keys": None, "planned_pairs": None}
-        )
+        shadow = resolved(datasources, *a, **{**k, "planned_pairs": None})
         environment = k["environment"]
         node = jc.CURRENT_MERGE[-1] if jc.CURRENT_MERGE else None
         plan, pairings = plans.get(id(node), (None, None))
