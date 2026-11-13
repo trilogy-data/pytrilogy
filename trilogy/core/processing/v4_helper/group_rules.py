@@ -1007,10 +1007,9 @@ def partition_roots(
         main_items = [(n, d) for n, d in main_items if n not in peeled_nodes]
 
         component_groups: list[list[NodeItem]] = []
-        for side_items in [
-            *_relation_side_partitions(main_items, concept_graph, concept_edges),
-            *([global_inputs] if global_inputs else []),
-        ]:
+        for side_items in _relation_side_partitions(
+            main_items, concept_graph, concept_edges
+        ):
             component_groups.extend(
                 _cosource_component_groups(
                     side_items,
@@ -1034,6 +1033,22 @@ def partition_roots(
                 sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
                 bucket.discriminator = f"split:{_sig_digest(sig_repr)}"
                 bucket.reason = RootReason.COMPONENT
+            for node, data in members:
+                _add_member(bucket, node, data)
+            buckets.append(bucket)
+
+        for members in _cosource_component_groups(
+            global_inputs, concept_graph, concept_edges, concept_attrs, output_addresses
+        ):
+            sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
+            bucket = _bucket_for(
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
+                grain=frozenset(),
+                label=label_value,
+            )
+            bucket.discriminator = f"global_input:{_sig_digest(sig_repr)}"
+            bucket.reason = RootReason.COMPONENT
             for node, data in members:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
