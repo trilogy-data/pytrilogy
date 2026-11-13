@@ -1680,3 +1680,19 @@ order by segment asc
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     # Customers 1-3 sum to 50/55/45 (segment 1); customers 4-5 to 100/105 (segment 2).
     assert results == [(1, 3, 50), (2, 2, 100)]
+
+
+def test_a_having_looks_its_feeder_up_on_the_feeder_grain(monkeypatch):
+    from trilogy.core.processing.v4_node_generators import condition_sources
+
+    plans = []
+    inject = condition_sources.inject_condition_at_node
+
+    def record(*args, **kwargs):
+        plans.append(kwargs.get("planned_pairs"))
+        return inject(*args, **kwargs)
+
+    monkeypatch.setattr(condition_sources, "inject_condition_at_node", record)
+    test_top_n_rank_filter_over_inline_aggregate_in_rowset()
+    planned = [plan for plan in plans if plan is not None]
+    assert planned and all(plan.permitted == {"local.state"} for plan in planned)
