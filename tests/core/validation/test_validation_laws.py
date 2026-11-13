@@ -11,6 +11,8 @@ claim fails:
 - `containment_exact`: every row of a `complete where` arm satisfies its claim
 - `Binding.cross_check_exact` (formal/Trilogy/Binding.lean): a binding's
   dependency holds over every table binding its columns, NULL a value
+- `Binding.rollups_at_two_grains`: an aggregate is a function of its table's
+  grain, so only tables at the claimed grain compete (`crossViolAt`)
 """
 
 import random
@@ -268,3 +270,39 @@ def test_decimal_value_against_float_bound():
         ValidationScope.DATASOURCES,
     )
     assert not errors, errors
+
+
+ROLLUP_GRAINS = [("o",), ("o", "d"), ("d",)]
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_rollup_fd_check_exact(seed: int):
+    rng = random.Random(seed)
+    facts = [(rng.randint(0, 2), rng.randint(0, 2)) for _ in range(rng.randint(1, 8))]
+    tables: list[tuple[str, tuple[str, ...], dict[tuple, int]]] = []
+    for idx in range(rng.randint(2, 4)):
+        grain = rng.choice(ROLLUP_GRAINS)
+        counts: dict[tuple, int] = {}
+        for o, d in facts:
+            key = tuple({"o": o, "d": d}[g] for g in grain)
+            counts[key] = counts.get(key, 0) + 1
+        if rng.random() < 0.3:
+            key = rng.choice(sorted(counts))
+            counts[key] += 1
+        tables.append((f"r{idx}", grain, counts))
+    exec = _executor()
+    text = "key o int; key d int; key id int; auto n <- count(id);\n"
+    for name, grain, counts in tables:
+        _table(exec, name, [*grain, "n"], [(*k, v) for k, v in counts.items()])
+        columns = ", ".join([*grain, "n"])
+        text += f"datasource {name} ({columns}) grain ({', '.join(grain)}) address {name};\n"
+    errors = _binding_errors(exec, text)
+    by_grain: dict[tuple[str, ...], dict[tuple, set[int]]] = {}
+    for _, grain, counts in tables:
+        seen = by_grain.setdefault(grain, {})
+        for key, value in counts.items():
+            seen.setdefault(key, set()).add(value)
+    holds = all(
+        len(values) == 1 for seen in by_grain.values() for values in seen.values()
+    )
+    assert (not errors) == holds, (facts, tables, errors)

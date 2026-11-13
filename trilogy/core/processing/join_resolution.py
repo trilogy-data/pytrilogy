@@ -588,6 +588,13 @@ def _nullable_join(
         # preserve both and let the null-safe equality pair the NULL groups.
         if _is_nullable_grain_aligned_merge(left_facts, right_facts, keys):
             return JoinType.FULL
+        # a value NULL group the other side has none of pairs with nothing,
+        # null-safe or not: keep it
+        left_value = bool(keys & left_facts.value_nullables)
+        if left_value != bool(
+            keys & right_facts.value_nullables
+        ) and not facts.authored(keys):
+            return JoinType.LEFT_OUTER if left_value else JoinType.RIGHT_OUTER
         return JoinType.INNER
     if left_is_nullable != right_is_nullable:
         # A nullable key weakens that side's EQUAL-domain claim to "some
@@ -1759,11 +1766,13 @@ def _padding_witness(
     """Columns of `datasource` that are NULL exactly on the rows padded for
     `spans`: one per span, a KEY padded by it that carries no value NULL (the
     solid grain's, absent on a row standing in for a region's member; a
-    property is NULL on a `~?` NULL member's row too). Empty when a span has
-    none."""
+    property is NULL on a `~?` NULL member's row too) and no extent NULL (a
+    key an outer join found no partner for is NULL on solid rows too). Empty
+    when a span has none."""
     out: list[BuildConcept] = []
     hidden = _hidden_addresses(datasource)
     provenance = memo.of(datasource)
+    extent = provenance.extent
     for span in sorted(spans):
         padded: set[str] = set()
         for spelling, named in spellings.items():
@@ -1776,6 +1785,7 @@ def _padding_witness(
                 if c.purpose == Purpose.KEY
                 and c.address in padded
                 and c.address not in hidden
+                and c.address not in extent
                 and not provenance.values(c)
             ),
             key=lambda c: c.address,
@@ -2449,7 +2459,12 @@ def get_node_joins(
                         node=ds_node_map[k],
                         modifiers=(
                             []
-                            if _pads_for_different_members(
+                            # a key both sides NULL as a value too pairs its
+                            # value NULLs; `_padding_guard` keeps the padding out
+                            if concept
+                            not in facts.side(k).value_nullables
+                            & facts.side(j.right).value_nullables
+                            and _pads_for_different_members(
                                 facts.side(k),
                                 facts.side(j.right),
                                 v,

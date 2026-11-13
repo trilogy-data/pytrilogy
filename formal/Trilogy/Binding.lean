@@ -22,6 +22,9 @@ so it determines nothing.
   it, so the closure claims a dependency the data does not have. Only a check
   across the tables that bind a dependency's columns can catch it
   (`cross_check_exact`).
+- `rollups_at_two_grains`: an aggregate bound at two grains is not a
+  violation, so its check compares only tables at the claimed grain
+  (`crossViolAt`); `rollups_at_one_grain_disagreeing_caught` keeps the check.
 - `stacked_arms_hold`: arms of a family, each unique on its grain, are unique
   on grain plus discriminator once stacked, and `arm_grain_alone_fails` shows
   the grain alone is not enough.
@@ -221,6 +224,33 @@ theorem binding_breaks_caught :
     let dim : Table := ⟨[row3 0 5 0], [1], [1, 2], []⟩
     let trees : Table := ⟨[row3 1 5 0, row3 2 5 1], [0], [0, 1, 2], []⟩
     crossViol [dim, trees] [1] 2 ≠ [] := by
+  decide
+
+/-! ## An aggregate is a function of its table's grain -/
+
+/-- The check for an aggregate column: an aggregate's value is the measure
+over the rows at its table's grain, so only tables whose determinants are
+exactly `D` claim `D -> c`. A finer table holds the measure at its own grain. -/
+def crossViolAt (tables : List Table) (D : List Col) (c : Col) : List (List Val × Val) :=
+  crossViol (tables.filter fun t => t.determinants == D) D c
+
+/-- Columns 0 `origin`, 1 `dest`, 2 `count`: one flight 0 → 1 and two 0 → 2.
+The origin rollup holds 3, the route rollup 1 and 2, each the count of the
+same flights at its own grain. The plain check pairs them on `origin` and
+flags a violation the data does not have; the grain-scoped one passes. -/
+theorem rollups_at_two_grains :
+    let byOrigin : Table := ⟨[row3 0 0 3], [0], [0, 2], []⟩
+    let byRoute : Table := ⟨[row3 0 1 1, row3 0 2 2], [0, 1], [0, 1, 2], []⟩
+    GrainUnique byOrigin ∧ GrainUnique byRoute ∧
+      crossViol [byOrigin, byRoute] [0] 2 ≠ [] ∧
+      crossViolAt [byOrigin, byRoute] [0] 2 = [] := by
+  decide
+
+/-- Two rollups at one grain that disagree are still caught. -/
+theorem rollups_at_one_grain_disagreeing_caught :
+    let a : Table := ⟨[row3 0 0 3], [0], [0, 2], []⟩
+    let b : Table := ⟨[row3 0 0 2], [0], [0, 2], []⟩
+    crossViolAt [a, b] [0] 2 ≠ [] := by
   decide
 
 /-! ## Arms of a family -/
