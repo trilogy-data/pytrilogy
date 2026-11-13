@@ -2627,7 +2627,7 @@ key, and the order keyless sides join in.
 
 Suite capture against `main` (`sqlcap`, `-n 2`, `PYTHONHASHSEED=0`,
 worktree paths normalized): 45,145 keys, the same 25 failures (the
-credential-gated tests and the BigQuery-backed `the_look` cases), 5 tests
+BigQuery, Snowflake-dialect and GCS tests this container has no credentials for), 5 tests
 moved, all listed noise: `test_cli_consistency`, `test_ingest`,
 `test_trilogy::test_unit`, the BigQuery temp-table name and the GCS
 cache-bust URL. So no plan moved.
