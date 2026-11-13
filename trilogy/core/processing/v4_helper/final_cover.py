@@ -355,6 +355,7 @@ def elect_cover(
                 keyed <= exposed[gid],
                 not skips_row_atoms(gid),
                 _single_row_value(concept) or rows_filtered(gid),
+                not where_atoms or _scope_and_phase(attrs[gid].label)[1] != "condition",
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,

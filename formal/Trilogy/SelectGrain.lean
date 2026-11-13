@@ -772,4 +772,78 @@ theorem key_off_unfiltered_stream_returns_rejected :
       (dedup rows).length = 2 := by
   decide
 
+/-! ## A FINAL gate pairs on its whole grain
+
+`select city, species, sum(x) by species, sum(min(x) by city, species, form)
+where count_distinct(tag) by city, form < 3`: the FINAL re-applies the gate,
+but the one side holding `form` was folded into a sibling rendering `city,
+species`, so the gate's group met the rows on `city` alone, and every city
+repeated once per kept form. -/
+
+/-- Rows `(city, species, form)`: city 0 holds species 0 of form 0 and species
+1 of form 1, and the gate keeps both `(city, form)` groups of city 0. Paired on
+its whole grain each row meets one gate row; on `city` alone, two
+(`gate_paired_short_of_its_grain`). -/
+theorem gate_paired_short_of_its_grain :
+    let rows : List (Int × Int × Int) := [(0, 0, 0), (0, 1, 1)]
+    let gate : List (Int × Int) := [(0, 0), (0, 1)]
+    (rows.flatMap fun r => gate.filter (· == (r.1, r.2.2))).length = 2 ∧
+      (rows.flatMap fun r => gate.filter (·.1 == r.1)).length = 4 := by
+  decide
+
+/-! ## A count past its host reads 0, not NULL
+
+`select city, species, form, max(x ? ...) where min(x) by species - count(id)
+by * > 3`: the count is non-null wherever the atom holds, so 0.3.496 read it
+past a host of the WHERE. But a COUNT on a group no row formed is 0, not NULL:
+`5 - 0 > 3` holds on the host's padding. -/
+
+/-- The count a consumer reads off a host of `atom`: the kept count, else the
+padding, which a COUNT reads as 0. -/
+def countPastHost (atom : Int → Bool) (n : Int) : Int :=
+  (([n].filter atom).head?).getD 0
+
+/-- **Past a host, an atom false on 0 reads the count as on its own group**
+(`count_past_host_exact_if_zero_rejecting`). -/
+theorem count_past_host_exact_if_zero_rejecting (atom : Int → Bool) (n : Int)
+    (h : atom 0 = false) : atom (countPastHost atom n) = atom n := by
+  unfold countPastHost
+  cases hn : atom n <;> simp [List.filter, hn, h]
+
+/-- `min(x) by species` is 5 and the total count 6: on its own group `5 - 6 >
+3` is false, read past its host it holds
+(`count_arg_past_host_passes_absent`). -/
+theorem count_arg_past_host_passes_absent :
+    let atom : Int → Bool := fun c => decide (5 - c > 3)
+    atom 6 = false ∧ atom (countPastHost atom 6) = true := by
+  decide
+
+/-! ## A WHERE argument's producer is a lookup
+
+`select species, form, sum(x) where (count(id) by form < count(id) by species
+or avg(x) by city, form is null)`: the FINAL re-applies the WHERE over values
+its argument producers supply, and one was joined FULL. Its species with no
+kept row came back padded, NULL for the `avg`, and `is null` held. -/
+
+/-- **A lookup keeps the rows it is joined onto** (`lookup_keeps_rows`): each
+row reads its key's value, padded where the producer has none. -/
+theorem lookup_keeps_rows [DecidableEq κ] (k : α → κ) (vals : List (κ × Int))
+    (rows : List α) :
+    (rows.map fun r => (r, (vals.find? (·.1 == k r)).map (·.2))).map (·.1) = rows := by
+  rw [List.map_map]
+  exact List.map_id' rows
+
+/-- Species 3 alone passes (its `avg` is NULL); species 0 and 1 have `avg` 4.
+Looked up, one row passes; preserved, the producer's species 0 and 1 come back
+padded and pass too (`lookup_preserved_passes_padding`). -/
+theorem lookup_preserved_passes_padding :
+    let kept : List Int := [3]
+    let avg : Int → Option Int := fun s => if s == 3 then none else some 4
+    let producer : List Int := [0, 1, 3]
+    let lookup := kept.filter fun s => (avg s).isNone
+    let full := lookup ++ ((producer.filter fun s => !kept.contains s).filter
+      fun _ => (none : Option Int).isNone)
+    lookup = [3] ∧ full = [3, 0, 1] := by
+  decide
+
 end Trilogy.SelectGrain
