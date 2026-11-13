@@ -654,6 +654,25 @@ does not rewrite it; that rewrite is open.
     - Read the rendered SQL for precedence. `a or b and count(*) > 0` looked
       like a planner bug in three seeds and was a string join in the dialect.
 
+33. **Lessons from the coarse-value round (#964).**
+    - A fix that changes a root's shape can expose every adapter that only
+      worked because of the old shape. Peeling a `by *` aggregate's inputs
+      (#953) left the trees as a bare scan, and the projection to a value's
+      grain had only ever fired on a merge: a leaf scan reported no inputs,
+      so a value per species was computed once per tree and joined back on
+      species (n³ rows). Test the adapter on both shapes.
+    - Stage 2 and the build must agree on what a row stream holds. A value
+      by genus stitched on genus holds genus (`GroupAttrs.joined_on`), but its
+      emitted grain did not say so, so no sibling was asked to pair on it;
+      the contracts were also read before every edge's channel was set.
+    - A root asked to carry a stored key its rows determine sources it there:
+      a scan cannot be widened through a join after the fact. A derived key
+      (a spine, an unnested value) is not a lookup, and sourcing it off the
+      scan loses its extent (`test_canonical_collision_merge.py`).
+    - `test_global_fallback_oracle_laws.py` bounds every CTE by the widest
+      table as well as checking rows; a fan-out within the row count (per
+      species) needs a per-CTE count, which the unit file does.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;

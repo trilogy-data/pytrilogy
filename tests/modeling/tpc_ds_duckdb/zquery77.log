@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 10521
+gen_length = 10284
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -49,7 +49,6 @@ tearful as (
 SELECT
     \"ceaseless\".\"ws_grouped_ws_profit\" - cast(coalesce(\"ceaseless\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"___l0_union_arm_2_u_profit\",
     \"ceaseless\".\"ws_grouped_ws_wp_id\" as \"___l0_union_arm_2_u_id\",
-    :___l0_union_arm_2_u_channel as \"___l0_union_arm_2_u_channel\",
     cast(\"ceaseless\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"___l0_union_arm_2_u_sales\",
     cast(coalesce(\"ceaseless\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"___l0_union_arm_2_u_returns\"
 FROM
@@ -98,7 +97,6 @@ rambunctious as (
 SELECT
     \"waggish\".\"ss_grouped_ss_profit\" - cast(coalesce(\"waggish\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"___l0_union_arm_1_u_profit\",
     \"waggish\".\"ss_grouped_ss_store_id\" as \"___l0_union_arm_1_u_id\",
-    :___l0_union_arm_1_u_channel as \"___l0_union_arm_1_u_channel\",
     cast(\"waggish\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"___l0_union_arm_1_u_sales\",
     cast(coalesce(\"waggish\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"___l0_union_arm_1_u_returns\"
 FROM
@@ -147,14 +145,13 @@ young as (
 SELECT
     \"concerned\".\"cs_grouped_cs_cc_id\" as \"___l0_union_arm_0_u_id\",
     \"concerned\".\"cs_grouped_cs_profit\" - cast(coalesce(\"concerned\".\"cr_grouped_cr_loss\",0) as numeric(15,2)) as \"___l0_union_arm_0_u_profit\",
-    :___l0_union_arm_0_u_channel as \"___l0_union_arm_0_u_channel\",
     cast(\"concerned\".\"cs_grouped_cs_sales\" as numeric(15,2)) as \"___l0_union_arm_0_u_sales\",
     cast(coalesce(\"concerned\".\"cr_grouped_cr_returns\",0) as numeric(15,2)) as \"___l0_union_arm_0_u_returns\"
 FROM
     \"concerned\"),
 flashy as (
 SELECT
-    \"young\".\"___l0_union_arm_0_u_channel\" as \"_l0_union_u_channel\",
+    :___l0_union_arm_0_u_channel as \"_l0_union_u_channel\",
     \"young\".\"___l0_union_arm_0_u_id\" as \"_l0_union_u_id\",
     \"young\".\"___l0_union_arm_0_u_sales\" as \"_l0_union_u_sales\",
     \"young\".\"___l0_union_arm_0_u_returns\" as \"_l0_union_u_returns\",
@@ -163,7 +160,7 @@ FROM
     \"young\"
 UNION ALL
 SELECT
-    \"rambunctious\".\"___l0_union_arm_1_u_channel\" as \"_l0_union_u_channel\",
+    :___l0_union_arm_1_u_channel as \"_l0_union_u_channel\",
     \"rambunctious\".\"___l0_union_arm_1_u_id\" as \"_l0_union_u_id\",
     \"rambunctious\".\"___l0_union_arm_1_u_sales\" as \"_l0_union_u_sales\",
     \"rambunctious\".\"___l0_union_arm_1_u_returns\" as \"_l0_union_u_returns\",
@@ -172,7 +169,7 @@ FROM
     \"rambunctious\"
 UNION ALL
 SELECT
-    \"tearful\".\"___l0_union_arm_2_u_channel\" as \"_l0_union_u_channel\",
+    :___l0_union_arm_2_u_channel as \"_l0_union_u_channel\",
     \"tearful\".\"___l0_union_arm_2_u_id\" as \"_l0_union_u_id\",
     \"tearful\".\"___l0_union_arm_2_u_sales\" as \"_l0_union_u_sales\",
     \"tearful\".\"___l0_union_arm_2_u_returns\" as \"_l0_union_u_returns\",

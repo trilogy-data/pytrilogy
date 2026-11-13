@@ -32,8 +32,8 @@ SELECT
     count(\"thoughtful\".\"orders_customer_id\") as \"numcust\",
     sum(\"thoughtful\".\"orders_customer_account_balance\") as \"totacctbal\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"quizzical\" on 1=1
+    \"quizzical\"
+    INNER JOIN \"thoughtful\" on 1=1
 WHERE
     \"thoughtful\".\"orders_customer_account_balance\" > \"quizzical\".\"avg_bal_in_target\"
 

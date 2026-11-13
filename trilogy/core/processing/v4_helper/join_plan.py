@@ -410,6 +410,16 @@ def _relevant_carry_keys(
             or any(_fd_determined(environment, {key}, c) for c in concepts)
         ):
             relevant.add(key)
+    # A key the delivered rows determine is a lookup onto a coarser sibling
+    # (`tree_id` -> `genus` beside a value by genus): widening to it keeps them.
+    # An authored relation's member pairs as authored, never as a lookup.
+    relevant |= (
+        pairing_keys(
+            candidates
+            & build_fd_closure(environment, delivered, include_empty_grain=False)
+        )
+        - environment.all_scoped_join_group_members()
+    )
     # A composite grain reaches a dimension through a foreign key OFF it
     # (`(item, ticket)` -> customer -> region): jointly, and by no key alone.
     if any(
@@ -420,6 +430,13 @@ def _relevant_carry_keys(
     ):
         return candidates
     return frozenset(relevant)
+
+
+def _paired_grain(group: GroupAttrs) -> frozenset[str]:
+    """The grain keys a FINAL contributor pairs on: those it emits, and those
+    its rows are stitched on (a value by genus read off rows projected to
+    genus holds genus, though it neither reads nor outputs it)."""
+    return group.emitted_grain | (group.grain_components & _joined_on(group))
 
 
 def root_carry_demand(
@@ -448,7 +465,7 @@ def root_carry_demand(
     base = group.extent_spans or axes
     merge_grain = frozenset().union(*pins.values())
     sibling_keys = frozenset().union(
-        *(attrs[other].emitted_grain for other in cover if other != gid)
+        *(_paired_grain(attrs[other]) for other in cover if other != gid)
     )
     candidates = base & (merge_grain | sibling_keys)
     members = frozenset(group.members)
@@ -860,7 +877,9 @@ def plan_final_join(
     supplying = tuple(cover)
     contributors = supplying + tuple(g for g in extras if g not in cover)
     cover = {**cover, **{gid: [] for gid in contributors if gid not in cover}}
-    axes = merge_axes(supplying, attrs, mandatory_list, authored)
+    axes = merge_axes(supplying, attrs, mandatory_list, authored) | frozenset().union(
+        *(_paired_grain(attrs[gid]) for gid in supplying)
+    )
     pins = {
         gid: row_identity(group_graph, attrs, gid, supplying, axes, environment)
         for gid in contributors
