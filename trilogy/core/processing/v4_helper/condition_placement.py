@@ -576,7 +576,10 @@ def _uncovered_exposing_output_contributor(
         keys = mandatory_addrs & set().union(
             *(buckets[gid].grain_components for gid in covered if gid in buckets)
         )
-        return not any(keys <= own for own in held) and row_inputs <= final_exposable
+        return (
+            not any(build_fd_determines_all(environment, own, keys) for own in held)
+            and row_inputs <= final_exposable
+        )
     for gid, b in buckets.items():
         if gid in covered:
             continue
