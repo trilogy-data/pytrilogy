@@ -2555,7 +2555,7 @@ def _gates_a_pending_partial(request: SourceRequest, node: StrategyNode) -> bool
         stack.extend(current.parents)
         if current.conditions is None:
             continue
-        applied = gated & {c.address for c in condition_row_args(current.conditions)}
+        applied = gated & {c.address for c in current.conditions.row_arguments}
         resolved = current.resolve()
         if any(
             c.address in applied and not at_own_grain(c, resolved.grain)
