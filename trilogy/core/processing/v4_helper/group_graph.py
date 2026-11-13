@@ -661,18 +661,42 @@ def _grain_determines(
     )
 
 
+def _rows_at_grain(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, "GroupFacts"],
+    gid: str,
+) -> bool:
+    """A row step's rows are one per its grain when it reads only groups."""
+    parents = lineage_predecessors(group_graph, group_edges, gid)
+    return bool(parents) and all(
+        facts[p].derivation in GROUPING_DERIVATIONS for p in parents
+    )
+
+
+def _stored_columns(environment: BuildEnvironment) -> frozenset[str]:
+    """Every address some datasource binds as a column of this plan."""
+    return frozenset().union(
+        *(_scan_columns(ds, environment) for ds in environment.datasources.values())
+    )
+
+
 def _source_asked_root_keys(
     attrs: dict[str, GroupAttrs], environment: BuildEnvironment
 ) -> None:
-    """A ROOT asked to carry a stored key its rows determine sources it: a
-    lookup keeps its rows (`tree_id` -> `genus`, for a reader stitched on genus
-    to a value by genus), and a scan cannot be widened to it after the fact. A
-    derived key (a spine, an unnested value) is computed where it is read, and
-    a region domain pairs on its spans alone."""
+    """A ROOT asked to carry a stored key its rows determine, held by no table
+    beside its outputs, sources it: a lookup keeps its rows (`tree_id` ->
+    `genus` through species, for a reader stitched on genus to a value by
+    genus), and a scan cannot be widened through a join after the fact. A key
+    its own tables bind is widened in place; a derived key (a spine, a merged
+    name) is computed where it is read; a region domain pairs on its spans
+    alone."""
     asked: dict[str, set[str]] = defaultdict(set)
     for group in attrs.values():
         for contract in group.input_contracts:
             asked[contract.parent_group_id] |= contract.required_grain
+    tables = [_scan_columns(ds, environment) for ds in environment.datasources.values()]
+    stored = _stored_columns(environment)
     for gid, keys in asked.items():
         root = attrs[gid]
         if root.derivation != Derivation.ROOT or root.extent_spans:
@@ -681,8 +705,11 @@ def _source_asked_root_keys(
         missing = sorted(
             key
             for key in keys - outputs
-            if (concept := environment.concepts.get(key)) is not None
-            and concept.derivation == Derivation.ROOT
+            if key in stored
+            and (concept := environment.concepts.get(key)) is not None
+            and concept.purpose == Purpose.KEY
+            # a table beside the outputs that binds it widens to it in place
+            and not any(key in t and outputs <= t for t in tables)
             and build_fd_determines(
                 environment, outputs, key, include_empty_grain=False
             )
@@ -1894,13 +1921,21 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                             environment, fact.grain, sibling_fact.grain
                         ):
                             outs |= (sibling_fact.grain - rollup_padded) & cap_gid
-                    # A row stream beside a coarser sibling its own grain
-                    # determines pairs on that sibling's grain: it carries
-                    # it (a per-tree value beside a flag by city and
-                    # species, the trees holding both).
+                    # A row stream beside a coarser row step over groups,
+                    # whose stored grain its own grain determines, pairs on
+                    # that grain: it carries it (a per-tree value beside a flag by city and
+                    # species, the trees holding both). A derived grain (a
+                    # class off a CASE) is computed where it is read, and a
+                    # sibling still on row-level rows is no lookup. A grouping
+                    # sibling emits its grain and pairs through the rules
+                    # above; so does one that can hold this stream's grain.
                     if (
                         fact.derivation not in GROUPING_DERIVATIONS
                         and sibling_fact.grain
+                        and sibling_fact.grain <= _stored_columns(environment)
+                        and sibling_fact.derivation not in GROUPING_DERIVATIONS
+                        and _rows_at_grain(group_graph, group_edges, facts, sibling)
+                        and not fact.grain & io.capability[sibling]
                         and not sibling_fact.grain <= fact.grain
                         and sibling_fact.grain <= cap_gid
                         and _grain_determines(

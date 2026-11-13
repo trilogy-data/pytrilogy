@@ -12,7 +12,10 @@ from tests.helpers.rows import executor_for, fetch_rows
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper.constants import DepthLabel
 from trilogy.core.processing.v4_helper.group_graph import _source_asked_root_keys
-from trilogy.core.processing.v4_helper.join_plan import _relevant_carry_keys
+from trilogy.core.processing.v4_helper.join_plan import (
+    _paired_grain,
+    _relevant_carry_keys,
+)
 from trilogy.core.processing.v4_helper.models import (
     GroupAttrs,
     GroupInputContract,
@@ -162,21 +165,23 @@ def test_species_value_reads_one_row_per_species() -> None:
         assert rows.fetchone()[0] == 2, sql
 
 
-def test_genus_value_group_emits_its_input_grain() -> None:
+def test_genus_value_group_pairs_on_its_input_grain() -> None:
     info, _ = plan(GENUS, "select tree_id, class_a;")
     groups = [
         a
         for a in info.group_attrs.values()
         if a.derivation == Derivation.BASIC and "local.class_a" in a.primary_members
     ]
-    assert groups and all(a.emitted_grain == frozenset({"local.genus"}) for a in groups)
+    assert groups and all(
+        _paired_grain(a) == frozenset({"local.genus"}) for a in groups
+    )
 
 
 def _attrs(**kwargs) -> GroupAttrs:
     return GroupAttrs(depth_label=DepthLabel.STAR, **kwargs)
 
 
-def test_emitted_grain_holds_the_keys_a_row_stream_is_stitched_on() -> None:
+def test_a_row_stream_pairs_on_the_keys_it_is_stitched_on() -> None:
     row = GroupInputContract("root", "g", channel=InputChannel.ROW_STREAM)
     exists = GroupInputContract("root", "g", channel=InputChannel.EXISTENCE)
     stitched = _attrs(
@@ -185,14 +190,15 @@ def test_emitted_grain_holds_the_keys_a_row_stream_is_stitched_on() -> None:
         input_grain=frozenset({"local.genus"}),
         input_contracts=(row,),
     )
-    assert stitched.emitted_grain == frozenset({"local.genus"})
+    assert stitched.emitted_grain == frozenset()
+    assert _paired_grain(stitched) == frozenset({"local.genus"})
     probed = _attrs(
         derivation=Derivation.BASIC,
         grain_components=frozenset({"local.genus"}),
         input_grain=frozenset({"local.genus"}),
         input_contracts=(exists,),
     )
-    assert probed.emitted_grain == frozenset()
+    assert _paired_grain(probed) == frozenset()
 
 
 def test_root_pairs_on_a_key_its_rows_determine() -> None:

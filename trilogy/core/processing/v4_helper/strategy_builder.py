@@ -35,6 +35,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
     FunctionType,
+    Granularity,
     JoinType,
     Ordering,
     Purpose,
@@ -3859,6 +3860,12 @@ def _fd_at_grain(
     )
 
 
+def _single_row_node(node: StrategyNode) -> bool:
+    return bool(node.output_concepts) and all(
+        c.granularity == Granularity.SINGLE_ROW for c in node.output_concepts
+    )
+
+
 def _satisfy_parent_projection_contract(
     parents: list[StrategyNode],
     shaped: list[bool],
@@ -3897,8 +3904,21 @@ def _satisfy_parent_projection_contract(
     own_outputs_by_parent = [
         {output.address for output in parent.usable_outputs} for parent in parents
     ]
+    # A leaf scan reports no inputs, which keeps it whole: its rows are the
+    # sibling's join partner. Beside only one-row constants (a `by *` total,
+    # joined on 1=1) nothing pairs on its rows, so it is projected like a
+    # merge would be (#964).
+    constants_only = all(
+        _single_row_node(parent)
+        for parent, is_shaped in zip(parents, shaped)
+        if is_shaped
+    )
     outputs_by_parent = [
-        parent_output_addresses(parent) if parent.parents else own
+        (
+            own
+            if constants_only and not parent.parents
+            else parent_output_addresses(parent)
+        )
         for parent, own in zip(parents, own_outputs_by_parent)
     ]
     projected: list[StrategyNode] = []
