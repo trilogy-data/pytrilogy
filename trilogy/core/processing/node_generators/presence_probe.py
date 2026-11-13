@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.join_key_groups import is_join_key_group
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
 )
@@ -266,6 +267,10 @@ def gen_coalescing_axis_node(
             parents=sides,
             depth=depth,
             preserve_parents=True,
+            # every side pairs with every other on the axis alone
+            planned_pairs=PlannedPairs.star(
+                sides[0], [(side, frozenset({canonical, *group})) for side in sides[1:]]
+            ),
         )
     finally:
         if history is not None:
