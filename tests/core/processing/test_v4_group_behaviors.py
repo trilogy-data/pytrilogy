@@ -40,6 +40,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.processing.v4_helper import strategy_builder
 from trilogy.core.processing.v4_helper.concept_graph import node_id
 from trilogy.core.processing.v4_helper.constants import (
     FINAL_NODE_ID,
@@ -2223,7 +2224,7 @@ def test_an_unshaped_bridge_shapes_nothing():
     assert not attrs["basic"].shapes_rows
 
 
-def test_a_merge_side_covered_by_its_descendant_is_not_a_side():
+def test_a_merge_side_covered_by_its_descendant_is_not_a_side(monkeypatch):
     group_graph = nx.DiGraph()
     group_edges: EdgeMap = {}
     add_edge(group_graph, group_edges, "root", "agg", EdgeKind.LINEAGE)
@@ -2243,10 +2244,16 @@ def test_a_merge_side_covered_by_its_descendant_is_not_a_side():
         "basic": GroupAttrs(
             depth_label=DepthLabel.STAR,
             derivation=Derivation.BASIC,
-            input_concepts=("local.id", "local.total"),
         ),
     }
+    demand = {"local.id", "local.total"}
+    monkeypatch.setattr(strategy_builder, "_group_demand", lambda *_: demand)
 
-    assert _merge_sides(group_graph, group_edges, attrs, "basic") == ["agg"]
-    attrs["basic"].input_concepts = ("local.id", "local.total", "local.zone")
-    assert _merge_sides(group_graph, group_edges, attrs, "basic") == ["root", "agg"]
+    def sides() -> list[str]:
+        return _merge_sides(
+            group_graph, group_edges, attrs, "basic", (), BuildEnvironment()
+        )
+
+    assert sides() == ["agg"]
+    demand.add("local.zone")
+    assert sides() == ["root", "agg"]

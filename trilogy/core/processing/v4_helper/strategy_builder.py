@@ -166,6 +166,7 @@ from .models import (
     FinalAssemblyContract,
     GroupAttrs,
     InputChannel,
+    pairing_keys,
 )
 from .network_build import null_sensitive
 from .network_coalescing import axis_arms_delivered
@@ -7011,9 +7012,11 @@ def _group_needed(
     # a dimension peel is read with its key, the axis its rows are paired on
     for pgid in lineage_predecessors(group_graph, group_edges, gid):
         needed |= attrs[pgid].anchor_keys
-    # a region domain joins the solid rows on its spans
-    for pgid in row_parents(group_graph, group_edges, gid):
-        needed |= attrs[pgid].extent_spans
+    # an aggregate over a region pairs its solid rows with the domain on the
+    # domain's spans
+    if derivation == Derivation.AGGREGATE:
+        for pgid in row_parents(group_graph, group_edges, gid):
+            needed |= pairing_keys(attrs[pgid].extent_spans)
     return needed
 
 
