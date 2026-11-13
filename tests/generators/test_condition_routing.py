@@ -791,3 +791,14 @@ def test_a_star_plan_pairs_spokes_only_on_keys_both_join_the_hub_on():
     assert planned.between(side[hub], side[one]) == {"k", "j"}
     assert planned.between(side[hub], side[two]) == {"k"}
     assert planned.between(side[one], side[two]) == {"k"}
+
+
+def test_a_clause_with_no_row_feeder_has_no_lookup_plan():
+    from trilogy.core.processing.v4_helper.condition_injection import (
+        ConditionSources,
+    )
+    from trilogy.core.processing.v4_node_generators.condition_sources import (
+        lookup_plan,
+    )
+
+    assert lookup_plan(object(), ConditionSources()) is None
