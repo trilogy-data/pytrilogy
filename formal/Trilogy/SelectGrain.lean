@@ -822,8 +822,9 @@ theorem count_arg_past_host_passes_absent :
 
 `select species, form, sum(x) where (count(id) by form < count(id) by species
 or avg(x) by city, form is null)`: the FINAL re-applies the WHERE over values
-its argument producers supply, and one was joined FULL. Its species with no
-kept row came back padded, NULL for the `avg`, and `is null` held. -/
+its argument producers supply, and one, keyed off another producer's columns,
+was joined FULL. Its species with no kept row came back padded, NULL for the
+`avg`, and `is null` held. -/
 
 /-- **A lookup keeps the rows it is joined onto** (`lookup_keeps_rows`): each
 row reads its key's value, padded where the producer has none. -/

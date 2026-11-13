@@ -282,12 +282,15 @@ def _planned_source_pairs(
 def _cap_lookup_joins(
     joins: list[SourceJoin | UnnestJoin], lookups: Collection[str]
 ) -> None:
-    """A lookup's join keeps no row of its own: RIGHT becomes INNER, FULL
-    LEFT. A row it alone holds pads every other side, and a WHERE over its
-    value that holds on NULL elsewhere passes the padding
-    (`SelectGrain.lookup_preserved_passes_padding`)."""
+    """A lookup keyed off another lookup keeps no row of its own: RIGHT
+    becomes INNER, FULL LEFT. The first one's padding is no domain to
+    preserve, and a WHERE over the second's value that holds on NULL passes
+    the rows it alone holds (`SelectGrain.lookup_preserved_passes_padding`).
+    One keyed off the sides' rows may still be what supplies a key's domain."""
     for join in joins:
         if not isinstance(join, Join) or join.right.identifier not in lookups:
+            continue
+        if not any(pair.node.identifier in lookups for pair in join.pairs):
             continue
         if join.join_type == JoinType.RIGHT_OUTER:
             join.join_type = JoinType.INNER
