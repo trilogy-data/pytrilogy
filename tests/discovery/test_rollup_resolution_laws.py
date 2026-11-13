@@ -390,7 +390,8 @@ def test_coarse_group_value_filter_reads_summary(grain: str, gate: str, aggregat
 # group whose partials differ from their total (`broadleaf` in both cities) or
 # are NULL lost its row. They join on the group key alone
 # (`Rollup.resum_lookup_exact`). A count beside a bare total reads the base
-# rows, as in `MIXED_GRAINS`.
+# rows, as in `MIXED_GRAINS`, unless the total's inputs are a scan of their
+# own (#953): no WHERE, and no selected root on their table.
 BESIDE_SELECTS = {
     "form": "tree_form",
     "species": "species",
@@ -418,7 +419,9 @@ def test_resum_beside_other_grain_keeps_every_group(
         f"{AGGREGATES[aggregate]}, {BESIDE_VALUES[value]} as w",
         FILTERS[where],
     )
-    _assert_same_answer(query, served=(value, aggregate) != ("total", "count"))
+    peeled = select == "form" and where == "none"
+    served = (value, aggregate) != ("total", "count") or peeled
+    _assert_same_answer(query, served=served)
 
 
 # A membership whose key the summary's grain holds widens the scan to that key;
