@@ -536,4 +536,74 @@ theorem conjunction_idempotent (p : α → Bool) (rows : List α) :
     rows.filter (fun r => p r && p r) = rows.filter p := by
   simp
 
+/-! ## A WHERE filters the rows every aggregate reads
+
+`select city, max(x ? (city = 'A' or sum(x) by * is null)) where (min(x) by *
+= 6 or city = 'B')`: the planner hosted the WHERE only on the `sum(x) by *`
+group the filter's condition reads, and the select's own `max` aggregated the
+raw rows beside that value. A value joined in filters nothing it is not
+computed from. -/
+
+/-- **An aggregate of the kept rows reads only kept rows**: grouping after the
+WHERE equals filtering each group (`where_filters_group_rows`). -/
+theorem where_filters_group_rows (p : α → Bool) (g : α → Int) (k : Int)
+    (rows : List α) :
+    (rows.filter p).filter (fun r => g r == k) =
+      (rows.filter fun r => g r == k).filter p := by
+  simp only [List.filter_filter, Bool.and_comm]
+
+/-- Rows `(city, x)` `[(0, 3), (0, 5), (1, 7), (1, 2)]`, WHERE `city = 1`: city
+0 has no kept rows, so no group, but the unfiltered stream beside the gate's
+host still counted 2 of its rows (`gate_host_skips_select_rows`). -/
+theorem gate_host_skips_select_rows :
+    let rows : List (Int × Int) := [(0, 3), (0, 5), (1, 7), (1, 2)]
+    ((rows.filter (·.1 == 1)).filter (·.1 == 0)).length = 0 ∧
+      (rows.filter (·.1 == 0)).length = 2 := by
+  decide
+
+/-! ## A value is paired by its grain, never by itself
+
+Two groups both holding `max(x) by form` beside `form` were joined on the
+value with plain `=` as well as on `form`. The value is determined by `form`,
+so the grain's pair decides it; its own `=` is unknown on a group whose value
+is NULL, and the group was dropped. -/
+
+/-- SQL `=`: unknown (not true) when either side is NULL. -/
+def sqlEq (a b : Option Int) : Bool :=
+  match a, b with
+  | some x, some y => x == y
+  | _, _ => false
+
+/-- **Equal grains give equal values** (`value_paired_by_grain`). -/
+theorem value_paired_by_grain (f : Option Int → Option Int) (k₁ k₂ : Option Int)
+    (h : k₁ = k₂) : f k₁ = f k₂ := by
+  rw [h]
+
+/-- The Ulmus group: `form` NULL, `max(x) by form` NULL. Paired null-safely on
+`form` it matches itself; adding the value's `=` drops it
+(`value_pair_drops_null_group`). -/
+theorem value_pair_drops_null_group :
+    let form : Option Int := none
+    let v : Option Int := none
+    (form == form) = true ∧ sqlEq v v = false := by
+  decide
+
+/-! ## A guard conjoined to a disjunction is parenthesized
+
+A grand total is no row when no row was kept, so its HAVING gains `count(*) >
+0`. Appended to `a or b` without parentheses it read `a or (b and guard)`. -/
+
+/-- **The guard holds of the whole HAVING** (`guard_conjoins_having`). -/
+theorem guard_conjoins_having (h g : Bool) : (h && g) = true ↔ h = true ∧ g = true := by
+  simp
+
+/-- `a = true`, `b = false`, no rows kept: `a or (b and guard)` emits the empty
+total; `(a or b) and guard` does not (`guard_precedence_emits_empty_total`). -/
+theorem guard_precedence_emits_empty_total :
+    let a := true
+    let b := false
+    let guard := false
+    (a || (b && guard)) = true ∧ ((a || b) && guard) = false := by
+  decide
+
 end Trilogy.SelectGrain

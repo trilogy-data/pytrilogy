@@ -72,7 +72,8 @@ partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
 summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
 0.3.493: selects checked against Python over the raw rows, not against
 another plan, and A/B'd against main for the summary reads and joins they
-cost; 0.3.493 adds a second family of spellings; area 1).
+cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
+family from 127 wrong rows to 5; area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -635,6 +636,23 @@ does not rewrite it; that rewrite is open.
     - Revert a fix that turns wrong rows into wrong rows elsewhere, even when
       it fixes the repro: rerun the committed sweep seeds after every planner
       change, not only the new tests.
+
+32. **Lessons from the host-election round (0.3.494).**
+    - "Upstream of" is not "filters". Host election treats a group as covered
+      by any ancestor host, but an aggregate's value joined beside a row
+      stream filters nothing in that stream. Ask which group's ROWS a consumer
+      aggregates (the producers of its aggregated argument, not its `by` or
+      the values joined in) and whether those rows passed a host.
+    - Adding hosts creates new joins. Hosting the same atom on two groups made
+      both carry the WHERE's value, and the join then paired on it with plain
+      `=`; seeds that were right before lost their NULL group. Rerun the
+      whole family after a placement change, and diff the wrong-row set, not
+      the count.
+    - A nested aggregate is the counterexample to "a ROOT predecessor is an
+      unfiltered row stream": the outer aggregate has a ROOT edge for its keys
+      but aggregates its inner group's value (seed 19430 of the first family).
+    - Read the rendered SQL for precedence. `a or b and count(*) > 0` looked
+      like a planner bug in three seeds and was a string join in the dialect.
 
 ## Candidate areas
 
@@ -1205,6 +1223,34 @@ a filter its grain does not determine. Open questions:
   - a filtered aggregate with a gate in its condition beside a WHERE gate
     comparing two grains still raises "Missing source reference" or "global
     (by *) aggregate ... rendered at keyed grain" (both on main too).
+- Done in 0.3.494, from 10,000 seeds of the spellings family (127 wrong rows
+  on the round's base, 5 after): a WHERE hosts every aggregate whose
+  aggregated rows did not pass through its host, not only the group a
+  filtered aggregate's condition reads (`SelectGrain.gate_host_skips_select_rows`,
+  `_hosts_reading_unfiltered_rows`; seed 346); an aggregate paired with itself
+  beside its whole grain is decided by the grain's pairs
+  (`SelectGrain.value_pair_drops_null_group`, `_aggregate_beside_its_grain`);
+  a cross-grain atom over a row column hosts on the row stream that produces
+  the column; the empty-total guard is conjoined to a parenthesized HAVING
+  (`SelectGrain.guard_precedence_emits_empty_total`). Left:
+  - seed 1117: `select city, species, tree_form, max(height), max(height ?
+    not (...)), sum(height ? count(tree_id) by tree_form != 1) where
+    sum(height) by species is null` returns every key: FINAL's cover
+    (`elect_cover`) takes the keys off a `?` filter's row stream (the most
+    downstream exposer), which the WHERE never filtered. Hosting the atom on
+    FILTER groups fixes it but breaks seeds 96 and 208 again (as in 0.3.493);
+    the fix belongs in the cover, preferring a key source whose rows passed a
+    host;
+  - seed 8920: `select tree_id where (sum(height) by city - max(height) by
+    tree_form > 2 and height is not null) having max(height) by tree_form >=
+    1` returns nothing: the WHERE's `max(height) by tree_form` is read off the
+    HAVING gate's twin, grouped over the kept rows with the HAVING applied;
+  - seed 920 (summary only): `select tree_id, species, sum(height) by species
+    as v0 where count_distinct(tag) by * - count(tree_id) by city, species <
+    1` returns `b1`;
+  - 119 raises remain; the most common are "Could not resolve connections"
+    on `tree_id` selects (12), HAVING `by` rejections on `tree_id` selects
+    (32, seed 129's family) and "Missing source reference to local.height" (6).
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

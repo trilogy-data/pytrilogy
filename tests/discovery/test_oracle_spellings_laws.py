@@ -313,11 +313,23 @@ FOUND_SEEDS = [
     401, 878, 1087, 1091, 1172, 1350, 1390, 1401, 1599, 1606, 1612,
     2472, 2961, 3245, 3389, 3694, 4309, 4623, 4965, 5374, 5975, 6695,
 ]  # fmt: skip
+# seeds past `SEEDS` that 0.3.494 fixed (each failed on 0.3.493)
+FOUND_SEEDS_494 = [
+    563, 748, 900, 1132, 1184, 1266, 1391, 1438, 1662, 1689, 1836, 1866,
+    2049, 2103, 2105, 2174, 2443, 2505, 2634, 2762, 2788, 2946, 3216, 3246,
+    3283, 3689, 3709, 3723, 3747, 3865, 3938, 3971, 4114, 4124, 4245, 4263,
+    4264, 4969, 5302, 5346, 5406, 5415, 5568, 5699, 5971, 6015, 6154, 6324,
+    6587, 6646, 6720, 6812, 6877, 6886, 6962, 7067, 7194, 7542, 7762, 7794,
+    7920, 7964, 8433, 8903, 8948, 9009, 9049, 9062, 9114, 9184, 9280, 9576,
+    9938,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
 OPEN = {
     129: "a HAVING `by city` beside `city as v0` reads as `by v0` and is rejected",
-    346: "a WHERE gate is placed only on the group a filtered aggregate's "
-    "condition reads; the filtered count's own rows skip it",
+    1117: "FINAL takes the select's keys off a `?` filter's row stream, which "
+    "the WHERE never filtered",
+    8920: "a WHERE gate's value is read off the HAVING gate's twin, grouped "
+    "over the kept rows",
 }
 
 
@@ -330,7 +342,10 @@ def _seed(seed: int):
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
-@pytest.mark.parametrize("seed", [_seed(s) for s in (*range(SEEDS), *FOUND_SEEDS)])
+@pytest.mark.parametrize(
+    "seed",
+    [_seed(s) for s in (*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_494, 1117, 8920)],
+)
 def test_spelling_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape2(seed)
     try:

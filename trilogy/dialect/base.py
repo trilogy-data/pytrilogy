@@ -3211,7 +3211,7 @@ class BaseDialect:
             not group_by or self._grouping_has_empty_set(cte)
         ):
             rendered_having = " and ".join(
-                ([rendered_having] if rendered_having else []) + ["count(*) > 0"]
+                ([f"({rendered_having})"] if rendered_having else []) + ["count(*) > 0"]
             )
         logger.debug(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
