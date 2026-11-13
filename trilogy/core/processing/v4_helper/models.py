@@ -317,18 +317,27 @@ class GroupAttrs(_HeldKeys):
         )
 
     @property
+    def joined_on(self) -> frozenset[str]:
+        """The keys a row stream's inputs are stitched on, its input grain: its
+        rows hold them (`sale_recency` over a by-customer aggregate and a sale's
+        date holds `customer.sk` and `sale_date.sk`)."""
+        rows = any(c.channel == InputChannel.ROW_STREAM for c in self.input_contracts)
+        return self.input_grain if rows else frozenset()
+
+    @property
     def emitted_grain(self) -> frozenset[str]:
         """The grain keys this group's rows carry. A grouping group's GROUP BY
         emits its grain. Any other group's grain is where its value is
-        computable, which its rows hold only if it reads or outputs those keys:
-        `pages_per_session + day_of_week(event_date)` is pageview-grained but
-        computed off the aggregates' `(site_key, event_date)` rows."""
+        computable, which its rows hold only if it reads or outputs those keys,
+        or is stitched on them: `pages_per_session + day_of_week(event_date)`
+        is pageview-grained but computed off the aggregates' `(site_key,
+        event_date)` rows."""
         return self.grain_emitted_over(self.row_columns)
 
     def grain_emitted_over(self, row_columns: frozenset[str]) -> frozenset[str]:
         if self.derivation in GROUPING_DERIVATIONS:
             return self.grain_components
-        return self.grain_components & row_columns
+        return self.grain_components & (row_columns | self.joined_on)
 
 
 @dataclass

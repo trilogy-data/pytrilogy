@@ -26,7 +26,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase, _statement_scoped_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .functional_dependency import build_fd_closure, build_fd_determines_all
-from .models import GroupAttrs, InputChannel, pairing_keys
+from .models import GroupAttrs, pairing_keys
 
 
 class PairingKind(Enum):
@@ -410,6 +410,11 @@ def _relevant_carry_keys(
             or any(_fd_determined(environment, {key}, c) for c in concepts)
         ):
             relevant.add(key)
+    # A key the delivered rows determine is a lookup onto a coarser sibling
+    # (`tree_id` -> `genus` beside a value by genus): widening to it keeps them.
+    relevant |= candidates & build_fd_closure(
+        environment, delivered, include_empty_grain=False
+    )
     # A composite grain reaches a dimension through a foreign key OFF it
     # (`(item, ticket)` -> customer -> region): jointly, and by no key alone.
     if any(
@@ -606,14 +611,6 @@ def _domain_spans(
     return frozenset().union(*(attrs[p].extent_spans for p in parents))
 
 
-def _joined_on(group: GroupAttrs) -> frozenset[str]:
-    """The keys a row stream's inputs are stitched on, its input grain: its
-    rows hold them (`sale_recency` over a by-customer aggregate and a sale's
-    date holds `customer.sk` and `sale_date.sk`)."""
-    rows = any(c.channel == InputChannel.ROW_STREAM for c in group.input_contracts)
-    return group.input_grain if rows else frozenset()
-
-
 def carries(
     group: GroupAttrs,
     identity: frozenset[str],
@@ -653,7 +650,7 @@ def _held_columns(
         | set(group.members)
         | _over_own_rows(group)
     )
-    extra = _joined_on(group)
+    extra = group.joined_on
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
         extra |= group.grain_components
     if domain_spans is not None:

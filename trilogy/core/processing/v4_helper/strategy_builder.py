@@ -3894,9 +3894,12 @@ def _satisfy_parent_projection_contract(
     # `event_time` and emits only `lag(event_time)`, so crediting it with its
     # inputs would strip `event_time` off the dimension parent and leave the
     # consumer computing `event_time - prior_event_time` with no source.
-    outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
     own_outputs_by_parent = [
         {output.address for output in parent.usable_outputs} for parent in parents
+    ]
+    outputs_by_parent = [
+        parent_output_addresses(parent) if parent.parents else own
+        for parent, own in zip(parents, own_outputs_by_parent)
     ]
     projected: list[StrategyNode] = []
     for idx, parent in enumerate(parents):
@@ -7554,9 +7557,14 @@ def _group_needed(
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )
-    # a dimension peel is read with its key, the axis its rows are paired on
+    # a dimension peel is read with its key, the axis its rows are paired on,
+    # unless the group projects it to a coarser grain (a value by genus off a
+    # species peel): then that grain is the axis
+    projected = _input_contract_projection_grain(a)
     for pgid in lineage_predecessors(group_graph, group_edges, gid):
-        needed |= attrs[pgid].anchor_keys
+        keys = attrs[pgid].anchor_keys
+        if not projected or keys <= projected:
+            needed |= keys
     # an aggregate over a region pairs its solid rows with the domain on the
     # domain's spans
     if derivation == Derivation.AGGREGATE:
