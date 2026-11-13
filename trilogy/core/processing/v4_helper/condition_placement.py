@@ -782,6 +782,22 @@ def holds_on_absent_group(atom: BoolExpr) -> bool:
     return not any(c.address in proofs and not c.zero_on_empty for c in aggregates)
 
 
+def args_holding_on_absent(atom: BoolExpr) -> frozenset[str]:
+    """The aggregates `atom` reads whose absent group can let it hold: all of
+    them when the atom itself holds there, else each one nothing proves non-null
+    (`sum(x) by * is null and max(x) by city > 3` holds wherever the total is
+    padding, however `max` is decided)."""
+    if not isinstance(atom, BuildConceptArgs):
+        return frozenset()
+    aggregates = [c for c in atom.row_arguments if c.is_aggregate]
+    if holds_on_absent_group(atom):
+        return frozenset(c.address for c in aggregates)
+    proofs = gather_non_null_proofs(atom)
+    return frozenset(
+        c.address for c in aggregates if c.address not in proofs and not c.zero_on_empty
+    )
+
+
 def _literal_membership_on_absent(atom: BoolExpr) -> bool | None:
     """`agg(x) by k in (5, 3)` on a key no group formed: the aggregate reads 0
     (a COUNT) or NULL there, and membership is identity matching."""

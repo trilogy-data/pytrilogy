@@ -9,12 +9,13 @@ from collections import defaultdict
 from collections.abc import Collection, Sequence
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
 from .concept_graph import _scope_and_phase
-from .condition_placement import feeder_conditions_implied
+from .condition_placement import args_holding_on_absent, feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .edges import EdgeKind, EdgeMap, edges_of_kind
 from .group_graph import read_row_parents
@@ -204,6 +205,54 @@ def _row_atoms(attrs: dict[str, GroupAttrs], groups: Collection[str]) -> set[str
     }
 
 
+def _rows_pass(
+    gid: str,
+    atom: object,
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    memo: dict[str, bool],
+) -> bool:
+    """Whether every row `gid` presents passed `atom`: it hosts it, or the rows
+    it is built over did. An aggregate value joined beside a row stream filters
+    none of its rows (`SelectGrain.gate_host_skips_select_rows`)."""
+    if atom in attrs[gid].condition_atoms:
+        return True
+    if gid in memo:
+        return memo[gid]
+    memo[gid] = False
+    parents = [
+        p
+        for p in read_row_parents(group_graph, group_edges, attrs, gid)
+        if p in attrs and p != FINAL_NODE_ID
+    ]
+    rows = [p for p in parents if attrs[p].derivation not in GROUPING_DERIVATIONS]
+    memo[gid] = bool(rows or parents) and all(
+        _rows_pass(p, atom, group_graph, group_edges, attrs, memo)
+        for p in rows or parents
+    )
+    return memo[gid]
+
+
+def _single_row_value(concept: BuildConcept) -> bool:
+    """A total (`count_distinct(tag) by *`): one row, which adds none wherever
+    it is read."""
+    return concept.is_aggregate and set(
+        concept.grain.components if concept.grain else ()
+    ) <= {ALL_ROWS_ADDRESS}
+
+
+def _where_atoms(attrs: dict[str, GroupAttrs], groups: Collection[str]) -> list:
+    seen: list = []
+    for gid in groups:
+        if _scope_and_phase(attrs[gid].label)[1] == "condition":
+            continue
+        for atom in attrs[gid].condition_atoms:
+            if atom not in seen and args_holding_on_absent(atom):
+                seen.append(atom)
+    return seen
+
+
 def elect_cover(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -241,6 +290,15 @@ def elect_cover(
     row_graph = group_graph.copy()
     row_graph.remove_edges_from(edges_of_kind(group_edges, EdgeKind.EXISTENCE))
     row_atoms = _row_atoms(attrs, groups)
+
+    where_atoms = _where_atoms(attrs, groups)
+    memos: list[dict[str, bool]] = [{} for _ in where_atoms]
+
+    def rows_filtered(gid: str) -> bool:
+        return all(
+            _rows_pass(gid, atom, group_graph, group_edges, attrs, memo)
+            for atom, memo in zip(where_atoms, memos)
+        )
 
     def skips_row_atoms(gid: str) -> bool:
         if not row_atoms or _scope_and_phase(attrs[gid].label)[1] != "condition":
@@ -296,6 +354,7 @@ def elect_cover(
             key=lambda gid: (
                 keyed <= exposed[gid],
                 not skips_row_atoms(gid),
+                _single_row_value(concept) or rows_filtered(gid),
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,
@@ -312,4 +371,41 @@ def elect_cover(
         ):
             winner = owner
         per_group[winner].append(concept)
-    return per_group
+    return _keys_off_one_tuple(per_group, exposed, mandatory_list, groups, group_graph)
+
+
+def _keys_off_one_tuple(
+    per_group: dict[str, list[BuildConcept]],
+    exposed: dict[str, frozenset[str]],
+    mandatory_list: Sequence[BuildConcept],
+    groups: Collection[str],
+    group_graph: nx.DiGraph,
+) -> dict[str, list[BuildConcept]]:
+    """The selected keys come off one group's rows when no winner holds them
+    all: `city` off a group by `(city, tree_form)` and `species` off one by
+    `species` pair every city with every species of a form, tuples no row
+    holds (`SelectGrain.keys_off_two_groups_pair_unheld`)."""
+    keys = [
+        c for c in mandatory_list if c.purpose == Purpose.KEY and not c.is_aggregate
+    ]
+    addrs = frozenset(c.address for c in keys)
+    winners = {
+        gid for gid, concepts in per_group.items() for c in concepts if c in keys
+    }
+    if len(winners) < 2 or any(addrs <= exposed[gid] for gid in winners):
+        return per_group
+    holders = [gid for gid in groups if addrs <= exposed[gid]]
+    if not holders:
+        return per_group
+    holder = max(
+        holders,
+        key=lambda gid: (
+            sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
+            gid,
+        ),
+    )
+    out: dict[str, list[BuildConcept]] = defaultdict(list)
+    for gid, concepts in per_group.items():
+        for c in concepts:
+            out[holder if c.address in addrs else gid].append(c)
+    return out

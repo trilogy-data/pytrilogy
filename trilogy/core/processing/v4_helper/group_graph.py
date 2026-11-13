@@ -49,7 +49,7 @@ from .concept_graph import (
 )
 from .condition_placement import (
     PlacementReason,
-    holds_on_absent_group,
+    args_holding_on_absent,
     plan_condition_placements,
 )
 from .constants import (
@@ -1877,14 +1877,19 @@ def _gate_args_filtered_here(gid: str, succ: str, ctx: _InputPass) -> set[str]:
     group (`avg(x) by * is null`) reads a rejected one's padding as a pass. A
     null-rejecting atom reads the same either way
     (`SelectGrain.gate_past_host_exact_if_null_rejecting`)."""
-    atoms = [a for a in ctx.attrs[succ].condition_atoms if holds_on_absent_group(a)]
+    absent = [
+        (atom, held)
+        for atom in ctx.attrs[succ].condition_atoms
+        if (held := args_holding_on_absent(atom))
+    ]
+    atoms = [atom for atom, _ in absent]
     if not atoms or not _filtered_by(gid, atoms, ctx):
         return set()
     args = {
         arg.address
-        for atom in atoms
+        for atom, held in absent
         for arg in atom.row_arguments
-        if arg.derivation == Derivation.AGGREGATE
+        if arg.derivation == Derivation.AGGREGATE and arg.address in held
     } - ctx.facts[gid].primary
     return {
         addr

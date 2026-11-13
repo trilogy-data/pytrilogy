@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -40,6 +41,7 @@ from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.node_generators.common import (
     reinject_common_join_keys_v2,
 )
@@ -229,6 +231,71 @@ def create_pruned_concept_graph(
     return g
 
 
+class SourcedScans(NamedTuple):
+    nodes: list[StrategyNode]
+    # each scan pairs with another on what the pruned graph links both to
+    plan: PlannedPairs
+
+
+NO_SCANS = SourcedScans([], PlannedPairs({}, {}))
+
+
+def _graph_join_plan(
+    pruned: ReferenceGraph,
+    scans: dict[str, StrategyNode],
+    environment: BuildEnvironment,
+) -> PlannedPairs:
+    """Two scans pair on the value classes the pruned graph links both to."""
+    linked = {
+        ds: {
+            pruned.concepts[n].address
+            for n in set(pruned.predecessors(ds)) | set(pruned.successors(ds))
+            if n in pruned.concepts
+        }
+        for ds in scans
+    }
+    roots = environment.address_roots()
+    classes = {
+        ds: {roots.get(address, address) for address in addresses}
+        for ds, addresses in linked.items()
+    }
+    names = sorted(scans)
+    return PlannedPairs(
+        {id(node): frozenset({ds}) for ds, node in scans.items()},
+        {
+            frozenset({a, b}): frozenset(
+                address
+                for address in linked[a] | linked[b]
+                if roots.get(address, address) in classes[a] & classes[b]
+            )
+            for i, a in enumerate(names)
+            for b in names[i + 1 :]
+        },
+    )
+
+
+def _joint_plan(searches: Sequence[SourcedScans]) -> PlannedPairs:
+    """Separate searches' scans in one merge: scans of one search pair as it
+    planned, scans of two searches on nothing."""
+    sides: dict[int, frozenset[str]] = {}
+    keys: dict[frozenset[str], frozenset[str]] = {}
+    for index, search in enumerate(searches):
+        tag = f"{index}:"
+        sides.update(
+            {
+                key: frozenset(tag + name for name in side)
+                for key, side in search.plan.sides.items()
+            }
+        )
+        keys.update(
+            {
+                frozenset(tag + name for name in pair): pairs
+                for pair, pairs in search.plan.keys.items()
+            }
+        )
+    return PlannedPairs(sides, keys)
+
+
 def _source_concepts_via_graph(
     concepts: list[BuildConcept],
     g: ReferenceGraph,
@@ -238,7 +305,7 @@ def _source_concepts_via_graph(
     conditions: BuildWhereClause | None = None,
     allow_intersection: bool = False,
     filter_conditions: BuildWhereClause | None = None,
-) -> list[StrategyNode]:
+) -> SourcedScans:
     """Run the pruned-graph, subgraph, SelectNode pipeline for a list of concepts.
 
     `conditions` drives graph pruning; `filter_conditions`, when set, is what
@@ -340,14 +407,15 @@ def _source_concepts_via_graph(
                     str(c.node),
                 ),
             )
-            return [
-                finalize_select_node(
-                    best,
-                    environment=environment,
-                    depth=depth,
-                    requested_concepts=requested_concepts,
-                )
-            ]
+            node = finalize_select_node(
+                best,
+                environment=environment,
+                depth=depth,
+                requested_concepts=requested_concepts,
+            )
+            return SourcedScans(
+                [node], PlannedPairs({id(node): frozenset({"scan"})}, {})
+            )
         if conditions and len(sub_nodes) > 1:
             trial = [
                 create_select_node_candidate(
@@ -426,17 +494,20 @@ def _source_concepts_via_graph(
                 f"{padding(depth)}{LOGGER_PREFIX} keeping source groups before merge; "
                 f"{group_source_count} grouped source branches would be joined."
             )
-        return [
-            finalize_select_node(
+        built = {
+            ds: finalize_select_node(
                 candidate,
                 environment=environment,
                 depth=depth,
                 defer_group=defer_group,
                 requested_concepts=requested_concepts,
             )
-            for candidate in candidates
-        ]
-    return []
+            for ds, candidate in zip(scans, candidates, strict=True)
+        }
+        return SourcedScans(
+            list(built.values()), _graph_join_plan(pruned, built, environment)
+        )
+    return NO_SCANS
 
 
 def _conditions_can_be_sourced_by_components(
@@ -703,13 +774,13 @@ def gen_select_merge_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only abstract-grain property inputs ({abstract_props}), sourcing each independently"
         )
-        abstract_nodes = [
-            n
-            for p in abstract_props
-            for n in _source_concepts_via_graph(
+        abstract_searches = [
+            _source_concepts_via_graph(
                 [p], g, environment, depth + 1, accept_partial, conditions
             )
+            for p in abstract_props
         ]
+        abstract_nodes = [n for search in abstract_searches for n in search.nodes]
         if len(abstract_nodes) < len(abstract_props):
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} not all abstract properties could be sourced, cannot generate select node."
@@ -726,6 +797,7 @@ def gen_select_merge_node(
             depth=depth,
             parents=abstract_nodes,
             preexisting_conditions=None,
+            planned_pairs=_joint_plan(abstract_searches),
         )
 
     elif only_constant:
@@ -757,16 +829,17 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    parents: list[StrategyNode] = []
+    searches: list[SourcedScans] = []
+    found = NO_SCANS
     if normals:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
         )
-        parents = _source_concepts_via_graph(
+        found = _source_concepts_via_graph(
             normals, g, environment, depth, accept_partial, conditions
         )
         if (
-            not parents
+            not found.nodes
             and conditions
             and _conditions_can_be_sourced_by_components(
                 conditions, g.scope.datasources
@@ -783,7 +856,7 @@ def gen_select_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} retrying source graph with "
                 "condition inputs; WHERE atoms are covered by component sources."
             )
-            parents = _source_concepts_via_graph(
+            found = _source_concepts_via_graph(
                 augmented,
                 g,
                 environment,
@@ -791,7 +864,7 @@ def gen_select_merge_node(
                 accept_partial,
                 conditions,
             )
-        if not parents and conditions:
+        if not found.nodes and conditions:
             # Retry pruning with only the condition atoms implied by some
             # datasource's non_partial_for; the owning partial datasource is
             # guaranteed to apply them, so foreign datasources survive via the
@@ -799,7 +872,7 @@ def gen_select_merge_node(
             # filter_conditions so per-datasource WHERE clauses are preserved.
             covered = covered_conditions(conditions, g.scope.datasources)
             if covered:
-                parents = _source_concepts_via_graph(
+                found = _source_concepts_via_graph(
                     normals,
                     g,
                     environment,
@@ -809,20 +882,22 @@ def gen_select_merge_node(
                     allow_intersection=True,
                     filter_conditions=conditions,
                 )
-        if not parents:
+        if not found.nodes:
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
             return None
+        searches.append(found)
 
     for p in abstract_props:
-        abstract_nodes = _source_concepts_via_graph(
+        abstract = _source_concepts_via_graph(
             [p], g, environment, depth + 1, accept_partial, conditions
         )
-        if not abstract_nodes:
+        if not abstract.nodes:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} no source found for abstract property {p}, cannot generate select node."
             )
             return None
-        parents.extend(abstract_nodes)
+        searches.append(abstract)
+    parents = [node for search in searches for node in search.nodes]
 
     # a lone scan that routed an absence atom off its rows (`status is null`
     # on a scan bound `~`, a merge-level test: `absence_atoms`) was not
@@ -894,6 +969,7 @@ def gen_select_merge_node(
             force_group=force_merge_group,
             rollup_concepts=rollup_at_merge or None,
             grain=merge_grain,
+            planned_pairs=_joint_plan(searches),
         )
 
     if conditions:

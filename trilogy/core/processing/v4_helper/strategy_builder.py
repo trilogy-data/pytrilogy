@@ -121,7 +121,11 @@ from .condition_injection import (
     condition_row_args,
     inject_condition_at_node,
 )
-from .condition_placement import accumulated_atoms_above, feeder_conditions_implied
+from .condition_placement import (
+    accumulated_atoms_above,
+    args_holding_on_absent,
+    feeder_conditions_implied,
+)
 from .constants import (
     AGGREGATING_DERIVATIONS,
     FINAL_NODE_ID,
@@ -2525,7 +2529,10 @@ _WIDENABLE_PROJECTIONS = (SelectNode, MergeNode, FilterNode, UnionNode)
 
 
 def _widen_scan_chain(
-    node: StrategyNode, concept: BuildConcept, depth: int = 0
+    node: StrategyNode,
+    concept: BuildConcept,
+    depth: int = 0,
+    environment: BuildEnvironment | None = None,
 ) -> bool:
     """Project `concept` off `node`, widening the passthrough projection chain
     beneath it when `node`'s own inputs cannot satisfy it. Returns whether the
@@ -2561,9 +2568,7 @@ def _widen_scan_chain(
         if isinstance(node, (SelectNode, FilterNode)) and len(node.parents) != 1:
             return False
         if not any(
-            isinstance(below, _WIDENABLE_PROJECTIONS)
-            and not below.force_group
-            and _widen_scan_chain(below, concept, depth + 1)
+            _widen_below(below, concept, depth + 1, environment)
             for below in node.parents
         ) and not _widen_inputs_below(node, concept, available, depth):
             return False
@@ -2576,6 +2581,44 @@ def _widen_scan_chain(
         input_candidates=_row_lineage_closure(concept),
         available_addresses=available,
     )
+    return True
+
+
+def _widen_below(
+    node: StrategyNode,
+    concept: BuildConcept,
+    depth: int,
+    environment: BuildEnvironment | None,
+) -> bool:
+    if isinstance(node, _WIDENABLE_PROJECTIONS) and not node.force_group:
+        return _widen_scan_chain(node, concept, depth, environment)
+    return environment is not None and _widen_determined_dedup(
+        node, concept, depth, environment
+    )
+
+
+def _widen_determined_dedup(
+    node: StrategyNode,
+    concept: BuildConcept,
+    depth: int,
+    environment: BuildEnvironment,
+) -> bool:
+    """A dedup group (every output passed through from its parents) carries a
+    column its outputs determine: its rows stay one per group (`tree_form` on
+    a dedup holding `species`)."""
+    if not isinstance(node, GroupNode) or not node.parents:
+        return False
+    outputs = {o.address for o in node.output_concepts}
+    if not outputs <= parent_output_addresses(node) or not build_fd_determines_all(
+        environment, outputs, {concept.address}, include_empty_grain=False
+    ):
+        return False
+    if not any(
+        _widen_scan_chain(inner, concept, depth + 1, environment)
+        for inner in node.parents
+    ):
+        return False
+    widen_projection(node, [concept], input_candidates=[concept])
     return True
 
 
@@ -5092,11 +5135,12 @@ def _join_elected_bridges(
             continue
         if id(bridge) in keying:
             if keys:
-                _carry_join_keys(
-                    [bridge],
-                    _join_key_concepts([bridge], environment, set(keys)),
-                    environment,
-                )
+                concepts = _join_key_concepts([bridge], environment, set(keys))
+                _carry_join_keys([bridge], concepts, environment)
+                # a keying bridge exists to hold the key: reach for it below
+                for concept in concepts:
+                    if concept.derivation == Derivation.ROOT:
+                        _widen_scan_chain(bridge, concept, environment=environment)
             parents.append(bridge)
             outputs.append(_pairing_addresses(bridge, environment))
             continue
@@ -5310,8 +5354,25 @@ def _final_extra_sides(
         carried,
     )
     args = [c for addr in extras.arg_producers if (c := _concept_at(environment, addr))]
+    absent = _gate_grain_keys(
+        [
+            c
+            for atom in attrs[FINAL_NODE_ID].condition_atoms
+            for addr in args_holding_on_absent(atom)
+            if (c := _concept_at(environment, addr)) is not None
+        ]
+    )
     for address in sorted(_gate_grain_keys(args) - available):
-        if host := _gate_key_row_stream(address, attrs, candidates):
+        # a ROOT side holding the key of a gate that holds on an absent group
+        # carries it: a second scan beside it pairs the gate with rows the
+        # side never filtered, and their padding passes
+        if address in absent and (
+            root := next(
+                (g for g in roots if address in attrs[g].output_concepts), None
+            )
+        ):
+            extras.carried[address] = root
+        elif host := _gate_key_row_stream(address, attrs, candidates):
             extras.gate_hosts[address] = host
     return extras
 

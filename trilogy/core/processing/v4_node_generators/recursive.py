@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.nodes import MergeNode, RecursiveNode, StrategyNode
 
 GATING_CONCEPT = BuildConcept(
@@ -82,7 +83,9 @@ def gen_recursive(
     if not joined_back:
         return walk
     # The atom reads columns of the seed row the walk does not carry: join the
-    # walk back to its parent on the seed row and filter there.
+    # walk back to its parent on the seed row (the edge it walked) and filter
+    # there.
+    edge = frozenset(c.address for c in arguments)
     return MergeNode(
         input_concepts=walk_outputs,
         output_concepts=walk_outputs,
@@ -90,4 +93,5 @@ def gen_recursive(
         parents=[walk, *parents],
         partial_concepts=walk.partial_concepts,
         conditions=walk_conditions,
+        planned_pairs=PlannedPairs.star(walk, [(p, edge) for p in parents]),
     )
