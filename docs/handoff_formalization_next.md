@@ -69,10 +69,10 @@ a table at its own grain answers repeat-blind aggregates of its columns, and
 aggregates of a column it stores at that grain, from its own rows; area 1),
 and the coarse-gate follow-on (0.3.488: a re-sum is never joined on its
 partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
-summary's own grain reads it; area 1), and the oracle sweeps (0.3.490,
-0.3.491 and 0.3.492: selects checked against Python over the raw rows, not
-against another plan, and A/B'd against main for the summary reads and joins
-they cost; area 1).
+summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
+0.3.493: selects checked against Python over the raw rows, not against
+another plan, and A/B'd against main for the summary reads and joins they
+cost; 0.3.493 adds a second family of spellings; area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -616,6 +616,26 @@ does not rewrite it; that rewrite is open.
       are the case where they were equated, the oracle sweep the case where
       they were not.
 
+31. **Lessons from the spellings round (0.3.493).**
+    - A second generator found more in 10,000 seeds than 20,000 more seeds of
+      the first did (the first family's next 3,400 seeds held one wrong row).
+      Keys-only selects alone exposed the summary re-summing a gate partial at
+      the select's grain: every first-family select had an aggregate target.
+    - Check the oracle's scope for each new spelling: an aggregate inside a
+      select target's `?` condition is select-phase and reads the WHERE-kept
+      rows, not every row as a WHERE aggregate does.
+    - Fix where the value is consumed, not where it is offered. Dropping the
+      summary's rollup binding from the network fixed the repros but read the
+      trees on 248 harness cases (a partial feeding an aggregate group is the
+      design); declining only a plan whose own condition reads the partial at
+      a grain not its own kept every summary read.
+    - A per-column check of "every output is the filtered branch's own" says
+      nothing about tuples: two branches each holding kept values of one key
+      pair dropped tuples through an unfiltered row stream.
+    - Revert a fix that turns wrong rows into wrong rows elsewhere, even when
+      it fixes the repro: rerun the committed sweep seeds after every planner
+      change, not only the new tests.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1158,6 +1178,33 @@ a filter its grain does not determine. Open questions:
     are five shapes of one gap: the search that takes over when the joined
     plan declines. Making `_plan_joined_filter_rollup` source an unstored
     gate from the trees (instead of declining) would retire most of them.
+- Done in 0.3.493, from a second generator family
+  (`tests/discovery/test_oracle_spellings_laws.py`: keys-only and `tree_id`
+  selects, `>=`/`<=`/`!=`, a gate `is null`, two gates compared or
+  subtracted, `between`, `coalesce`, a gate inside `agg(x ? c)`, a compound
+  HAVING): keys split over two filtered branches pair only kept tuples
+  (`SelectGrain.split_keys_pair_unkept`); a gate is never filtered on a
+  summary partial off its own grain
+  (`Rollup.gate_partial_resummed_off_its_grain`); a `by` value of keys the
+  select's bindings determine is no grain key
+  (`SelectGrain.by_value_is_no_grain_key`, `by_value_as_key_misjoins`); an
+  extra FILTER side is joined as built; `c and c` folds to `c`
+  (`SelectGrain.conjunction_idempotent`, seed 2537). Left:
+  - seed 346: `select species, count(tree_id ? sum(height) by tree_form is
+    not null) where count(tree_id) by species < 2` drops the WHERE. The gate
+    is placed only on the `tree_form` group the filter's condition reads;
+    the filtered count's own rows (the root beside it) skip it. Hosting the
+    atom on every group below a host that also reads unfiltered rows fixed
+    it but broke seeds 96 and 208 (both right on main), so it was dropped;
+  - seed 129: `having max(height) by city, species = 6` beside `city as v0`
+    in a `tree_id` select is read as `by species, v0` and rejected;
+  - the HAVING rejections on `tree_id` selects generally (`having
+    min(height) by city <= 10`): `city` is a key, not a property of
+    `tree_id`, so `_grain_determined` does not see the binding FD
+    (`minimize_by_bindings` now does, for a `by` in the select);
+  - a filtered aggregate with a gate in its condition beside a WHERE gate
+    comparing two grains still raises "Missing source reference" or "global
+    (by *) aggregate ... rendered at keyed grain" (both on main too).
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
