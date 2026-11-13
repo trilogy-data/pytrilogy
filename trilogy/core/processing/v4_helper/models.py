@@ -368,6 +368,8 @@ class ConceptAttrs:
     counted_key: str | None = None
     # the aggregate's function, None for any other concept
     aggregate_operator: FunctionType | None = None
+    # an aggregate whose `by` is written (`by *`), not the select's grain
+    fixed_grain: bool = False
     # the select keys a GRAIN_PIN evaluates on (`grain_pin`); empty otherwise
     grain_pin_anchors: frozenset[str] = frozenset()
     keys: frozenset[str] = frozenset()

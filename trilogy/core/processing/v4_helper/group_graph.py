@@ -27,6 +27,7 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.author import UnionSelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
@@ -660,6 +661,66 @@ def _grain_determines(
     return build_fd_determines_all(
         environment, determinants, targets, include_empty_grain=False
     )
+
+
+def _offered_at_grain(
+    offered: set[str], fact: "GroupFacts", environment: BuildEnvironment
+) -> set[str]:
+    """What a BASIC step offers FINAL: a column of rows finer than its grain
+    would put those rows under it (a class by species carrying the trees'
+    `tree_id` holds one row per tree, #972); FINAL reads it off the rows."""
+    if (
+        fact.derivation != Derivation.BASIC
+        or not fact.grain
+        or not all(_declared_at(environment, fact.grain, addr) for addr in fact.primary)
+    ):
+        return offered
+    return {
+        addr
+        for addr in offered
+        if addr in fact.primary or _determined_at(environment, fact.grain, addr)
+    }
+
+
+def _declared_at(
+    environment: BuildEnvironment, grain: frozenset[str], addr: str
+) -> bool:
+    """A member whose own grain `grain` holds (a select-grain value has none)."""
+    concept = environment.concepts.get(addr)
+    if concept is None or _reads_select_grain(concept):
+        return False
+    keys = frozenset(concept.grain.components) if concept.grain else frozenset()
+    return bool(keys) and (keys <= grain or _grain_determines(environment, grain, keys))
+
+
+def _reads_select_grain(concept: BuildConcept) -> bool:
+    """Whether `concept` reads an aggregate at the select's grain, whose grain
+    its own claims nothing of."""
+    stack, seen = list(concept.concept_arguments), set()
+    while stack:
+        arg = stack.pop()
+        if arg.address in seen:
+            continue
+        seen.add(arg.address)
+        if (
+            isinstance(arg.lineage, BuildAggregateWrapper)
+            and arg.lineage.grain_inherited
+        ):
+            return True
+        stack.extend(arg.concept_arguments)
+    return False
+
+
+def _determined_at(
+    environment: BuildEnvironment, grain: frozenset[str], addr: str
+) -> bool:
+    concept = environment.concepts.get(addr)
+    keys = (
+        frozenset(concept.grain.components)
+        if concept is not None and concept.grain
+        else frozenset({addr})
+    )
+    return addr in grain or keys <= grain or _grain_determines(environment, grain, keys)
 
 
 def _rows_at_grain(
@@ -1877,6 +1938,8 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             mand = cap_gid & mandatory_alias_addresses
             if fact.derivation in GROUPING_DERIVATIONS:
                 mand &= fact.primary | fact.grain
+            else:
+                mand = _offered_at_grain(mand, fact, environment)
             for desc in nx.descendants(lineage_sub, gid):
                 if facts[desc].derivation in GROUPING_DERIVATIONS:
                     mand -= io.outputs[desc]

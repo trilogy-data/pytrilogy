@@ -689,6 +689,33 @@ does not rewrite it; that rewrite is open.
       on NULL turns the host's padding into a pass. Ask which group a host
       reads its atom's inputs from, not only which rows it filters.
 
+35. **Lessons from the class-beside-lookups round (#972).**
+    - #970 fixed the shape its repro had (a leaf scan beside one-row
+      constants) and narrowed every rule to it; the reported model reached
+      species through partial lookups, so the trees were a merge, not a leaf
+      scan, and the class was derived from the species itself. Before 0.3.492
+      the plan was right by accident: the class table sat in the root bucket,
+      so the merge's grain held `fit_class` and the grain-claim guard grouped.
+      A fix narrowed to a repro needs a generator over the ingredients the
+      reporter lists, not the repro alone
+      (`test_partial_lookup_fallback_oracle_laws.py`).
+    - The projection adapter read a parent's inputs as what it could project:
+      an attribute only a sibling supplies made the projection unrenderable,
+      and a value the parent computes (the class) was never projected at all.
+    - A BASIC step offered FINAL every selected column it could reach, so a
+      class by species carried `tree_id` and held one row per tree.
+    - A nullable side is not the fact by being nullable: a lookup the other
+      side's rows determine names no row with its NULL key
+      (`SideFacts.determined`). Preserving it kept a species whose trees the
+      WHERE dropped.
+    - Only a written `by *` is a constant of the query; a bare total is the
+      select's aggregate over its rows. Peeling a written total's table under
+      a WHERE is exact when no atom reads that table and every selected value
+      of the total also reads the kept rows; otherwise the gate needs the
+      cross join (`_peel_exact_under_where`).
+    - Generated data must hold the model's declarations: a `~genus` fit naming
+      a genus the complete (`?genus`) enrichment lacks is not a planner bug.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;

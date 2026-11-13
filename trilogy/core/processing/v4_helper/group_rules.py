@@ -903,7 +903,13 @@ def _feeds_only_global_aggregates(
                 return False
             data = concept_attrs[nxt]
             if data.derivation == Derivation.AGGREGATE:
-                if not set(data.grain_components) <= {ALL_ROWS_ADDRESS}:
+                # only a written `by *` is a constant of the query; a bare
+                # total is the select's own aggregate over its rows
+                # (`select sum(pred)`, `SelectGrain.bare_is_select_grain`)
+                if (
+                    not set(data.grain_components) <= {ALL_ROWS_ADDRESS}
+                    or not data.fixed_grain
+                ):
                     return False
                 continue
             if data.derivation not in (Derivation.BASIC, Derivation.FILTER):
@@ -923,10 +929,8 @@ def _global_aggregate_inputs(
 ) -> list[NodeItem]:
     """Roots read only by `by *` aggregates, on no table the other roots read.
     Left in the row stream they cross-join their whole table onto its rows
-    (#953); the aggregate's one-row result is all the rows need. A WHERE
-    filters every scan of the statement's rows, so none is peeled under one."""
-    if any(d.where_row_arg for d in concept_attrs.values()):
-        return []
+    (#953); the aggregate's one-row result is all the rows need. Under a WHERE
+    see `_peel_exact_under_where`."""
     peeled = [
         (n, d)
         for n, d in main_items
@@ -941,7 +945,82 @@ def _global_aggregate_inputs(
     rest_bindings = {b for _, d in rest for b in d.datasource_bindings}
     if not rest or any(d.datasource_bindings & rest_bindings for _, d in peeled):
         return []
+    if not _peel_exact_under_where(
+        peeled, rest, concept_graph, concept_edges, concept_attrs, output_addresses
+    ):
+        return []
     return peeled
+
+
+def _peel_exact_under_where(
+    peeled: list[NodeItem],
+    rest: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> bool:
+    """A WHERE filters every scan of the select's rows, and a select's
+    aggregate reads the rows it kept. When no atom reads a peeled table, those
+    rows are the peeled table's whole whenever the row stream kept a row, and
+    none otherwise: an existence gate. A selected value that reads the total
+    beside the kept rows holds it already (no kept row, no value), so when
+    every one does the peel reads the table once instead of once per kept row
+    (#972). A value of the total alone keeps the scan in the row stream."""
+    where_args = [n for n, d in concept_attrs.items() if d.where_row_arg]
+    if not where_args:
+        return True
+    filtered = set(where_args).union(
+        *(nx.ancestors(concept_graph, n) for n in where_args)
+    )
+    peeled_bindings = frozenset().union(*(d.datasource_bindings for _, d in peeled))
+    if filtered & {n for n, _ in peeled} or any(
+        concept_attrs[n].datasource_bindings & peeled_bindings for n in filtered
+    ):
+        return False
+    reads_total = _selected_readers(
+        [n for n, _ in peeled],
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        output_addresses,
+    )
+    reads_rows = _selected_readers(
+        [n for n, _ in rest],
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        output_addresses,
+    )
+    return bool(reads_total) and reads_total <= reads_rows
+
+
+def _selected_readers(
+    nodes: list[str],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> set[str]:
+    """The selected columns whose lineage reads any of `nodes`.
+    `output_addresses` holds the WHERE's row arguments too; those are not
+    selected values."""
+    stack, seen = list(nodes), set(nodes)
+    while stack:
+        cur = stack.pop()
+        for nxt in concept_graph.successors(cur):
+            if (
+                nxt not in seen
+                and edge_kind(concept_edges, cur, nxt) == EdgeKind.LINEAGE
+            ):
+                seen.add(nxt)
+                stack.append(nxt)
+    return {
+        n
+        for n in seen
+        if concept_attrs[n].address in output_addresses
+        and not concept_attrs[n].where_row_arg
+    }
 
 
 def partition_roots(
