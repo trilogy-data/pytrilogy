@@ -499,7 +499,7 @@ address items_table;
     assert node is None
 
 
-def test_scans_of_one_search_pair_on_the_classes_the_graph_links_both_to():
+def _two_scan_merge() -> MergeNode:
     env = Environment()
     env.parse(
         """
@@ -525,9 +525,22 @@ address orders;
         g=generate_graph(benv),
         depth=0,
     )
-    assert isinstance(node, MergeNode) and node.planned_pairs is not None
+    assert isinstance(node, MergeNode)
+    return node
+
+
+def test_scans_of_one_search_pair_on_the_classes_the_graph_links_both_to():
+    node = _two_scan_merge()
+    assert node.planned_pairs is not None
     one, other = (node.planned_pairs.sides[id(p)] for p in node.parents)
     assert node.planned_pairs.between(one, other) == {"local.customer_id"}
+
+
+def test_a_merge_with_no_plan_is_a_planner_bug():
+    node = _two_scan_merge()
+    node.planned_pairs = None
+    with pytest.raises(ValueError, match="carries no join plan"):
+        node.resolve()
 
 
 def test_scans_of_separate_searches_pair_on_nothing():
