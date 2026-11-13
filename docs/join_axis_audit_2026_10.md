@@ -2327,7 +2327,17 @@ Neither needs a new fact:
 So no merge between stated rows resolves its keys unplanned now. The only
 unplanned resolves left are the network search inside a group.
 
-SUITE_CAPTURE_PLACEHOLDER
+Suite capture against `main` (`sqlcap`, `-n 4`, paths normalized): the same
+failures on both sides (credential-gated BigQuery, GCS and NCAA tests; `main`
+also failed `test_copy_perf` on timing). 50 tests moved under xdist. The files
+that hold planner moves among them (the TPC-DS and TPC-H queries,
+`test_where_clause`, `test_complete_binding_lookup`, the tree dashboard,
+`test_core_concepts`, `test_merge_discovery`, `test_nullability`) were then
+captured serially on both sides. Only TPC-DS `test_queries` moved, and only in
+how many times a test compiled its statement (one or four). That count also
+moves between two serial runs of `main`, and every statement either side
+captured is one the other did. So both merges already paired on exactly
+their stated keys, and the plans name them.
 
 `test_an_element_filter_pairs_on_the_element_and_its_row` and
 `test_a_having_looks_its_feeder_up_on_the_feeder_grain` pin the two plans.
