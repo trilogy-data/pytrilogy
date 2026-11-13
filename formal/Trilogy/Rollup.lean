@@ -956,5 +956,17 @@ theorem Rollup.where_filters_every_scan :
     sumAgg v (rows.filter fun r => r.1 != 2) = some 15 ∧ sumAgg v rows = some 17 := by
   decide
 
+/-- Rows `(species, x)` with `form = species % 2` and `select species, max(x)
+by * where form = 0`: a dimension's column filters the base-row scan of the
+total through its key, so the total is 2. Joined only onto the summary's
+species, it left the total's scan whole: 7
+(`Rollup.dimension_column_filters_every_scan`). -/
+theorem Rollup.dimension_column_filters_every_scan :
+    let rows : List (Nat × Int) := [(1, 3), (1, 7), (2, 2), (3, 5)]
+    let v : Nat × Int → Int := fun r => r.2
+    ((rows.filter fun r => r.1 % 2 == 0).map v).foldl max 0 = 2 ∧
+      (rows.map v).foldl max 0 = 7 := by
+  decide
+
 end Rollup
 end Trilogy

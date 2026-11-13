@@ -133,8 +133,15 @@ def finalize_select_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
         )
+        outputs = list(candidate.node.output_concepts)
+        # the CASE of an `agg(x ? c)` read off a stored `agg(x)` is rendered in
+        # the group, so the scan carries `c` up to it: a scan shared with
+        # another reader is a CTE of its own
+        candidate.node.add_output_concepts(
+            _filtered_partial_args(candidate.node, outputs)
+        )
         return GroupNode(
-            output_concepts=candidate.node.output_concepts,
+            output_concepts=outputs,
             input_concepts=candidate.node.output_concepts,
             environment=environment,
             parents=[candidate.node],
@@ -151,6 +158,27 @@ def finalize_select_node(
         )
         candidate.node.group_deferred = True
     return candidate.node
+
+
+def _filtered_partial_args(
+    node: StrategyNode, outputs: list[BuildConcept]
+) -> list[BuildConcept]:
+    datasource = getattr(node, "datasource", None)
+    if not isinstance(datasource, BuildDatasource):
+        return []
+    bound = {c.address for c in datasource.output_concepts}
+    return unique(
+        [
+            arg
+            for c in outputs
+            if (filtered := c.filtered_rollup) is not None
+            and datasource.aggregate_column_for(c) is None
+            and datasource.filtered_column_for(c) is not None
+            for arg in filtered[1].row_arguments
+            if arg.address in bound
+        ],
+        "address",
+    )
 
 
 def subgraph_concepts(

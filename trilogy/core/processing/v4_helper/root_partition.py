@@ -521,8 +521,8 @@ def _filter_args(
     An arg can be both: its atom's peel is then judged per atom."""
     pre: set[str] = set()
     for atom in _atoms(conditions):
-        if not _post_aggregate(atom):
-            for arg in atom.row_arguments:
+        for arg in atom.row_arguments:
+            if arg.derivation != Derivation.AGGREGATE:
                 pre |= _row_arg_lineage_closure(arg)
     post = {
         arg.address
@@ -554,15 +554,25 @@ def _pre_aggregate_atom_mates(
 ) -> dict[str, frozenset[str]]:
     """Each pre-aggregate filter arg -> every arg of the atoms reading it: an
     atom drops whole groups only when all of its args do (`note is not null
-    or amount = 4` keeps orders, not customers)."""
+    or amount = 4` keeps orders, not customers; `tree_form = 'x' or max(h) by
+    city, species = 3` keeps (city, species) rows, not species)."""
     mates: dict[str, set[str]] = defaultdict(set)
     for atom in _atoms(conditions):
-        if _post_aggregate(atom):
-            continue
         args = {arg.address for arg in atom.row_arguments}
         for address in args:
             mates[address] |= args
     return {address: frozenset(args) for address, args in mates.items()}
+
+
+def _condition_aggregate_grains(
+    conditions: list[BuildWhereClause],
+) -> dict[str, frozenset[str]]:
+    return {
+        arg.address: frozenset(arg.grain.components if arg.grain else ())
+        for atom in _atoms(conditions)
+        for arg in atom.row_arguments
+        if arg.derivation == Derivation.AGGREGATE
+    }
 
 
 def _post_aggregate_basic_args(
@@ -814,6 +824,8 @@ def _preaggregate_filter_allows_dimension_member(
     key: str | None,
     grouping_buckets: list[GroupBucket],
     environment: BuildEnvironment,
+    aggregate_grains: dict[str, frozenset[str]],
+    rolled_grains: Sequence[frozenset[str]] = (),
 ) -> bool:
     """A pre-aggregate filter column peels only when the filter still drops whole
     groups after the peel: it must be FD by the entity key and that key must be a
@@ -823,9 +835,21 @@ def _preaggregate_filter_allows_dimension_member(
     row, so its value (rank, lag, row_number) is a function of the whole input
     POPULATION, not of a group's contents; a peeled column filters via a
     post-window entity-key semijoin, which leaves the window computed over the
-    unfiltered rows."""
+    unfiltered rows.
+
+    A WHERE aggregate mate (`aggregate_grains`) is a value of its grain, so it
+    drops whole groups when every grouping grain determines that grain,
+    the grains of the aggregates a summary serves on the row stream
+    (`rolled_grains`) included."""
     if any(b.derivation == Derivation.WINDOW for b in grouping_buckets):
         return False
+    if address in aggregate_grains:
+        return all(
+            build_fd_determines(environment, set(grain), component)
+            for grain in [b.grain_components for b in grouping_buckets]
+            + list(rolled_grains)
+            for component in aggregate_grains[address]
+        )
     return (
         key is not None
         and all(key in b.grain_components for b in grouping_buckets)
@@ -930,6 +954,7 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     pre_aggregate_atom_mates: dict[str, frozenset[str]],
     post_aggregate_args: frozenset[str],
+    aggregate_grains: dict[str, frozenset[str]],
     finer_filter_grains: frozenset[frozenset[str]],
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
@@ -1002,6 +1027,13 @@ def _split_root_dimension_clusters(
         ]
         if not candidates and not composite_grains:
             continue
+        rolled_grains = [
+            frozenset(c.grain.components)
+            for addr in member_addrs
+            if (c := environment.concepts.get(addr)) is not None
+            and c.derivation == Derivation.AGGREGATE
+            and c.grain is not None
+        ]
         # a condition stage's scan is sourced beside the row stream that
         # keeps its roots: a host reading one reads it off the row stream
         condition_held = {
@@ -1051,7 +1083,12 @@ def _split_root_dimension_clusters(
             finest = _entity_key(addr, frozenset(candidates), environment)
             if addr in pre_aggregate_filter_args and not all(
                 _preaggregate_filter_allows_dimension_member(
-                    mate, finest, d0_grouping_buckets, environment
+                    mate,
+                    finest,
+                    d0_grouping_buckets,
+                    environment,
+                    aggregate_grains,
+                    rolled_grains,
                 )
                 for mate in pre_aggregate_atom_mates.get(addr, {addr})
             ):
@@ -1218,6 +1255,7 @@ def partition_root_demand(
         pre_aggregate_args,
         _pre_aggregate_atom_mates(conditions),
         post_aggregate_args | _post_aggregate_basic_args(mandatory_list),
+        _condition_aggregate_grains(conditions),
         _finer_filter_grains(conditions),
         domains,
         concept_graph,

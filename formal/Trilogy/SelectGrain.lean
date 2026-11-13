@@ -407,4 +407,68 @@ theorem by_property_without_its_key_misjoins :
         gate.filter fun p => p.1 == r.1 && p.2 == form r.2).length = 2 := by
   decide
 
+/-! ## An atom drops whole groups only when its grain is the group's
+
+A WHERE atom over a row column and a gate (`tree_form = 'linden' or max(x) by
+city, species = 3`) is decided per `(city, species)`. Beside a count by
+`species`, it drops whole species only when `species` determines everything it
+reads; otherwise it filters the rows the count reads, never the counts. -/
+
+/-- **An atom decided per group key drops whole groups**: filtering the rows
+before grouping by `g` is filtering the groups, when the atom is a function of
+the group key. -/
+theorem atom_on_group_key_drops_groups [DecidableEq κ] (g : α → κ) (q : κ → Bool)
+    (rows : List α) (t : κ) :
+    slice g t (rows.filter fun r => q (g r)) =
+      if q t then slice g t rows else [] := by
+  unfold slice
+  rw [List.filter_filter]
+  by_cases hq : q t
+  · simp only [hq, ↓reduceIte]
+    congr 1
+    funext r
+    by_cases h : g r = t
+    · simp [h, hq]
+    · simp [h]
+  · simp only [hq, Bool.false_eq_true, ↓reduceIte]
+    apply List.filter_eq_nil_iff.2
+    intro r _
+    by_cases h : g r = t
+    · simp [h, hq]
+    · simp [h]
+
+/-- Rows `(city, species)` and `select species, count(id) where (form =
+linden or max(x) by city, species = 3)`: species 1 passes in city 0 only, so
+it counts one row. Applied after the count, as a species-keyed semijoin once
+`form` was peeled off the row stream, the atom kept species 1 whole: two
+(`mixed_atom_after_count_misreads`). -/
+theorem mixed_atom_after_count_misreads :
+    let rows : List (Int × Int) := [(0, 1), (1, 1), (1, 2)]
+    let atom : Int × Int → Bool := fun r => r.1 == 0 && r.2 == 1
+    let species : Int × Int → Int := fun r => r.2
+    (slice species 1 (rows.filter atom)).length = 1 ∧
+      (if rows.any fun r => atom r && species r == 1 then
+        (slice species 1 rows).length else 0) = 2 := by
+  decide
+
+/-! ## A join pair is implied only on the side that holds it
+
+Joining a right side keyed by `species` onto two left sides, the counts
+`(city, species)` and a gate `(city, form)` paired on `city` alone, the pair
+on `form` is implied by `species` only for the side that pairs `species`:
+the gate's `form` is free. -/
+
+/-- Counts `(city, species)` `[(0, 1), (0, 2)]`, a gate `(city, form)` with
+both forms in city 0, and species `s` of form `s % 2`. Dropping the gate's
+`form` pair, as implied by `species`, pairs each species with both forms:
+four rows for two (`pair_implied_off_its_side_misjoins`). -/
+theorem pair_implied_off_its_side_misjoins :
+    let counts : List (Int × Int) := [(0, 1), (0, 2)]
+    let gate : List (Int × Int) := [(0, 0), (0, 1)]
+    let form : Int → Int := fun s => s % 2
+    let joined := counts.flatMap fun c => (gate.filter fun g => g.1 == c.1).map (c, ·)
+    joined.length = 4 ∧
+      (joined.filter fun p => p.2.2 == form p.1.2).length = 2 := by
+  decide
+
 end Trilogy.SelectGrain

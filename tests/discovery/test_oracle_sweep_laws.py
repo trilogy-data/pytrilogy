@@ -323,8 +323,15 @@ def executor(model: str) -> Executor:
 REJECTED = "is also computed in the SELECT"
 
 
+# seeds past `SEEDS` that 0.3.492 fixed (each failed on main)
+FOUND_SEEDS = [
+    2401, 5269, 6850, 7162, 7340, 9309, 10155, 10212, 10414, 10838,
+    12056, 12179, 13153, 13548, 13709, 14382, 14551, 18367, 19430, 19682,
+]  # fmt: skip
+
+
 @pytest.mark.parametrize("model", ["base", "summary"])
-@pytest.mark.parametrize("seed", range(SEEDS))
+@pytest.mark.parametrize("seed", [*range(SEEDS), *FOUND_SEEDS])
 def test_select_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape(seed)
     try:
