@@ -2536,10 +2536,14 @@ states:
   (`_joint_plan`).
 - A recursive walk whose WHERE reads columns the walk does not carry pairs
   with its seed rows on the edge it walked (the `recurse_edge` arguments).
+- A relation rollup (`_plan_relation_rollup`, which the probe missed because
+  only the law suites reach it: the guard raised on all 344 of their cases)
+  is a star on its summary scan. A lookup joins the scan on its grain, and
+  each list's distinct pairs join it on that list's keys.
 
 With every site planned, a merge that reaches join inference with no plan
-raises (`MergeNode.generate_joins`). The full suite runs with that raise
-in place, and no test reaches it.
+raises (`MergeNode.generate_joins`). The full suite and the law suites run
+with that raise in place, and no test reaches it.
 
 Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
 worktree paths normalized): the same 25 failures on both sides. 57 tests
@@ -2553,11 +2557,17 @@ moved:
   moved. Run on their own, all compile the same on both trees (0 of 277
   statements moved).
 
+The law suites, captured the same way: 30,941 statements, 7 tests moved,
+all listed noise (`test_value_window_reads_each_row` under xdist, and
+`test_check_exact`'s grain-check column order).
+
 So no plan moved. `test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries`,
 `test_a_bridge_side_nothing_planned_is_a_planner_bug`,
 `test_scans_of_one_search_pair_on_the_classes_the_graph_links_both_to`,
 `test_scans_of_separate_searches_pair_on_nothing` and
-`test_a_walk_joined_back_pairs_on_the_edge_it_walked` pin the plans.
+`test_a_walk_joined_back_pairs_on_the_edge_it_walked` and
+`test_the_relation_join_is_planned` pin the plans, and
+`test_a_merge_with_no_plan_is_a_planner_bug` the guard.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2575,8 +2585,8 @@ not built yet:
    assembly on the join it states (part 65). A bridge through a
    derived connector the search chose is planned as well, with the connector
    also pairing on its resolved grain (part 66). So is a side the search did
-   not choose, `gen_select_merge_node`'s scans and a recursive walk's
-   join-back, so every merge between scans carries a plan, and one reaching
+   not choose, `gen_select_merge_node`'s scans, a recursive walk's
+   join-back and a relation rollup, so every merge between scans carries a plan, and one reaching
    join inference without one raises (part 67). What is left is building
    `node_joins` from the pairings, so resolve stops ordering keys it was
    already handed.
