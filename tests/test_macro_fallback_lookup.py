@@ -51,7 +51,7 @@ property fallback_taxon.row_scale float;
 
 datasource trees (tid: tid, species: species, x: x) grain (tid) file `./trees.csv`;
 root datasource species_forms (species: ~species, genus: ?genus, form: ?form) grain (species) file `./species.csv`;
-root datasource genus_fits (genus: genus, n: genus_n, a: ?genus_a, passes: ?genus_passes) grain (genus) file `./genus_fits.csv`;
+root datasource genus_fits (genus: ~genus, n: genus_n, a: ?genus_a, passes: ?genus_passes) grain (genus) file `./genus_fits.csv`;
 root datasource class_fits (level: row_level, taxon: fallback_taxon, b: row_b, scale: row_scale) grain (fallback_taxon) file `./class_fits.csv`
 where row_level = 'division' or row_level = 'global';
 
