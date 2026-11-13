@@ -573,16 +573,25 @@ def _hosts_reading_unfiltered_rows(
     ):
         return ()
     below = set().union(*(nx.descendants(host_graph, gid) for gid in chosen))
-    memo: dict[str, bool] = {}
-    extra = [
+    pool = [
         gid
         for gid in candidates
         if gid in below
         and gid in main_lineage
         and buckets[gid].derivation in _EMITS_GROUP_BY
-        and not _rows_filtered_by(gid, chosen, host_graph, buckets, environment, memo)
     ]
-    return tuple(_upstream_most(extra, host_graph))
+    hosts = tuple(chosen)
+    # an added host filters only what reads through it: re-check the rest
+    while True:
+        memo: dict[str, bool] = {}
+        extra = [
+            gid
+            for gid in pool
+            if not _rows_filtered_by(gid, hosts, host_graph, buckets, environment, memo)
+        ]
+        if not extra:
+            return hosts[len(chosen) :]
+        hosts += tuple(_upstream_most(extra, host_graph))
 
 
 def _collapsing_hosts_only(
@@ -1750,7 +1759,9 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         # selected aggregate and window reads (`sum(x) by *` included): host
         # it on the row stream that joins its inputs, never on a group that
         # produces one of them. FINAL only when no such host exists.
-        producers = set(_producer_groups(row_inputs, buckets, scope.group_outputs))
+        # a group producing a row column the atom reads beside them (the
+        # `height` of `height > 3 or ...`) is the row stream itself
+        producers = set(_producer_groups(agg_outputs, buckets, scope.group_outputs))
         restricted = [gid for gid in restricted if gid not in producers]
         if not restricted:
             out.append(
