@@ -689,6 +689,25 @@ does not rewrite it; that rewrite is open.
       on NULL turns the host's padding into a pass. Ask which group a host
       reads its atom's inputs from, not only which rows it filters.
 
+35. **Lessons from the key-source round (0.3.496).**
+    - Narrow every new preference to the atoms that can hold on an absent
+      group, as 0.3.495 narrowed the reroute. The cover's "rows passed the
+      WHERE" preference over every gate atom fixed its repro, raised on three
+      new seeds and cost 620 JOINs on 919 changed shapes; over atoms that hold
+      on NULL alone the round's whole JOIN cost is 0.2-0.3%. Likewise carrying a gate key
+      on the ROOT side lost 18 summary reads until it was limited to such
+      gates (null-rejecting ones were right through the second scan).
+    - "Does the atom hold on an absent group" is a per-argument question: a
+      conjunct proving one aggregate non-null proves nothing of the others.
+    - Attribute efficiency per change: a scratchpad `effabl.py` replays only
+      the shapes whose SQL changed, once per change switched off (by
+      monkeypatch, or a temporary env switch removed afterwards). One change
+      (the FINAL-args reroute) fixed nothing the others did not and cost 120
+      JOINs, so it was dropped.
+    - A batch harness that plans hundreds of statements in one process can
+      fail a shape that plans alone (first family 2717): when a shape fails
+      only in a batch, bisect the prefix before reading the planner.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1322,6 +1341,38 @@ a filter its grain does not determine. Open questions:
     (on main too) planned when the input rerouting also covered null-rejecting
     atoms; narrowed to atoms that hold on an absent group, it raises again,
     and the narrowing saved the JOINs that rerouting cost elsewhere.
+- Done in 0.3.496, from seeds 20,000-30,000 of the spellings family (on main:
+  11 wrong and 14 raising of 20,000 queries; after: none wrong and 12 raising,
+  nothing new broken; the first family's seeds 0-4,000 stay clean): the
+  select's keys come off one group holding their tuples when no cover winner
+  holds them all (`SelectGrain.keys_off_two_groups_pair_unheld`,
+  `final_cover._keys_off_one_tuple`); a ROOT side holding the key of a FINAL
+  gate that can hold on an absent group carries it, rather than a second scan
+  (`SelectGrain.dimension_side_pads_gate`, `_final_extra_sides`; seeds 10132,
+  11682, 24647, 28671); the input reroute of 0.3.495 asks per aggregate
+  argument whether NULL lets the atom hold (`args_holding_on_absent`;
+  `conjunct_read_past_its_host_passes_absent`, seed 22018); the cover prefers
+  a key source whose rows passed every such atom, a one-row total aside
+  (`key_off_unfiltered_stream_returns_rejected`, seed 19186); a keying bridge
+  reaches a stored key through a dedup whose outputs determine it
+  (`dedup_carries_determined`, `_widen_determined_dedup`, seed 19236). Left:
+  - seed 1117: the cover now names the hosting aggregate for `city, species`,
+    but `tree_form` (keyed by the selected `species`) still comes off the `?`
+    filter's unfiltered row stream, and the FINAL renders the keys off that
+    stream and joins the aggregates onto it preserving. The atom is placed on
+    every aggregate, so `_uncovered_exposing_output_contributor` (which also
+    counts every descendant of a host as covered, lesson 32) never runs for
+    it; narrowing its `covered` to `_rows_filtered_by` changed nothing here;
+  - seed 12917 (summary only), seed 18676 (keyless join, on main too);
+  - first family seed 2717 with the summary raises "Missing source reference
+    to local.height" after about 640 other queries in the same process, and
+    plans alone: state leaks between statements (on main too; run the shapes
+    of `changed.json`-style batches in order to reproduce);
+  - 12 raises remain on seeds 20,000-30,000: "Could not resolve connections"
+    on `tree_id` selects (8) and keyless joins (3) are most of them;
+  - the cost: JOINs 55,193 to 55,296 on the spellings seeds and 16,237 to
+    16,282 on the first family's; summary reads 3,273 to 3,274 (4 lost, 5
+    gained) and 1,741 to 1,742 (1 lost, 2 gained).
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
