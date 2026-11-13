@@ -316,8 +316,6 @@ FOUND_SEEDS = [
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
 OPEN = {
     129: "a HAVING `by city` beside `city as v0` reads as `by v0` and is rejected",
-    346: "a WHERE gate is placed only on the group a filtered aggregate's "
-    "condition reads; the filtered count's own rows skip it",
 }
 
 

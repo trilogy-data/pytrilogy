@@ -491,6 +491,100 @@ def _choose_groups(
     return tuple(candidates)
 
 
+def _aggregated_arguments(
+    bucket: GroupBucket, environment: BuildEnvironment
+) -> set[str] | None:
+    """The concepts a GROUP BY group's members aggregate, never their `by`."""
+    out: set[str] = set()
+    for address in bucket.primary_members:
+        lineage = getattr(environment.concepts.get(address), "lineage", None)
+        if isinstance(lineage, BuildAggregateWrapper):
+            lineage = lineage.function
+        if lineage is None:
+            return None
+        out |= {c.address for c in lineage.concept_arguments}
+    return out
+
+
+def _rows_filtered_by(
+    gid: str,
+    chosen: tuple[str, ...],
+    host_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    environment: BuildEnvironment,
+    memo: dict[str, bool],
+) -> bool:
+    """Whether every row `gid` reads passed through a chosen host. An aggregate
+    reads the groups producing what it aggregates; any other group its row
+    stream, beside aggregate values joined on (which filter nothing)."""
+    if gid in chosen:
+        return True
+    if gid in memo:
+        return memo[gid]
+    memo[gid] = False
+    preds = [p for p in host_graph.predecessors(gid) if p in buckets]
+    bucket = buckets[gid]
+    arguments = (
+        _aggregated_arguments(bucket, environment)
+        if bucket.derivation in _EMITS_GROUP_BY
+        else None
+    )
+    feeding = (
+        [p for p in preds if arguments & set(buckets[p].primary_members)]
+        if arguments
+        else []
+    )
+    if feeding:
+        result = all(
+            _rows_filtered_by(p, chosen, host_graph, buckets, environment, memo)
+            for p in feeding
+        )
+    else:
+        filtered = [
+            _rows_filtered_by(p, chosen, host_graph, buckets, environment, memo)
+            for p in preds
+        ]
+        result = any(filtered) and all(
+            ok
+            or buckets[p].derivation in _EMITS_GROUP_BY
+            or buckets[p].depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
+            for p, ok in zip(preds, filtered)
+        )
+    memo[gid] = result
+    return result
+
+
+def _hosts_reading_unfiltered_rows(
+    chosen: tuple[str, ...],
+    candidates: list[str],
+    host_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    main_lineage: set[str],
+    environment: BuildEnvironment,
+) -> tuple[str, ...]:
+    """Aggregates below a GROUP BY host that read rows the host never filtered.
+
+    A host's aggregate value joined beside another row stream (a filtered
+    aggregate's condition `sum(x) by *` beside the root rows it is evaluated on)
+    filters only the rows that value is computed from; the consumer aggregates
+    the other stream, so it hosts the atom itself."""
+    if not any(
+        gid in buckets and buckets[gid].derivation in _EMITS_GROUP_BY for gid in chosen
+    ):
+        return ()
+    below = set().union(*(nx.descendants(host_graph, gid) for gid in chosen))
+    memo: dict[str, bool] = {}
+    extra = [
+        gid
+        for gid in candidates
+        if gid in below
+        and gid in main_lineage
+        and buckets[gid].derivation in _EMITS_GROUP_BY
+        and not _rows_filtered_by(gid, chosen, host_graph, buckets, environment, memo)
+    ]
+    return tuple(_upstream_most(extra, host_graph))
+
+
 def _collapsing_hosts_only(
     chosen_groups: tuple[str, ...], buckets: dict[str, GroupBucket]
 ) -> bool:
@@ -1672,6 +1766,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # pushed past row-shape changes. A cross-boundary atom (an OR of
     # two boundaries' presence probes) can end up with only such hosts;
     # its correct home is then FINAL, above every barrier.
+    unbarred = list(restricted)
     if restricted:
         producer_groups = _producer_groups(row_inputs, buckets, scope.group_outputs)
         consumed_barriers: set[str] = set(producer_groups)
@@ -1724,6 +1819,9 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
             chosen_groups = outer_chosen
         elif outer_hosts:
             chosen_groups = _choose_groups(outer_hosts, host_graph, main_lineage)
+    chosen_groups += _hosts_reading_unfiltered_rows(
+        chosen_groups, unbarred, host_graph, buckets, main_lineage, environment
+    )
     out.append(
         ConditionPlacement(
             atom=atom,

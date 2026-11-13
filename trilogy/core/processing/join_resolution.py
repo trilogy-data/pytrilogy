@@ -1280,6 +1280,27 @@ class _Agreement:
         )
 
 
+def _aggregate_beside_its_grain(pair: ConceptPair, pairs: list[ConceptPair]) -> bool:
+    """An aggregate paired with itself beside every key of its grain: the
+    grain's pairs decide it, NULL groups included, where its own `=` would drop
+    a group whose value is NULL."""
+    concept = pair.left
+    if (
+        concept.address != pair.right.address
+        or concept.derivation != Derivation.AGGREGATE
+    ):
+        return False
+    grain = set(concept.grain.components)
+    others = [
+        o
+        for o in pairs
+        if o.node.identifier == pair.node.identifier
+        and o.left.address == o.right.address
+        and o.left.address != concept.address
+    ]
+    return bool(others) and grain <= {o.left.address for o in others}
+
+
 def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
@@ -1368,7 +1389,7 @@ def reduce_concept_pairs(
             and not (right_left_seen[rl_key] or pair.is_partial)
         ):
             continue
-        if index in fd_pruned:
+        if index in fd_pruned or _aggregate_beside_its_grain(pair, pairs):
             continue
 
         seen.add(dedup_key)
