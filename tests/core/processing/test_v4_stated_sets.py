@@ -156,3 +156,28 @@ def test_both_passes_read_one_demand(monkeypatch):
     Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
     assert len(demands) == 2
     assert demands[0] is demands[1]
+
+
+def test_every_step_reads_the_statement_once(monkeypatch):
+    calls: dict[str, int] = {}
+
+    def counted(name, fn):
+        def wrapped(*args):
+            calls[name] = calls.get(name, 0) + 1
+            return fn(*args)
+
+        return wrapped
+
+    for name in (
+        "_lineage_parents_by_address",
+        "_source_grain_by_address",
+        "_statement_relation_addresses",
+        "statement_demand",
+    ):
+        monkeypatch.setattr(gg, name, counted(name, getattr(gg, name)))
+    env = Environment()
+    env.parse(_MODEL)
+    Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)
+    statements = calls["statement_demand"]
+    assert statements >= 1
+    assert calls == {name: statements for name in calls}
