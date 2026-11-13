@@ -913,6 +913,10 @@ def plan_final_join(
         held = _held(
             group_graph, attrs, gid, carry_demands, environment, identity[gid], siblings
         )
+        # an extra row stream is joined as built: its input rows' columns are
+        # no column of it (a filter at `tree_id` over rows holding `city`)
+        if gid not in supplying and attrs[gid].derivation == Derivation.FILTER:
+            held &= frozenset(attrs[gid].output_concepts) | identity[gid]
         carries[gid] = (
             held
             | _renderable(held, members, environment)

@@ -552,21 +552,34 @@ def _uncovered_exposing_output_contributor(
     # counted, since they may ride through from an unfiltered parent.
     covered_members: set[str] = set()
     regrouped: set[str] = set()
+    held: list[set[str]] = []
     for gid in covered:
         if gid not in buckets:
             continue
-        covered_members |= set(buckets[gid].primary_members)
+        own = set(buckets[gid].primary_members)
+        covered_members |= own
         if gid in chosen_groups:
-            covered_members |= carried[gid] | set(buckets[gid].grain_components)
+            own |= carried[gid] | set(buckets[gid].grain_components)
+            covered_members |= own
         elif buckets[gid].derivation in GROUPING_DERIVATIONS:
+            own |= set(buckets[gid].grain_components)
             regrouped |= set(buckets[gid].grain_components)
+        held.append(own)
     # every output is the filtered branch's own, a group key it regroups the
     # kept rows by included (`tree_form` of `min(sum(x) by city, species)`):
-    # FINAL reads nothing an unfiltered row stream adds
+    # FINAL reads nothing an unfiltered row stream adds. Keys split over two
+    # branches (`city` off one, `tree_form` off another) are paired by a row
+    # stream the atom never filtered (`SelectGrain.split_keys_pair_unkept`).
     if _collapsing_hosts_only(chosen_groups, buckets) and mandatory_addrs <= (
         covered_members | regrouped
     ):
-        return False
+        keys = mandatory_addrs & set().union(
+            *(buckets[gid].grain_components for gid in covered if gid in buckets)
+        )
+        return (
+            not any(build_fd_determines_all(environment, own, keys) for own in held)
+            and row_inputs <= final_exposable
+        )
     for gid, b in buckets.items():
         if gid in covered:
             continue

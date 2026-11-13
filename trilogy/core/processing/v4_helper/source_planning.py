@@ -2509,6 +2509,8 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     component directly and merge them under a v4 node.
     """
     node = _plan_source(request)
+    if node is not None and _gates_a_pending_partial(request, node):
+        node = None
     if node is not None:
         _mark_grouped_at_source(node)
     if not plan_trace.active():
@@ -2530,6 +2532,37 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
         ),
     )
     return node
+
+
+def _gates_a_pending_partial(request: SourceRequest, node: StrategyNode) -> bool:
+    """The request's WHERE reads an aggregate a node of `node` filters on while
+    holding it only as a partial finer than its own grain (`sum(x) by city` off `(city, species)` summary
+    rows): filtered there, it is re-summed at the select's grain, never its
+    own (`Rollup.gate_partial_resummed_off_its_grain`). The aggregate's own
+    group answers it instead."""
+    gated = {
+        c.address
+        for clause in (request.conditions, request.deferred_conditions)
+        if clause is not None
+        for c in condition_row_args(clause)
+        if c.is_aggregate
+    }
+    if not gated:
+        return False
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.parents)
+        if current.conditions is None:
+            continue
+        applied = gated & {c.address for c in current.conditions.row_arguments}
+        resolved = current.resolve()
+        if any(
+            c.address in applied and not at_own_grain(c, resolved.grain)
+            for c in resolved.rollup_concepts
+        ):
+            return True
+    return False
 
 
 @plan_trace.off_clock
