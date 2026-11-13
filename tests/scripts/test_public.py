@@ -130,6 +130,33 @@ def test_public_fetch_bike_data(patched_urlopen):
         assert '"setup.sql"' in config
 
 
+def test_public_fetch_uses_model_config(patched_urlopen, monkeypatch):
+    config = {
+        "alias": "trilogy",
+        "name": "trilogy",
+        "purpose": "config",
+        "type": "config",
+        "url": (
+            "https://trilogy-data.github.io/trilogy-public-models/"
+            "trilogy_public_models/duckdb/bike_data/trilogy.toml"
+        ),
+    }
+    model_toml = (
+        b'[engine]\ndialect = "duck_db"\n\n'
+        b'[engine.config]\ndb_location = "bikes.duckdb"\n'
+    )
+    monkeypatch.setitem(
+        SAMPLE_MANIFEST, "components", [*SAMPLE_MANIFEST["components"], config]
+    )
+    monkeypatch.setitem(FILE_CONTENTS, "trilogy.toml", model_toml)
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target = Path(tmpdir) / "out"
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
+        assert result.exit_code == 0, result.output
+        assert (target / "trilogy.toml").read_bytes() == model_toml
+
+
 def test_public_fetch_no_examples(patched_urlopen):
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -288,7 +288,7 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
     components = [
         c
         for c in manifest.get("components", [])
-        if c.get("type") in {"trilogy", "sql"}
+        if c.get("type") in {"trilogy", "sql", "config"}
         or (examples and c.get("type") == "dashboard")
     ]
     if not examples:
@@ -326,6 +326,8 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
         readme_path.write_text(manifest["description"] + "\n", encoding="utf-8")
         written.append(readme_path)
 
+    # A model's own trilogy.toml arrives above as its `config` component;
+    # generate a minimal one only for models that ship none.
     toml_path = target_root / "trilogy.toml"
     if not toml_path.exists():
         dialect = "duck_db" if entry.engine == "duckdb" else entry.engine

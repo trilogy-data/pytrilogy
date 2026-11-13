@@ -64,22 +64,23 @@ to let you get started on the data work fast.
 Run the below to import, query, and explore one of these models directly.
 
 ```bash
-# 1. Pull a public model (fetches all source .preql files and trilogy.toml).
+# 1. Pull a public model (fetches its .preql files, examples, and trilogy.toml).
 trilogy public fetch faa ./faa-demo
 cd faa-demo
 
-# Run a quick adhoc query (--import prepends the import for you — discover
+# 2. Run a quick adhoc query (--import prepends the import for you — discover
 # what's available with `trilogy explore flight.preql`)
-trilogy run --import flight "select carrier.code, count(id) as flight_count order by flight_count desc;"
+trilogy run --import flight "select aircraft.model.name, count order by count desc limit 5;"
 
 # Plot it
 trilogy run --import flight "chart layer barh ( y_axis <- carrier.name, x_axis <- count(id) as flight_count ) order by flight_count desc limit 10;"
 
-# 3. Add a derived datasource by grabbing the hosted snippet
-trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/refs/heads/main/examples/duckdb/faa/example.preql
+# 3. Build the rollup declared in example.preql (see below)
+trilogy refresh example.preql
 
-# 4. Refresh — builds the managed asset declared in reporting.preql and tracks watermarks.
-trilogy refresh reporting.preql
+# 4. Same query, with the rollup in scope: it now reads daily_airplane_usage
+# instead of joining the raw flights to aircraft and models
+trilogy run --import example "select aircraft.model.name, count order by count desc limit 5;"
 
 # 5. Launch the Studio UI against the live model (opens your browser) to explore + query
 trilogy serve .
@@ -98,28 +99,26 @@ Host/Origin checks guard it). `--host 0.0.0.0` exposes the server to the network
 then `/mcp` requires the printed token as an `X-Trilogy-Token` header, since queries
 can run arbitrary SQL.
 
-The snippet fetched in step 3 looks like this — copy/paste it into your
-editor if you'd rather author it by hand:
+`example.preql` declares the rollup. The query never names it: the planner
+answers from any datasource that holds the concepts at the query's grain or
+finer, re-aggregating as needed, so the physical layer can change without
+touching what consumes it.
 
 ```trilogy
-import flight as flight;
+import flight;
 
 # derive reusable concepts
-auto flight_date <- flight.dep_time::date;
+auto flight_date <- dep_time::date;
 
-# this can be properties or metrics
-auto flight_count <- count(flight.id);
-
-# datasources can be read from or written to
-# use this to write to 
+# a rollup: once `trilogy refresh` builds it, queries for `count` at this grain
+# or coarser (e.g. by aircraft.model.name alone) read it instead of raw flights
 datasource daily_airplane_usage (
     flight_date,
-    flight.aircraft.model.name,
-    flight_count
+    aircraft.model.name,
+    count
 )
-grain(flight_date, flight.aircraft.model.name)
-address daily_airplane_usage
-;
+grain (flight_date, aircraft.model.name)
+address daily_airplane_usage;
 ```
 
 Browse other available models with `trilogy public list` (filter with
