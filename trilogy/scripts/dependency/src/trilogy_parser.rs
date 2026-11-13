@@ -1,8 +1,68 @@
+use pest::error::{Error, ErrorVariant, InputLocation};
+use pest::iterators::Pairs;
+use pest::{Parser as _, Position, Token};
 use pest_derive::Parser;
 
 #[derive(Parser)]
 #[grammar = "trilogy.pest"]
 pub struct TrilogyParser;
+
+/// The deepest parse tree `parse_bounded` accepts. The deepest model in the
+/// repository reaches 48; a level of nested expression costs about 5-6, so
+/// this admits about 40 nested parens/calls/cases (125 nested types) while
+/// keeping every recursive walk downstream (the PyO3 conversion, Python's tree
+/// conversion and hydration) inside its stack.
+pub const MAX_NESTING_DEPTH: usize = 256;
+
+/// Leads the message of every nesting-limit error; Python matches on it.
+pub const NESTING_LIMIT_MESSAGE: &str = "nesting depth limit reached";
+
+/// Parse `text` as a Trilogy file, rejecting input nested deeper than
+/// `MAX_NESTING_DEPTH` with an ordinary parse error rather than recursing on.
+///
+/// pest's own stack guard turns a parse that would overflow the native stack
+/// into "stack limit reached"; that is reported as the same nesting error. The
+/// depth check after it is what makes the limit deterministic, since the stack
+/// guard depends on the calling thread's stack size.
+pub fn parse_bounded(text: &str) -> Result<Pairs<'_, Rule>, Box<Error<Rule>>> {
+    let pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| match &e.variant {
+        ErrorVariant::CustomError { message } if message == "stack limit reached" => {
+            let pos = match e.location {
+                InputLocation::Pos(pos) | InputLocation::Span((pos, _)) => pos,
+            };
+            nesting_error(text, pos)
+        }
+        _ => Box::new(e),
+    })?;
+    match too_deep_at(pairs.clone()) {
+        Some(pos) => Err(nesting_error(text, pos)),
+        None => Ok(pairs),
+    }
+}
+
+fn too_deep_at(pairs: Pairs<'_, Rule>) -> Option<usize> {
+    let mut depth = 0usize;
+    for token in pairs.tokens() {
+        match token {
+            Token::Start { pos, .. } => {
+                depth += 1;
+                if depth > MAX_NESTING_DEPTH {
+                    return Some(pos.pos());
+                }
+            }
+            Token::End { .. } => depth -= 1,
+        }
+    }
+    None
+}
+
+fn nesting_error(text: &str, pos: usize) -> Box<Error<Rule>> {
+    let message = format!(
+        "{NESTING_LIMIT_MESSAGE}: input is nested more than {MAX_NESTING_DEPTH} levels deep"
+    );
+    let pos = Position::new(text, pos).unwrap_or_else(|| Position::from_start(text));
+    Box::new(Error::new_from_pos(ErrorVariant::CustomError { message }, pos))
+}
 
 /// How many rule calls a parse of `text` makes, or `None` when it makes more
 /// than `max_calls`. Parse errors other than the call limit are returned.
@@ -55,9 +115,8 @@ pub fn rule_calls(text: &str, max_calls: usize) -> Result<Option<usize>, Box<pes
 // available to pure-Rust consumers (the CLI, downstream crates).
 #[cfg(feature = "python")]
 mod python_impl {
-use super::{Rule, TrilogyParser};
+use super::Rule;
 use pest::iterators::Pair;
-use pest::Parser;
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString, PyTuple};
 use std::collections::HashMap;
@@ -589,7 +648,7 @@ fn convert_pair<B: TreeBuilder>(py: Python<'_>, pair: Pair<Rule>, idx: &LineInde
 }
 
 fn parse_root<'i>(text: &'i str) -> PyResult<Pair<'i, Rule>> {
-    let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
+    let mut pairs = super::parse_bounded(text).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
     })?;
     pairs
@@ -633,12 +692,7 @@ pub fn parse_trilogy_syntax_calls(text: &str, max_calls: usize) -> PyResult<usiz
 /// separate raw pest cost from PyO3 conversion overhead.
 #[pyfunction]
 pub fn parse_trilogy_syntax_count(text: &str) -> PyResult<usize> {
-    let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
-    })?;
-    let start = pairs
-        .next()
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("empty parse result"))?;
+    let start = parse_root(text)?;
     fn walk(pair: Pair<Rule>) -> usize {
         let mut n = 1;
         for inner in pair.into_inner() {

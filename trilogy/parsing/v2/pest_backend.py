@@ -5,6 +5,7 @@ from bisect import bisect_right
 
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.parsing.v2.errors import (
+    NESTING_LIMIT_MESSAGE,
     create_generic_syntax_error,
     create_syntax_error,
     detect_align_missing_and,
@@ -416,7 +417,11 @@ def parse_pest(text: str) -> SyntaxDocument:
     try:
         tree = parse_trilogy_syntax_tuple(text)
     except ValueError as e:
-        raise _diagnose_pest_error(text, str(e)) from e
+        raw = str(e)
+        if NESTING_LIMIT_MESSAGE in raw:
+            pos = _pest_error_char_pos(raw, text)
+            raise create_syntax_error(234, pos, text) from e
+        raise _diagnose_pest_error(text, raw) from e
     line_starts = _compute_line_starts(text)
     syntax = _tuple_to_syntax(tree, text, line_starts)
     if not isinstance(syntax, SyntaxNode):

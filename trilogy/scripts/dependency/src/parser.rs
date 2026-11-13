@@ -8,9 +8,8 @@
 // directory_resolver callers now surface a warning for files that can't parse
 // cleanly (the lark/pest pipelines would reject them at compile time anyway).
 
-use crate::trilogy_parser::{Rule, TrilogyParser};
+use crate::trilogy_parser::{parse_bounded, Rule};
 use pest::iterators::Pair;
-use pest::Parser;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -140,7 +139,7 @@ pub enum ParseError {
 }
 
 pub fn parse_file(content: &str) -> Result<ParsedFile, ParseError> {
-    let mut pairs = TrilogyParser::parse(Rule::start, content)?;
+    let mut pairs = parse_bounded(content).map_err(|e| *e)?;
     let start = pairs
         .next()
         .ok_or(ParseError::InvalidImportStructure)?;

@@ -9,7 +9,7 @@ from typing import Any
 from trilogy.constants import CONFIG, ParserBackend, Parsing
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.v2.errors import ERROR_CODES
+from trilogy.parsing.v2.errors import ERROR_CODES, create_syntax_error
 from trilogy.parsing.v2.hydration import HydrationContext, NativeHydrator
 from trilogy.parsing.v2.import_service import ImportEnvCacheKey
 from trilogy.parsing.v2.lark_backend import parse_lark
@@ -43,9 +43,14 @@ __all__ = [
 # unbounded memory growth on long-running processes.
 @lru_cache(maxsize=256)
 def _parse_syntax_cached(text: str, backend: str) -> SyntaxDocument:
-    if backend == ParserBackend.PEST.value:
-        return parse_pest(text)
-    return parse_lark(text)
+    # The parser's nesting limit keeps tree conversion inside the recursion
+    # limit; this covers a caller already deep in its own stack, and lark.
+    try:
+        if backend == ParserBackend.PEST.value:
+            return parse_pest(text)
+        return parse_lark(text)
+    except RecursionError as e:
+        raise create_syntax_error(234, 0, text) from e
 
 
 def parse_syntax(text: str) -> SyntaxDocument:
