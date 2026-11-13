@@ -73,7 +73,8 @@ summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
 0.3.495: selects checked against Python over the raw rows, not against
 another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
-family from 127 wrong rows to 5; area 1).
+family from 127 wrong rows to 5; 0.3.495 to 0.3.497 sweep seeds 10,000-40,000;
+area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -707,6 +708,21 @@ does not rewrite it; that rewrite is open.
     - A batch harness that plans hundreds of statements in one process can
       fail a shape that plans alone (first family 2717): when a shape fails
       only in a batch, bisect the prefix before reading the planner.
+
+36. **Lessons from the FINAL-lookup round (0.3.497).**
+    - A fix that changes how one join is typed can remove the domain another
+      relied on. Capping every WHERE-argument producer's join to non-preserving
+      fixed seed 31824 and broke three shapes main was right on, where the
+      producer's FULL join was what supplied a dimension's key domain; capping
+      only a producer keyed off another producer kept the fix and broke none.
+      Rerun the whole family after every narrowing, not only the repros.
+    - A COUNT is "proved non-null" for free: it never is NULL. What decides
+      whether a host's padding passes is its value there, 0. Per-argument
+      checks need the absent value of each argument, not its nullability.
+    - Ablate efficiency per change, then narrow by the argument the bug reads:
+      the cover's "no output off a condition group" preference cost 12 summary
+      reads over every such group, 7 once limited to groups producing an
+      argument of the FINAL's absent-holding atom.
 
 ## Candidate areas
 
@@ -1373,6 +1389,30 @@ a filter its grain does not determine. Open questions:
   - the cost: JOINs 55,193 to 55,296 on the spellings seeds and 16,237 to
     16,282 on the first family's; summary reads 3,273 to 3,274 (4 lost, 5
     gained) and 1,741 to 1,742 (1 lost, 2 gained).
+- Done in 0.3.497, from seeds 30,000-40,000 of the spellings family (on
+  main: 9 wrong, one invalid SQL statement and 33 raising, of 20,000 queries;
+  the first family's seeds 0-4,000 stay clean): a gate the FINAL re-applies pairs on its
+  whole grain, so a side holding one of its keys is not folded into a sibling
+  without it (`SelectGrain.gate_paired_short_of_its_grain`,
+  `_final_gate_keys`; seeds 35845, 31847); a COUNT read past a host reads 0,
+  not NULL (`count_arg_past_host_passes_absent`; `args_holding_on_absent`
+  includes it unless a literal comparison rejects 0; seed 39340); a WHERE
+  argument's producer keyed off another producer is a lookup, and the cover
+  reads no output off a group producing an argument of a FINAL atom that
+  holds on an absent group (`lookup_preserved_passes_padding`,
+  `MergeNode.lookups`; seed 31824); an atom over an aggregate is pushed into a
+  group only when every row column it names is grouped (seed 35775, invalid
+  SQL with the summary). Left:
+  - seed 30670 (and 1117): `select city, species, tree_form, min(height) by
+    city, tree_form, sum(height ? ...) where (... and avg(height) by city,
+    tree_form is null)` takes `tree_form` off the `?` filter's unfiltered row
+    stream. The host by `(city, species)` determines `tree_form` but never
+    carries it, and nothing re-applies the WHERE at FINAL. The fix is to
+    carry a looked-up property on a filtered host (a scan beneath it binds
+    it), not to choose among unfiltered sources;
+  - seeds 12917 (summary only) and 18676 as before; first family 2717 and
+    spellings 7061 raise only in a batch (state leaks between statements);
+  - COST_RESULT
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
