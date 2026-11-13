@@ -1903,6 +1903,8 @@ def _add_concept(
             if isinstance(concept.lineage, BuildAggregateWrapper)
             else None
         ),
+        fixed_grain=isinstance(concept.lineage, BuildAggregateWrapper)
+        and not concept.lineage.grain_inherited,
         grain_pin_anchors=_grain_pin_anchors(concept),
         keys=frozenset(concept.keys or set()),
         binding_determinants=_binding_determinants(concept.address, datasources),

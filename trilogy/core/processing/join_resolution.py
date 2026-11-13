@@ -238,6 +238,8 @@ class SideFacts:
     # the side's axes in this merge's spelling; the join ordering breaks ties
     # on how many there are
     grain: frozenset[str] = frozenset()
+    # what that grain determines (its FD closure), in this merge's spelling
+    determined: frozenset[str] = frozenset()
     # covers every `~`-licensed key the node emits, so extension rows ride it
     hosts: bool = False
     # spans the side holds a region's rows on
@@ -610,8 +612,41 @@ def _nullable_join(
         # the very rows its intact domain claim promises. Preserve both, padded.
         if _is_nullable_grain_aligned_merge(left_facts, right_facts, keys):
             return JoinType.FULL
+        # A nullable side whose rows the other side's rows determine is that
+        # side's lookup, not its fact: a NULL key it holds without being a
+        # value names no row of the other side's (a species dimension beside
+        # the trees a WHERE kept, #972), so the fact's rows are the ones kept.
+        lookup = left_facts if left_is_nullable else right_facts
+        fact = right_facts if left_is_nullable else left_facts
+        if (
+            _dimension_of(lookup, fact)
+            and not keys & lookup.value_nullables
+            and not facts.authored(keys)
+        ):
+            return JoinType.RIGHT_OUTER if left_is_nullable else JoinType.LEFT_OUTER
         return JoinType.LEFT_OUTER if left_is_nullable else JoinType.RIGHT_OUTER
     return JoinType.INNER
+
+
+def _fd_closure(
+    environment: BuildEnvironment, determinants: Collection[str]
+) -> frozenset[str]:
+    # local import: v4_helper's package init imports this module
+    from trilogy.core.processing.v4_helper.functional_dependency import (
+        build_fd_closure,
+    )
+
+    return build_fd_closure(environment, determinants, include_empty_grain=False)
+
+
+def _dimension_of(lookup: SideFacts, fact: SideFacts) -> bool:
+    """`fact`'s rows determine `lookup`'s grain, and not conversely."""
+    return (
+        bool(lookup.grain)
+        and bool(fact.grain)
+        and lookup.grain <= fact.grain | fact.determined
+        and not fact.grain <= lookup.grain | lookup.determined
+    )
 
 
 def get_join_type(
@@ -2340,6 +2375,10 @@ def get_node_joins(
             guest_padded=frozenset(nullable_keys & guest_addrs),
             rollup_padded=frozenset(rollup_keys),
             grain=frozenset(canon_node(a) for a in datasource.grain.components),
+            determined=frozenset(
+                canon_node(a)
+                for a in _fd_closure(environment, datasource.grain.components)
+            ),
             hosts=hosts,
             held_spans=frozenset(held_spans),
             complete_spans=frozenset(

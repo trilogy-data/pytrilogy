@@ -3903,6 +3903,16 @@ def _fd_at_grain(
     )
 
 
+def _rows_finer_than(
+    node: StrategyNode, grain: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    rows = frozenset(node.resolve().grain.components)
+    return bool(rows) and not (
+        rows <= grain
+        or build_fd_determines_all(environment, grain, rows, include_empty_grain=False)
+    )
+
+
 def _single_row_node(node: StrategyNode) -> bool:
     return bool(node.output_concepts) and all(
         c.granularity == Granularity.SINGLE_ROW for c in node.output_concepts
@@ -3979,10 +3989,18 @@ def _satisfy_parent_projection_contract(
             if (c := _concept_at(environment, addr)) is not None
             and _fd_at_grain(c, projection_grain_components, environment)
         }
+        # A sibling supplies a grain key, and an attribute this parent only
+        # reads (#972: the species' fit beside a class computed off the trees):
+        # neither is this parent's to project, and a projection to a column it
+        # does not output cannot render.
         fd_needed = {
             addr
             for addr in fd_candidates
-            if not (addr in projection_grain_components and addr in other_outputs)
+            if addr not in other_outputs
+            or (
+                addr not in projection_grain_components
+                and addr in own_outputs_by_parent[idx]
+            )
         }
         non_fd_needed = parent_needed - fd_candidates
         concepts = [
@@ -3990,7 +4008,7 @@ def _satisfy_parent_projection_contract(
             for addr in sorted(fd_needed)
             if (c := _concept_at(environment, addr)) is not None
         ]
-        if not concepts or non_fd_needed:
+        if non_fd_needed:
             projected.append(parent)
             continue
         # `parent_needed` is measured off the parent's INPUTS, so a value the
@@ -4016,7 +4034,18 @@ def _satisfy_parent_projection_contract(
             if (c := _concept_at(environment, addr)) is not None
             and _fd_at_grain(c, projection_grain_components, environment)
         }
-        if own_needed - carry:
+        # a value computed over finer rows, FD at the grain, is projected to
+        # it (a class by species off the trees, #972); a leaf scan reports no
+        # inputs and stays whole (see above), and rows at the grain already
+        # need no projection
+        if own_needed - carry or not (
+            concepts
+            or (
+                carry
+                and parent.parents
+                and _rows_finer_than(parent, projection_grain_components, environment)
+            )
+        ):
             projected.append(parent)
             continue
         concepts.extend(

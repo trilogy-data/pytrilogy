@@ -11,14 +11,12 @@ select over the fallback chain, beside a flag read off a count by city and
 species (a species dimension the rows reach the genus through)."""
 
 import random
-import re
 from collections import defaultdict
 
 import pytest
 
-from tests.helpers.rows import fetch_rows
+from tests.helpers.rows import fetch_rows, normalize_numbers, widest_cte
 from trilogy import Dialects
-from trilogy.executor import Executor
 
 SEEDS = 300
 CITIES = ["bos", "sfo"]
@@ -65,8 +63,6 @@ auto pred_height <- dbh * tree_h;
 auto species_city_n <- count(tree_id) by city, species;
 auto rare <- species_city_n < 2;
 """
-
-CTE = re.compile(r"^(\w+) as (?:MATERIALIZED )?\(", re.MULTILINE)
 
 
 def _lit(v) -> str:
@@ -200,32 +196,6 @@ def shape(seed: int) -> tuple[str, str, list[tuple], int]:
     return model, query, expected, widest
 
 
-def normalize(rows) -> list[tuple]:
-    def fix(v):
-        if v is None or isinstance(v, (str, bool)):
-            return v
-        number = float(v)
-        return int(number) if number.is_integer() else round(number, 6)
-
-    return sorted((tuple(fix(v) for v in r) for r in rows), key=repr)
-
-
-def widest_cte(executor: Executor, sql: str) -> tuple[int, str]:
-    head = sql[: sql.rindex("\nSELECT")]
-    return max(
-        (
-            (
-                executor.execute_raw_sql(
-                    f"{head}\nSELECT count(*) FROM {name}"
-                ).fetchone()[0],
-                name,
-            )
-            for name in CTE.findall(sql)
-        ),
-        default=(0, ""),
-    )
-
-
 @pytest.mark.parametrize("seed", range(SEEDS))
 def test_fallback_select_matches_raw_rows_and_never_fans_out(seed: int):
     model, query, expected, widest = shape(seed)
@@ -233,7 +203,7 @@ def test_fallback_select_matches_raw_rows_and_never_fans_out(seed: int):
     try:
         executor.parse_text(model)
         sql = executor.generate_sql(query)[-1]
-        assert normalize(fetch_rows(executor, query)) == normalize(
+        assert normalize_numbers(fetch_rows(executor, query)) == normalize_numbers(
             expected
         ), f"{query}\n{sql}"
         rows, name = widest_cte(executor, sql)
