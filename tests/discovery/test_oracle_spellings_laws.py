@@ -308,7 +308,11 @@ def shape2(seed):
 
 
 SEEDS = 400
-FOUND_SEEDS: list[int] = []
+# seeds past `SEEDS` that 0.3.493 fixed (each failed on main)
+FOUND_SEEDS = [
+    401, 878, 1087, 1091, 1172, 1350, 1390, 1401, 1599, 1606, 1612,
+    2472, 2961, 3245, 3389, 3694, 4309, 4623, 4965, 5374, 5975, 6695,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
 OPEN = {
     129: "a HAVING `by city` beside `city as v0` reads as `by v0` and is rejected",

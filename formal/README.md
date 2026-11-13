@@ -1672,7 +1672,14 @@ a design decision or a bug.
   selects, `>=`/`<=`/`!=`, a gate `is null`, two gates compared or
   subtracted, `between`, `coalesce`, a gate inside `agg(x ? c)`, a compound
   HAVING) failed 391 of 20,000 queries on main (199 wrong rows, 192 raising).
-  AB_RESULTS
+  A/B'd against main on the same 20,000: 199 wrong and 192 raising there,
+  127 and 146 here, 118 fixed and none main gets right broken; the first
+  family's seeds 20,000-25,000 lose their 4 raises. The summary is read on
+  as many first-family shapes as main (2,120); on the second it is no longer
+  read on 7 keys-only shapes whose summary plan was wrong but happened to
+  return the right rows (`select city where min(height) by city >
+  min(height) by species` compared `min(lo)` with itself). JOINs: 72,180 on
+  main, 72,344 here.
   - Keys split over two filtered branches were paired through rows the
     WHERE never filtered (`SelectGrain.split_keys_pair_unkept`): `select city,
     tree_form, count(tree_id) by tree_form, count(tree_id) by city where
