@@ -10,11 +10,21 @@ from trilogy.core.processing.join_resolution import (
 )
 
 
-def _facts(partials: dict[str, list[str]]) -> JoinFacts:
+def _shared(g: Graph) -> dict[frozenset[str], frozenset[str]]:
+    sides = sorted(x for x in g.nodes if x.startswith("ds~"))
+    return {
+        frozenset({a, b}): frozenset(set(g.neighbors(a)) & set(g.neighbors(b)))
+        for i, a in enumerate(sides)
+        for b in sides[i + 1 :]
+    }
+
+
+def _facts(g: Graph, partials: dict[str, list[str]]) -> JoinFacts:
     return JoinFacts(
         sides={
             node: SideFacts(partials=frozenset(keys)) for node, keys in partials.items()
-        }
+        },
+        pair_keys=_shared(g),
     )
 
 
@@ -37,7 +47,7 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, _facts(partials))
+    output = resolve_join_order_v2(g, _facts(g, partials))
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
@@ -78,8 +88,6 @@ def test_sides_pair_only_on_their_own_planned_keys():
     g = _shared_key_graph()
     g.add_edge("ds~a", "c~x")
     g.add_edge("ds~b", "c~x")
-    unplanned = resolve_join_order_v2(g, JoinFacts())
-    assert unplanned[0].keys == {"ds~b": {"c~x", "c~k"}}
     planned = resolve_join_order_v2(
         g,
         JoinFacts(
@@ -113,6 +121,11 @@ def test_a_side_waits_for_its_planned_partner():
     ]
 
 
+def test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing():
+    joins = resolve_join_order_v2(_shared_key_graph(), JoinFacts())
+    assert [(j.right, j.keys) for j in joins] == [("ds~b", {}), ("ds~c", {})]
+
+
 def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
     planned = resolve_join_order_v2(
         _shared_key_graph(),
@@ -127,7 +140,7 @@ def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
 def test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots():
     g = _shared_key_graph()
     g.add_edge("ds~d", "c~x")
-    joins = resolve_join_order_v2(g, JoinFacts())
+    joins = resolve_join_order_v2(g, JoinFacts(pair_keys=_shared(g)))
     assert [(j.left, j.right, j.keys) for j in joins][-1] == ("ds~a", "ds~d", {})
 
 
@@ -423,7 +436,7 @@ def test_resolve_join_order_v2_multi_partial():
         "ds~fact2": ["c~shared_id"],
     }
 
-    output = resolve_join_order_v2(g, _facts(partials))
+    output = resolve_join_order_v2(g, _facts(g, partials))
 
     # Both fact tables should join to dim; fact tables join first
     # because multi_partial scoring boosts them.

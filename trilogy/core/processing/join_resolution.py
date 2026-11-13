@@ -132,15 +132,10 @@ def _pair_source(pair: ConceptPair) -> str:
     return pair.node.identifier
 
 
-def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
-    return set(g.neighbors(ds1)) & set(g.neighbors(ds2))
-
-
 def get_connection_keys(
-    all_connections: dict[tuple[str, str], set[str]], left: str, right: str
+    pair_keys: Mapping[frozenset[str], frozenset[str]], left: str, right: str
 ) -> set[str]:
-    key: tuple[str, str] = (min(left, right), max(left, right))
-    return all_connections.get(key, set())
+    return set(pair_keys.get(frozenset({left, right}), ()))
 
 
 @dataclass(frozen=True)
@@ -283,7 +278,8 @@ class JoinFacts:
     demanded_domains: frozenset[str] = frozenset()
     # an arm key of a merged attribute -> the attribute it reaches
     span_families: Mapping[str, str] = field(default_factory=dict)
-    # two sides the join plan states -> the only keys they may pair on
+    # two sides -> the keys the join plan pairs them on, each a column both
+    # hold; a pair it does not name pairs on nothing
     pair_keys: Mapping[frozenset[str], frozenset[str]] = field(default_factory=dict)
 
     def side(self, node: str) -> SideFacts:
@@ -835,21 +831,15 @@ def _solid_value_null_pivots(
 
 
 def _pivot_map(
-    g: nx.Graph,
-    concepts: Sequence[str],
-    datasources: Sequence[str],
     pair_keys: Mapping[frozenset[str], frozenset[str]],
 ) -> dict[str, list[str]]:
-    """Each column's holders. A column several sides hold pivots only the
-    holders the plan pairs on it: the rest join on their own planned keys."""
-    out: dict[str, list[str]] = {}
-    for concept in concepts:
-        holders = [x for x in g.neighbors(concept) if x in datasources]
-        if pair_keys and len(holders) > 1:
-            holders = _paired_holders(concept, holders, pair_keys)
-        if holders:
-            out[concept] = holders
-    return out
+    """Each planned key's holders: the sides the plan pairs on it."""
+    out: dict[str, set[str]] = defaultdict(set)
+    for pair, keys in pair_keys.items():
+        if len(pair) == 2:
+            for key in keys:
+                out[key] |= pair
+    return {key: sorted(holders) for key, holders in out.items()}
 
 
 def _keyless_order(g: nx.Graph, ds: str) -> tuple[bool, str, str]:
@@ -865,7 +855,8 @@ def _keyless_order(g: nx.Graph, ds: str) -> tuple[bool, str, str]:
 def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
-    Pick a pivot (shared concept), then absorb datasources that connect to the
+    Every key is the plan's (`facts.pair_keys`): two sides pair on what it
+    pairs them on, and on nothing else. Pick a pivot (a planned key), then absorb datasources that connect to the
     growing left set, scoring candidates by eligibility / partial / nullable
     status and breaking ties on grain width (``_score_join_candidate``).
     Every choice point sorts its inputs, so the plan is deterministic across runs.
@@ -874,7 +865,6 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     guarantees the result set regardless of the order chosen here.
     """
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
-    concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
     # A source is an anchor when it provides a scoped-LEFT anchor key as a
     # COMPLETE (non-partial) concept; optional sources are partial against it.
@@ -897,20 +887,10 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
             and not (active_anchor_keys & facts.side(ds).partials)
         )
 
-    all_connections: dict[tuple[str, str], set[str]] = {}
-    for i, ds1 in enumerate(datasources):
-        for ds2 in datasources[i + 1 :]:
-            connecting_concepts = find_all_connecting_concepts(g, ds1, ds2)
-            if facts.pair_keys:
-                connecting_concepts &= facts.pair_keys.get(
-                    frozenset({ds1, ds2}), frozenset()
-                )
-            if connecting_concepts:
-                all_connections[(min(ds1, ds2), max(ds1, ds2))] = connecting_concepts
-
+    all_connections = facts.pair_keys
     output: list[JoinOrderOutput] = []
 
-    pivot_map = _pivot_map(g, concepts, datasources, facts.pair_keys)
+    pivot_map = _pivot_map(all_connections)
     # An AUTHORED join key (scoped join / merge relation) pivots FIRST: its
     # equality is a semantic pairing contract, not a heuristic tree edge. If a
     # cheaper shared key seeds the tree instead, the sides pair on that key
@@ -1049,9 +1029,9 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
             )
             eligible_left.add(right)
 
-    # Every side sharing a pairable column with another joined under that
-    # column's pivot; the rest pair with nothing, so they join on nothing
-    # and the keyless-join guard judges them.
+    # Every side the plan pairs on a key joined under that key's pivot; the
+    # rest pair with nothing, so they join on nothing and the keyless-join
+    # guard judges them.
     for ds in sorted(
         (
             x
@@ -2190,7 +2170,8 @@ def _planned_pair_nodes(
     environment: BuildEnvironment,
 ) -> dict[frozenset[str], frozenset[str]]:
     """`planned_pairs` (datasource identifiers -> addresses) as the graph's
-    datasource and concept nodes: a pair may share only the planned classes."""
+    datasource and concept nodes: a pair's keys are the columns both sides
+    hold of the classes the plan pairs them on."""
     concepts = [
         node for node in graph.nodes() if graph.nodes[node]["type"] == NodeType.CONCEPT
     ]
@@ -2201,10 +2182,12 @@ def _planned_pair_nodes(
     out: dict[frozenset[str], frozenset[str]] = {}
     for pair, keys in planned_pairs.items():
         planned = {roots.get(address, address) for address in keys}
-        out[frozenset(f"ds~{identifier}" for identifier in pair)] = frozenset(
+        sides = frozenset(f"ds~{identifier}" for identifier in pair)
+        out[sides] = frozenset(
             node
             for node in concepts
             if roots.get(node.removeprefix("c~"), node.removeprefix("c~")) in planned
+            and all(graph.has_edge(side, node) for side in sides)
         )
     return out
 
@@ -2216,14 +2199,15 @@ def get_node_joins(
     demanded_domains: Collection[str] = frozenset(),
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
-    planned_pairs: Mapping[frozenset[str], frozenset[str]] | None = None,
+    *,
+    planned_pairs: Mapping[frozenset[str], frozenset[str]],
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
-    rowset body pads them under and its region partition. `planned_pairs`,
-    when given, is the merge's join plan pair by pair of sides (by datasource
-    identifier): two sides pair only on what the plan pairs them on, and a
-    column two sides merely share is no key. Resolve orders and types the
-    joins; it never chooses a key."""
+    rowset body pads them under and its region partition. `planned_pairs` is
+    the merge's join plan pair by pair of sides (by datasource identifier):
+    two sides pair only on what the plan pairs them on, and a column two sides
+    merely share is no key. Resolve orders and types the joins; it never
+    chooses a key."""
     keyspace = keyspace or Keyspace()
     from trilogy.core import graph as nx
 
@@ -2353,13 +2337,8 @@ def get_node_joins(
             },
         )
 
-    pair_nodes = (
-        _planned_pair_nodes(graph, planned_pairs, environment)
-        if planned_pairs is not None
-        else None
-    )
-    if pair_nodes is not None:
-        _drop_unpaired_keys(graph, pair_nodes)
+    pair_nodes = _planned_pair_nodes(graph, planned_pairs, environment)
+    _drop_unpaired_keys(graph, pair_nodes)
 
     # Beside the region contract: a FULL join between two families' padding
     # must not pair NULL with NULL null-safely.
@@ -2429,7 +2408,7 @@ def get_node_joins(
         ),
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
         span_families=span_families,
-        pair_keys=pair_nodes or {},
+        pair_keys=pair_nodes,
     )
     joins = resolve_join_order_v2(graph, facts)
     paddings = _merge_paddings(joins, facts)
