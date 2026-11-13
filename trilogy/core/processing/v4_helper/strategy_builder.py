@@ -1291,6 +1291,36 @@ def _one_entity_beside_paired_facts(
     return len(keys) == 1 and len(next(iter(keys))) == 1
 
 
+def _may_cover(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    pgid: str,
+    other: str,
+    row_feeder: bool = True,
+) -> bool:
+    """Whether parent `other` may stand in for parent `pgid` of consumer `gid`
+    when it provides everything `pgid` would. Either `other` is a lineage
+    descendant of `pgid`, or `pgid` is a row feeder whose contribution a
+    GROUPING sibling at this grouping consumer's grain already carries: the
+    consumer reuses the sibling's grouped rows. The sibling must apply every
+    row-reducing condition the feeder's subtree does, since `provides` counts
+    columns, not rows. A region's rows are covered by nothing that does not
+    hold them."""
+    covers_as_grouping_sibling = (
+        row_feeder
+        and attrs[gid].derivation in GROUPING_DERIVATIONS
+        and attrs[pgid].derivation not in GROUPING_DERIVATIONS
+        and attrs[other].derivation in GROUPING_DERIVATIONS
+        and feeder_conditions_implied(group_graph, attrs, pgid, other)
+    )
+    if not (covers_as_grouping_sibling or pgid in nx.ancestors(group_graph, other)):
+        return False
+    return _group_region_reads(group_graph, attrs, pgid) <= _group_region_reads(
+        group_graph, attrs, other
+    )
+
+
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1469,42 +1499,19 @@ def _parent_nodes_for(
     parents: list[ParentBuild] = []
     for pgid, node in candidates:
         my_provides = provides(pgid, node)
-        covered_by_descendant = False
-        for other_pgid, other_node in candidates:
-            if other_pgid == pgid:
-                continue
-            # A row-feeder parent whose entire contribution is already carried by
-            # a sibling GROUPING contributor (an aggregate/window at this grouping
-            # consumer's grain) is a redundant fact re-scan: the consumer reuses
-            # the sibling's already-grouped rows, so the feeder only re-supplies
-            # grouping keys the sibling holds. A feeder that ALSO feeds raw
-            # recompute inputs has columns the aggregated sibling lacks, so its
-            # `provides` is not a subset and it survives. Drop only when the
-            # sibling applies every row-reducing condition the feeder's subtree
-            # does; otherwise the feeder narrows rows the sibling does not and
-            # `provides` (columns only) wouldn't catch it. Otherwise require the
-            # covering sibling be a lineage descendant.
-            covers_as_grouping_sibling = (
-                attrs[gid].derivation in GROUPING_DERIVATIONS
-                and attrs[pgid].derivation not in GROUPING_DERIVATIONS
-                and not node.existence_concepts
-                and not node.force_group
-                and attrs[other_pgid].derivation in GROUPING_DERIVATIONS
-                and feeder_conditions_implied(group_graph, attrs, pgid, other_pgid)
+        covered_by_descendant = any(
+            other_pgid != pgid
+            and _may_cover(
+                group_graph,
+                attrs,
+                gid,
+                pgid,
+                other_pgid,
+                row_feeder=not node.existence_concepts and not node.force_group,
             )
-            if not (
-                covers_as_grouping_sibling
-                or pgid in nx.ancestors(group_graph, other_pgid)
-            ):
-                continue
-            # a region's rows are covered by nothing that does not hold them
-            if not _group_region_reads(group_graph, attrs, pgid) <= _group_region_reads(
-                group_graph, attrs, other_pgid
-            ):
-                continue
-            if my_provides <= provides(other_pgid, other_node):
-                covered_by_descendant = True
-                break
+            and my_provides <= provides(other_pgid, other_node)
+            for other_pgid, other_node in candidates
+        )
         if not covered_by_descendant:
             parents.append(ParentBuild(pgid, parent_for_consumer(pgid, node)))
     return parents
@@ -3645,19 +3652,25 @@ def _merge_sides(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
+    aggregate_inputs: Sequence[str],
+    environment: BuildEnvironment,
 ) -> list[str]:
-    """The row parents `gid` merges: less one that is an ancestor of another
-    holding every input it would supply (`_parent_nodes_for` drops it)."""
-    parents = read_row_parents(group_graph, group_edges, attrs, gid)
-    wanted = set(attrs[gid].input_concepts)
-    supplies = {p: set(attrs[p].output_concepts) & wanted for p in parents}
+    """The row parents `gid` merges: less one another covers (`_may_cover`),
+    as `_parent_nodes_for` drops it."""
+    parents = (
+        list(aggregate_inputs)
+        if attrs[gid].derivation == Derivation.AGGREGATE
+        else read_row_parents(group_graph, group_edges, attrs, gid)
+    )
+    needed = _group_demand(group_graph, group_edges, attrs, gid, environment)
+    supplies = {p: set(attrs[p].output_concepts) & needed for p in parents}
     return [
         p
         for p in parents
         if not any(
             other != p
+            and _may_cover(group_graph, attrs, gid, p, other)
             and supplies[p] <= supplies[other]
-            and p in nx.ancestors(group_graph, other)
             for other in parents
         )
     ]
@@ -3668,6 +3681,7 @@ def _plan_group_bridges(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     planned: list[str],
+    aggregate_inputs: Mapping[str, Sequence[str]],
     environment: BuildEnvironment,
 ) -> None:
     """Elect, before the build, the bridges each group's merge joins its row
@@ -3676,7 +3690,14 @@ def _plan_group_bridges(
     for gid in planned:
         if attrs[gid].derivation == Derivation.UNION:
             continue
-        sides = _merge_sides(group_graph, group_edges, attrs, gid)
+        sides = _merge_sides(
+            group_graph,
+            group_edges,
+            attrs,
+            gid,
+            aggregate_inputs.get(gid, ()),
+            environment,
+        )
         if len(sides) < 2:
             continue
         wanted = set(attrs[gid].input_concepts)
@@ -6878,49 +6899,16 @@ def _merge_origin_intermediates(
     return found
 
 
-def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
-    """Build one group of the plan with explicit parent nodes, under the
-    group's span scope. None when it builds nothing (`ctx.unbuilt` says what
-    it owed)."""
-    from trilogy.core.processing.v4_node_generators import build_node  # cycle
-
-    group_graph, group_edges, attrs = ctx.group_graph, ctx.group_edges, ctx.attrs
-    environment, g, history = ctx.environment, ctx.g, ctx.history
-    mandatory_list, built, feeder_cache = (
-        ctx.mandatory_list,
-        ctx.built,
-        ctx.feeder_cache,
-    )
-    complete_partials, staged_conditions = ctx.complete_partials, ctx.staged_conditions
-    depth, arms_delivered, root_requests = (
-        ctx.depth,
-        ctx.arms_delivered,
-        ctx.root_requests,
-    )
+def _group_outputs_and_atoms(
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    outputs: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], list[BoolExpr]]:
+    """`gid`'s selected outputs with the intermediates it computes, and the
+    WHERE atoms it applies."""
     a = attrs[gid]
-    # Only the FINAL sink carries a None derivation, and it is skipped above.
-    assert a.derivation is not None
     derivation = a.derivation
-    select_addrs = _select_addresses(a)
-    if derivation == Derivation.ROWSET:
-        # A boundary group's outputs can carry ANOTHER rowset's handles
-        # (a deferred WHERE's args exposed through a scoped relation).
-        # `resolve_rowset` plans the rowset of the first handle it sees, so
-        # order this group's OWN handles (its primary members) first so a
-        # foreign condition-arg handle can't hijack the boundary. Permanent:
-        # a body is a statement planned in its own scope, so the boundary
-        # can never take a foreign handle from a parent.
-        primary = set(a.primary_members)
-        select_addrs = (
-            *(addr for addr in select_addrs if addr in primary),
-            *(addr for addr in select_addrs if addr not in primary),
-        )
-    outputs = [
-        c for addr in select_addrs if (c := _concept_at(environment, addr)) is not None
-    ]
-    if not outputs:
-        ctx.unbuilt[gid] = outputs
-        return None
     primary_addrs = set(a.primary_members)
     if derivation not in AGGREGATING_DERIVATIONS:
         outputs += _merge_origin_intermediates(outputs, primary_addrs, environment)
@@ -6937,8 +6925,22 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # its `needed` args.
     if a.conjunction_atoms and valued and valued <= a.twin_reused:
         atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
-    injected = _wrap_atoms(atoms)
-    preexisting = _wrap_atoms(accumulated_atoms_above(group_graph, attrs, gid))
+    return outputs, atoms
+
+
+def _group_needed(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    outputs: list[BuildConcept],
+    injected: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> set[str]:
+    """What `gid` reads from its parents."""
+    a = attrs[gid]
+    derivation = a.derivation
+    primary_addrs = set(a.primary_members)
     # The "needed" set drives ancestor-dedup: a parent is kept only if
     # it contributes something to it that no descendant parent also
     # provides. Includes the output addresses themselves, the lineage
@@ -7009,6 +7011,81 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # a dimension peel is read with its key, the axis its rows are paired on
     for pgid in lineage_predecessors(group_graph, group_edges, gid):
         needed |= attrs[pgid].anchor_keys
+    # a region domain joins the solid rows on its spans
+    for pgid in row_parents(group_graph, group_edges, gid):
+        needed |= attrs[pgid].extent_spans
+    return needed
+
+
+def _group_demand(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
+) -> set[str]:
+    """`_group_needed` as the build of `gid` will compute it."""
+    outputs = [
+        c
+        for addr in _select_addresses(attrs[gid])
+        if (c := _concept_at(environment, addr)) is not None
+    ]
+    outputs, atoms = _group_outputs_and_atoms(attrs, gid, outputs, environment)
+    return _group_needed(
+        group_graph, group_edges, attrs, gid, outputs, _wrap_atoms(atoms), environment
+    )
+
+
+def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
+    """Build one group of the plan with explicit parent nodes, under the
+    group's span scope. None when it builds nothing (`ctx.unbuilt` says what
+    it owed)."""
+    from trilogy.core.processing.v4_node_generators import build_node  # cycle
+
+    group_graph, group_edges, attrs = ctx.group_graph, ctx.group_edges, ctx.attrs
+    environment, g, history = ctx.environment, ctx.g, ctx.history
+    mandatory_list, built, feeder_cache = (
+        ctx.mandatory_list,
+        ctx.built,
+        ctx.feeder_cache,
+    )
+    complete_partials, staged_conditions = ctx.complete_partials, ctx.staged_conditions
+    depth, arms_delivered, root_requests = (
+        ctx.depth,
+        ctx.arms_delivered,
+        ctx.root_requests,
+    )
+    a = attrs[gid]
+    # Only the FINAL sink carries a None derivation, and it is skipped above.
+    assert a.derivation is not None
+    derivation = a.derivation
+    select_addrs = _select_addresses(a)
+    if derivation == Derivation.ROWSET:
+        # A boundary group's outputs can carry ANOTHER rowset's handles
+        # (a deferred WHERE's args exposed through a scoped relation).
+        # `resolve_rowset` plans the rowset of the first handle it sees, so
+        # order this group's OWN handles (its primary members) first so a
+        # foreign condition-arg handle can't hijack the boundary. Permanent:
+        # a body is a statement planned in its own scope, so the boundary
+        # can never take a foreign handle from a parent.
+        primary = set(a.primary_members)
+        select_addrs = (
+            *(addr for addr in select_addrs if addr in primary),
+            *(addr for addr in select_addrs if addr not in primary),
+        )
+    outputs = [
+        c for addr in select_addrs if (c := _concept_at(environment, addr)) is not None
+    ]
+    if not outputs:
+        ctx.unbuilt[gid] = outputs
+        return None
+    primary_addrs = set(a.primary_members)
+    outputs, atoms = _group_outputs_and_atoms(attrs, gid, outputs, environment)
+    injected = _wrap_atoms(atoms)
+    preexisting = _wrap_atoms(accumulated_atoms_above(group_graph, attrs, gid))
+    needed = _group_needed(
+        group_graph, group_edges, attrs, gid, outputs, injected, environment
+    )
     parent_builds = _parent_nodes_for(
         group_graph,
         group_edges,
@@ -7630,7 +7707,14 @@ def build_strategy_node(
         cover = _elect_final_cover(
             group_graph, group_edges, attrs, contributors, mandatory_list, environment
         )
-        _plan_group_bridges(group_graph, group_edges, attrs, cover.groups, environment)
+        _plan_group_bridges(
+            group_graph,
+            group_edges,
+            attrs,
+            cover.groups,
+            folds.aggregate_inputs,
+            environment,
+        )
     built: dict[str, StrategyNode] = {}
     unbuilt: dict[str, list[BuildConcept]] = {}
     ctx = _GroupBuild(

@@ -9,6 +9,8 @@ affected: the FINAL assembly when the aggregates are projected side by side,
 and a consumer group's own parent merge when an expression reads them together.
 """
 
+from collections.abc import Mapping, Sequence
+
 import networkx as nx
 import pytest
 
@@ -118,9 +120,12 @@ def test_a_bridge_left_unrecorded_is_never_elected_at_build(
         group_edges: EdgeMap,
         attrs: dict[str, GroupAttrs],
         order: list[str],
+        aggregate_inputs: Mapping[str, Sequence[str]],
         environment: BuildEnvironment,
     ) -> None:
-        plan_bridges(group_graph, group_edges, attrs, order, environment)
+        plan_bridges(
+            group_graph, group_edges, attrs, order, aggregate_inputs, environment
+        )
         for gid in order:
             attrs[gid].bridges = ()
 
