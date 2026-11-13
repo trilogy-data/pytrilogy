@@ -665,4 +665,111 @@ theorem value_bucket_pairs_short_of_its_grain :
       (rows.flatMap fun r => groups.filter (fun g => g == (r.2.1, r.2.2))).length = 2 := by
   decide
 
+/-! ## The select's keys come off one row stream
+
+`select city, species, sum(x) by * where (max(x) by city, form <= 3 or min(x)
+by species != 6)`: the FINAL took `city` off the gate's `(city, form)` group and
+`species` off the `species` group, and paired them on `form`. Every city met
+every species of its form: tuples no row holds. -/
+
+/-- **One stream's tuples are its rows' tuples** (`keys_off_one_stream_exact`). -/
+theorem keys_off_one_stream_exact [DecidableEq κ] (a b : α → κ) (rows : List α)
+    (t : κ × κ) :
+    t ∈ dedup (rows.map fun r => (a r, b r)) ↔ ∃ r ∈ rows, (a r, b r) = t := by
+  rw [mem_dedup, List.mem_map]
+
+/-- Rows `(city, species, form)`: city 1 holds species 0 and 2, city 0 species 0
+and 1, species 0 and 1 of form 0. Paired on `form` off two groups, `(1, 1)`
+appears (`keys_off_two_groups_pair_unheld`). -/
+theorem keys_off_two_groups_pair_unheld :
+    let rows : List (Int × Int × Int) := [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 2, 1)]
+    let cities := dedup (rows.map fun r => (r.1, r.2.2))
+    let species := dedup (rows.map fun r => (r.2.1, r.2.2))
+    let paired := dedup (cities.flatMap fun c =>
+      (species.filter (·.2 == c.2)).map fun s => (c.1, s.1))
+    (dedup (rows.map fun r => (r.1, r.2.1))).length = 4 ∧ paired.length = 5 := by
+  decide
+
+/-! ## A bridge holds the key it was elected for
+
+`select tree_id, species, min(x) by city, form as v1, city as v2 where ...`: the
+row stream computing `v2` was elected to bridge `v1` onto the rows on `(city,
+form)`, but `form` sat below a dedup it was never carried through, so `v1` met
+the rows on `city` alone (`value_bucket_pairs_short_of_its_grain`). A dedup
+carries any column its outputs determine without changing its rows. -/
+
+/-- **A determined column adds no row to a dedup** (`dedup_carries_determined`). -/
+theorem dedup_carries_determined [DecidableEq κ] [DecidableEq τ] (o : α → κ)
+    (f : κ → τ) (rows : List α) (t : κ × τ) :
+    t ∈ dedup (rows.map fun r => (o r, f (o r))) ↔
+      t.1 ∈ dedup (rows.map o) ∧ t.2 = f t.1 := by
+  rw [mem_dedup, mem_dedup, List.mem_map, List.mem_map]
+  constructor
+  · rintro ⟨r, hr, rfl⟩
+    exact ⟨⟨r, hr, rfl⟩, rfl⟩
+  · rintro ⟨⟨r, hr, h⟩, h2⟩
+    exact ⟨r, hr, Prod.ext h (by simp [h, h2])⟩
+
+/-! ## Each argument of an atom is read off its own group
+
+`select count(id ? max(x) by * != 10), sum(x ? ...) where (sum(x) by * is null
+and max(x) by city > 3)`: the `?` row stream read `sum(x) by *` off the select's
+total, a host of the WHERE, which kept no row; joined preserving, the total was
+padding. `max(x) by city > 3` proves the conjunction rejects a NULL `max`, but
+says nothing of the total: the reroute must ask per argument. -/
+
+/-- **An argument the atom rejects NULL in reads as on its own group**
+(`gate_arg_past_host_exact_if_rejecting`). -/
+theorem gate_arg_past_host_exact_if_rejecting (atom : Option Int → Option Int → Bool)
+    (a b : Option Int) (h : atom none b = false) :
+    atom (pastHost (fun v => atom v b) a) b = atom a b :=
+  gate_past_host_exact_if_null_rejecting (fun v => atom v b) a h
+
+/-- The total is 17, `max(x) by city` 7: on its own group the conjunction is
+false, read past its host it holds although its other conjunct rejects NULL
+(`conjunct_read_past_its_host_passes_absent`). -/
+theorem conjunct_read_past_its_host_passes_absent :
+    let atom : Option Int → Option Int → Bool := fun s m =>
+      s.isNone && (m.map (fun x => decide (x > 3))).getD false
+    atom none none = false ∧ atom (some 17) (some 7) = false ∧
+      atom (pastHost (fun v => atom v (some 7)) (some 17)) (some 7) = true := by
+  decide
+
+/-! ## A side the FINAL filters carries the gate's keys
+
+`select species, form, max(x) where min(x) by city, form is null`: the FINAL
+re-applies the WHERE to the side supplying `form`, but that side was sourced
+from the dimension alone, with no `city`, and a second scan carried `city` to
+the gate. The dimension's rows met the gate through no tree, padded, and `is
+null` held on every species. Read per row, a row meets its own group. -/
+
+/-- Trees `(city, species)` `[(0, 0), (0, 1)]`, forms 0 and 1, the gate `some
+3` on `(0, 0)` and NULL on `(0, 1)`: per tree only species 1 passes; a species
+read off the dimension meets the gate through no row, and both pass
+(`dimension_side_pads_gate`). -/
+theorem dimension_side_pads_gate :
+    let trees : List (Int × Int) := [(0, 0), (0, 1)]
+    let gate : Int × Int → Option Int := fun g => if g == (0, 0) then some 3 else none
+    let perRow := trees.filter fun t => (gate (t.1, t.2)).isNone
+    let padded := [0, 1].filter fun _ => (none : Option Int).isNone
+    perRow.map (·.2) = [1] ∧ padded = [0, 1] := by
+  decide
+
+/-! ## A key comes off rows the WHERE filtered
+
+`select city, form, count(id ? (city = 'A' or min(x) by city = 2)), ... where
+not (...) and (...)`: the FINAL took `(city, form)` off the `?` filter's row
+stream, the most downstream exposer, whose rows only joined beside a host's
+per-city value (`gate_host_skips_select_rows`), and returned a group the WHERE
+rejected. The aggregate hosting the WHERE exposes the same keys. -/
+
+/-- Rows `(city, form)` `[(0, 0), (0, 1)]` and a WHERE rejecting form 1: the
+host's keys are one, the unfiltered stream's two
+(`key_off_unfiltered_stream_returns_rejected`). -/
+theorem key_off_unfiltered_stream_returns_rejected :
+    let rows : List (Int × Int) := [(0, 0), (0, 1)]
+    (dedup ((rows.filter (·.2 == 0)).map id)).length = 1 ∧
+      (dedup rows).length = 2 := by
+  decide
+
 end Trilogy.SelectGrain
