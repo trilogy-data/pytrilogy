@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable
 
 from trilogy import Dialects
@@ -70,3 +71,37 @@ def twin_rows(derived: Executor, materialized: Executor, query: str) -> list[tup
     rows = sorted_rows(derived, query)
     assert rows == sorted_rows(materialized, query)
     return rows
+
+
+CTE_NAME = re.compile(r"^(\w+) as (?:MATERIALIZED )?\(", re.MULTILINE)
+
+
+def cte_rows(executor: Executor, sql: str, name: str) -> int:
+    head = sql[: sql.rindex("\nSELECT")]
+    return executor.execute_raw_sql(f"{head}\nSELECT count(*) FROM {name}").fetchone()[
+        0
+    ]
+
+
+def widest_cte(executor: Executor, sql: str) -> tuple[int, str]:
+    """The row count and name of the plan's widest CTE: a fan-out bound."""
+    return max(
+        ((cte_rows(executor, sql, name), name) for name in CTE_NAME.findall(sql)),
+        default=(0, ""),
+    )
+
+
+def as_float(v):
+    return float(v) if v is not None and not isinstance(v, (str, bool)) else v
+
+
+def normalize_numbers(rows: Iterable[tuple]) -> list[tuple]:
+    """Rows sorted with numbers on one spelling (`2.0` is `2`), for an oracle."""
+
+    def fix(v):
+        if v is None or isinstance(v, (str, bool)):
+            return v
+        number = float(v)
+        return int(number) if number.is_integer() else round(number, 6)
+
+    return sorted((tuple(fix(v) for v in r) for r in rows), key=repr)

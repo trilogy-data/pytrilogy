@@ -978,19 +978,15 @@ def _peel_exact_under_where(
         concept_attrs[n].datasource_bindings & peeled_bindings for n in filtered
     ):
         return False
-    reads_total = _selected_readers(
-        [n for n, _ in peeled],
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        output_addresses,
-    )
-    reads_rows = _selected_readers(
-        [n for n, _ in rest],
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        output_addresses,
+    reads_total, reads_rows = (
+        _selected_readers(
+            [n for n, _ in items],
+            concept_graph,
+            concept_edges,
+            concept_attrs,
+            output_addresses,
+        )
+        for items in (peeled, rest)
     )
     return bool(reads_total) and reads_total <= reads_rows
 
@@ -1005,16 +1001,12 @@ def _selected_readers(
     """The selected columns whose lineage reads any of `nodes`.
     `output_addresses` holds the WHERE's row arguments too; those are not
     selected values."""
-    stack, seen = list(nodes), set(nodes)
-    while stack:
-        cur = stack.pop()
-        for nxt in concept_graph.successors(cur):
-            if (
-                nxt not in seen
-                and edge_kind(concept_edges, cur, nxt) == EdgeKind.LINEAGE
-            ):
-                seen.add(nxt)
-                stack.append(nxt)
+    seen = set(nodes).union(
+        *(
+            _lineage_reach(n, lineage_successors, concept_graph, concept_edges)
+            for n in nodes
+        )
+    )
     return {
         n
         for n in seen

@@ -76,6 +76,7 @@ from .extent_ownership import (
     elect_extent_owners,
 )
 from .functional_dependency import (
+    build_fd_closure,
     build_fd_determines,
     build_fd_determines_all,
     concept_attr_fd_determines,
@@ -669,28 +670,24 @@ def _offered_at_grain(
     """What a BASIC step offers FINAL: a column of rows finer than its grain
     would put those rows under it (a class by species carrying the trees'
     `tree_id` holds one row per tree, #972); FINAL reads it off the rows."""
-    if (
-        fact.derivation != Derivation.BASIC
-        or not fact.grain
-        or not all(_declared_at(environment, fact.grain, addr) for addr in fact.primary)
-    ):
+    if fact.derivation != Derivation.BASIC or not fact.grain:
         return offered
-    return {
-        addr
-        for addr in offered
-        if addr in fact.primary or _determined_at(environment, fact.grain, addr)
-    }
+    determined = build_fd_closure(environment, fact.grain, include_empty_grain=False)
+    if not all(_declared_at(environment, determined, addr) for addr in fact.primary):
+        return offered
+    return offered & (fact.primary | determined)
 
 
 def _declared_at(
-    environment: BuildEnvironment, grain: frozenset[str], addr: str
+    environment: BuildEnvironment, determined: frozenset[str], addr: str
 ) -> bool:
-    """A member whose own grain `grain` holds (a select-grain value has none)."""
+    """A member whose own grain sits in `determined` (a select-grain value has
+    none)."""
     concept = environment.concepts.get(addr)
     if concept is None or _reads_select_grain(concept):
         return False
-    keys = frozenset(concept.grain.components) if concept.grain else frozenset()
-    return bool(keys) and (keys <= grain or _grain_determines(environment, grain, keys))
+    keys = concept.grain.components if concept.grain else set()
+    return bool(keys) and keys <= determined
 
 
 def _reads_select_grain(concept: BuildConcept) -> bool:
@@ -709,18 +706,6 @@ def _reads_select_grain(concept: BuildConcept) -> bool:
             return True
         stack.extend(arg.concept_arguments)
     return False
-
-
-def _determined_at(
-    environment: BuildEnvironment, grain: frozenset[str], addr: str
-) -> bool:
-    concept = environment.concepts.get(addr)
-    keys = (
-        frozenset(concept.grain.components)
-        if concept is not None and concept.grain
-        else frozenset({addr})
-    )
-    return addr in grain or keys <= grain or _grain_determines(environment, grain, keys)
 
 
 def _rows_at_grain(

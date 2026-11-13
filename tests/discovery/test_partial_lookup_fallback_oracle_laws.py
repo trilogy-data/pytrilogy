@@ -9,14 +9,12 @@ as many rows as the widest table, under a WHERE on per-tree columns as well
 the total's table by the kept rows)."""
 
 import random
-import re
 from collections import defaultdict
 
 import pytest
 
-from tests.helpers.rows import fetch_rows
+from tests.helpers.rows import fetch_rows, normalize_numbers, widest_cte
 from trilogy import Dialects
-from trilogy.executor import Executor
 
 SEEDS = 300
 CITIES = ["bos", "sfo"]
@@ -80,8 +78,6 @@ auto pred_c <- dbh * tree_b;""",
     """auto pred_h <- dbh * coalesce(height_a, class_a);
 auto pred_c <- dbh * coalesce(crown_b, class_b);""",
 ]
-
-CTE = re.compile(r"^(\w+) as (?:MATERIALIZED )?\(", re.MULTILINE)
 
 
 def _lit(v) -> str:
@@ -232,32 +228,6 @@ def shape(seed: int) -> tuple[str, str, list[tuple], int]:
     return model, query, expected, widest
 
 
-def normalize(rows) -> list[tuple]:
-    def fix(v):
-        if v is None or isinstance(v, (str, bool)):
-            return v
-        number = float(v)
-        return int(number) if number.is_integer() else round(number, 6)
-
-    return sorted((tuple(fix(v) for v in r) for r in rows), key=repr)
-
-
-def widest_cte(executor: Executor, sql: str) -> tuple[int, str]:
-    head = sql[: sql.rindex("\nSELECT")]
-    return max(
-        (
-            (
-                executor.execute_raw_sql(
-                    f"{head}\nSELECT count(*) FROM {name}"
-                ).fetchone()[0],
-                name,
-            )
-            for name in CTE.findall(sql)
-        ),
-        default=(0, ""),
-    )
-
-
 @pytest.mark.parametrize("seed", range(SEEDS))
 def test_partial_lookup_prediction_matches_raw_rows(seed: int):
     model, query, expected, widest = shape(seed)
@@ -265,7 +235,7 @@ def test_partial_lookup_prediction_matches_raw_rows(seed: int):
     try:
         executor.parse_text(model)
         sql = executor.generate_sql(query)[-1]
-        assert normalize(fetch_rows(executor, query)) == normalize(
+        assert normalize_numbers(fetch_rows(executor, query)) == normalize_numbers(
             expected
         ), f"{query}\n{sql}"
         rows, name = widest_cte(executor, sql)

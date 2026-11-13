@@ -8,7 +8,13 @@ import re
 import pytest
 
 from tests.helpers.planning import plan
-from tests.helpers.rows import executor_for, fetch_rows
+from tests.helpers.rows import (
+    as_float,
+    cte_rows,
+    executor_for,
+    fetch_rows,
+    widest_cte,
+)
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper.constants import DepthLabel
 from trilogy.core.processing.v4_helper.group_graph import _source_asked_root_keys
@@ -88,7 +94,6 @@ auto species_city_n <- count(tree_id) by city, species;
 auto rare <- species_city_n < 2;
 """
 
-CTE = re.compile(r"^(\w+) as (?:MATERIALIZED )?\(", re.MULTILINE)
 BODY = re.compile(
     r"^(\w+) as (?:MATERIALIZED )?\((.*?)\)(?=,\n\w+ as |\nSELECT)",
     re.MULTILINE | re.DOTALL,
@@ -129,31 +134,18 @@ CASES = [
 ]
 
 
-def _widest_cte(executor, sql: str) -> int:
-    head = sql[: sql.rindex("\nSELECT")]
-    return max(
-        executor.execute_raw_sql(f"{head}\nSELECT count(*) FROM {name}").fetchone()[0]
-        for name in CTE.findall(sql)
-    )
-
-
-def _float(v):
-    return float(v) if v is not None and not isinstance(v, (str, bool)) else v
-
-
 @pytest.mark.parametrize("model,query,expected", CASES)
 def test_coarse_value_is_joined_back_on_its_grain(model, query, expected) -> None:
     executor = executor_for(model)
     sql = executor.generate_sql(query)[-1]
-    rows = sorted(tuple(_float(v) for v in r) for r in fetch_rows(executor, query))
+    rows = sorted(tuple(as_float(v) for v in r) for r in fetch_rows(executor, query))
     assert rows == expected, sql
-    assert _widest_cte(executor, sql) <= len(expected), sql
+    assert widest_cte(executor, sql)[0] <= len(expected), sql
 
 
 def test_species_value_reads_one_row_per_species() -> None:
     executor = executor_for(SPECIES)
     sql = executor.generate_sql("select tree_id, city, species, pred;")[-1]
-    head = sql[: sql.rindex("\nSELECT")]
     computed = [
         name
         for name, body in BODY.findall(sql)
@@ -161,8 +153,7 @@ def test_species_value_reads_one_row_per_species() -> None:
     ]
     assert computed, sql
     for name in computed:
-        rows = executor.execute_raw_sql(f"{head}\nSELECT count(*) FROM {name}")
-        assert rows.fetchone()[0] == 2, sql
+        assert cte_rows(executor, sql, name) == 2, sql
 
 
 def test_genus_value_group_pairs_on_its_input_grain() -> None:

@@ -11,7 +11,14 @@ from dataclasses import replace
 import pytest
 
 from tests.helpers.planning import plan
-from tests.helpers.rows import executor_for, fetch_rows
+from tests.helpers.rows import (
+    CTE_NAME,
+    as_float,
+    cte_rows,
+    executor_for,
+    fetch_rows,
+    widest_cte,
+)
 from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
@@ -104,20 +111,6 @@ ROWS = {
 # rubrum trees t1, t3, t4 all stay
 KEPT = [t for t in ROWS if t != "t2"]
 
-CTE = re.compile(r"^(\w+) as (?:MATERIALIZED )?\(", re.MULTILINE)
-
-
-def _widest_cte(executor, sql: str) -> int:
-    head = sql[: sql.rindex("\nSELECT")]
-    return max(
-        executor.execute_raw_sql(f"{head}\nSELECT count(*) FROM {name}").fetchone()[0]
-        for name in CTE.findall(sql)
-    )
-
-
-def _norm(v):
-    return float(v) if v is not None and not isinstance(v, (str, bool)) else v
-
 
 def _expected(trees: list[str], columns: list[str]) -> list[tuple]:
     names = ["city", "species", "genus", "pred_h", "pred_c", "rare"]
@@ -148,10 +141,10 @@ def executor():
 def test_each_tree_once(executor, columns: list[str], where: str) -> None:
     query = f"select {', '.join(columns)}{where};"
     sql = executor.generate_sql(query)[-1]
-    rows = sorted(tuple(_norm(v) for v in r) for r in fetch_rows(executor, query))
+    rows = sorted(tuple(as_float(v) for v in r) for r in fetch_rows(executor, query))
     trees = KEPT if where else list(ROWS)
     assert rows == _expected(trees, columns), sql
-    assert _widest_cte(executor, sql) <= TREES, sql
+    assert widest_cte(executor, sql)[0] <= TREES, sql
 
 
 def test_rare_reads_the_kept_trees(executor) -> None:
@@ -171,18 +164,17 @@ def test_rare_reads_the_kept_trees(executor) -> None:
 )
 def test_a_total_over_the_predictions(executor, query: str, expected) -> None:
     sql = executor.generate_sql(query)[-1]
-    assert [tuple(_norm(v) for v in r) for r in fetch_rows(executor, query)] == (
+    assert [tuple(as_float(v) for v in r) for r in fetch_rows(executor, query)] == (
         expected
     ), sql
-    assert _widest_cte(executor, sql) <= TREES, sql
+    assert widest_cte(executor, sql)[0] <= TREES, sql
 
 
 def test_the_class_is_computed_once_per_species(executor) -> None:
     sql = executor.generate_sql("select tree_id, pred_h;")[-1]
-    head = sql[: sql.rindex("\nSELECT")]
     computing = [
         name
-        for name in CTE.findall(sql)
+        for name in CTE_NAME.findall(sql)
         if re.search(
             rf"^{name} as \((?:(?!\n\w+ as \().)*END as \"fallback_class\"",
             sql,
@@ -191,8 +183,7 @@ def test_the_class_is_computed_once_per_species(executor) -> None:
     ]
     assert computing, sql
     for name in computing:
-        count = executor.execute_raw_sql(f"{head}\nSELECT count(*) FROM {name}")
-        assert count.fetchone()[0] == 4, sql
+        assert cte_rows(executor, sql, name) == 4, sql
 
 
 GATE = """
@@ -224,10 +215,10 @@ def test_a_where_gates_a_total(query: str, expected, peeled: bool) -> None:
     executor = executor_for(GATE)
     try:
         sql = executor.generate_sql(query)[-1]
-        rows = [tuple(_norm(v) for v in r) for r in fetch_rows(executor, query)]
+        rows = [tuple(as_float(v) for v in r) for r in fetch_rows(executor, query)]
         assert sorted(rows) == expected, sql
         if peeled:
-            assert _widest_cte(executor, sql) <= 3, sql
+            assert widest_cte(executor, sql)[0] <= 3, sql
     finally:
         executor.close()
 
