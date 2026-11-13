@@ -1268,15 +1268,15 @@ a filter its grain does not determine. Open questions:
     on `tree_id` selects (12), HAVING `by` rejections on `tree_id` selects
     (32, seed 129's family) and "Missing source reference to local.height" (6).
 - Done in 0.3.495, from seeds 10,000-20,000 of the spellings family (on
-  main: 14 wrong, 124 raising, of 20,000 queries; after: 7 wrong, 28
-  raising; 103 fixed, none broken; the first family's seeds 0-4,000 are
-  identical on both): a HAVING `by` keys the select's rows bind (`count(id)
+  main: 14 wrong, 124 raising, of 20,000 queries; after: 7 wrong, 30
+  raising; 101 fixed, none broken; the first family's seeds 0-4,000 return
+  the same rows and summary reads, with 22 more JOINs of 16,214): a HAVING `by` keys the select's rows bind (`count(id)
   by city` beside `tree_id`, or `by v0` once finalize renames `city as v0`) is
   coarser than the select (`SelectGrain.having_by_bound_key_is_coarser`;
   `_grain_determined` reads the binding closure and resolves a pure rename;
   seed 129's family, about 100 raises, and seed 8920); a group hosting a WHERE
-  atom reads the atom's aggregates off an unfiltered sibling, never off
-  another host of the atom (`SelectGrain.gate_read_past_its_host_passes_absent`,
+  atom that can hold on an absent group reads its aggregates off an
+  unfiltered sibling, never off another host of the atom (`SelectGrain.gate_read_past_its_host_passes_absent`,
   `_gate_args_filtered_here`); a value read with the rows at a grain they
   determine is projected with the rows (`value_bucket_pairs_short_of_its_grain`,
   `_wrap_for_grain`). Left:
@@ -1298,8 +1298,11 @@ a filter its grain does not determine. Open questions:
   - 32 `tree_id` selects with a HAVING gate no longer read the summary (17
     others now do): the HAVING value is promoted beside the rows instead of
     semijoined, and the promoted value is sourced from the trees;
-  - 28 raises remain: "Could not resolve connections" on `tree_id` selects
-    (16) and keyless joins (8) are the most common.
+  - 30 raises remain: "Could not resolve connections" on `tree_id` selects
+    (16) and keyless joins (10) are the most common. Seed 18676's keyless join
+    (on main too) planned when the input rerouting also covered null-rejecting
+    atoms; narrowed to atoms that hold on an absent group, it raises again,
+    and the narrowing saved the JOINs that rerouting cost elsewhere.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

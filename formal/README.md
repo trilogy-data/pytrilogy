@@ -1742,8 +1742,9 @@ a design decision or a bug.
   on the round's base.
 
 - **The spellings family, seeds 10,000-20,000** (0.3.495). On main these
-  20,000 queries returned 14 wrong rows and raised on 124; now 7 and 28, 103
-  fixed and none broken. The first family's seeds 0-4,000 plan identically.
+  20,000 queries returned 14 wrong rows and raised on 124; now 7 and 30, 101
+  fixed and none broken. The first family's seeds 0-4,000 return the same
+  rows and read the summary on the same shapes.
   - A HAVING `by` the select's rows bind was rejected as growing the grain:
     `select tree_id, max(height ? city = 'A') having count(tree_id) by city >
     2` (and `by v0` beside `city as v0`, the rename finalize writes into the
@@ -1757,7 +1758,8 @@ a design decision or a bug.
     total, itself a host of the atom: rejected there, its value was padding
     NULL, and `is null` held (`SelectGrain.gate_read_past_its_host_passes_absent`;
     exact for a null-rejecting atom, `gate_past_host_exact_if_null_rejecting`).
-    A host now reads an atom's aggregates off an unfiltered sibling.
+    A host now reads the aggregates of an atom that can hold on an absent
+    group off an unfiltered sibling.
   - Promoting the HAVING value routed `select tree_id, species, max(height)
     by tree_form where species = 'Acer' having sum(height) by city, species >=
     2` into the path main takes for the explicit spelling `--sum(height) by
@@ -1769,7 +1771,7 @@ a design decision or a bug.
   15 of the 20 cases in `tests/discovery/test_gate_value_sources.py` fail on
   main (the others are the `is not null` twin, the HAVING spelling of the
   bucketed value, which main semijoined, and the explicit one without the
-  summary), and 122 of the 1,122 in it and the spellings suite together.
+  summary), and 120 of the 1,120 in it and the spellings suite together.
 
 ## Limits
 
