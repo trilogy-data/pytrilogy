@@ -780,3 +780,14 @@ def test_an_unattributed_pair_is_a_planner_bug():
     with pytest.raises(ValueError, match="planner bug"):
         _planned_source_pairs(sources, held, planned)
     assert _planned_source_pairs({"c": sources["c"]}, held, planned) == {}
+
+
+def test_a_star_plan_pairs_spokes_only_on_keys_both_join_the_hub_on():
+    hub, one, two = object(), object(), object()
+    planned = PlannedPairs.star(
+        hub, [(one, frozenset({"k", "j"})), (two, frozenset({"k"}))]
+    )
+    side = {node: planned.sides[id(node)] for node in (hub, one, two)}
+    assert planned.between(side[hub], side[one]) == {"k", "j"}
+    assert planned.between(side[hub], side[two]) == {"k"}
+    assert planned.between(side[one], side[two]) == {"k"}

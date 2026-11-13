@@ -2244,12 +2244,70 @@ then.
 source grains and the null-extending relations are each derived once per
 `Demand`.
 
+**A ROOT's gate rejoin is planned (part 61).** Every FINAL and per-group
+merge carries its join plan, but a census of the merges resolve typed keys
+for (`generate_joins` with no node joins given), over `tests/modeling`,
+`tests/engine` and `tests/discovery`, found stage-3 merges between a group's
+rows and a source built for them still unplanned:
+
+| merge | unplanned resolves |
+|---|---|
+| `gen_root`'s condition-source fallback: a ROOT scan beside the sources it re-plans for its WHERE (`_resolve_root_condition_sources`) | 646 |
+| `_project_planned_keys`' key lookup: a parent beside the producers that look an owed key up | 14 |
+| a clause applied outside a group graph (`resolve_and_inject_condition`) | 2 |
+| an unnest's element filter (`_build_group`) | 1 |
+
+The other unplanned resolves are inside a group: the network search joining
+datasources (`source_planning`, about 12,300), which §6 leaves where it is.
+
+The ROOT fallback is the one the comments said was keyed "on whatever the two
+share". It was not: each row source is searched for a stated set of keys
+beside its arguments, an aggregate gate for its grain
+(`_condition_source_search_outputs`, which `_with_condition_source_join_keys`
+widens the scan by), any other row argument for its keys, plus the node's own
+row identity when the search could be correlated on it. Now those are the
+plan:
+
+- `_resolve_row_arg_source` returns each source with its rejoin keys: what it
+  was searched for besides the arguments, and the correlation it kept (none
+  when the correlated search failed and it was retried without).
+- `_resolve_root_condition_sources` returns the plan beside the sources:
+  `PlannedPairs.star`, the scan paired with each source on that source's
+  keys, and two sources only on keys both pair the scan on.
+- Both `gen_root` injections pass it, and `inject_condition_at_node` hands it
+  to the merge it builds on either branch.
+
+The key lookup is the same shape: a producer is elected because its grain
+is within the parent's outputs (`_key_lookup`), so the merge pairs each
+producer on that grain, as a star over the parent.
+
+The last two rows stay unplanned. A clause outside a group graph has no
+stated rows to pair, and the element filter's single resolve pairs on the
+expanded rows' columns, which nothing states yet.
+
+Suite capture against `main` (`sqlcap`, `-n 4`): the same 25 failures on
+both sides. 137 statements moved, every one in a file that moves under
+xdist. The oracle sweep (69), `test_derived_key_domain` (21) and
+`test_fixed_value_lifecycle_laws` (30) were then captured serially on both
+sides. Only `test_persisted_value_reads_back` moved, and it moves between two
+serial runs of `main` too (part 37). The rest were `test_window_laws`, the
+GCS cache-bust URL and the dashboard statement count. So every rejoin
+already paired on exactly its stated keys, and the plan now names the keys
+each search was built for.
+
+`test_a_root_gate_rejoins_its_rows_on_the_gate_grain` pins the plan
+(`where sum(val) by cat > 10 select id` rejoins on `cat` alone), and
+`test_a_star_plan_pairs_spokes_only_on_keys_both_join_the_hub_on` pins the
+star.
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an
-   unattributed source now raises (part 37).
+   unattributed source now raises (part 37). A ROOT's rejoin onto the
+   sources its WHERE re-plans and a key lookup are planned too (part 61);
+   unplanned between stated rows are only a clause applied outside a group
+   graph and an unnest's element filter.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

@@ -2851,6 +2851,14 @@ def _project_planned_keys(
                 output_concepts=[*parent.output_concepts, *looked_up],
                 environment=environment,
                 parents=[parent, *producers_used],
+                # each producer looks its value up on its own grain
+                planned_pairs=PlannedPairs.star(
+                    parent,
+                    [
+                        (p, frozenset(p.resolve().grain.components))
+                        for p in producers_used
+                    ],
+                ),
             )
         if rendered:
             node = SelectNode(

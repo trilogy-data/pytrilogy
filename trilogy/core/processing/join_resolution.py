@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
 from operator import attrgetter
@@ -152,6 +152,26 @@ class PlannedPairs:
     # two groups (one, for a group split into projections) -> what they may
     # pair on
     keys: Mapping[frozenset[str], frozenset[str]]
+
+    @classmethod
+    def star(
+        cls, hub: object, spokes: Sequence[tuple[object, frozenset[str]]]
+    ) -> PlannedPairs:
+        """`hub` joined to each spoke on that spoke's keys: two spokes pair
+        only on keys both join the hub on."""
+        sides = ["hub", *(f"spoke{i}" for i in range(len(spokes)))]
+        keys = {side: spoke[1] for side, spoke in zip(sides[1:], spokes)}
+        return cls(
+            {
+                id(node): frozenset({side})
+                for node, side in zip([hub, *(n for n, _ in spokes)], sides)
+            },
+            {
+                frozenset({a, b}): keys[b] if a == "hub" else keys[a] & keys[b]
+                for i, a in enumerate(sides)
+                for b in sides[i + 1 :]
+            },
+        )
 
     @property
     def permitted(self) -> frozenset[str]:
