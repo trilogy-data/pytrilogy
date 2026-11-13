@@ -696,7 +696,7 @@ def _source_asked_root_keys(
         for contract in group.input_contracts:
             asked[contract.parent_group_id] |= contract.required_grain
     tables = [_scan_columns(ds, environment) for ds in environment.datasources.values()]
-    stored = _stored_columns(environment)
+    stored = frozenset().union(*tables)
     for gid, keys in asked.items():
         root = attrs[gid]
         if root.derivation != Derivation.ROOT or root.extent_spans:
@@ -708,6 +708,7 @@ def _source_asked_root_keys(
             if key in stored
             and (concept := environment.concepts.get(key)) is not None
             and concept.purpose == Purpose.KEY
+            and concept.derivation == Derivation.ROOT
             # a table beside the outputs that binds it widens to it in place
             and not any(key in t and outputs <= t for t in tables)
             and build_fd_determines(

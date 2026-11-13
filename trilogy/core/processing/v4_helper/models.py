@@ -317,14 +317,6 @@ class GroupAttrs(_HeldKeys):
         )
 
     @property
-    def joined_on(self) -> frozenset[str]:
-        """The keys a row stream's inputs are stitched on, its input grain: its
-        rows hold them (`sale_recency` over a by-customer aggregate and a sale's
-        date holds `customer.sk` and `sale_date.sk`)."""
-        rows = any(c.channel == InputChannel.ROW_STREAM for c in self.input_contracts)
-        return self.input_grain if rows else frozenset()
-
-    @property
     def emitted_grain(self) -> frozenset[str]:
         """The grain keys this group's rows carry. A grouping group's GROUP BY
         emits its grain. Any other group's grain is where its value is

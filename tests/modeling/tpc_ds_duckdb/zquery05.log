@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 9825
+gen_length = 9664
 preql_size = 1719
 comp_size = 4238
 generated_sql = """
@@ -66,7 +66,6 @@ busy as (
 SELECT
     \"kaput\".\"s_channel\" as \"___entity_rows_arm_0_u_channel\",
     \"macho\".\"s_channel_dim_text_id\" as \"___entity_rows_arm_0_u_entity\",
-    cast(0 as numeric(15,2)) as \"___entity_rows_arm_0_u_returns\",
     cast(sum(\"kaput\".\"s_ext_sales_price\") as numeric(15,2)) as \"___entity_rows_arm_0_u_sales\",
     cast(sum(\"kaput\".\"s_net_profit\") as numeric(15,2)) as \"___entity_rows_arm_0_u_profit\"
 FROM
@@ -168,7 +167,6 @@ SELECT
     \"abundant\".\"s_channel\" as \"___entity_rows_arm_1_u_channel\",
     \"cheerful\".\"s_return_channel_dim_text_id\" as \"___entity_rows_arm_1_u_entity\",
     cast((0 - sum(\"abundant\".\"s_return_net_loss\")) as numeric(15,2)) as \"___entity_rows_arm_1_u_profit\",
-    cast(0 as numeric(15,2)) as \"___entity_rows_arm_1_u_sales\",
     cast(sum(\"abundant\".\"s_return_amount\") as numeric(15,2)) as \"___entity_rows_arm_1_u_returns\"
 FROM
     \"yummy\"
@@ -185,7 +183,7 @@ puzzled as (
 SELECT
     \"vacuous\".\"___entity_rows_arm_1_u_channel\" as \"_entity_rows_u_channel\",
     \"vacuous\".\"___entity_rows_arm_1_u_entity\" as \"_entity_rows_u_entity\",
-    \"vacuous\".\"___entity_rows_arm_1_u_sales\" as \"_entity_rows_u_sales\",
+    cast(0 as numeric(15,2)) as \"_entity_rows_u_sales\",
     \"vacuous\".\"___entity_rows_arm_1_u_returns\" as \"_entity_rows_u_returns\",
     \"vacuous\".\"___entity_rows_arm_1_u_profit\" as \"_entity_rows_u_profit\"
 FROM
@@ -195,7 +193,7 @@ SELECT
     \"busy\".\"___entity_rows_arm_0_u_channel\" as \"_entity_rows_u_channel\",
     \"busy\".\"___entity_rows_arm_0_u_entity\" as \"_entity_rows_u_entity\",
     \"busy\".\"___entity_rows_arm_0_u_sales\" as \"_entity_rows_u_sales\",
-    \"busy\".\"___entity_rows_arm_0_u_returns\" as \"_entity_rows_u_returns\",
+    cast(0 as numeric(15,2)) as \"_entity_rows_u_returns\",
     \"busy\".\"___entity_rows_arm_0_u_profit\" as \"_entity_rows_u_profit\"
 FROM
     \"busy\"),
