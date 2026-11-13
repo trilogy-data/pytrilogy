@@ -364,9 +364,10 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
     """A side whose key can be NULL via outer-join padding carries the join
     image of the key (the values its preserved rows happened to match, a
     subset of the value space), so the two sides' key sets only provably
-    coincide when the padding shares provenance. Value NULLs (a `?` column, a
-    ROLLUP grouping key) do not subset the non-null values and stay with the
-    null-safe machinery."""
+    coincide when the padding shares provenance: every source that pads one
+    side pads the other, or a side NULLs rows (a flight with no aircraft) the
+    other never holds. Value NULLs (a `?` column, a ROLLUP grouping key) do not
+    subset the non-null values and stay with the null-safe machinery."""
     padded = False
     for concept, side in ((pair.left, pair.node), (pair.right, right_cte)):
         if (
@@ -388,7 +389,7 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
         if isinstance(right_cte, CTE)
         else set()
     )
-    return not (left_pad & right_pad)
+    return left_pad != right_pad
 
 
 def _pair_key_sets_equivalent(

@@ -8,7 +8,8 @@ referenced and every reference resolves, so the answer is the plain join.
 
 The selects pair dimension attributes with a per-flight measure
 (`sum(group(seats) by id)`), the shape whose join axis two planner regressions
-lost (`test_aggregate_side_parity.py`)."""
+lost (`test_aggregate_side_parity.py`). A NULL `tail_num` among the flights
+exercises the NULL-key pairings (`test_null_key_groups.py`)."""
 
 import random
 from collections import defaultdict
@@ -19,10 +20,6 @@ from tests.helpers.rows import fetch_rows
 from trilogy import Dialects
 
 SEEDS = 600
-# Pre-existing, with a NULL `tail_num` among the flights: under `~?tail_num`
-# the NULL group is dropped (56, 132), and a padded all-NULL row with a zero
-# count appears though every dimension row is referenced (22, 98).
-NULL_KEY_BUGS = {22, 56, 98, 132}
 NAMES = ["737", "A320", "E175"]
 MAKERS = ["BOEING", "AIRBUS"]
 ATTRS = ["model_name", "model_maker", "carrier_name", "airport_name", "tail_num"]
@@ -162,19 +159,7 @@ def _sorted(rows: list[tuple]) -> list[tuple]:
     return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
 
 
-@pytest.mark.parametrize(
-    "seed",
-    [
-        (
-            pytest.param(
-                seed, marks=pytest.mark.xfail(strict=True, reason="NULL_KEY_BUGS")
-            )
-            if seed in NULL_KEY_BUGS
-            else seed
-        )
-        for seed in range(SEEDS)
-    ],
-)
+@pytest.mark.parametrize("seed", range(SEEDS))
 def test_dimension_chain_select_matches_raw_rows(seed: int):
     rng = random.Random(seed)
     text, rows = _draw(rng)
