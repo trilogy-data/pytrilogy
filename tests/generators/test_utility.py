@@ -1,5 +1,3 @@
-from networkx import Graph
-
 from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
@@ -9,45 +7,48 @@ from trilogy.core.processing.join_resolution import (
     resolve_join_order_v2,
 )
 
+Columns = dict[str, set[str]]
 
-def _shared(g: Graph) -> dict[frozenset[str], frozenset[str]]:
-    sides = sorted(x for x in g.nodes if x.startswith("ds~"))
+
+def _shared(columns: Columns) -> dict[frozenset[str], frozenset[str]]:
+    sides = sorted(columns)
     return {
-        frozenset({a, b}): frozenset(set(g.neighbors(a)) & set(g.neighbors(b)))
+        frozenset({a, b}): frozenset(columns[a] & columns[b])
         for i, a in enumerate(sides)
         for b in sides[i + 1 :]
     }
 
 
-def _facts(g: Graph, partials: dict[str, list[str]]) -> JoinFacts:
-    return JoinFacts(
-        sides={
-            node: SideFacts(partials=frozenset(keys)) for node, keys in partials.items()
-        },
-        pair_keys=_shared(g),
-    )
+def _sides(
+    columns: Columns, partials: dict[str, list[str]] | None = None
+) -> dict[str, SideFacts]:
+    return {
+        node: SideFacts(
+            columns=frozenset(held),
+            partials=frozenset((partials or {}).get(node, ())),
+        )
+        for node, held in columns.items()
+    }
+
+
+def _facts(columns: Columns, partials: dict[str, list[str]]) -> JoinFacts:
+    return JoinFacts(sides=_sides(columns, partials), pair_keys=_shared(columns))
 
 
 def test_resolve_join_order_v2():
-    g = Graph()
-
-    g.add_edge("ds~orders", "c~order_id")
-    g.add_edge("ds~orders", "c~product_id")
-    g.add_edge("ds~orders", "c~customer_id")
-    g.add_edge("ds~products", "c~product_id")
-    g.add_edge("ds~products", "c~price")
-    g.add_edge("ds~customer", "c~customer_id")
-    g.add_edge("ds~customer", "c~customer_name")
-    g.add_edge("ds~customer_address", "c~customer_id")
-    g.add_edge("ds~customer_address", "c~address")
-    g.add_edge("ds~customer_address", "c~city")
+    columns = {
+        "ds~orders": {"c~order_id", "c~product_id", "c~customer_id"},
+        "ds~products": {"c~product_id", "c~price"},
+        "ds~customer": {"c~customer_id", "c~customer_name"},
+        "ds~customer_address": {"c~customer_id", "c~address", "c~city"},
+    }
 
     partials = {
         "ds~orders": ["c~customer_id", "c~product_id"],
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, _facts(g, partials))
+    output = resolve_join_order_v2(_facts(columns, partials))
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
@@ -77,25 +78,22 @@ def test_resolve_join_order_v2():
     ]
 
 
-def _shared_key_graph() -> Graph:
-    g = Graph()
-    for ds in ("ds~a", "ds~b", "ds~c"):
-        g.add_edge(ds, "c~k")
-    return g
+def _shared_key() -> Columns:
+    return {ds: {"c~k"} for ds in ("ds~a", "ds~b", "ds~c")}
 
 
 def test_sides_pair_only_on_their_own_planned_keys():
-    g = _shared_key_graph()
-    g.add_edge("ds~a", "c~x")
-    g.add_edge("ds~b", "c~x")
+    columns = _shared_key()
+    columns["ds~a"].add("c~x")
+    columns["ds~b"].add("c~x")
     planned = resolve_join_order_v2(
-        g,
         JoinFacts(
+            sides=_sides(columns),
             pair_keys={
                 frozenset({"ds~a", "ds~b"}): frozenset({"c~x"}),
                 frozenset({"ds~b", "ds~c"}): frozenset({"c~k"}),
                 frozenset({"ds~a", "ds~c"}): frozenset(),
-            }
+            },
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
@@ -106,13 +104,13 @@ def test_sides_pair_only_on_their_own_planned_keys():
 
 def test_a_side_waits_for_its_planned_partner():
     planned = resolve_join_order_v2(
-        _shared_key_graph(),
         JoinFacts(
+            sides=_sides(_shared_key()),
             pair_keys={
                 frozenset({"ds~a", "ds~b"}): frozenset({"c~k"}),
                 frozenset({"ds~a", "ds~c"}): frozenset({"c~k"}),
                 frozenset({"ds~b", "ds~c"}): frozenset(),
-            }
+            },
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
@@ -122,14 +120,16 @@ def test_a_side_waits_for_its_planned_partner():
 
 
 def test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing():
-    joins = resolve_join_order_v2(_shared_key_graph(), JoinFacts())
+    joins = resolve_join_order_v2(JoinFacts(sides=_sides(_shared_key())))
     assert [(j.right, j.keys) for j in joins] == [("ds~b", {}), ("ds~c", {})]
 
 
 def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
     planned = resolve_join_order_v2(
-        _shared_key_graph(),
-        JoinFacts(pair_keys={frozenset({"ds~a", "ds~b"}): frozenset({"c~k"})}),
+        JoinFacts(
+            sides=_sides(_shared_key()),
+            pair_keys={frozenset({"ds~a", "ds~b"}): frozenset({"c~k"})},
+        )
     )
     assert [(j.right, j.keys) for j in planned] == [
         ("ds~a", {"ds~b": {"c~k"}}),
@@ -138,9 +138,10 @@ def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
 
 
 def test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots():
-    g = _shared_key_graph()
-    g.add_edge("ds~d", "c~x")
-    joins = resolve_join_order_v2(g, JoinFacts(pair_keys=_shared(g)))
+    columns = {**_shared_key(), "ds~d": {"c~x"}}
+    joins = resolve_join_order_v2(
+        JoinFacts(sides=_sides(columns), pair_keys=_shared(columns))
+    )
     assert [(j.left, j.right, j.keys) for j in joins][-1] == ("ds~a", "ds~d", {})
 
 
@@ -423,20 +424,18 @@ def test_resolve_join_order_v2_multi_partial():
     """When two datasources share a concept as partial,
     they should both be kept as left join sources for
     a dimension table (enabling COALESCE)."""
-    g = Graph()
-    g.add_edge("ds~fact1", "c~shared_id")
-    g.add_edge("ds~fact1", "c~fact1_val")
-    g.add_edge("ds~fact2", "c~shared_id")
-    g.add_edge("ds~fact2", "c~fact2_val")
-    g.add_edge("ds~dim", "c~shared_id")
-    g.add_edge("ds~dim", "c~dim_name")
+    columns = {
+        "ds~fact1": {"c~shared_id", "c~fact1_val"},
+        "ds~fact2": {"c~shared_id", "c~fact2_val"},
+        "ds~dim": {"c~shared_id", "c~dim_name"},
+    }
 
     partials = {
         "ds~fact1": ["c~shared_id"],
         "ds~fact2": ["c~shared_id"],
     }
 
-    output = resolve_join_order_v2(g, _facts(g, partials))
+    output = resolve_join_order_v2(_facts(columns, partials))
 
     # Both fact tables should join to dim; fact tables join first
     # because multi_partial scoring boosts them.
