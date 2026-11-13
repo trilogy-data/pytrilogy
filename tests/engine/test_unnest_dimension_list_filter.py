@@ -93,8 +93,7 @@ def test_an_element_filter_pairs_on_the_element_and_its_row(monkeypatch):
         for spoke in merged.parents[1:]:
             held = {o.address for o in spoke.output_concepts}
             pairs.append(
-                merged.planned_pairs.between(sides[id(node)], sides[id(spoke)])
-                & held
+                merged.planned_pairs.between(sides[id(node)], sides[id(spoke)]) & held
             )
         return merged
 
