@@ -12,14 +12,17 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.node_generators.select_merge_node import (
     SearchCriteria,
+    SourcedScans,
+    _joint_plan,
     create_datasource_node,
     get_graph_partial_nodes,
     resolve_subgraphs,
 )
 from trilogy.core.processing.node_generators.select_node import gen_select_node
-from trilogy.core.processing.nodes import ConstantNode, SelectNode
+from trilogy.core.processing.nodes import ConstantNode, MergeNode, SelectNode
 from trilogy.core.statements.author import PersistStatement
 
 
@@ -494,3 +497,66 @@ address items_table;
     # full condition satisfaction; the higher-level strategy can then build
     # a safe multi-step plan.
     assert node is None
+
+
+def _two_scan_merge() -> MergeNode:
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+key customer_id int;
+property customer_id.customer_name string;
+
+datasource customer (customer_id:customer_id, customer_name:customer_name)
+grain (customer_id)
+address customer;
+
+datasource orders (order_id:order_id, customer_id:customer_id)
+grain (order_id)
+address orders;
+""",
+    )
+    benv = env.materialize_for_select()
+    node = gen_select_node(
+        concepts=[
+            benv.concepts[x] for x in ("order_id", "customer_id", "customer_name")
+        ],
+        environment=benv,
+        g=generate_graph(benv),
+        depth=0,
+    )
+    assert isinstance(node, MergeNode)
+    return node
+
+
+def test_scans_of_one_search_pair_on_the_classes_the_graph_links_both_to():
+    node = _two_scan_merge()
+    assert node.planned_pairs is not None
+    one, other = (node.planned_pairs.sides[id(p)] for p in node.parents)
+    assert node.planned_pairs.between(one, other) == {"local.customer_id"}
+
+
+def test_a_merge_with_no_plan_is_a_planner_bug():
+    node = _two_scan_merge()
+    node.planned_pairs = None
+    with pytest.raises(ValueError, match="carries no join plan"):
+        node.resolve()
+
+
+def test_scans_of_separate_searches_pair_on_nothing():
+    first, second, third = object(), object(), object()
+    planned = _joint_plan(
+        [
+            SourcedScans(
+                [],
+                PlannedPairs(
+                    {id(first): frozenset({"ds~a"}), id(second): frozenset({"ds~b"})},
+                    {frozenset({"ds~a", "ds~b"}): frozenset({"k"})},
+                ),
+            ),
+            SourcedScans([], PlannedPairs({id(third): frozenset({"ds~a"})}, {})),
+        ]
+    )
+    sides = planned.sides
+    assert planned.between(sides[id(first)], sides[id(second)]) == {"k"}
+    assert planned.between(sides[id(first)], sides[id(third)]) == frozenset()

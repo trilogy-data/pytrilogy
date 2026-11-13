@@ -196,3 +196,15 @@ def test_elided_passthrough_keeps_its_merge_planned(monkeypatch):
         f"select {SHAPES['count'].format(v=value)} where city = 'A';",
     )
     assert every_side_planned(stated)
+
+
+@pytest.mark.parametrize("spelling", list(SPELLINGS))
+def test_the_relation_join_is_planned(monkeypatch, spelling):
+    stated = record_planned_sides(monkeypatch)
+    model, value, sizing, _ = SPELLINGS[spelling]
+    sql, _ = _rows(
+        _executor(model + SUMMARY, random_data(0), sizing),
+        f"select {SHAPES['beside_city'].format(v=value)};",
+    )
+    assert '"summary"' in sql, sql
+    assert every_side_planned(stated)
