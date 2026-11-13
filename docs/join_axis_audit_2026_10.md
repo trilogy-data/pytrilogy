@@ -2343,6 +2343,49 @@ their stated keys, and the plans name them.
 `test_a_having_looks_its_feeder_up_on_the_feeder_grain` pin the two plans.
 The second fails on `main`, where the HAVING merge carries no plan.
 
+**Resolve reads the plan pair by pair (part 63).** Part 30 handed the
+merge one plan, but `get_node_joins` still read it in two shapes: the
+merge-wide union (`PlannedPairs.permitted`), which every shared column was
+dropped against, and the per-pair map, which narrowed each pair's
+connections. The join tree read the first: a column several sides hold
+pivoted all of its holders, though the plan paired only some of them on it,
+so a side was gathered under a pivot it could not join on and waited
+(`deferred`) or fell through to a keyless join there. Now resolve reads only
+the per-pair map:
+
+- `get_node_joins` takes no `planned_keys`. A shared column stays in the
+  join graph only where the plan pairs two of its holders on it
+  (`_drop_unpaired_keys`).
+- A pivot gathers only the holders the plan pairs on it (`_pivot_map`). A
+  pair the plan does not state pairs on nothing.
+- A side the plan pairs on none of the columns it holds is joined on nothing
+  after the tree, so the keyless-join guard judges it. It no longer drops
+  out of the tree, or rides a pivot it does not pair on.
+- The guard counts the tree's base. A keyless join made before any keyed
+  one names no left, so the base never entered the tree, and a keyless join
+  onto it was never checked.
+
+`test_misgrained_broadcast_is_loud_not_silent` is the case. With the
+exposure guards disabled, a `by *` aggregate carries `cust` and is planned
+on nothing. It used to join first, keyless onto the tree's base, which the
+guard never saw, and only the render backstop caught the re-grained
+aggregate. Now it joins last, and the guard names it while planning. The test
+accepts either refusal.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
+worktree paths normalized): 13,760 tests on each side, the same 25 failures
+(the credential-gated BigQuery, Snowflake, GCS and NCAA tests, and
+`the_look::test_wrapped_aggregate_with_dependent_by_grain`), plus the
+misgrained test above before it accepted the guard's refusal. Three tests moved: a BigQuery
+temp-table name, the GCS cache-bust URL and `test_cli_consistency`, each of
+which moves between two runs of `main`. So no plan moved: every merge
+already paired only where its plan pairs, and resolve now reads that from
+the plan instead of from what the sides share.
+
+`test_a_side_the_plan_pairs_on_nothing_joins_on_nothing` pins the fallback.
+`test_sides_pair_only_on_their_own_planned_keys` now pivots on `k` between
+the two sides planned on it first, with the same pairs as before.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2352,8 +2395,10 @@ not built yet:
    sources its WHERE re-plans and a key lookup are planned too (part 61),
    and so are an unnest's element filter and a clause applied outside a
    group graph (part 62): every merge between stated rows carries a plan.
-   What is left is building `node_joins` from the pairings, so resolve stops
-   ordering keys it was already handed.
+   Resolve reads that plan pair by pair, its pivots included (part 63), so
+   no key it equates is one it found by column overlap. What is left is
+   building `node_joins` from the pairings, so resolve stops ordering keys it
+   was already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

@@ -1569,7 +1569,9 @@ def _raise_if_keyless_row_bearing_join(
         closure_cache[node] = result
         return result
 
-    tree: set[str] = set()
+    # the tree's base is no join's right side: a keyless join onto it names
+    # no left
+    tree = set(ds_node_map) - {j.right for j in joins}
     for j in joins:
         if j.left is not None:
             tree.add(j.left)
