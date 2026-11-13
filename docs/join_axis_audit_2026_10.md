@@ -2569,6 +2569,41 @@ So no plan moved. `test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it
 `test_the_relation_join_is_planned` pin the plans, and
 `test_a_merge_with_no_plan_is_a_planner_bug` the guard.
 
+**Resolve reads every key off the plan (part 68).** With every merge
+planned (part 67), `get_node_joins` still took the plan as optional, and
+`resolve_join_order_v2` still began from column overlap: it intersected the
+columns each two sides share (`find_all_connecting_concepts`) with the plan's
+keys for that pair, and pivoted each shared column's holders before filtering
+them to the ones the plan pairs on it. With no plan it paired on the overlap
+alone.
+
+- `get_node_joins` requires the plan (`planned_pairs`, keyword-only).
+  `_planned_pair_nodes` states each pair's keys as the columns both sides
+  hold of the classes the plan pairs them on, so `JoinFacts.pair_keys` is the
+  merge's whole key set and the only one.
+- `resolve_join_order_v2` reads its connections straight off `pair_keys`, and
+  its pivots too: a key's holders are the sides the plan pairs on it
+  (`_pivot_map`). `find_all_connecting_concepts` is gone. Two sides the plan
+  does not pair join on nothing, whatever columns they share, and the
+  keyless-join guard judges them.
+
+The join graph still decides one thing: the order keyless sides join in
+(`_keyless_order`, by the first column only that side holds). That changes
+no key.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
+worktree paths normalized): 44,826 keys. The failures match (the
+credential-gated tests), except a `test_q04_generation_determinism` case
+that failed on the base run only. 199 tests moved: 142 oracle-sweep, 18
+`test_where_hosts`, 18 `test_complete_binding_lookup`, 10 window-law and
+3 `test_split_key_gates` cases, plus a few others. Re-run serially on both
+trees, 196 compile the same. The other 3 are listed noise: the BigQuery
+temp-table name, the GCS cache-bust URL and `test_cli_consistency`. So no
+plan moved.
+
+`test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing` pins
+the rule. The resolve unit tests now state their plans.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2587,9 +2622,10 @@ not built yet:
    also pairing on its resolved grain (part 66). So is a side the search did
    not choose, `gen_select_merge_node`'s scans, a recursive walk's
    join-back and a relation rollup, so every merge between scans carries a plan, and one reaching
-   join inference without one raises (part 67). What is left is building
-   `node_joins` from the pairings, so resolve stops ordering keys it was
-   already handed.
+   join inference without one raises (part 67). Resolve takes every key and
+   pivot from the plan's pairs, with no column-overlap search left (part 68).
+   What is left is ordering the joins from the pairings, so resolve's pivot
+   heuristic stops ordering keys it was already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
