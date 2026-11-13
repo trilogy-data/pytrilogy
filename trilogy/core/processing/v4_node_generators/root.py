@@ -15,6 +15,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     decompose_condition,
 )
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.nodes import SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import (
     ConditionSources,
@@ -93,10 +94,10 @@ def _with_condition_source_join_keys(
     re-source as a feeder, and return the keys the scan cannot bind but a
     projection over it computes.
 
-    The feeder is a standalone plan merged back onto this node on whatever the
-    two share, so a gate keyed by a dimension the outputs never demand
-    (`where sum(val) by cat > 10 select id`) shares nothing: the merge degrades
-    to a cross join and the gate stops filtering rows altogether. The keys come
+    The feeder is a standalone plan merged back onto this node on the gate's
+    grain (its rejoin plan), so a gate keyed by a dimension the outputs never
+    demand (`where sum(val) by cat > 10 select id`) needs that key on the scan,
+    or the merge degrades to a cross join and the gate stops filtering rows. The keys come
     back hidden, so this only adds join columns, never projected ones. A `by *`
     gate has no grain and is genuinely keyless; it stays a cross join.
 
@@ -238,7 +239,7 @@ def _resolve_root_condition_sources(
     history: V4History,
     preexisting_conditions: BuildWhereClause | None = None,
     staged_conditions: list[BuildWhereClause] | None = None,
-) -> ConditionSources:
+) -> tuple[ConditionSources, PlannedPairs | None]:
     """ROOT's fork of `condition_sources.resolve_row_sources`.
 
     It forks where re-sourcing from datasources demands it: the search is
@@ -251,8 +252,12 @@ def _resolve_root_condition_sources(
     Existence args are not sourced here at all: a ROOT is a group-graph
     build, and the graph holds the set's lineage. The strategy builder wires
     the built provider onto the node that hosts the atom.
+
+    Each row source comes back with its rejoin keys, as the plan of the merge
+    that joins the sources onto `node`.
     """
     sources = ConditionSources()
+    rejoins: list[frozenset[str]] = []
     v4_history = cast(V4History, history)
     produced = {concept.address for concept in node.usable_outputs}
     row_args = [
@@ -263,18 +268,22 @@ def _resolve_root_condition_sources(
     if row_args:
         sources.row_concepts = row_args
         for partition in _stage_partitions(staged_conditions, row_args):
-            sources.row_parents.append(
-                _resolve_row_arg_source(
-                    node,
-                    partition,
-                    environment,
-                    g,
-                    v4_history,
-                    preexisting_conditions,
-                    staged_conditions,
-                )
+            row_node, keys = _resolve_row_arg_source(
+                node,
+                partition,
+                environment,
+                g,
+                v4_history,
+                preexisting_conditions,
+                staged_conditions,
             )
-    return sources
+            sources.row_parents.append(row_node)
+            rejoins.append(keys)
+    return sources, (
+        PlannedPairs.star(node, list(zip(sources.row_parents, rejoins)))
+        if rejoins
+        else None
+    )
 
 
 def _stage_partitions(
@@ -314,12 +323,15 @@ def _resolve_row_arg_source(
     v4_history: V4History,
     preexisting_conditions: BuildWhereClause | None,
     staged_conditions: list[BuildWhereClause] | None,
-) -> StrategyNode:
-    """Re-source one group of condition row args from datasources."""
+) -> tuple[StrategyNode, frozenset[str]]:
+    """Re-source one group of condition row args from datasources, with the
+    keys it rejoins `node` on: what it was searched for beside the args (an
+    aggregate's grain, a row arg's keys) and the node's identity it was
+    correlated on."""
     row_search = _condition_source_search_outputs(row_args, environment)
-    # This source is rejoined to `node` on whatever the two share, so it
-    # must carry the node's OWN row identity or the rejoin silently
-    # coarsens: `where supplier.nation.region.name = 'EUROPE'` beside an
+    # This source is rejoined to `node` on its keys and this correlation
+    # (its rejoin plan), so it must carry the node's OWN row identity or the
+    # rejoin silently coarsens: `where supplier.nation.region.name = 'EUROPE'` beside an
     # aggregate sourced region at (region, part) grain and rejoined on part
     # alone, asking "does this part have SOME European supplier" instead of
     # "is THIS supplier European". Identity is the node's grain, or the KEY
@@ -359,6 +371,7 @@ def _resolve_row_arg_source(
         staged_conditions=staged_conditions,
     )
     if correlation and row_node is None:
+        correlation = []
         row_node = search_parent(
             row_search,
             environment,
@@ -374,7 +387,10 @@ def _resolve_row_arg_source(
             "Could not resolve condition row arguments "
             f"{[c.address for c in row_args]}"
         )
-    return row_node
+    args = {c.address for c in row_args}
+    return row_node, frozenset(
+        c.address for c in row_search + correlation if c.address not in args
+    )
 
 
 def _where_clause(atoms: list[BoolExpr]) -> BuildWhereClause | None:
@@ -506,7 +522,7 @@ def gen_root(
                 fallback_outputs = fallback_outputs + derived
         if node is None:
             return None
-        sources = _resolve_root_condition_sources(
+        sources, planned = _resolve_root_condition_sources(
             node,
             conditions,
             environment,
@@ -528,13 +544,14 @@ def gen_root(
             condition_on_merge=bool(sources.row_parents),
             hidden_concepts=hidden or None,
             combine_existing=False,
+            planned_pairs=planned,
         )
     if node is None or existence_conditions is None:
         return node
 
     # The set's feeder is the group graph's, wired onto the host after the
     # build (`strategy_builder._wire_existence`); the host is decided here.
-    sources = _resolve_root_condition_sources(
+    sources, planned = _resolve_root_condition_sources(
         node, existence_conditions, environment, g, history
     )
     if not sources.row_parents:
@@ -588,4 +605,5 @@ def gen_root(
         sources=sources,
         input_concepts=list(node.output_concepts),
         combine_existing=False,
+        planned_pairs=planned,
     )

@@ -662,3 +662,20 @@ def test_row_key_gated_by_aggregate_coalesced_with_key_drops_failing_rows():
 def test_row_flag_derived_from_aggregate_gates_projected_rows():
     rows = _rows(CELL_ANCHOR_SCHEMA, "where is_primary = true select id, is_primary;")
     assert rows == [("m1", True), ("o2", True)], rows
+
+
+def test_a_root_gate_rejoins_its_rows_on_the_gate_grain(monkeypatch):
+    from trilogy.core.processing.v4_node_generators import root
+
+    plans = []
+    inject = root.inject_condition_at_node
+
+    def record(*args, **kwargs):
+        plans.append(kwargs.get("planned_pairs"))
+        return inject(*args, **kwargs)
+
+    monkeypatch.setattr(root, "inject_condition_at_node", record)
+    rows = _rows(GATE_SCHEMA, "where sum(val) by cat > 10 select id;")
+    assert rows == [(1,), (2,)], rows
+    planned = [plan for plan in plans if plan is not None]
+    assert planned and all(plan.permitted == {"local.cat"} for plan in planned)

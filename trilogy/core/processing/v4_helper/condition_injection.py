@@ -202,6 +202,7 @@ def inject_condition_at_node(
             output_concepts=merged_outputs,
             environment=environment,
             parents=[base, *sources.row_parents],
+            planned_pairs=planned_pairs,
         )
 
     combined = and_optional(
