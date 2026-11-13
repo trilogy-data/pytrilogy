@@ -14,6 +14,7 @@ from trilogy.core.processing.v4_helper.source_planning import (
     _bridge_plan,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
+    _merged,
     _network_source,
     _original_datasource_concept_nodes,
     _search_concepts_for_bridge,
@@ -624,3 +625,9 @@ def test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned():
     assert _bridge_plan(plan, [chosen, connector], {id(chosen): "ds~a"}) is None
     sides = {id(chosen): "ds~a", id(filled): "ds~b"}
     assert _bridge_plan(plan, [chosen, filled], sides) is None
+
+
+def test_a_hub_with_no_lookups_is_its_own_merge():
+    _, benv = _build_grained_bridge()
+    hub = object()
+    assert _merged(hub, [], benv, 0) is hub
