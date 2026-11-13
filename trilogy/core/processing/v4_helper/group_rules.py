@@ -914,11 +914,14 @@ def _global_aggregate_inputs(
 ) -> list[NodeItem]:
     """Roots read only by `by *` aggregates, on no table the other roots read.
     Left in the row stream they cross-join their whole table onto its rows
-    (#953); the aggregate's one-row result is all the rows need."""
+    (#953); the aggregate's one-row result is all the rows need. A WHERE
+    filters every scan of the statement's rows, so none is peeled under one."""
+    if any(d.where_row_arg for d in concept_attrs.values()):
+        return []
     peeled = [
         (n, d)
         for n, d in main_items
-        if not (d.where_row_arg or d.scan_filtered or d.relation_only)
+        if not (d.scan_filtered or d.relation_only)
         and d.datasource_bindings
         and _feeds_only_global_aggregates(
             n, concept_graph, concept_edges, concept_attrs, output_addresses
