@@ -259,12 +259,22 @@ def _planned_source_pairs(
             f"Merge sources {unattributed} hold no planned group, so their "
             "join keys are unplanned. This is a planner bug."
         )
+    grains = {
+        key: (
+            frozenset(source.grain.components)
+            if (held[key] or frozenset()) & planned.grain_paired
+            else frozenset()
+        )
+        for key, source in merged.items()
+    }
     out: dict[frozenset[str], frozenset[str]] = {}
     keys = sorted(merged)
     for i, left in enumerate(keys):
         for right in keys[i + 1 :]:
             out[frozenset({merged[left].identifier, merged[right].identifier})] = (
                 planned.between(held[left] or frozenset(), held[right] or frozenset())
+                | grains[left]
+                | grains[right]
             )
     return out
 

@@ -152,6 +152,9 @@ class PlannedPairs:
     # two groups (one, for a group split into projections) -> what they may
     # pair on
     keys: Mapping[frozenset[str], frozenset[str]]
+    # groups whose rows are finer than what the plan knows of them (a derived
+    # connector's subplan): each also pairs on its resolved grain
+    grain_paired: frozenset[str] = frozenset()
 
     @classmethod
     def star(
@@ -191,9 +194,10 @@ class PlannedPairs:
         """The plan with one more parent, holding `side`, paired with every
         planned group on `keys`."""
         others = frozenset().union(*self.sides.values()) - side
-        return PlannedPairs(
-            {**self.sides, key: side},
-            {
+        return replace(
+            self,
+            sides={**self.sides, key: side},
+            keys={
                 **self.keys,
                 **{
                     frozenset({a, b}): self.keys.get(frozenset({a, b}), frozenset())

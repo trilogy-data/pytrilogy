@@ -782,6 +782,31 @@ def test_an_unattributed_pair_is_a_planner_bug():
     assert _planned_source_pairs({"c": sources["c"]}, held, planned) == {}
 
 
+def test_a_grain_paired_side_pairs_on_its_resolved_grain():
+    planned = PlannedPairs(
+        {},
+        {frozenset({"c", "s"}): frozenset({"p"}), frozenset({"s", "t"}): frozenset()},
+        grain_paired=frozenset({"c"}),
+    )
+    sources = {
+        key: SimpleNamespace(
+            identifier=key, grain=SimpleNamespace(components={"p", "u"})
+        )
+        for key in ("c", "s", "t")
+    }
+    held = {key: frozenset({key}) for key in sources}
+    assert _planned_source_pairs(sources, held, planned) == {
+        frozenset({"c", "s"}): frozenset({"p", "u"}),
+        frozenset({"c", "t"}): frozenset({"p", "u"}),
+        frozenset({"s", "t"}): frozenset(),
+    }
+
+
+def test_a_joined_parent_keeps_the_grain_paired_groups():
+    planned = PlannedPairs({}, {}, grain_paired=frozenset({"c"}))
+    assert planned.joined(1, frozenset({"x"}), frozenset()).grain_paired == {"c"}
+
+
 def test_a_star_plan_pairs_spokes_only_on_keys_both_join_the_hub_on():
     hub, one, two = object(), object(), object()
     planned = PlannedPairs.star(

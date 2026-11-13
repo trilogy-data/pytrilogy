@@ -465,8 +465,8 @@ def test_padded_key_stream_kept(query: str):
 
 def test_a_bridge_through_a_derived_connector_keeps_its_rows():
     """The search binds a derived connector on its join keys alone, but the
-    connector's subplan emits more: a bridge through one pairs on what its
-    sides share, not on the search's keys, or user 3 gains a padded row."""
+    connector's subplan returns rows at its own grain: a bridge through one
+    pairs on that grain too, or user 3 gains a padded row."""
     _, rows = _trace(_REV + _REV_KEYS)
     assert [tuple(r) for r in rows] == [
         (1, 1, "ca", "acme", Decimal("5.0")),

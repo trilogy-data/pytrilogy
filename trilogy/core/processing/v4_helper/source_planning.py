@@ -952,7 +952,7 @@ def _datasource_nodes_for_bridge(
         sides[id(parents[-1])] = ds_node
     if accept_partial and not request.complete_partials:
         parents = _drop_redundant_subset_sources(parents)
-    parents.extend(_derived_connector_nodes(request, plan, parents))
+    parents.extend(_derived_connector_nodes(request, plan, parents, sides))
     if not parents:
         return None
     return parents
@@ -985,6 +985,7 @@ def _derived_connector_nodes(
     request: SourceRequest,
     plan: BridgePlan,
     datasource_parents: list[StrategyNode],
+    sides: dict[int, str] | None = None,
 ) -> list[StrategyNode]:
     """Materialize bridge concepts whose source is a *derived* connector.
 
@@ -1084,6 +1085,8 @@ def _derived_connector_nodes(
             if info.strategy_node is not None:
                 planned.add(origin.address)
                 connectors.append(info.strategy_node)
+                if sides is not None and alias in forced:
+                    sides[id(info.strategy_node)] = CONNECTOR_NODE_PREFIX + alias
     return connectors
 
 
@@ -2551,15 +2554,20 @@ def _bridge_plan(
     bridge: BridgePlan, parents: list[StrategyNode], sides: Mapping[int, str]
 ) -> PlannedPairs | None:
     """The search's joins as the bridge merge's plan: each parent pairs with
-    another only on what the search joined their sources on. None when a
-    parent is no scan the search chose: a gap-filled scan, of whose joins the
-    search said nothing, or a derived connector, which the search binds only
-    on its join keys though its subplan emits more."""
-    if not all(sides.get(id(parent)) in bridge.scans for parent in parents):
+    another only on what the search joined their sources on. A derived
+    connector's subplan returns rows at its own grain, finer than the keys the
+    search binds it on, so it pairs on that grain too. None when a parent is
+    no source the search chose: a gap-filled scan, of whose joins the search
+    said nothing, or a connector planned for a concept no scan covered."""
+    connectors = {CONNECTOR_NODE_PREFIX + alias for alias in bridge.connector_aliases}
+    if not all(
+        sides.get(id(parent)) in bridge.scans | connectors for parent in parents
+    ):
         return None
     return PlannedPairs(
         {id(parent): frozenset({sides[id(parent)]}) for parent in parents},
         bridge.join_keys,
+        grain_paired=frozenset(connectors),
     )
 
 

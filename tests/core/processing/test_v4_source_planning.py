@@ -627,6 +627,26 @@ def test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned():
     assert _bridge_plan(plan, [chosen, filled], sides) is None
 
 
+def test_a_bridge_through_a_chosen_connector_pairs_on_its_grain():
+    _, benv = _build_grained_bridge()
+    plan = BridgePlan(
+        concepts=[],
+        graph=generate_graph(benv),
+        scans=frozenset({"ds~a"}),
+        connector_aliases=("r.k",),
+        join_keys={frozenset({"ds~a", "connector~r.k"}): frozenset({"local.k"})},
+    )
+    scan, connector = object(), object()
+    planned = _bridge_plan(
+        plan, [scan, connector], {id(scan): "ds~a", id(connector): "connector~r.k"}
+    )
+    assert planned is not None
+    assert planned.grain_paired == {"connector~r.k"}
+    assert planned.between(planned.sides[id(scan)], planned.sides[id(connector)]) == {
+        "local.k"
+    }
+
+
 def test_a_hub_with_no_lookups_is_its_own_merge():
     _, benv = _build_grained_bridge()
     hub = object()
