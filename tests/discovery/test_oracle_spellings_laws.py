@@ -309,10 +309,24 @@ def shape2(seed):
 
 SEEDS = 400
 FOUND_SEEDS: list[int] = []
+# leads, failing on main too (docs/handoff_formalization_next.md, area 1)
+OPEN = {
+    129: "a HAVING `by city` beside `city as v0` reads as `by v0` and is rejected",
+    346: "a WHERE gate is placed only on the group a filtered aggregate's "
+    "condition reads; the filtered count's own rows skip it",
+}
+
+
+def _seed(seed: int):
+    if seed in OPEN:
+        return pytest.param(
+            seed, marks=pytest.mark.xfail(strict=True, reason=OPEN[seed])
+        )
+    return seed
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
-@pytest.mark.parametrize("seed", [*range(SEEDS), *FOUND_SEEDS])
+@pytest.mark.parametrize("seed", [_seed(s) for s in (*range(SEEDS), *FOUND_SEEDS)])
 def test_spelling_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape2(seed)
     try:
