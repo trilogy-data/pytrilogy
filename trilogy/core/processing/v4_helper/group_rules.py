@@ -16,6 +16,7 @@ from collections.abc import Callable, Collection, Iterable, Sequence
 from functools import partial
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -871,6 +872,66 @@ def _cosource_component_groups(
     ]
 
 
+def _feeds_only_global_aggregates(
+    node: str,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> bool:
+    """Every path from `node` ends at a `by *` aggregate, through row-level
+    BASIC/FILTER steps only: its rows exist only to be collapsed into a
+    constant of the query, which the aggregate sources on its own."""
+    visited = {node}
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        succs = list(concept_graph.successors(cur))
+        if not succs or concept_attrs[cur].address in output_addresses:
+            return False
+        for nxt in succs:
+            if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
+                return False
+            data = concept_attrs[nxt]
+            if data.derivation == Derivation.AGGREGATE:
+                if not set(data.grain_components) <= {ALL_ROWS_ADDRESS}:
+                    return False
+                continue
+            if data.derivation not in (Derivation.BASIC, Derivation.FILTER):
+                return False
+            if nxt not in visited:
+                visited.add(nxt)
+                stack.append(nxt)
+    return True
+
+
+def _global_aggregate_inputs(
+    main_items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> list[NodeItem]:
+    """Roots read only by `by *` aggregates, on no table the other roots read.
+    Left in the row stream they cross-join their whole table onto its rows
+    (#953); the aggregate's one-row result is all the rows need."""
+    peeled = [
+        (n, d)
+        for n, d in main_items
+        if not (d.where_row_arg or d.scan_filtered or d.relation_only)
+        and d.datasource_bindings
+        and _feeds_only_global_aggregates(
+            n, concept_graph, concept_edges, concept_attrs, output_addresses
+        )
+    ]
+    peeled_nodes = {n for n, _ in peeled}
+    rest = [(n, d) for n, d in main_items if n not in peeled_nodes]
+    rest_bindings = {b for _, d in rest for b in d.datasource_bindings}
+    if not rest or any(d.datasource_bindings & rest_bindings for _, d in peeled):
+        return []
+    return peeled
+
+
 def partition_roots(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -939,10 +1000,17 @@ def partition_roots(
             if d.granularity != Granularity.SINGLE_ROW or d.scan_filtered
         ]
 
+        global_inputs = _global_aggregate_inputs(
+            main_items, concept_graph, concept_edges, concept_attrs, output_addresses
+        )
+        peeled_nodes = {n for n, _ in global_inputs}
+        main_items = [(n, d) for n, d in main_items if n not in peeled_nodes]
+
         component_groups: list[list[NodeItem]] = []
-        for side_items in _relation_side_partitions(
-            main_items, concept_graph, concept_edges
-        ):
+        for side_items in [
+            *_relation_side_partitions(main_items, concept_graph, concept_edges),
+            *([global_inputs] if global_inputs else []),
+        ]:
             component_groups.extend(
                 _cosource_component_groups(
                     side_items,
