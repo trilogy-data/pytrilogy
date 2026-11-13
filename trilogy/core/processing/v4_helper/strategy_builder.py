@@ -4303,6 +4303,36 @@ def _distinct_rows(node: StrategyNode, elements: set[str]) -> StrategyNode:
     )
 
 
+def _join_element_filters(
+    node: StrategyNode, filters: list[StrategyNode], environment: BuildEnvironment
+) -> StrategyNode:
+    """Join each element filter after the unnest `node`, on the element and
+    the expanded rows' columns it carries (an element is read on its row)."""
+    # the filter join hides the expanded rows from a later widening,
+    # so the expansion carries its parents' columns up front
+    expanded = [
+        o
+        for parent in node.parents
+        for o in parent.output_concepts
+        if o.address not in parent.hidden_concepts
+    ]
+    widen_projection(node, expanded)
+    elements = _unnested_addresses(node)
+    keys = frozenset(elements | {o.address for o in expanded})
+    distinct = [_distinct_rows(f, elements) for f in filters]
+    return MergeNode(
+        input_concepts=unique(
+            node.output_concepts + [o for f in filters for o in f.output_concepts],
+            "address",
+        ),
+        output_concepts=node.output_concepts,
+        environment=environment,
+        parents=[node, *distinct],
+        force_join_type=JoinType.INNER,
+        planned_pairs=PlannedPairs.star(node, [(f, keys) for f in distinct]),
+    )
+
+
 def _element_filters(
     parents: list[StrategyNode],
     parent_builds: Sequence["ParentBuild"],
@@ -7395,34 +7425,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         if node is not None and derivation == Derivation.AGGREGATE:
             node.distinct_counts = frozenset(a.aggregate_distinct_addrs)
         if node is not None and element_filters:
-            # the filter join hides the expanded rows from a later widening,
-            # so the expansion carries its parents' columns up front
-            widen_projection(
-                node,
-                [
-                    o
-                    for parent in node.parents
-                    for o in parent.output_concepts
-                    if o.address not in parent.hidden_concepts
-                ],
-            )
-            node = MergeNode(
-                input_concepts=unique(
-                    node.output_concepts
-                    + [o for f in element_filters for o in f.output_concepts],
-                    "address",
-                ),
-                output_concepts=node.output_concepts,
-                environment=environment,
-                parents=[
-                    node,
-                    *(
-                        _distinct_rows(f, _unnested_addresses(node))
-                        for f in element_filters
-                    ),
-                ],
-                force_join_type=JoinType.INNER,
-            )
+            node = _join_element_filters(node, element_filters, environment)
     # a generator may hand back a parent's node; that one keeps its group
     if node is not None and node.origin_group is None:
         node.origin_group = gid

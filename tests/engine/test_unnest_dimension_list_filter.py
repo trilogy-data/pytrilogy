@@ -79,3 +79,28 @@ def test_correlated_unnest_cross_join_is_a_planner_error(monkeypatch):
     executor.parse_text(MERGED)
     with pytest.raises(UnresolvableQueryException, match="keyless join"):
         executor.generate_sql("select group_id, event_id where region_id = 1;")
+
+
+def test_an_element_filter_pairs_on_the_element_and_its_row(monkeypatch):
+    from trilogy.core.processing.v4_helper import strategy_builder
+
+    pairs = []
+    join = strategy_builder._join_element_filters
+
+    def record(node, filters, environment):
+        merged = join(node, filters, environment)
+        sides = merged.planned_pairs.sides
+        for spoke in merged.parents[1:]:
+            held = {o.address for o in spoke.output_concepts}
+            pairs.append(
+                merged.planned_pairs.between(sides[id(node)], sides[id(spoke)]) & held
+            )
+        return merged
+
+    monkeypatch.setattr(strategy_builder, "_join_element_filters", record)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(EVENTS)
+    query = "select event_id, group_region where group_region = 1;"
+    rows = executor.execute_raw_sql(executor.generate_sql(query)[-1]).fetchall()
+    assert [tuple(r) for r in rows] == [(1, 1)]
+    assert pairs == [{"local.group_region", "local.group_regions"}]

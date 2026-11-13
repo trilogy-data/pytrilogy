@@ -2299,15 +2299,61 @@ each search was built for.
 (`where sum(val) by cat > 10 select id` rejoins on `cat` alone), and
 `test_a_star_plan_pairs_spokes_only_on_keys_both_join_the_hub_on` pins the
 star.
+
+**The last stated-row merges are planned (part 62).** Part 61 left two
+merges unplanned. A probe at each over the whole suite recorded the keys
+resolve paired on:
+
+| merge | firings | resolve paired on |
+|---|---|---|
+| an unnest's element filter (`_join_element_filters`) | 61 | the element and its list (`tree_eco_region`, `native_ecoregions`; `group_region`, `group_regions`) |
+| a clause outside a group graph (`resolve_and_inject_condition`) | 2 | the feeder's grain (`state`, a nested select's HAVING over a rowset) |
+
+Neither needs a new fact:
+
+- The element filter's rows are elements read on the rows the unnest
+  expands. Those rows' columns are what the build already carries up for the
+  filter join (`widen_projection` over the unnest's parents). So the filter
+  pairs on the elements (`_unnested_addresses`) and those columns, as a
+  `PlannedPairs.star` over the unnest. The list is one of those columns, so
+  every firing keeps its keys.
+- A clause outside a group graph re-sources its row args as a standalone
+  feeder (`resolve_row_sources`). The feeder is a lookup of those args, so it
+  pairs on its own grain (`condition_sources.lookup_plan`), the rule part 61
+  states for `_project_planned_keys`. A keyless feeder (a `by *` global)
+  stays a cross join. Both callers pass the plan: `resolve_and_inject_condition`
+  and the rowset boundary filter.
+
+So no merge between stated rows resolves its keys unplanned now. The only
+unplanned resolves left are the network search inside a group.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, paths normalized): the same
+failures on both sides (credential-gated BigQuery, GCS and NCAA tests; `main`
+also failed `test_copy_perf` on timing). 50 tests moved under xdist. The files
+that hold planner moves among them (the TPC-DS and TPC-H queries,
+`test_where_clause`, `test_complete_binding_lookup`, the tree dashboard,
+`test_core_concepts`, `test_merge_discovery`, `test_nullability`) were then
+captured serially on both sides. Only TPC-DS `test_queries` moved, and only in
+how many times a test compiled its statement (one or four). That count also
+moves between two serial runs of `main`, and every statement either side
+captured is one the other did. So both merges already paired on exactly
+their stated keys, and the plans name them.
+
+`test_an_element_filter_pairs_on_the_element_and_its_row` and
+`test_a_having_looks_its_feeder_up_on_the_feeder_grain` pin the two plans.
+The second fails on `main`, where the HAVING merge carries no plan.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an
    unattributed source now raises (part 37). A ROOT's rejoin onto the
-   sources its WHERE re-plans and a key lookup are planned too (part 61);
-   unplanned between stated rows are only a clause applied outside a group
-   graph and an unnest's element filter.
+   sources its WHERE re-plans and a key lookup are planned too (part 61),
+   and so are an unnest's element filter and a clause applied outside a
+   group graph (part 62): every merge between stated rows carries a plan.
+   What is left is building `node_joins` from the pairings, so resolve stops
+   ordering keys it was already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

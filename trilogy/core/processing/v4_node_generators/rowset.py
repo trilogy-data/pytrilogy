@@ -24,7 +24,11 @@ from trilogy.core.processing.nodes import RowsetNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import nullability_aliases
 from trilogy.core.processing.v4_helper.history import V4History
 
-from .condition_sources import inject_condition_at_node, resolve_row_sources
+from .condition_sources import (
+    inject_condition_at_node,
+    lookup_plan,
+    resolve_row_sources,
+)
 from .nested_select import plan_nested_select
 
 
@@ -548,5 +552,6 @@ def resolve_rowset(
             sources,
             grain=node.grain,
             hidden_concepts=hidden,
+            planned_pairs=lookup_plan(node, sources),
         )
     return node

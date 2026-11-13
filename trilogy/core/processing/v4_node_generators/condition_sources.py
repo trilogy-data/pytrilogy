@@ -20,6 +20,7 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import (
     ConditionSources,
@@ -68,6 +69,17 @@ def resolve_row_sources(
         sources.row_concepts = row_args
         sources.row_parents.append(feeder)
     return sources
+
+
+def lookup_plan(node: StrategyNode, sources: ConditionSources) -> PlannedPairs | None:
+    """The plan of the merge that rejoins `node` to its row feeders: each
+    feeder is a standalone plan of its row args, looked up on its own grain."""
+    if not sources.row_parents:
+        return None
+    return PlannedPairs.star(
+        node,
+        [(f, frozenset(f.resolve().grain.components)) for f in sources.row_parents],
+    )
 
 
 def resolve_existence_sources(
@@ -147,4 +159,5 @@ def resolve_and_inject_condition(
         partial_concepts=partial_concepts,
         grain=grain,
         hidden_concepts=hidden_concepts,
+        planned_pairs=lookup_plan(node, sources),
     )
