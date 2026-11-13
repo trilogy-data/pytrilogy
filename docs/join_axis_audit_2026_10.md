@@ -2466,6 +2466,45 @@ plans moved, one of them to a wrong row.
 `test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned`
 pin the bridge plan.
 
+**A bridge through a derived connector is planned too (part 66).** Part
+65 left a bridge unplanned when one of its parents was a derived connector,
+and the suite probe counted 3,318 such merges over 1,721 tests. The search
+binds a connector (`connector~<alias>`) on the merged key's class, its
+origin's grain and its input keys (`_connector_candidates`), and records its
+joins like any scan's. But the connector's subplan returns rows at its own
+resolved grain, which can be finer than those keys. In
+`test_a_bridge_through_a_derived_connector_keeps_its_rows`, the subplan for
+`r.product_id` returns rows at `(product_id, user_id)`. Planned on the
+search's keys alone, it paired with `order_items` on `product_id` only and
+gave user 3 a padded row.
+
+- `_derived_connector_nodes` records each connector the search chose under
+  its search node, so the bridge plan names it as a side (`_bridge_plan`).
+- The plan names the groups whose rows are finer than the plan knows
+  (`PlannedPairs.grain_paired`, here the chosen connectors). When the merge
+  resolves, each pair involving one also pairs on that side's resolved
+  grain (`_planned_source_pairs`). This reads the subplan's built grain, but
+  only for sides the plan names, never a column two sides merely share.
+- Still unplanned: a connector planned for a concept no scan covered, which
+  the search never chose (11 merges in the suite), and a gap-filled scan
+  (1 merge).
+
+The probe over the branch suite run counts 19,873 bridge merges planned on
+scans alone and 3,361 planned through a connector.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`):
+the same 25 failures on both sides. 160 tests moved:
+
+- known noise: the GCS cache-bust URL, `test_cli_consistency`, and a
+  Rust-binary datasource test skipped on the base run;
+- 84 oracle-sweep, 40 oracle-spelling and 16 window-law cases, plus 8
+  `test_split_key_gates` and 9 `test_where_hosts` cases. Run on their own,
+  all 157 compile the same on both trees (0 moved). They move with the
+  order the workers run them in.
+
+So no plan moved. `test_a_bridge_through_a_chosen_connector_pairs_on_its_grain`
+and `test_a_grain_paired_side_pairs_on_its_resolved_grain` pin the plan.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2479,10 +2518,11 @@ not built yet:
    no key it equates is one it found by column overlap, and it searches
    for no key outside its pivots (part 64). A ROOT's source plan is planned
    too: a bridge pairs where the search joined its scans, and each other
-   assembly on the join it states (part 65). Left unplanned: a bridge through
-   a derived connector or a gap-filled scan (3,318 merges over 1,721 tests,
-   nearly all through a connector), and the few from `gen_select_merge_node`
-   and a recursive walk. What is left is building
+   assembly on the join it states (part 65). A bridge through a
+   derived connector the search chose is planned as well, with the connector
+   also pairing on its resolved grain (part 66). Left unplanned: a connector
+   the search did not choose and a gap-filled scan (12 bridge merges in the
+   suite), and the few from `gen_select_merge_node` and a recursive walk. What is left is building
    `node_joins` from the pairings, so resolve stops ordering keys it was
    already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
