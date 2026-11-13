@@ -70,7 +70,7 @@ aggregates of a column it stores at that grain, from its own rows; area 1),
 and the coarse-gate follow-on (0.3.488: a re-sum is never joined on its
 partial, a gate on a re-sum of a stored value plans, and a coarse gate at the
 summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
-0.3.493: selects checked against Python over the raw rows, not against
+0.3.495: selects checked against Python over the raw rows, not against
 another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
 family from 127 wrong rows to 5; area 1).
@@ -653,6 +653,22 @@ does not rewrite it; that rewrite is open.
       but aggregates its inner group's value (seed 19430 of the first family).
     - Read the rendered SQL for precedence. `a or b and count(*) > 0` looked
       like a planner bug in three seeds and was a string join in the dialect.
+
+33. **Lessons from the bound-HAVING round (0.3.495).**
+    - A validation that rejects a shape hides the plans behind it: lifting
+      the HAVING rejection on `tree_id` selects turned 97 raises into right
+      rows, but also promoted HAVING values main had semijoined into the
+      path main takes for the explicit `--s` spelling, which duplicated rows
+      with the summary. Probe the explicit spelling of a rewrite's output.
+    - A probe script that puts the repo on `sys.path` imports the branch even
+      under `PYTHONPATH=<main copy>`; print `trilogy.__file__` in every A/B
+      probe, not only in the suite (lesson 16).
+    - Diff efficiency on the shapes a change reroutes, not only on the ones
+      it fixes: every summary read lost and gained here was one family (a
+      `tree_id` select with a HAVING gate).
+    - A value read past a host is the kept groups' value; an atom that holds
+      on NULL turns the host's padding into a pass. Ask which group a host
+      reads its atom's inputs from, not only which rows it filters.
 
 ## Candidate areas
 
@@ -1251,6 +1267,39 @@ a filter its grain does not determine. Open questions:
   - 119 raises remain; the most common are "Could not resolve connections"
     on `tree_id` selects (12), HAVING `by` rejections on `tree_id` selects
     (32, seed 129's family) and "Missing source reference to local.height" (6).
+- Done in 0.3.495, from seeds 10,000-20,000 of the spellings family (on
+  main: 14 wrong, 124 raising, of 20,000 queries; after: 7 wrong, 28
+  raising; 103 fixed, none broken; the first family's seeds 0-4,000 are
+  identical on both): a HAVING `by` keys the select's rows bind (`count(id)
+  by city` beside `tree_id`, or `by v0` once finalize renames `city as v0`) is
+  coarser than the select (`SelectGrain.having_by_bound_key_is_coarser`;
+  `_grain_determined` reads the binding closure and resolves a pure rename;
+  seed 129's family, about 100 raises, and seed 8920); a group hosting a WHERE
+  atom reads the atom's aggregates off an unfiltered sibling, never off
+  another host of the atom (`SelectGrain.gate_read_past_its_host_passes_absent`,
+  `_gate_args_filtered_here`); a value read with the rows at a grain they
+  determine is projected with the rows (`value_bucket_pairs_short_of_its_grain`,
+  `_wrap_for_grain`). Left:
+  - seeds 10132, 11682 and 19186: a negated (or `is null`) gate re-applied at
+    FINAL passes the rows a dimension projection pads in. `select species,
+    tree_form, max(height) where min(height) by city, tree_form is null`
+    returns a species with no trees at all once the enrichment lists one,
+    which the select without the WHERE does not: the FINAL's fresh root
+    projection (`_resourced_root_contributor`) reads the enrichment alone, and
+    its join to the gate's group on `tree_form` is RIGHT then FULL
+    (`ensure_content_preservation` after the LEFT join of the gate's group);
+  - seed 19236: `select tree_id, species, sum(height ? count_distinct(tag) by
+    species < 0), min(height) by city, tree_form as v1, city as v2 where ...`
+    pairs `v1` on `city` alone: the row contributor is the BASIC group
+    computing `v2`, and the join plan's carry demands (`root_carry_demand`)
+    are only read for ROOT contributors, so `tree_form` is never carried;
+  - seed 12917 (summary only) duplicates a group under `having v1 = 5 or
+    city = 'A'`; seed 1117 and seed 920 as in 0.3.494;
+  - 32 `tree_id` selects with a HAVING gate no longer read the summary (17
+    others now do): the HAVING value is promoted beside the rows instead of
+    semijoined, and the promoted value is sourced from the trees;
+  - 28 raises remain: "Could not resolve connections" on `tree_id` selects
+    (16) and keyless joins (8) are the most common.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

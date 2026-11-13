@@ -606,4 +606,63 @@ theorem guard_precedence_emits_empty_total :
     (a || (b && guard)) = true ∧ ((a || b) && guard) = false := by
   decide
 
+/-! ## A HAVING `by` the select's rows bind is coarser than the select
+
+`select tree_id, max(x ? c) having count(id) by city > 2` with `tree_id`
+binding `city` (or `city as v2`, whose rename finalize writes into the `by`):
+the HAVING's value is one per `tree_id`, so promoting it keeps the grain. The
+validator read only property-to-key facts and rejected it as growing it. -/
+
+/-- **A HAVING on a determined `by` decides whole grain rows**
+(`having_by_bound_key_is_coarser`). -/
+theorem having_by_bound_key_is_coarser (grain key : α → Key) (f : Key → Key)
+    (hk : ∀ r, key r = f (grain r)) (v : α → Int) (q : Int → Bool)
+    (rows : List α) (r₁ r₂ : α) (h : grain r₁ = grain r₂) :
+    q (eval (.by_ key) grain v rows r₁) = q (eval (.by_ key) grain v rows r₂) := by
+  rw [by_value_is_no_grain_key grain key f hk v rows r₁ r₂ h]
+
+/-! ## A gate's value is read off its own group, never past a host
+
+`select city, species, min(x ? max(x) by * = 6) where avg(x) by * is null and
+city = 'B'`: the WHERE is hosted on the `?` total and on the per-key group, and
+the per-key group read `avg(x) by *` off the total's host. The WHERE rejected
+the total, so that host held no row; joined preserving, its value was padding
+NULL, and `is null` held on it. -/
+
+/-- The value a consumer reads off a host of `atom`: the host keeps `t` only
+where the atom holds, else pads NULL. -/
+def pastHost (atom : Option Int → Bool) (t : Option Int) : Option Int :=
+  (([t].filter atom).head?).join
+
+/-- **Past a host, a null-rejecting atom reads as on its own group**
+(`gate_past_host_exact_if_null_rejecting`). -/
+theorem gate_past_host_exact_if_null_rejecting (atom : Option Int → Bool)
+    (t : Option Int) (h : atom none = false) : atom (pastHost atom t) = atom t := by
+  unfold pastHost
+  cases ht : atom t <;> simp [List.filter, ht, h]
+
+/-- `avg(x) by *` is 4: `is null` rejects it on its own group, and holds on the
+padding read past its host (`gate_read_past_its_host_passes_absent`). -/
+theorem gate_read_past_its_host_passes_absent :
+    let atom : Option Int → Bool := fun v => v.isNone
+    atom (some 4) = false ∧ atom (pastHost atom (some 4)) = true := by
+  decide
+
+/-! ## A value at a grain the rows determine rides the rows
+
+`select tree_id, species, --sum(x) by city, species as s` read `s` with the rows
+(off the summary) and then split it into a bucket at `(city, species)`, which
+the rows joined on `species` alone: a species in two cities paired each tree
+with both cities' groups. -/
+
+/-- Rows `(id, city, species)`: species 0 in cities 0 and 1. Paired on
+`species` alone, each of its two trees meets both `(city, species)` groups
+(`value_bucket_pairs_short_of_its_grain`). -/
+theorem value_bucket_pairs_short_of_its_grain :
+    let rows : List (Int × Int × Int) := [(1, 0, 0), (2, 1, 0)]
+    let groups : List (Int × Int) := [(0, 0), (1, 0)]
+    (rows.flatMap fun r => groups.filter (·.2 == r.2.2)).length = 4 ∧
+      (rows.flatMap fun r => groups.filter (fun g => g == (r.2.1, r.2.2))).length = 2 := by
+  decide
+
 end Trilogy.SelectGrain

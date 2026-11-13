@@ -323,13 +323,22 @@ FOUND_SEEDS_494 = [
     7920, 7964, 8433, 8903, 8948, 9009, 9049, 9062, 9114, 9184, 9280, 9576,
     9938,
 ]  # fmt: skip
+# seeds 10,000-20,000 that 0.3.495 fixed (each failed on main)
+FOUND_SEEDS_495 = [
+    10018, 10108, 10128, 10612, 10980, 10995, 11030, 11410, 11435, 11454,
+    11520, 11884, 11977, 12365, 12369, 12518, 12855, 13164, 13655, 13705,
+    14274, 14553, 14587, 14677, 14815, 15345, 16075, 16556, 16563, 16604,
+    16605, 16691, 16795, 17382, 17432, 17614, 17642, 18126, 18282, 18456,
+    18466, 18536, 18600, 18640, 18676, 19422, 19463, 19465, 19529, 19582,
+    19791, 19809,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
 OPEN = {
-    129: "a HAVING `by city` beside `city as v0` reads as `by v0` and is rejected",
     1117: "FINAL takes the select's keys off a `?` filter's row stream, which "
     "the WHERE never filtered",
-    8920: "a WHERE gate's value is read off the HAVING gate's twin, grouped "
-    "over the kept rows",
+    19186: "a negated gate re-applied at FINAL passes a dimension's padded rows",
+    19236: "a `by city, tree_form` value pairs with a BASIC row contributor "
+    "(`city as v2`) that never carries `tree_form`",
 }
 
 
@@ -344,7 +353,17 @@ def _seed(seed: int):
 @pytest.mark.parametrize("model", ["base", "summary"])
 @pytest.mark.parametrize(
     "seed",
-    [_seed(s) for s in (*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_494, 1117, 8920)],
+    [
+        _seed(s)
+        for s in (
+            *range(SEEDS),
+            *FOUND_SEEDS,
+            *FOUND_SEEDS_494,
+            *FOUND_SEEDS_495,
+            *OPEN,
+            8920,
+        )
+    ],
 )
 def test_spelling_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape2(seed)

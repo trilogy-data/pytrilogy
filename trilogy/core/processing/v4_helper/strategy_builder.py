@@ -4919,18 +4919,31 @@ def _wrap_for_grain(
             # A member of the identity the rows are unique on: bucketed alone,
             # it shares no key with the axis's other members.
             grain_components = axis
-        elif (
-            axis
-            and grain_components.isdisjoint(axis)
-            # The concept-map FD closure is the authority on "is this
-            # determined by that": it walks grain, keys and equivalence
-            # classes transitively (nation.id -> customer.id), which neither a
-            # raw `keys` subset test nor `BuildGrain.from_concepts` does on its
-            # own; `from_concepts` folds the property hierarchy only, so an
-            # enum declared `key city` that a source binds at grain(tree_id)
-            # never folds into it.
-            and build_fd_determines(
-                environment, axis, concept.address, include_empty_grain=False
+        elif axis and (
+            (
+                grain_components.isdisjoint(axis)
+                # The concept-map FD closure is the authority on "is this
+                # determined by that": it walks grain, keys and equivalence
+                # classes transitively (nation.id -> customer.id), which
+                # neither a raw `keys` subset test nor
+                # `BuildGrain.from_concepts` does on its own; `from_concepts`
+                # folds the property hierarchy only, so an enum declared `key
+                # city` that a source binds at grain(tree_id) never folds into
+                # it.
+                and build_fd_determines(
+                    environment, axis, concept.address, include_empty_grain=False
+                )
+            )
+            # a value at a grain the rows determine (`sum(x) by city, species`
+            # beside `tree_id`): bucketed at its own grain it pairs with the
+            # rows on the keys both carry, short of `city`
+            or (
+                concept.is_aggregate
+                and not grain_components <= axis
+                and all(
+                    build_fd_determines(environment, axis, c, include_empty_grain=False)
+                    for c in grain_components
+                )
             )
         ):
             grain_components = axis

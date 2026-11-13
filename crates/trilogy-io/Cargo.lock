@@ -2012,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "trilogy-io"
-version = "0.3.494"
+version = "0.3.495"
 dependencies = [
  "arrow",
  "clap",
