@@ -26,7 +26,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase, _statement_scoped_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .functional_dependency import build_fd_closure, build_fd_determines_all
-from .models import GroupAttrs, InputChannel
+from .models import GroupAttrs, InputChannel, pairing_keys
 
 
 class PairingKind(Enum):
@@ -612,6 +612,20 @@ def _joined_on(group: GroupAttrs) -> frozenset[str]:
 
 
 def carries(
+    group: GroupAttrs,
+    identity: frozenset[str],
+    sibling_keys: frozenset[str],
+    environment: BuildEnvironment,
+    domain_spans: frozenset[str] | None = None,
+) -> frozenset[str]:
+    """`_held_columns`, less the all-rows marker: any row can emit it, and no
+    side is paired on it (`pairing_keys`)."""
+    return pairing_keys(
+        _held_columns(group, identity, sibling_keys, environment, domain_spans)
+    )
+
+
+def _held_columns(
     group: GroupAttrs,
     identity: frozenset[str],
     sibling_keys: frozenset[str],
