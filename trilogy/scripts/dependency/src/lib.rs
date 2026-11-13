@@ -11,7 +11,9 @@ pub mod python_bindings;
 // `ParseError::PestError` already surfaces `Rule` in its public signature —
 // without this a consumer cannot name that type, let alone match on it — and
 // because the raw parse tree is the reason non-Python tooling wants the crate.
-pub use trilogy_parser::{rule_calls, Rule, TrilogyParser};
+pub use trilogy_parser::{
+    parse_bounded, rule_calls, Rule, TrilogyParser, MAX_NESTING_DEPTH, NESTING_LIMIT_MESSAGE,
+};
 
 pub use parser::{
     parse_file, parse_imports, AddressKind, DatasourceDeclaration, ImportStatement, ParseError,

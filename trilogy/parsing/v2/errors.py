@@ -176,7 +176,17 @@ ERROR_CODES: dict[int, str] = {
         "or `sum(x) by store.id as total`. (`by rollup/cube/grouping sets` is "
         "the only select-level grouping clause.)"
     ),
+    234: (
+        "Input is nested too deeply to parse - parentheses, brackets, calls, "
+        "`case`, `not`, `?` filters or types inside one another, about 40 or "
+        "more levels deep. Break the expression into named steps (`auto step1 <- "
+        "...;` then `auto step2 <- f(step1);`)."
+    ),
 }
+
+# Leads the parser's nesting-limit error (`NESTING_LIMIT_MESSAGE` in
+# trilogy/scripts/dependency/src/trilogy_parser.rs).
+NESTING_LIMIT_MESSAGE = "nesting depth limit reached"
 
 
 # A `by rollup/cube/grouping sets` clause placed *after* HAVING is a parse
