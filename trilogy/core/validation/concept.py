@@ -219,7 +219,8 @@ def binding_sources(
     """Each row-determinant set some table binds `concept` beside, with every
     table binding those determinants and `concept`. Each binding claims the
     determinants determine the concept model-wide (`Binding.closure_sound`),
-    and one table's grain check proves it for its own rows only."""
+    and one table's grain check proves it for its own rows only. An aggregate
+    is a function of its table's grain, so only tables at that grain compete."""
     datasources = list(build_env.datasources.values())
     claims: dict[frozenset[str], None] = {}
     for datasource in datasources:
@@ -227,9 +228,15 @@ def binding_sources(
         if determinants and concept.address in _bound(datasource) - determinants:
             claims.setdefault(determinants, None)
     out = []
+    grain_relative = concept.derivation == Derivation.AGGREGATE
     for determinants in claims:
         needed = determinants | {concept.address}
-        sources = [ds for ds in datasources if needed <= _bound(ds)]
+        sources = [
+            ds
+            for ds in datasources
+            if needed <= _bound(ds)
+            and (not grain_relative or ds.row_determinants == determinants)
+        ]
         if len(sources) > 1:
             out.append((determinants, sources))
     return out

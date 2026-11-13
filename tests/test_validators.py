@@ -982,3 +982,44 @@ def test_unique_list_validation_allows_distinct_empty_and_null_lists():
     executor.execute_text(_UNIQUE_LIST.format(oak="[1, 2]"))
 
     validate_environment(executor.environment, exec=executor)
+
+
+def test_aggregate_rollups_at_different_grains_are_not_an_fd_violation():
+    """A finer rollup holds the metric at its own grain, so its per-origin
+    rows are partial counts, not competing values for the origin rollup."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        key origin string;
+        key destination string;
+        auto flight_count <- count(id);
+
+        datasource flight_count_by_origin (
+            origin: origin,
+            flight_count: flight_count,
+        )
+        grain (origin)
+        query '''
+        SELECT 'SFO' AS origin, 3 AS flight_count
+        ''';
+
+        datasource flight_count_by_route (
+            origin: origin,
+            destination: destination,
+            flight_count: flight_count,
+        )
+        grain (origin, destination)
+        query '''
+        SELECT 'SFO' AS origin, 'JFK' AS destination, 1 AS flight_count UNION ALL
+        SELECT 'SFO', 'LAX', 2
+        ''';
+        """)
+
+    results = validate_environment(
+        executor.environment,
+        exec=executor,
+        scope=ValidationScope.CONCEPTS,
+        generate_only=True,
+    )
+    errors = [str(r.result) for r in results if r.result]
+    assert not any("claims determines it model-wide" in e for e in errors), errors
