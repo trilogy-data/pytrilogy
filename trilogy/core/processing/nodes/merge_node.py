@@ -473,6 +473,12 @@ class MergeNode(StrategyNode):
                 demanded_domains -= (
                     self.span_scope.extent_free | self.span_scope.unextended
                 )
+                if planned_pairs is None:
+                    raise ValueError(
+                        f"Merge of {[d.identifier for d in dataset_list]} carries "
+                        "no join plan, so its keys would be found by column "
+                        "overlap. This is a planner bug."
+                    )
                 joins = get_node_joins(
                     dataset_list,
                     environment=environment,

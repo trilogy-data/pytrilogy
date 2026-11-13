@@ -842,10 +842,13 @@ def _datasource_nodes_for_bridge(
     plan: BridgePlan,
     accept_partial: bool,
     sides: dict[int, str] | None = None,
+    unsearched: dict[str, frozenset[str]] | None = None,
 ) -> list[StrategyNode] | None:
     """One parent per chosen scan and derived connector; `sides`, when
-    given, gets each scan's search node name."""
+    given, gets each parent's search node name, and `unsearched` what each
+    side the search did not choose pairs on."""
     sides = {} if sides is None else sides
+    unsearched = {} if unsearched is None else unsearched
     parents: list[StrategyNode] = []
     bridge_addresses = {concept.address for concept in plan.concepts}
     # A datasource node present in the bridge graph but missing from its
@@ -881,6 +884,13 @@ def _datasource_nodes_for_bridge(
             if provides - covered:
                 plan.graph.datasources[ds_node] = source_ds
                 covered |= provides
+                # the search said nothing of its joins: it pairs on what the
+                # bridge graph links it to
+                unsearched[ds_node] = frozenset(
+                    node_address(n)
+                    for n in _graph_neighbors(plan.graph, ds_node)
+                    if n.startswith("c~")
+                )
     for ds_node in sorted(node for node in plan.graph.datasources):
         concept_nodes = _local_concept_nodes_for_datasource(
             plan.graph,
@@ -952,7 +962,7 @@ def _datasource_nodes_for_bridge(
         sides[id(parents[-1])] = ds_node
     if accept_partial and not request.complete_partials:
         parents = _drop_redundant_subset_sources(parents)
-    parents.extend(_derived_connector_nodes(request, plan, parents, sides))
+    parents.extend(_derived_connector_nodes(request, plan, parents, sides, unsearched))
     if not parents:
         return None
     return parents
@@ -986,6 +996,7 @@ def _derived_connector_nodes(
     plan: BridgePlan,
     datasource_parents: list[StrategyNode],
     sides: dict[int, str] | None = None,
+    unsearched: dict[str, frozenset[str]] | None = None,
 ) -> list[StrategyNode]:
     """Materialize bridge concepts whose source is a *derived* connector.
 
@@ -1085,8 +1096,13 @@ def _derived_connector_nodes(
             if info.strategy_node is not None:
                 planned.add(origin.address)
                 connectors.append(info.strategy_node)
-                if sides is not None and alias in forced:
+                if sides is not None:
                     sides[id(info.strategy_node)] = CONNECTOR_NODE_PREFIX + alias
+                if unsearched is not None and alias not in forced:
+                    # the merged key it supplies and the keys it carries to join
+                    unsearched[CONNECTOR_NODE_PREFIX + alias] = frozenset(
+                        {concept.address, alias, origin.address} | grain_components
+                    )
     return connectors
 
 
@@ -2532,8 +2548,9 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     # The search already priced partiality, so there is no escalation to do:
     # render at the request's own permissiveness and let the solution speak.
     sides: dict[int, str] = {}
+    unsearched: dict[str, frozenset[str]] = {}
     parents = _datasource_nodes_for_bridge(
-        request, bridge, not request.require_full, sides
+        request, bridge, not request.require_full, sides, unsearched
     )
     if parents is None:
         return None
@@ -2543,7 +2560,7 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
         bridge.concepts,
         bridge.assembles_axis,
         joined_rollup=bool(bridge.joined_scans),
-        planned=_bridge_plan(bridge, parents, sides),
+        planned=_bridge_plan(bridge, parents, sides, unsearched),
     )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
@@ -2551,23 +2568,37 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
 
 
 def _bridge_plan(
-    bridge: BridgePlan, parents: list[StrategyNode], sides: Mapping[int, str]
-) -> PlannedPairs | None:
+    bridge: BridgePlan,
+    parents: list[StrategyNode],
+    sides: Mapping[int, str],
+    unsearched: Mapping[str, frozenset[str]] | None = None,
+) -> PlannedPairs:
     """The search's joins as the bridge merge's plan: each parent pairs with
     another only on what the search joined their sources on. A derived
     connector's subplan returns rows at its own grain, finer than the keys the
-    search binds it on, so it pairs on that grain too. None when a parent is
-    no source the search chose: a gap-filled scan, of whose joins the search
-    said nothing, or a connector planned for a concept no scan covered."""
+    search binds it on, so it pairs on that grain too. A side the search did
+    not choose (a gap-filled scan, a connector for a concept no scan covered)
+    pairs with every other side on what `unsearched` names for it."""
+    unsearched = unsearched or {}
     connectors = {CONNECTOR_NODE_PREFIX + alias for alias in bridge.connector_aliases}
-    if not all(
-        sides.get(id(parent)) in bridge.scans | connectors for parent in parents
-    ):
-        return None
+    names = {sides.get(id(parent), "") for parent in parents}
+    unplanned = names - bridge.scans - connectors - unsearched.keys()
+    if unplanned:
+        raise ValueError(
+            f"Bridge sides {sorted(unplanned)} are no source the search chose "
+            "or the bridge planned. This is a planner bug."
+        )
+    keys = dict(bridge.join_keys)
+    for name, own in unsearched.items():
+        for other in names - {name}:
+            pair = frozenset({name, other})
+            keys[pair] = keys.get(pair, frozenset()) | own
     return PlannedPairs(
         {id(parent): frozenset({sides[id(parent)]}) for parent in parents},
-        bridge.join_keys,
-        grain_paired=frozenset(connectors),
+        keys,
+        grain_paired=frozenset(
+            name for name in names if name.startswith(CONNECTOR_NODE_PREFIX)
+        ),
     )
 
 
