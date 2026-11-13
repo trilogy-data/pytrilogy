@@ -13,6 +13,7 @@ from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
+from .concept_graph import _scope_and_phase
 from .condition_placement import feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .edges import EdgeKind, EdgeMap, edges_of_kind
@@ -193,6 +194,16 @@ def _selected_keys(
     return frozenset(concept.keys) & {c.address for c in mandatory_list}
 
 
+def _row_atoms(attrs: dict[str, GroupAttrs], groups: Collection[str]) -> set[str]:
+    """The WHERE atoms over row columns alone (`city = 'B'`) the groups host."""
+    return {
+        str(atom)
+        for gid in groups
+        for atom in attrs[gid].condition_atoms
+        if atom.row_arguments and not any(c.is_aggregate for c in atom.row_arguments)
+    }
+
+
 def elect_cover(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -229,6 +240,19 @@ def elect_cover(
     # reading that host's side
     row_graph = group_graph.copy()
     row_graph.remove_edges_from(edges_of_kind(group_edges, EdgeKind.EXISTENCE))
+    row_atoms = _row_atoms(attrs, groups)
+
+    def skips_row_atoms(gid: str) -> bool:
+        if not row_atoms or _scope_and_phase(attrs[gid].label)[1] != "condition":
+            return False
+        held = {
+            str(atom)
+            for g in nx.ancestors(group_graph, gid) | {gid}
+            if g in attrs
+            for atom in attrs[g].condition_atoms
+        }
+        return not row_atoms <= held
+
     for concept in mandatory_list:
         addr = concept.address
         mates = coalescing_mates(environment, addr)
@@ -264,10 +288,14 @@ def elect_cover(
         # `species`) comes with the key: a group holding it without the key
         # (`max(x) by city, tree_form`) pairs it with the key's rows on the
         # other columns alone (`SelectGrain.property_without_its_key_misjoins`).
+        # A WHERE aggregate's own group reads every row, never the rows the
+        # WHERE kept: an output read off it skips the row atoms placed on the
+        # select's rows (`SelectGrain.gate_group_skips_row_atoms`).
         keyed = _selected_keys(concept, mandatory_list)
         candidates.sort(
             key=lambda gid: (
                 keyed <= exposed[gid],
+                not skips_row_atoms(gid),
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,

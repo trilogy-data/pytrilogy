@@ -4943,6 +4943,7 @@ def _join_elected_bridges(
     parents: list[StrategyNode],
     bridges: Sequence[tuple[StrategyNode, frozenset[str]]],
     environment: BuildEnvironment,
+    keying: frozenset[int] = frozenset(),
 ) -> list[StrategyNode]:
     """Join the bridges the join plan elected (`join_plan.elect_bridges`),
     each with the keys the plan pairs it on, so the merge below joins on an
@@ -4953,16 +4954,28 @@ def _join_elected_bridges(
 
     The plan elects only bridges whose every pairing is keyed. A bridge that
     no longer joins two islands as built (a member widened to its key pairs
-    directly) is not joined."""
+    directly) is not joined. A keying bridge (`JoinPlan.keying`) joins
+    whatever the islands: it holds the key one side's grain determines and
+    the other side's is grouped by."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
     for bridge, keys in bridges:
         islands = _pairing_islands(outputs)
-        if len(islands) < 2:
-            break
         if any(bridge is parent for parent in parents):
+            continue
+        if id(bridge) in keying:
+            if keys:
+                _carry_join_keys(
+                    [bridge],
+                    _join_key_concepts([bridge], environment, set(keys)),
+                    environment,
+                )
+            parents.append(bridge)
+            outputs.append(_pairing_addresses(bridge, environment))
+            continue
+        if len(islands) < 2:
             continue
         if keys:
             _carry_join_keys(
@@ -5447,6 +5460,7 @@ def _group_applies_conditions(
     attrs: dict[str, GroupAttrs],
     gid: str,
     where: BuildWhereClause,
+    environment: BuildEnvironment | None = None,
 ) -> bool:
     """Whether the atoms placed at `gid`, or above it and still holding on its
     rows, imply `where`.
@@ -5457,9 +5471,38 @@ def _group_applies_conditions(
     re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
     subtotal/total rows drop."""
     held = _wrap_atoms(
-        _atoms_at(attrs, gid) + accumulated_atoms_above(group_graph, attrs, gid)
+        _atoms_at(attrs, gid)
+        + accumulated_atoms_above(group_graph, attrs, gid)
+        + _atoms_of_groups_aggregated(group_graph, attrs, gid, environment)
     )
     return held is not None and condition_implies(held.conditional, where.conditional)
+
+
+def _atoms_of_groups_aggregated(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment | None,
+) -> list[BoolExpr]:
+    """The atoms of a grouping ancestor `gid` re-aggregates: when every input
+    `gid` reads is that ancestor's output or a function of its grain, `gid`
+    holds only the groups the atom kept (`sum(sum(x) by city, species) by
+    tree_form` under a WHERE placed on the `(city, species)` group). A row
+    value it read beside them would re-admit the rows the atom rejected."""
+    group = attrs[gid]
+    if environment is None or group.derivation not in GROUPING_DERIVATIONS:
+        return []
+    atoms: list[BoolExpr] = []
+    for anc in group_graph.predecessors(gid):
+        a = attrs.get(anc)
+        if a is None or a.derivation not in GROUPING_DERIVATIONS:
+            continue
+        reach = set(a.output_concepts) | build_fd_closure(
+            environment, a.grain_components, include_empty_grain=False
+        )
+        if set(group.input_concepts) <= reach:
+            atoms.extend(x for x in a.condition_atoms if x not in atoms)
+    return atoms
 
 
 def _aggregate_input_rows(
@@ -5756,7 +5799,9 @@ def _assemble_sole_contributor(
     # its join back rides the relation axis, which only the raw
     # contributor can still widen to.
     final_already_applied = final_conditions is not None and (
-        _group_applies_conditions(group_graph, attrs, gid, final_conditions)
+        _group_applies_conditions(
+            group_graph, attrs, gid, final_conditions, environment
+        )
     )
     # A row condition available on the contributor's input is
     # population-scope. Apply it there before aggregation rather than
@@ -6060,14 +6105,16 @@ def _gate_key_row_stream(
     address: str, attrs: dict[str, GroupAttrs], candidates: Collection[str]
 ) -> str | None:
     """The row stream computing a gate's derived key: a BASIC group, never the
-    gate's own feeder (which carries the key too). The select phase's first."""
+    gate's own feeder (which carries the key too). The select phase's first.
+    Else the scan holding a property key the sides' grain determines
+    (`count_distinct(tag) by tree_form` beside rows keyed by `species`)."""
     hosts = sorted(
-        (gid.startswith("grp:[@"), gid)
+        (attrs[gid].derivation != Derivation.BASIC, gid.startswith("grp:[@"), gid)
         for gid in candidates
-        if attrs[gid].derivation == Derivation.BASIC
+        if attrs[gid].derivation in (Derivation.BASIC, Derivation.ROOT)
         and address in attrs[gid].output_concepts
     )
-    return hosts[0][1] if hosts else None
+    return hosts[0][2] if hosts else None
 
 
 @dataclass
@@ -6256,7 +6303,7 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
-    bridges = elect_bridges(
+    bridged = elect_bridges(
         group_graph,
         attrs,
         per_group,
@@ -6264,7 +6311,8 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
-    ).extras
+    )
+    bridges = bridged.extras
     extras = _final_extra_sides(
         group_graph,
         attrs,
@@ -6374,6 +6422,7 @@ def _assemble_final_node(
         parents,
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
         environment,
+        frozenset(id(_planned_side(built, gid)) for gid in bridged.keying),
     )
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
