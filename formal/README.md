@@ -1852,8 +1852,10 @@ a design decision or a bug.
 - **The spellings family, seeds 40,000-60,000** (0.3.498). On main these
   40,000 queries returned no wrong row and raised on 51; now 5 raise, each
   only in a batch (it plans alone), with no new wrong row. The summary is read on 15 more shapes and lost on none, and
-  JOINs rise 0.2%. Over seeds 0-40,000 and the first family's seeds 0-4,000:
-  SWEEP_0_40K.
+  JOINs rise 0.2%. Over seeds 0-40,000 the raises fall from 78 to 9 (5 of
+  them batch-only), the same 5 wrong rows remain (the open leads), the summary
+  is read on 24 more shapes and lost on none, and JOINs rise 0.14%; the first
+  family's seeds 0-4,000 stay clean (one more summary read, one more JOIN).
   - `select city where sum(height) by tree_form < sum(height) by *` raised
     "Could not resolve connections" (22 of the 30 raises on seeds
     40,000-50,000). The rows a total filters are keyed on the `all_rows`

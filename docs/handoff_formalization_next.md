@@ -1500,12 +1500,15 @@ a filter its grain does not determine. Open questions:
     to 1,741 (seed 2385).
 - Done in 0.3.498, from seeds 40,000-60,000 of the spellings family (on
   main: no wrong rows and 51 raising of 40,000 queries; after: 5 raising,
-  nothing new wrong): a joined source plan carries a requested constant
+  nothing new wrong; seeds 0-40,000: 78 raising to 9, the same 5 wrong, 24
+  more summary reads, JOINs +0.14%; the first family's seeds 0-4,000 stay
+  clean): a joined source plan carries a requested constant
   inline (`SelectGrain.constant_key_pairs_every_row`; a `by *` total beside a
   gate keyed on `tree_form` raised "Could not resolve connections"), and a
   bridge that is some contributor's only planned partner is joined even when
   another bridge exposes the same column (`keyless_pairing_fans_out`,
   `_sole_partners`; "keyless join"). Left:
+  - keyless joins on seeds 21266 and 33618 (summary only), not yet read;
   - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
     keyless join: nested aggregates by `city, species, tree_form` beside a
     `by *` total in an OR and a HAVING by `tree_form`);
