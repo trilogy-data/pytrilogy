@@ -2872,6 +2872,7 @@ def _project_planned_keys(
             c
             for c in owed
             if isinstance(parent, GroupNode)
+            and c.address not in authored
             and concept_satisfiable(c, outputs)
             and not _carry_needs_own_node(c)
         ]
@@ -2881,7 +2882,7 @@ def _project_planned_keys(
             else frozenset()
         )
         # an authored relation's member or a rowset handle pairs as authored,
-        # never through a producer of it
+        # never through a producer of it or a rendering off its mate's column
         lookups = [
             producer
             for c in owed
