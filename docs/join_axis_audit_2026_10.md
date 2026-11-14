@@ -2733,7 +2733,8 @@ decides:
 | scoped-LEFT anchor | 77 | 70 | the environment's anchor keys |
 
 No term is dead, so none is removed. Every term but the anchor reads the
-built side, not the plan, and the side's identifier decides the most. The tie-break is where resolve still reads built nodes for order.
+built side, not the plan, and the side's identifier decides the most. The
+tie-break is where resolve still reads built nodes for order.
 
 Two probes on the rank itself, over the same suite:
 
