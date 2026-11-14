@@ -174,6 +174,30 @@ def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
     ]
 
 
+def test_a_side_preserved_past_an_inner_join_seeds_the_walk():
+    k = "c~k"
+    planned = resolve_join_order_v2(
+        JoinFacts(
+            sides={
+                "ds~a": SideFacts(
+                    columns=frozenset({k, "c~x"}), held_spans=frozenset({k})
+                ),
+                "ds~b": SideFacts(columns=frozenset({k, "c~y"})),
+                "ds~c": SideFacts(columns=frozenset({k, "c~z"})),
+            },
+            region_partition=(frozenset({k}),),
+            pair_keys={
+                frozenset(pair): frozenset({k})
+                for pair in (("ds~a", "ds~b"), ("ds~a", "ds~c"), ("ds~b", "ds~c"))
+            },
+        )
+    )
+    assert [(j.right, j.type, set(j.keys)) for j in planned] == [
+        ("ds~c", JoinType.LEFT_OUTER, {"ds~a"}),
+        ("ds~b", JoinType.LEFT_OUTER, {"ds~a"}),
+    ]
+
+
 def test_a_solid_value_null_pairing_walks_before_a_held_span():
     planned = resolve_join_order_v2(
         JoinFacts(
