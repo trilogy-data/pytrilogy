@@ -7,13 +7,14 @@ the non-root sources its plan reads, hides the unbuilt ones and re-plans, which
 falls back to whatever can still answer — the roots, in the end.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 
 from trilogy import Executor
 from trilogy.constants import logger
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.enums import PersistMode
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import collect_source_addresses
+from trilogy.core.statements.author import PersistStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.exceptions import UNRESOLVABLE_ERRORS
@@ -33,30 +34,12 @@ class UnbuiltSourceError(Exception):
         )
 
 
-def _query_datasources(source: QueryDatasource) -> Iterator[BuildDatasource]:
-    for ds in source.datasources:
-        if isinstance(ds, BuildDatasource):
-            yield ds
-        else:
-            yield from _query_datasources(ds)
-
-
-def _cte_datasources(cte: CTE | UnionCTE) -> Iterator[BuildDatasource]:
-    yield from _query_datasources(cte.source)
-    if isinstance(cte, UnionCTE):
-        for inner in cte.internal_ctes:
-            yield from _cte_datasources(inner)
-    else:
-        for parent in cte.inlined_parents:
-            yield parent.datasource
-
-
 def read_datasources(
     executor: Executor, target: Datasource, query: ProcessedQuery
 ) -> set[str]:
     """Identifiers of the non-root datasources other than ``target`` that a
     planned query reads. Matched on address: an inlined leaf may be renamed."""
-    addresses = [ds.address for cte in query.ctes for ds in _cte_datasources(cte)]
+    addresses = collect_source_addresses(query.ctes)
     return {
         ds_id
         for ds_id, ds in executor.environment.datasources.items()
@@ -68,10 +51,15 @@ def read_datasources(
 
 
 def _planned_reads(executor: Executor, target: Datasource) -> set[str]:
-    select = target.create_update_statement(executor.environment, None, line_no=None)
-    queries = executor.generator.generate_queries(
-        executor.environment, [select], hooks=executor.hooks
+    """Plan the build exactly as ``update_datasource`` will: a persist, which
+    scopes a partial target to its complete-where and never reads itself."""
+    env = executor.environment
+    persist = PersistStatement(
+        datasource=target,
+        select=target.create_update_statement(env, None, line_no=None),
+        persist_mode=PersistMode.OVERWRITE,
     )
+    queries = executor.generator.generate_queries(env, [persist], hooks=executor.hooks)
     return {
         ds_id
         for query in queries
@@ -95,8 +83,7 @@ def hide_unbuilt_sources(
     checked: set[str] = set()
     unbuilt: set[str] = set()
     while True:
-        # The persist never reads its own target; a bare select would.
-        with hidden_datasources(env, hide | {target.identifier}):
+        with hidden_datasources(env, hide):
             try:
                 reads = _planned_reads(executor, target)
             except UNRESOLVABLE_ERRORS as e:
