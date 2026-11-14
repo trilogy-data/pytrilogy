@@ -338,8 +338,6 @@ def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPai
         if not isinstance(j, Join) or j.join_type is not JoinType.INNER:
             continue
         for p in j.pairs or []:
-            if p.node is None or j.right is None:
-                continue
             ends = ((p.left, p.node), (p.right, j.right))
             for (a, a_side), b in (ends, ends[::-1]):
                 edges.setdefault((a_side.name, a.address), []).append(b)
