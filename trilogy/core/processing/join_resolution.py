@@ -935,6 +935,15 @@ def _ranked_edges(
     )
 
 
+def _lefts_in_order(
+    joined: Collection[str], score: Callable[[str], tuple[int, int, str]]
+) -> list[str]:
+    """The joined sides a right is typed against, best-scored last: the
+    scorer that picks the right also decides which of two lefts on the same
+    keys is kept and which is redundant."""
+    return sorted(joined, key=score)
+
+
 def _join_onto(
     right: str, base: list[str], facts: JoinFacts, eligible_left: set[str]
 ) -> JoinOrderOutput:
@@ -1052,7 +1061,10 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         if touching:
             output.append(
                 _join_onto(
-                    right, sorted(eligible_left, key=score_key), facts, eligible_left
+                    right,
+                    _lefts_in_order(eligible_left, score_key),
+                    facts,
+                    eligible_left,
                 )
             )
         elif eligible_left:
