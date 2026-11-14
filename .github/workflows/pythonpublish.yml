@@ -3,8 +3,21 @@ name: Push to PyPI
 on:
   push:
     branches: [main]
+  # PRs that touch packaging build and smoke-test every wheel; only a push to
+  # main publishes.
+  pull_request:
+    paths:
+      - .github/workflows/pythonpublish.yml
+      - pyproject.toml
+      - .scripts/**
+      - trilogy/scripts/dependency/Cargo.toml
+  workflow_dispatch:
 env:
-  PYTHON_VERSIONS: "3.11 3.12 3.13"
+  # Native wheels are stable-ABI (abi3): one wheel per platform covers every
+  # CPython >= ABI3_PYTHON, keeping releases small enough for the PyPI quota.
+  ABI3_PYTHON: "3.11"
+  # --features replaces [tool.maturin] features, so the full list is repeated.
+  ABI3_ARGS: --release --out dist --interpreter 3.11 --features python,pyo3/extension-module,pyo3/abi3-py311
 jobs:
   version-check:
     runs-on: ubuntu-latest
@@ -49,7 +62,7 @@ jobs:
         from packaging import version
 
         local_ver = version.parse('$LOCAL_VERSION')
-        python_versions = '${{ env.PYTHON_VERSIONS }}'.split()
+        abi3_tag = 'cp' + '${{ env.ABI3_PYTHON }}'.replace('.', '') + '-abi3'
 
         try:
           response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
@@ -84,11 +97,7 @@ jobs:
             'win_amd64',
           ]
 
-          expected_wheels = []
-          for py_ver in python_versions:
-            cp_ver = py_ver.replace('.', '')  # '3.11' -> '311'
-            for platform in platforms:
-              expected_wheels.append(f'cp{cp_ver}-cp{cp_ver}-{platform}')
+          expected_wheels = [f'{abi3_tag}-{platform}' for platform in platforms]
 
           # Get available files
           available_files = [f['filename'] for f in data.get('urls', [])]
@@ -123,7 +132,7 @@ jobs:
 
   linux:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -140,7 +149,7 @@ jobs:
       uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: ${{ env.ABI3_ARGS }}
         sccache: 'true'
         manylinux: auto
         rust-toolchain: stable
@@ -151,10 +160,9 @@ jobs:
       if: matrix.target == 'x86_64'
       run: |
         # Test that a patched wheel installs with dependencies
-        # Filter for Python 3.13 wheels for the current target architecture
-        WHEEL=$(ls dist/*cp313-cp313*${{ matrix.target }}*.whl | head -n 1)
+        WHEEL=$(ls dist/*abi3*${{ matrix.target }}*.whl | head -n 1)
         if [ -z "$WHEEL" ]; then
-          echo "Error: No Python 3.13 wheel found for target ${{ matrix.target }}"
+          echo "Error: No abi3 wheel found for target ${{ matrix.target }}"
           exit 1
         fi
         echo "Testing wheel: $WHEEL"
@@ -173,7 +181,7 @@ jobs:
 
   macos:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: macos-latest
     strategy:
       matrix:
@@ -190,9 +198,24 @@ jobs:
       uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: ${{ env.ABI3_ARGS }}
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
+    - name: Validate patched wheels
+      # macos-latest runs on arm64, so only that wheel can be executed natively.
+      if: matrix.target == 'aarch64'
+      run: |
+        WHEEL=$(ls dist/*abi3*arm64*.whl | head -n 1)
+        if [ -z "$WHEEL" ]; then
+          echo "Error: No abi3 wheel found for target ${{ matrix.target }}"
+          exit 1
+        fi
+        echo "Testing wheel: $WHEEL"
+        python -m venv test_venv
+        test_venv/bin/pip install "$WHEEL"
+        test_venv/bin/trilogy --help
+        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+        rm -rf test_venv
     - name: Upload wheels
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
@@ -201,7 +224,7 @@ jobs:
 
   windows:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: windows-latest
     strategy:
       matrix:
@@ -218,17 +241,16 @@ jobs:
       uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: ${{ env.ABI3_ARGS }}
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Validate patched wheels
       shell: bash
       run: |
         # Test that a patched wheel installs with dependencies
-        # Filter for Python 3.13 wheels for the win_amd64 platform
-        WHEEL=$(ls dist/*cp313-cp313*win_amd64*.whl | head -n 1) #
+        WHEEL=$(ls dist/*abi3*win_amd64*.whl | head -n 1)
         if [ -z "$WHEEL" ]; then
-          echo "Error: No Python 3.13 wheel found for target win_amd64"
+          echo "Error: No abi3 wheel found for target win_amd64"
           exit 1
         fi
         echo "Testing wheel: $WHEEL"
@@ -246,7 +268,7 @@ jobs:
 
   wasm:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     # Soft rollout: a wasm failure must never block a release. The wheel is
     # published when it builds; promote by removing this once proven stable.
     continue-on-error: true
@@ -320,7 +342,7 @@ jobs:
 
   sdist:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -343,7 +365,7 @@ jobs:
 
   publish:
     needs: [version-check, linux, macos, windows, wasm, sdist]
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: release
@@ -384,7 +406,7 @@ jobs:
     # trusted publisher and this job takes over.
     needs: [version-check, publish]
     if: >-
-      !cancelled() && needs.version-check.result == 'success' &&
+      !cancelled() && github.event_name == 'push' && needs.version-check.result == 'success' &&
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
@@ -451,7 +473,7 @@ jobs:
 
   skip-publish:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'false'
+    if: needs.version-check.outputs.should_publish == 'false' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
     - name: Skip publishing
