@@ -2752,6 +2752,83 @@ Two probes on the rank itself, over the same suite:
 The census reruns the whole suite with the extraction in place: the same 25
 credential-gated failures as `main`.
 
+**The walk keeps the left it walked first (part 73).** Part 72 split the
+scorer's two uses. Before moving either onto the plan, the census asked
+whether any built-side term the scorer reads has a plan or contract stand-in
+that orders the same merges. None does. Over all of `tests/` (14,321 merges
+with three or more sides), the merges each stand-in moves in the pick of the
+next side:
+
+| stand-in | for | moves | the term held constant moves |
+|---|---|---|---|
+| `bool(held_spans)` (region marks) | hosts | 1,152 | 1,170 |
+| the key in its `held_spans` | hosts | 1,154 | 1,170 |
+| keys the plan pairs the side on | grain size | 2,824 | 1,964 |
+| the grain's FD closure | grain size | 3,715 | 1,964 |
+| value-nullable on the key | nullable on the key | 1,306 | 1,557 |
+
+Read for every reader, typing included, the region marks move 1,989 merges
+in place of `hosts`, and dropping `hosts` moves 2,004. So hosting is not the
+region contract restated: the contract is a different fact, and a stand-in
+moves about as much as dropping the term.
+
+The second use is different in kind. Which of two lefts on the same keys a
+right keeps is not a choice of what to join next; the walk has already
+joined both. So the scorer no longer re-sorts the joined sides:
+
+- `_lefts_in_order` is gone. `_join_onto` types a right against the sides
+  already joined in the order the walk joined them, and of two lefts on the
+  same keys it keeps the one walked first.
+- The scoped-LEFT anchor still seeds the tree. Walked first, it is the left
+  each co-anchored optional source dedups against.
+- `test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept` pins it.
+  It fails on `main`, where the side nullable on the key outscored the side
+  walked first.
+
+The scorer now answers one question, the next side. The left order is the
+walk's, and the walk is over the plan's pairings.
+
+Which left an ON reads mattered to one optimizer phase. A first capture
+of this change against `main` had 3 statements whose joins loosened
+(spellings 262 and 11030 in `test_oracle_spellings_laws`: INNER to LEFT
+OUTER, and in 11030 a HAVING moved out to a `coalesce(count, 0) = 6` in the
+WHERE), beside about 15 that tightened. Both resolves typed every join the
+same. The difference was `upgrade_outer_key_set_equivalence`
+(`UpgradeOuterFromKeySetEquivalence`): it upgrades an outer join to INNER
+when the key's value set is the same on both sides, and it tested only the
+left the pair reads. On `main` that left was a sibling of the right over the
+same filtered rows, and the proof held. The side walked first was not, and
+the proof failed, though on the rows entering the join the two lefts hold
+the same key. The tightened statements were the same luck the other way.
+
+So the proof no longer depends on the spelling. `_equated_reads` collects
+the pair's left and every read of its key that an INNER join earlier in the
+same CTE equates with it, and any of them may witness the equivalence, as
+long as no earlier outer join null-extends it. An outer join pads the side
+it extends, so it equates nothing.
+`test_a_left_an_inner_join_equates_witnesses_the_key_set` pins the upgrade,
+and `test_a_left_an_outer_join_pads_is_no_witness` pins the guard.
+
+Suite capture against `main` with both changes (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures,
+and 196 tests move. None changes a CTE or join count, and no join loosens:
+
+- 24 statements tighten: LEFT OUTER or FULL to INNER, a `coalesce`
+  dropped from an ON, a filter kept in its HAVING
+  (`test_row_preserving_grain_invariant`, `test_dimension_chain_oracle_laws`,
+  `test_final_gate_lookups`, spellings 12365 and 30670, sweep 80,
+  `test_grain_pin_unnest_merge_filter`).
+- Of the rest, 32 statements are shorter and 12 longer. 2 of the longer are
+  listed noise (`test_cli_consistency`, and a Rust-binary test that ran on
+  the second tree only because cargo had been built by then). The other 10
+  are 5 spellings in `test_oracle_spellings_laws`, each compiled twice,
+  longer by 1 to 80 characters: where the left walked first is a wrap that
+  did not carry the key, it now projects it (`tree_form`, spelling 10995).
+  Joins and their types are unchanged.
+
+Every moved test passes on both trees, and the law suites compare their
+rows against a raw-row oracle, so the moved plans return the same rows.
+
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2782,7 +2859,9 @@ not built yet:
    the solid term reads a fact the plan does not state: value-null
    provenance (part 71), and of that, nearly only whether a region-free
    holder can NULL the key. Ties below the rank (`_score_join_candidate`)
-   read the built sides, the side's name deciding the most (part 72).
+   read the built sides, the side's name deciding the most (part 72), and no
+   plan or contract fact stands in for any of them. They pick only the next
+   side: which of two lefts is kept follows the walk (part 73).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

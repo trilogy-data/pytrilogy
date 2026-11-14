@@ -28,6 +28,8 @@ row LIMIT or a FILTER anywhere in a side's chain vetoes the claim.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from trilogy.constants import RECURSIVE_GATING_CONCEPT
 from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
@@ -41,6 +43,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.execute import (
     CTE,
     BuildDatasource,
+    ConceptPair,
     Join,
     RecursiveCTE,
     UnionCTE,
@@ -322,6 +325,30 @@ def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
         if right_name:
             joined.add(right_name)
     return member in extended
+
+
+def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPair]:
+    """``pair`` and every read of its left key that an INNER join before
+    ``target`` equates with it: on the rows entering ``target`` each holds the
+    same value, so a value-set proof about one is a proof about the key."""
+    edges: dict[tuple[str, str], list[tuple[BuildConcept, CTE | UnionCTE]]] = {}
+    for j in cte.joins or []:
+        if j is target:
+            break
+        if not isinstance(j, Join) or j.join_type is not JoinType.INNER:
+            continue
+        for p in j.pairs or []:
+            ends = ((p.left, p.node), (p.right, j.right))
+            for (a, a_side), b in (ends, ends[::-1]):
+                edges.setdefault((a_side.name, a.address), []).append(b)
+    reads = [pair]
+    seen = {(pair.node.name, pair.left.address)}
+    for read in reads:
+        for concept, side in edges.get((read.node.name, read.left.address), []):
+            if (side.name, concept.address) not in seen:
+                seen.add((side.name, concept.address))
+                reads.append(replace(pair, left=concept, node=side))
+    return reads
 
 
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
@@ -905,31 +932,43 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 )
             )
 
-        if not all(pair_equal(pair) for pair in join.pairs):
-            return False
         # A chain member null-extended by an earlier outer join carries rows
         # where its key is absent; equality never matches them, so this join's
         # preservation is load-bearing regardless of value-set equivalence.
-        if any(_null_extended_before(cte, join, pair.node.name) for pair in join.pairs):
+        # Any read of the key an earlier INNER join equates may witness it.
+        witnesses = [
+            next(
+                (
+                    read
+                    for read in _equated_reads(cte, join, pair)
+                    if pair_equal(read)
+                    and not _null_extended_before(cte, join, read.node.name)
+                ),
+                None,
+            )
+            for pair in join.pairs
+        ]
+        if any(witness is None for witness in witnesses):
             return False
         # A key nullable on a side but joined with plain ``=`` carries NULL
         # rows the equality never matches (a ROLLUP subtotal key); INNER
         # would silently drop them. A null-safe pair matches NULLs and is
         # safe. For an EQUAL-declared key both sides name one value space, so
         # the pair is made null-safe rather than refusing the upgrade.
-        for pair in join.pairs:
+        for pair, witness in zip(join.pairs, witnesses):
+            assert witness is not None
             # Null-safety pairs the NULL groups but says nothing about the
             # non-null values: a join-padded side carries a key image that
             # subsets the value space, so unless the padding shares
             # provenance the equivalence claim is unsound. An EQUAL
             # declaration names one value space and overrides.
-            if not self._pair_equal_declared(pair) and _unshared_join_padding(
-                pair, right_cte
+            if not self._pair_equal_declared(witness) and _unshared_join_padding(
+                witness, right_cte
             ):
                 return False
             if pair.is_nullable:
                 continue
-            if _key_nullable(pair.left, pair.node) or _key_nullable(
+            if _key_nullable(witness.left, witness.node) or _key_nullable(
                 pair.right, right_cte
             ):
                 if self._pair_equal_declared(pair):
