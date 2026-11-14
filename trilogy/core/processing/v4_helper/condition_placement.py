@@ -1772,9 +1772,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         and candidates
         and (
             _output_is_rootless(mandatory_list)
-            or all(
-                c.granularity == Granularity.SINGLE_ROW for c in atom.row_arguments
-            )
+            or all(c.granularity == Granularity.SINGLE_ROW for c in atom.row_arguments)
         )
         and all(gid not in main_lineage for gid in candidates)
     ):

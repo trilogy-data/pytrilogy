@@ -1502,17 +1502,31 @@ def _search_concepts(
         depth=depth,
     )
     if materialized_roots and info.strategy_node is None:
-        info = _build_from_graph(
-            mandatory_list,
-            environment,
-            g,
-            history,
-            conditions,
-            frozenset(),
-            complete_partials,
-            staged_conditions,
-            depth=depth,
+        # a rolled total that cannot be placed costs only itself, not every
+        # other summary read
+        totals = frozenset(
+            address
+            for address in materialized_roots
+            if address in environment.concepts
+            and environment.concepts[address].granularity == Granularity.SINGLE_ROW
         )
+        fallbacks = [frozenset[str]()]
+        if totals and totals != materialized_roots:
+            fallbacks.insert(0, materialized_roots - totals)
+        for roots in fallbacks:
+            info = _build_from_graph(
+                mandatory_list,
+                environment,
+                g,
+                history,
+                conditions,
+                roots,
+                complete_partials,
+                staged_conditions,
+                depth=depth,
+            )
+            if info.strategy_node is not None:
+                break
     return info
 
 

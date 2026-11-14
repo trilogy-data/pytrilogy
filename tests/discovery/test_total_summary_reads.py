@@ -45,9 +45,11 @@ CASES = [
     # seed 70914, reduced: the one-row total cross-joined onto rows the gate
     # left empty pads no row (a FULL join on 1=1 returned one NULL row)
     (
-        "select city, species, sum(height) as v1 where count(tree_id) by * != 5"
-        " and count_distinct(tag) by city - count_distinct(tag) by city,"
-        " tree_form < 0;",
+        (
+            "select city, species, sum(height) as v1 where count(tree_id) by * != 5"
+            " and count_distinct(tag) by city - count_distinct(tag) by city,"
+            " tree_form < 0;"
+        ),
         [],
         None,
     ),
