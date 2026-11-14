@@ -139,3 +139,16 @@ def test_unreachable_remote_file_still_raises(tmp_path, served):
         pytest.raises(RuntimeError),
     ):
         is_missing_file(ds, executor)
+
+
+def test_corrupt_remote_file_is_not_missing(tmp_path, served):
+    executor = _executor(tmp_path, served)
+    (served[0] / "wide.parquet").write_bytes(b"<html>not parquet</html>")
+
+    assert not is_missing_file(executor.environment.datasources["wide"], executor)
+
+
+def test_dialect_without_file_schema_is_not_missing(tmp_path, served):
+    executor = _executor(tmp_path, served)
+    with patch.object(type(executor.generator), "get_file_columns", return_value=None):
+        assert not is_missing_file(executor.environment.datasources["wide"], executor)
