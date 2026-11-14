@@ -41,6 +41,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildUnionSelectLineage,
     BuildWhereClause,
+    get_concept_row_arguments,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.processing import plan_trace
@@ -62,6 +63,7 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
     condition_implies,
+    decompose_condition,
     is_scalar_condition,
 )
 from trilogy.core.processing.discovery_utility import (
@@ -515,6 +517,13 @@ def materialized_root_addresses(
         )
         if exact:
             out.add(concept.address)
+        # a WHERE's total reads every row, as does any total of an unfiltered
+        # select (`Rollup.total_gate_from_summary`)
+        if not exact and _total_rolls_up(
+            concept, condition_only, where, environment, datasources, unions
+        ):
+            out.add(concept.address)
+            continue
         # A rolled root joins the target-grain scan, so an aggregate at another
         # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
@@ -586,6 +595,38 @@ def materialized_root_addresses(
             + list(condition_args_by_address.values())
             + _rolled_grain_columns(rolled_roots, environment),
             rollup_sources,
+        )
+    )
+
+
+def _total_rolls_up(
+    concept: BuildConcept,
+    condition_only: bool,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
+) -> bool:
+    """A total (`min(x) by *`) over every row is rolled up from a summary
+    whatever the rest of the select reads: its one row is its own group,
+    joined on nothing. A WHERE's total is over every row when each atom
+    reading it reads only one-row values (FINAL cross-joins those atoms)."""
+    if concept.granularity != Granularity.SINGLE_ROW:
+        return False
+    if condition_only:
+        assert where is not None
+        if not all(
+            arg.granularity == Granularity.SINGLE_ROW
+            for atom in decompose_condition(where.conditional)
+            if concept.address in {c.address for c in get_concept_row_arguments(atom)}
+            for arg in get_concept_row_arguments(atom)
+        ):
+            return False
+    elif where is not None:
+        return False
+    return _is_rollable_aggregate(concept) and bool(
+        _rollup_sources(
+            concept, [concept], concept.grain, None, environment, datasources, unions
         )
     )
 

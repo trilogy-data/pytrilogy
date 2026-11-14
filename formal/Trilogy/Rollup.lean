@@ -1004,5 +1004,43 @@ theorem Rollup.resum_beside_finer_rows_multiplies :
         fun _ => s.2.2)).sum = 6 := by
   decide
 
+/-! ## A WHERE's total reads every row
+
+`select city, species where height > 2 and min(height) by * <= 1` beside a
+`(city, species)` summary: the total is computed before the WHERE, over every
+row, so the row atom beside it never reaches its input. Its value is the
+summary's partials rolled up unfiltered, and the WHERE keeps the same rows
+either way. The planner computed it from the trees in a second scan. -/
+
+omit [DecidableEq κ] in
+theorem keep_true (g : α → κ) (rows : List α) : keep g (fun _ => true) rows = rows := by
+  simp [keep]
+
+/-- **A total gate reads the summary** (`SUM`): any row predicate `p` beside a
+test `t` of the guarded total keeps the same rows whether the total is the
+re-sum of the stored partials or the sum over the rows. -/
+theorem Rollup.total_gate_from_summary (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (p : α → Bool) (t : Option (Option Int) → Bool) :
+    let s := stored g ks rows (sumAgg v) (fun _ => true)
+    rows.filter (fun r => p r && t (total s (sqlSum s))) =
+      rows.filter (fun r => p r && t (total rows (sumAgg v rows))) := by
+  intro s
+  have h := Rollup.grand_total_sum g ks hnd rows hcov v (fun _ => true)
+  rw [keep_true] at h
+  simp only [s, h]
+
+/-- The same for `MIN`, the total the sweep's seeds gate on. -/
+theorem Rollup.total_gate_from_summary_min (g : α → κ) (ks : List κ)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (p : α → Bool) (t : Option (Option Int) → Bool) :
+    let s := stored g ks rows (minAgg v) (fun _ => true)
+    rows.filter (fun r => p r && t (total s (sqlMin s))) =
+      rows.filter (fun r => p r && t (total rows (minAgg v rows))) := by
+  intro s
+  have h := Rollup.grand_total_min g ks rows hcov v (fun _ => true)
+  rw [keep_true] at h
+  simp only [s, h]
+
 end Rollup
 end Trilogy
