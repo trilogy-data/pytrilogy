@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
+from itertools import combinations
 from operator import attrgetter
 
 from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_MARKER_PREFIX, logger
@@ -884,15 +885,93 @@ def _keyless_order(facts: JoinFacts, ds: str) -> tuple[bool, str, str]:
     return (own is None, own or "", ds)
 
 
-def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
-    """Greedily order the merge's sides (`facts.sides`) into a join tree.
+def _pivot_rank(
+    pivot: str, holders: list[str], facts: JoinFacts
+) -> tuple[bool, bool, bool, int, int, int, str]:
+    """An AUTHORED join key (scoped join / merge relation) ranks FIRST: its
+    equality is a semantic pairing contract, not a heuristic tree edge. If a
+    cheaper shared key seeds the tree instead, the sides pair on that key
+    alone and the authored predicate lands on a leaf dimension, where a
+    preserving join NULLs the dimension instead of un-pairing the rows.
+    A span some side holds a region on ranks next: the stitch on the span
+    unites the region's rows with its feeder first, and a key the region
+    CARRIES (an aggregate by the description) joins the united rows after
+    it. Joining on the carried key instead joins the aggregate to the
+    domain alone, where a `~?` guest (a value-NULL key, so no domain row)
+    never reaches its NULL group. A side holding several regions' rows (an
+    aggregate by `bucket` over customers no order has) ranks after the
+    others are stitched: its NULL group holds their padded rows, which only
+    exist once their own stitch ran."""
+    key = pivot.removesuffix(_SOLID)
+    return (
+        pivot not in facts.authored_join_keys,
+        not pivot.endswith(_SOLID),
+        pivot not in facts.held_spans,
+        max(len(facts.side(side).held_spans - {key}) for side in holders),
+        len(holders),
+        len(pivot),
+        pivot,
+    )
 
-    Every key is the plan's (`facts.pair_keys`): two sides pair on what it
-    pairs them on, and on nothing else. No join graph is read. Pick a pivot
-    (a planned key), then absorb the sides the plan pairs on it into the
-    growing left set, scoring candidates by eligibility / partial / nullable
-    status and breaking ties on grain width (``_score_join_candidate``).
-    Every choice point sorts its inputs, so the plan is deterministic across runs.
+
+def _ranked_edges(
+    pivot_map: Mapping[str, list[str]], facts: JoinFacts
+) -> list[tuple[str, str, str]]:
+    """Every planned pairing as (key, side, side), best-ranked first: a pair
+    the plan pairs on several keys is an edge under each."""
+    edges = [
+        (pivot, a, b)
+        for pivot, holders in pivot_map.items()
+        for a, b in combinations(holders, 2)
+        if pivot.removesuffix(_SOLID) in facts.pair_keys.get(frozenset({a, b}), ())
+    ]
+    return sorted(
+        edges, key=lambda e: (_pivot_rank(e[0], pivot_map[e[0]], facts), e[1], e[2])
+    )
+
+
+def _join_onto(
+    right: str, base: list[str], facts: JoinFacts, eligible_left: set[str]
+) -> JoinOrderOutput:
+    """`right` joined onto every side in `base` (best-scored last) the plan
+    pairs it with, on what the plan pairs them on."""
+    joinkeys: dict[str, set[str]] = {}
+    join_types: set[JoinType] = set()
+    deduped: list[tuple[str, set[str]]] = []
+    for left in reversed(base):
+        keys = get_connection_keys(facts.pair_keys, left, right)
+        if not keys:
+            continue
+        # A FULL-join key must keep EVERY left source that provides it: the
+        # row may exist on only one of them, so the ON clause has to coalesce
+        # across all (`coalesce(l1.k, l2.k) = r.k`). Non-FULL keys dedup.
+        if not keys & facts.full_join_keys and any(
+            v == keys
+            and not (
+                keys & facts.side(left).partials and keys & facts.side(prior).partials
+            )
+            for prior, v in joinkeys.items()
+        ):
+            deduped.append((left, keys))
+            continue
+        join_types.add(get_join_type(left, right, keys, facts, eligible_left))
+        joinkeys[left] = keys
+    return JoinOrderOutput(
+        right=right,
+        type=reduce_join_types(join_types),
+        keys=joinkeys,
+        redundant=dict(deduped),
+    )
+
+
+def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
+    """Order the merge's sides (`facts.sides`) into a join tree by walking
+    the plan's pairings (`facts.pair_keys`): two sides pair on what it pairs
+    them on, and on nothing else. Each step joins the unjoined side whose
+    pairing onto the joined set ranks best (`_pivot_rank` on its key), ties
+    going to the best-scored side (``_score_join_candidate``); a pairing
+    between two unjoined sides seeds a tree only when none touches it. Every
+    choice point sorts its inputs, so the plan is deterministic across runs.
 
     Ordering is a heuristic for plan shape only; ``ensure_content_preservation``
     guarantees the result set regardless of the order chosen here.
@@ -920,59 +999,34 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
             and not (active_anchor_keys & facts.side(ds).partials)
         )
 
-    all_connections = facts.pair_keys
-    output: list[JoinOrderOutput] = []
-
-    pivot_map = _pivot_map(all_connections)
-    # An AUTHORED join key (scoped join / merge relation) pivots FIRST: its
-    # equality is a semantic pairing contract, not a heuristic tree edge. If a
-    # cheaper shared key seeds the tree instead, the sides pair on that key
-    # alone and the authored predicate lands on a leaf dimension, where a
-    # preserving join NULLs the dimension instead of un-pairing the rows.
-    # A span some side holds a region on pivots next: the stitch on the span
-    # unites the region's rows with its feeder first, and a key the region
-    # CARRIES (an aggregate by the description) joins the united rows after
-    # it. Pivoting on the carried key instead joins the aggregate to the
-    # domain alone, where a `~?` guest (a value-NULL key, so no domain row)
-    # never reaches its NULL group. A side holding several regions' rows (an
-    # aggregate by `bucket` over customers no order has) pivots after the
-    # others are stitched: its NULL group holds their padded rows, which only
-    # exist once their own stitch ran.
-    held = facts.held_spans
+    pivot_map = _pivot_map(facts.pair_keys)
     pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
-    pivots = sorted(
-        [x for x in pivot_map if len(pivot_map[x]) > 1],
-        key=lambda x: (
-            x not in facts.authored_join_keys,
-            not x.endswith(_SOLID),
-            x not in held,
-            max(
-                len(facts.side(side).held_spans - {x.removesuffix(_SOLID)})
-                for side in pivot_map[x]
-            ),
-            len(pivot_map[x]),
-            len(x),
-            x,
-        ),
-    )
+    edges = _ranked_edges(pivot_map, facts)
+    output: list[JoinOrderOutput] = []
     eligible_left: set[str] = set()
+    opened: dict[str, bool] = {}
 
-    while pivots:
-        next_pivots = [
-            x for x in pivots if any(y in eligible_left for y in pivot_map[x])
+    while True:
+        touching = [
+            e for e in edges if (e[1] in eligible_left) != (e[2] in eligible_left)
         ]
-        if next_pivots:
-            root = next_pivots[0]
-            pivots = [x for x in pivots if x != root]
-        else:
-            root = pivots.pop(0)
-
+        open_edges = touching or [
+            e for e in edges if not ({e[1], e[2]} & eligible_left)
+        ]
+        if not open_edges:
+            break
+        root = open_edges[0][0]
         key = root.removesuffix(_SOLID)
-        unjoined_for_root = [x for x in pivot_map[root] if x not in eligible_left]
-        multi_partial = (
-            sum(1 for x in unjoined_for_root if key in facts.side(x).partials) > 1
+        # judged once, over the key's holders unjoined when it first ranks best
+        multi_partial = opened.setdefault(
+            root,
+            sum(
+                1
+                for x in pivot_map[root]
+                if x not in eligible_left and key in facts.side(x).partials
+            )
+            > 1,
         )
-
         score_key = partial(
             _score_join_candidate,
             root=key,
@@ -981,89 +1035,29 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
             multi_partial=multi_partial,
             anchor_sources=anchor_sources,
         )
-
-        to_join = sorted(
-            [x for x in pivot_map[root] if x not in eligible_left], key=score_key
+        right = max(
+            (
+                side
+                for pivot, a, b in open_edges
+                if pivot == root
+                for side in (a, b)
+                if side not in eligible_left
+            ),
+            key=score_key,
         )
-        deferred: set[str] = set()
-        while to_join:
-            base = sorted([x for x in eligible_left], key=score_key)
-            if not base:
-                new = to_join.pop()
-                eligible_left.add(new)
-                base = [new]
-            right = to_join.pop()
-            if right in eligible_left:
-                continue
-
-            joinkeys: dict[str, set[str]] = {}
-            join_types: set[JoinType] = set()
-            deduped: list[tuple[str, set[str]]] = []
-
-            for left_candidate in reversed(base):
-                all_connecting_keys = get_connection_keys(
-                    all_connections, left_candidate, right
-                )
-
-                if not all_connecting_keys:
-                    continue
-
-                # A FULL-join key must keep EVERY left source that provides it:
-                # the row may exist on only one of them, so the ON clause has to
-                # coalesce across all (`coalesce(l1.k, l2.k) = r.k`). Skipping a
-                # redundant left here would drop that source from the coalesce and
-                # split rows present only on it. Non-FULL keys still dedup.
-                is_full_key = bool(all_connecting_keys & facts.full_join_keys)
-                exists = False
-                if not is_full_key:
-                    for existing_left, v in joinkeys.items():
-                        if v == all_connecting_keys:
-                            left_is_partial = bool(
-                                all_connecting_keys
-                                & facts.side(left_candidate).partials
-                            )
-                            existing_is_partial = bool(
-                                all_connecting_keys & facts.side(existing_left).partials
-                            )
-                            if not (left_is_partial and existing_is_partial):
-                                exists = True
-                if exists:
-                    deduped.append((left_candidate, all_connecting_keys))
-                    continue
-
-                join_type = get_join_type(
-                    left_candidate, right, all_connecting_keys, facts, eligible_left
-                )
-                join_types.add(join_type)
-                joinkeys[left_candidate] = all_connecting_keys
-
-            # paired with nothing joined yet, but with a side still to join
-            # under this pivot: wait for it instead of joining on nothing
-            if (
-                not joinkeys
-                and not deduped
-                and right not in deferred
-                and any(
-                    get_connection_keys(all_connections, other, right)
-                    for other in to_join
-                )
-            ):
-                deferred.add(right)
-                to_join.insert(0, right)
-                continue
-            deferred.clear()
+        if touching:
             output.append(
-                JoinOrderOutput(
-                    right=right,
-                    type=reduce_join_types(join_types),
-                    keys=joinkeys,
-                    redundant=dict(deduped),
+                _join_onto(
+                    right, sorted(eligible_left, key=score_key), facts, eligible_left
                 )
             )
-            eligible_left.add(right)
+        elif eligible_left:
+            # a second island: its seed joins on nothing and the keyless-join
+            # guard judges it
+            output.append(JoinOrderOutput(right=right, type=JoinType.INNER, keys={}))
+        eligible_left.add(right)
 
-    # Every side the plan pairs on a key joined under that key's pivot; the
-    # rest pair with nothing, so they join on nothing and the keyless-join
+    # Every side the plan pairs joined above; the rest pair with nothing, so they join on nothing and the keyless-join
     # guard judges them.
     for ds in sorted(
         (x for x in datasources if x not in eligible_left),

@@ -303,6 +303,10 @@ def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
     Anything else filters rows inside groups and silently changes the
     aggregates. This holds for every atom regardless of provenance;
     pre-aggregation placement of a WHERE is discovery's job, not this pass's.
+
+    An atom over an aggregate lands as a HAVING, which may name only grouped
+    columns: a property its keys determine is no column there
+    (`tree_form = 'broadleaf' or sum(x) < 0` over a group by species).
     """
     if isinstance(cte, UnionCTE) or not cte.group_to_grain:
         return True
@@ -312,10 +316,15 @@ def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
     for key in cte.group_concepts:
         group_addrs.add(key.address)
         group_addrs.update(key.pseudonyms)
+    having = any(arg.is_aggregate for arg in candidate.row_arguments)
     for arg in candidate.row_arguments:
         if arg.address in group_addrs or set(arg.pseudonyms) & group_addrs:
             continue
-        if arg.keys and set(arg.keys).issubset(group_addrs):
+        if (
+            arg.keys
+            and set(arg.keys).issubset(group_addrs)
+            and (arg.is_aggregate or not having)
+        ):
             continue
         return False
     return True

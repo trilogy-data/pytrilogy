@@ -1,5 +1,6 @@
 """`formal/Trilogy/SelectGrain.lean` (`split_keys_pair_unkept`,
 `keys_off_two_groups_pair_unheld`, `conjunct_read_past_its_host_passes_absent`,
+`gate_paired_short_of_its_grain`, `lookup_preserved_passes_padding`,
 `by_value_is_no_grain_key`) and `formal/Trilogy/Rollup.lean`
 (`gate_partial_resummed_off_its_grain`): a second family of random selects
 against the raw-row oracle of `test_oracle_sweep_laws.py`, in spellings the
@@ -335,10 +336,14 @@ FOUND_SEEDS_495 = [
 ]  # fmt: skip
 # seeds 20,000-30,000 that 0.3.496 fixed (each failed on main), and four leads
 FOUND_SEEDS_496 = [10132, 11682, 19186, 19236, 20686, 21548, 22018, 24647, 25526, 28671]
+# seeds 30,000-40,000 that 0.3.497 fixed (each failed on main)
+FOUND_SEEDS_497 = [31824, 31847, 35775, 35845, 39340]
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
 OPEN = {
     1117: "FINAL renders `tree_form` off a `?` filter's row stream the WHERE "
     "never filtered, and joins the hosting aggregates onto it preserving",
+    30670: "FINAL takes `tree_form` off a `?` filter's row stream: the host by "
+    "`city, species` determines it but never carries it",
 }
 
 
@@ -361,6 +366,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_494,
             *FOUND_SEEDS_495,
             *FOUND_SEEDS_496,
+            *FOUND_SEEDS_497,
             *OPEN,
             8920,
         )
