@@ -889,4 +889,23 @@ theorem keyless_pairing_fans_out :
       (trees.flatMap fun _ => values).length = 6 := by
   decide
 
+/-! ## An alias of a row value is no spelling of its pinned read
+
+`auto s2 <- status` aliases the row value of `status` (a CASE over an order's
+delivery date, stored on the orders), while a select reads `status` pinned to
+its own row, where the CASE's ELSE fires for a customer with no order. The
+alias made the two one name class, and a column storing the alias answered
+the pinned read: on the padded row it is NULL, and `status is null` kept the
+customer. -/
+
+/-- A customer with no order: the pinned read evaluates the CASE on the padded
+row (`'in-transit'`, 1 here); the stored column read through the padding is
+NULL (`alias_is_not_the_pinned_read`). -/
+theorem alias_is_not_the_pinned_read :
+    let delivery : Option Int := none
+    let pinned : Option Int := some (if delivery.isSome then 0 else 1)
+    let stored : Option (Option Int) := none
+    pinned = some 1 ∧ stored.join = none ∧ pinned ≠ stored.join := by
+  decide
+
 end Trilogy.SelectGrain

@@ -9,7 +9,7 @@ from weakref import ReferenceType, ref
 
 from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_PROBE_PREFIX
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
@@ -24,6 +24,13 @@ from trilogy.core.union_find import find
 
 # (concept items, alias origin items) a build's classes were computed over
 _NamesSnapshot = tuple[list[tuple[str, BuildConcept]], list[tuple[str, BuildConcept]]]
+
+
+def _grain_pinned(concept: BuildConcept) -> bool:
+    return (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.GRAIN_PIN
+    )
 
 
 def _ranked_classes(
@@ -376,9 +383,18 @@ class BuildEnvironment:
         for key, concept in self.concepts.items():
             yield key, concept.address
             for pseudonym in concept.pseudonyms:
-                yield concept.address, pseudonym
+                if not self._pinned_apart(concept, pseudonym):
+                    yield concept.address, pseudonym
         for key, origin in self.alias_origin_lookup.items():
             yield key, origin.address
+
+    def _pinned_apart(self, concept: BuildConcept, pseudonym: str) -> bool:
+        """The statement pins `pseudonym` to its select's grain and not
+        `concept`: an alias of the row value (`auto s2 <- status`) names
+        another value where the select's row is padded, and a column storing
+        the alias must not answer the pinned read (`grain_pin`)."""
+        other = self.concepts.get(pseudonym)
+        return other is not None and _grain_pinned(other) and not _grain_pinned(concept)
 
     def _spelling_edges(self) -> Iterator[tuple[str, str]]:
         yield from self._value_edges()

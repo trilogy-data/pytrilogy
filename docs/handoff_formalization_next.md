@@ -789,13 +789,17 @@ does not rewrite it; that rewrite is open.
       rendered it inline.
     - A refusal can be load-bearing. Carrying the constant on every joined
       plan made `test_derived_key_domain.py` return a customer with no order
-      under `status is null`, but only after another statement had run on
-      the same executor: the joined plan filters the stored `status` beside a
-      LEFT JOIN that pads it, while the model reads `status` derived above
-      the join. The carry is limited to conditions over aggregates; seeds
-      42921 and 59635 (a row atom beside the total) still raise. Run whole
-      test files, not single cases, before calling a planner change clean:
-      the cases share executors.
+      under `status is null`. It looked like state leaking between tests; it
+      was an earlier case's `select status as s2`, which defines `s2` in the
+      shared executor's environment (by design). With `auto s2 <- status` in
+      the model the shape fails on a fresh executor. The alias's pseudonym
+      edge put the select's pinned `status` (a `grain_pin` of the CASE) in one
+      name class with the alias of the row value, which the orders store, so
+      the stored column answered the pinned read and padded NULL for a
+      customer with no order. The fix is in the classes
+      (`BuildEnvironment._pinned_apart`), not in a narrower carry: when a
+      test fails only in a batch, find what the earlier statements DEFINED
+      before reading it as a leak.
     - Column overlap is not a pairing. `_join_elected_bridges` skipped a
       bridge once another exposed the same columns, but resolve pairs on the
       plan, which named only the skipped bridge. Decide what to join from the
@@ -1516,10 +1520,9 @@ a filter its grain does not determine. Open questions:
   gate keyed on `tree_form` raised "Could not resolve connections"), and a
   bridge that is some contributor's only planned partner is joined even when
   another bridge exposes the same column (`keyless_pairing_fans_out`,
-  `_sole_partners`; "keyless join"). Left:
-  - seeds 42921 and 59635: the total beside a row atom (`city = 'B' and
-    ...`) still raises, since the constant is carried only under conditions
-    over aggregates. The fix is the padded stored-column filter itself;
+  `_sole_partners`; "keyless join"); a pseudonym the statement pins to its
+  select's grain is no spelling of an alias that is not pinned
+  (`alias_is_not_the_pinned_read`, `_pinned_apart`). Left:
   - keyless joins on seeds 21266 and 33618 (summary only), not yet read;
   - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
     keyless join: nested aggregates by `city, species, tree_form` beside a

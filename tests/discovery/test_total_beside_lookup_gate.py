@@ -1,12 +1,17 @@
 """`formal/Trilogy/SelectGrain.lean` (`constant_key_pairs_every_row`,
-`keyless_pairing_fans_out`): a `by *` total beside a gate keyed on a column the
-trees reach through a lookup (`tree_form`), and a FINAL whose plan pairs a
-value with one of two scans of the trees. Both raised on main; rows checked by
-hand against `test_oracle_sweep_laws.ROWS`."""
+`keyless_pairing_fans_out`, `alias_is_not_the_pinned_read`): a `by *` total
+beside a gate keyed on a column the trees reach through a lookup
+(`tree_form`), and a FINAL whose plan pairs a value with one of two scans of
+the trees. Both raised on main; rows checked by hand against
+`test_oracle_sweep_laws.ROWS`. An alias of a row value is no spelling of the
+select's pinned read of it: customer 3 has no order, and its pinned `status`
+is `'in-transit'`, never the NULL a stored column pads."""
 
 import pytest
 
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
+from tests.helpers.models import CUSTOMER_ACTIVITY
+from tests.helpers.rows import customer_twins, twin_rows
 
 CASES = [
     (
@@ -48,3 +53,29 @@ def test_total_beside_lookup_gate(query: str, expected: list, model: str):
     sql = executor(model).generate_sql(query)[-1]
     rows = executor(model).execute_raw_sql(sql).fetchall()
     assert normalize(rows) == normalize(expected), f"{query}\n{sql}"
+
+
+ALIAS_CASES = [
+    (
+        (
+            "select customer_id, status where customer_id >= avg(customer_id) by *"
+            " and status is null"
+        ),
+        [],
+    ),
+    (
+        (
+            "select customer_id, status where customer_id >= avg(customer_id) by *"
+            " and status = 'in-transit'"
+        ),
+        [(3, "in-transit")],
+    ),
+]
+
+
+@pytest.mark.parametrize("query,expected", ALIAS_CASES)
+def test_alias_of_row_value_is_not_the_pinned_read(query: str, expected: list):
+    derived, materialized = customer_twins(CUSTOMER_ACTIVITY + "auto s2 <- status;")
+    assert twin_rows(derived, materialized, query) == expected
+    derived.close()
+    materialized.close()

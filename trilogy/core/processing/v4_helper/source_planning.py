@@ -705,15 +705,8 @@ def _network_source(
     # emitter can compute this inline" is a claim about lineage, and it does not
     # survive a parent that is itself only reachable through a rowset body.
     bridged_addresses = {concept.address for concept in bridge_concepts}
-    # A constant is a literal in any projection, so the bridge carries it
-    # inline (`_emit_bridge`), unless a condition reads a row column: the
-    # bridge's joins may pad it, and a stored column filtered there is not
-    # the value read above them.
-    inline = (
-        {c.address for c in request.outputs if _is_constant(c)}
-        if not _reads_row_columns(request)
-        else set()
-    )
+    # a constant is a literal in any projection: `_emit_bridge` carries it
+    inline = {c.address for c in request.outputs if _is_constant(c)}
     if not {c.address for c in _requested_concepts(request)} - inline <= (
         bridged_addresses
     ):
@@ -2588,15 +2581,6 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
 
 def _is_constant(concept: BuildConcept) -> bool:
     return concept.derivation == Derivation.CONSTANT
-
-
-def _reads_row_columns(request: SourceRequest) -> bool:
-    return any(
-        not arg.is_aggregate
-        for where in (request.conditions, request.deferred_conditions)
-        if where is not None
-        for arg in condition_row_args(where)
-    )
 
 
 def _bridge_plan(
