@@ -3,6 +3,15 @@ name: Push to PyPI
 on:
   push:
     branches: [main]
+  # PRs that touch packaging build and smoke-test every wheel; only a push to
+  # main publishes.
+  pull_request:
+    paths:
+      - .github/workflows/pythonpublish.yml
+      - pyproject.toml
+      - .scripts/**
+      - trilogy/scripts/dependency/Cargo.toml
+  workflow_dispatch:
 env:
   # Native wheels are stable-ABI (abi3): one wheel per platform covers every
   # CPython >= ABI3_PYTHON, keeping releases small enough for the PyPI quota.
@@ -123,7 +132,7 @@ jobs:
 
   linux:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -172,7 +181,7 @@ jobs:
 
   macos:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: macos-latest
     strategy:
       matrix:
@@ -192,6 +201,21 @@ jobs:
         args: ${{ env.ABI3_ARGS }}
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
+    - name: Validate patched wheels
+      # macos-latest runs on arm64, so only that wheel can be executed natively.
+      if: matrix.target == 'aarch64'
+      run: |
+        WHEEL=$(ls dist/*abi3*arm64*.whl | head -n 1)
+        if [ -z "$WHEEL" ]; then
+          echo "Error: No abi3 wheel found for target ${{ matrix.target }}"
+          exit 1
+        fi
+        echo "Testing wheel: $WHEEL"
+        python -m venv test_venv
+        test_venv/bin/pip install "$WHEEL"
+        test_venv/bin/trilogy --help
+        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+        rm -rf test_venv
     - name: Upload wheels
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
@@ -200,7 +224,7 @@ jobs:
 
   windows:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: windows-latest
     strategy:
       matrix:
@@ -244,7 +268,7 @@ jobs:
 
   wasm:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     # Soft rollout: a wasm failure must never block a release. The wheel is
     # published when it builds; promote by removing this once proven stable.
     continue-on-error: true
@@ -318,7 +342,7 @@ jobs:
 
   sdist:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' || github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -341,7 +365,7 @@ jobs:
 
   publish:
     needs: [version-check, linux, macos, windows, wasm, sdist]
-    if: needs.version-check.outputs.should_publish == 'true'
+    if: needs.version-check.outputs.should_publish == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: release
@@ -382,7 +406,7 @@ jobs:
     # trusted publisher and this job takes over.
     needs: [version-check, publish]
     if: >-
-      !cancelled() && needs.version-check.result == 'success' &&
+      !cancelled() && github.event_name == 'push' && needs.version-check.result == 'success' &&
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
@@ -449,7 +473,7 @@ jobs:
 
   skip-publish:
     needs: version-check
-    if: needs.version-check.outputs.should_publish == 'false'
+    if: needs.version-check.outputs.should_publish == 'false' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
     - name: Skip publishing
