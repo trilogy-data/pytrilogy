@@ -857,6 +857,24 @@ def _preaggregate_filter_allows_dimension_member(
     )
 
 
+def _peel_skips_row_filter(
+    key: str,
+    d0_grouping_grains: list[frozenset[str]],
+    pre_aggregate_filter_args: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A peel keyed on no select-phase grouping key joins back only through a
+    condition-phase gate on that key, whose groups never saw a row filter the
+    key does not determine: `tree_form` off the enrichment beside `max(h) by
+    species > 0 and height > 2` keeps a species whose only tree is 2 tall."""
+    if any(key in grain for grain in d0_grouping_grains):
+        return False
+    return any(
+        not build_fd_determines(environment, {key}, arg, include_empty_grain=False)
+        for arg in pre_aggregate_filter_args
+    )
+
+
 def _keep_extension_families_together(
     assignment: dict[str, frozenset[str]], domains: list[RegionDomain]
 ) -> None:
@@ -1094,6 +1112,10 @@ def _split_root_dimension_clusters(
             ):
                 continue
             if finest is not None:
+                if _peel_skips_row_filter(
+                    finest, d0_grouping_grains, pre_aggregate_filter_args, environment
+                ):
+                    continue
                 assignment[addr] = frozenset({finest})
                 continue
             composite = _composite_determining_grain(

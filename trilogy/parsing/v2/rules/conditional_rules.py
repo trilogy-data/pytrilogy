@@ -106,8 +106,14 @@ def where_clause(
     hydrate: HydrateFunction,
 ) -> WhereClause:
     args = hydrated_children(node, hydrate)
-    root = _expr_to_boolean(args[0], context)
-    return WhereClause(conditional=root)
+    root = args[0]
+    # `where (a and b)` is the conjunction, not `(a and b) = true`: an
+    # opaque bare value hides its conjuncts from every placement rule
+    while isinstance(root, Parenthetical) and isinstance(
+        root.content, (Comparison, Conditional, Parenthetical, Between)
+    ):
+        root = root.content
+    return WhereClause(conditional=_expr_to_boolean(root, context))
 
 
 class StagedWhere:

@@ -1955,7 +1955,10 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                 outs |= cap_gid & final_gate_grains
             # a dim peel beside a region domain joins the region's rows
             # back on its keys (the fact's FK cluster is the bridge)
-            if attrs[gid].dim_keys and region_join_keys:
+            # and a dim peel sending FINAL a value (a stored `min(height) by
+            # city, species` a HAVING reads) pairs on the keys its rows are
+            # identified by
+            if attrs[gid].dim_keys and (region_join_keys or outs):
                 outs |= cap_gid & attrs[gid].dim_keys
             # A FINAL-deferred presence-probe filter joins its producer
             # back on the probe's KEY (`ord_cust` ~ the anchor's key via
@@ -2960,6 +2963,17 @@ def _synthetic_dimension_regraft_parent(
         pred for pred in lineage_preds if attrs[pred].derivation == Derivation.ROOT
     ]
     if not root_preds or len(root_preds) != len(lineage_preds):
+        return None
+    # a parent the WHERE filters holds the statement's rows; a fresh scan of
+    # the dimension does not, and an aggregate over this group would count
+    # the rows the WHERE rejected
+    if any(
+        c.where_row_arg
+        and c.label == attrs[pred].label
+        and c.address in attrs[pred].primary_members
+        for pred in root_preds
+        for c in concept_attrs.values()
+    ):
         return None
     inputs = sorted(sets.inputs_of(gid))
     if not inputs:

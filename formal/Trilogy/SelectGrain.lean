@@ -933,4 +933,131 @@ theorem padded_side_is_not_the_population :
     preserved.length = 4 ∧ inner = [2] := by
   decide
 
+/-! ## A filtered value is a value of its row
+
+`select city, species, count(id ? sum(x) by city, species is not null) where
+avg(x) by * is not null`: the filtered `id` was built at the select's grain,
+`(city, species)`, and read as a value of it. Grouped with the keys before the
+WHERE's join it held one row per tree, but claimed the select's grain, so the
+count was read off each row as `1` or `0` and every tree came back as a row.
+`id ? c` is one value per `id`: its keys say what determines it, not the grain
+of the select it was built in. -/
+
+/-- Two trees of one species: counted over their group, 2; read per tree as a
+value of the group, two rows of 1 (`filtered_value_is_per_row`). -/
+theorem filtered_value_is_per_row :
+    let group : List (Option Int) := [some 1, some 2]
+    let count := (group.filter Option.isSome).length
+    let perRow := group.map fun v => if v.isSome then 1 else 0
+    count = 2 ∧ perRow = [1, 1] := by
+  decide
+
+/-! ## A gate feeder is no row of the statement
+
+`select id, species where count(id) by form <= count(id) by species and form =
+'linden'`: the row atom filters the scan, and the two counts are fed beside it
+and joined. A COUNT is 0 on a group a feeder lacks, so the merge was left to
+join typing, which preserved the species feeder: a species whose trees the row
+atom rejected came back with a NULL `id`. The scan applied the WHERE's row
+atoms; a merge onto it may drop its rows, never add a feeder's. -/
+
+/-- Two species, one kept by the row atom: preserving the feeder returns both,
+the kept one with its tree and the other padded; the scan returns one
+(`gate_feeder_is_no_population`). -/
+theorem gate_feeder_is_no_population :
+    let scan : List (Int × Int) := [(1, 7)]
+    let feeder : List Int := [1, 2]
+    let preserved := feeder.map fun s => (s, (scan.find? (·.1 == s)).map (·.2))
+    let inner := scan.filter fun r => feeder.contains r.1
+    preserved = [(1, some 7), (2, none)] ∧ inner = [(1, 7)] := by
+  decide
+
+/-! ## A peel joined only to a gate skips the row filter
+
+`select form, avg(x) by * where max(x) by species - count_distinct(tag) by
+species > 0 and x > 2`: `form` was peeled to the species table, keyed on the
+gate's `species`, and joined only to the gate's groups. The gate's groups are
+every species whose trees pass it, whatever `x > 2` keeps: a species whose
+only tree is 2 tall still came back. A selected column peeled onto a key that
+no select-phase aggregate groups by holds the WHERE's population only when
+every row filter is a value of that key. -/
+
+/-- Two species pass the gate; the row filter keeps trees of one. Read off the
+gate the select returns both (`peel_skips_row_filter`). -/
+theorem peel_skips_row_filter :
+    let trees : List (Int × Int) := [(1, 5), (2, 2)]
+    let gate : List Int := [1, 2]
+    let kept := (trees.filter (·.2 > 2)).map (·.1)
+    (gate.filter fun s => kept.contains s) = [1] ∧ gate = [1, 2] := by
+  decide
+
+/-! ## A rename keeps the rows it was read on
+
+`select id, city as v0, ... where x between 3 and 7 having count(id) by city,
+species = 2`: the rename `v0` was read off the WHERE's filtered scan, then
+re-sourced from a fresh scan of the trees, which nothing filters; the HAVING's
+count over it counted the trees the WHERE dropped. -/
+
+/-- Two trees in a group, one kept by the WHERE: the count over the kept rows
+is 1, over the rename's fresh scan 2 (`rename_keeps_filtered_rows`). -/
+theorem rename_keeps_filtered_rows :
+    let heights : List (Option Int) := [some 3, none]
+    let kept := heights.filter fun h => h.any fun v => 3 ≤ v && v ≤ 7
+    kept.length = 1 ∧ heights.length = 2 := by
+  decide
+
+/-! ## A peel pairs on every key it is identified by
+
+`select id, species, sum(x ? count(tag) by city, species >= 1) having min(x) by
+city, form != 6 or sum(x) by city, species = 5`, with `sum(x) by city, species`
+stored: the stored value is a dimension peel at `(city, species)`, and the
+FINAL paired the per-tree value with it on `species` alone, and the gate by
+`(city, form)` on `city` alone. Each tree met its species' value in every city.
+A peel's rows are identified by its keys as a group's are by its grain: a
+pairing on fewer of them needs a side holding the rest, and the peel carries
+the keys its own keys determine (`form`). -/
+
+/-- One species in two cities, three trees: paired on `species` alone each tree
+meets both cities' values (`peel_paired_short_of_its_keys`). -/
+theorem peel_paired_short_of_its_keys :
+    let trees : List (Int × Int) := [(0, 0), (1, 0), (2, 1)]
+    let peel : List ((Int × Int) × Int) := [((0, 0), 5), ((1, 0), 7)]
+    (trees.flatMap fun _ => peel.filter (·.1.2 == 0)).length = 6 ∧
+      (trees.flatMap fun t => peel.filter (·.1 == (t.2, 0))).length = 3 := by
+  decide
+
+/-! ## A one-row argument is read off its own group
+
+`select form, min(x ? count_distinct(tag) by * <= 6), sum(x) where count(id) by
+* < 2`: the FINAL re-applies the WHERE and reads `count(id) by *` off the
+most derived group carrying it, the per-tree filter. That side pairs with no
+other on any key, and the plan joined it keyless. A one-row value is read off
+the group computing it, which pairs with every row (`constant_key_pairs_every_row`). -/
+
+/-! ## A parenthesized WHERE is its conjunction
+
+`where (a and b)` was read as the bare value `(a and b) = true`: one atom, so
+no rule could place `a` or `b` apart, and a select the unparenthesized WHERE
+planned raised for a keyless join. In three-valued logic the two are the same
+filter (`parenthesized_conjunction_is_its_atoms`). -/
+
+/-- A three-valued AND: false wins, then unknown. -/
+def and3 : Option Bool → Option Bool → Option Bool
+  | some false, _ => some false
+  | _, some false => some false
+  | some true, some true => some true
+  | _, _ => none
+
+/-- `(a and b) = true` keeps a row exactly when both atoms do
+(`parenthesized_conjunction_is_its_atoms`). -/
+theorem parenthesized_conjunction_is_its_atoms (a b : Option Bool) :
+    (and3 a b == some true) = (a == some true && b == some true) := by
+  cases a with
+  | none => cases b with
+    | none => rfl
+    | some y => cases y <;> rfl
+  | some x => cases x <;> cases b with
+    | none => rfl
+    | some y => cases y <;> rfl
+
 end Trilogy.SelectGrain
