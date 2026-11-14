@@ -340,8 +340,8 @@ FOUND_SEEDS_495 = [
 FOUND_SEEDS_496 = [10132, 11682, 19186, 19236, 20686, 21548, 22018, 24647, 25526, 28671]
 # seeds 30,000-40,000 that 0.3.497 fixed (each failed on main)
 FOUND_SEEDS_497 = [31824, 31847, 35775, 35845, 39340]
-# seeds 40,000-60,000 that 0.3.498 fixed (each raised on main)
-FOUND_SEEDS_498 = [
+# seeds 40,000-60,000 that 0.3.499 fixed (each raised on main)
+FOUND_SEEDS_499 = [
     41678, 41937, 42921, 43485, 43632, 45479, 45691, 46036, 46144, 46278,
     46369, 48349, 48991, 49894, 50646, 52611, 52967, 54700, 55678, 58680,
     58788, 59509, 59635,
@@ -375,7 +375,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_495,
             *FOUND_SEEDS_496,
             *FOUND_SEEDS_497,
-            *FOUND_SEEDS_498,
+            *FOUND_SEEDS_499,
             *OPEN,
             8920,
         )

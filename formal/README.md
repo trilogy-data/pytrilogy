@@ -1849,7 +1849,7 @@ a design decision or a bug.
     column it names is grouped (`_predicate_safe_past_grouping`; seed 35775).
   8 of the 10 cases in `tests/discovery/test_final_gate_lookups.py` fail on
   main.
-- **The spellings family, seeds 40,000-60,000** (0.3.498). On main these
+- **The spellings family, seeds 40,000-60,000** (0.3.499). On main these
   40,000 queries returned no wrong row and raised on 51; now 5 raise, each
   only in a batch (it plans alone), with no new wrong row. The summary is read on 15 more shapes and lost on none, and
   JOINs rise 0.2%. Over seeds 0-40,000 the raises fall from 78 to 9 (5 of

@@ -73,7 +73,7 @@ summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
 0.3.495: selects checked against Python over the raw rows, not against
 another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
-family from 127 wrong rows to 5; 0.3.495 to 0.3.498 sweep seeds 10,000-60,000;
+family from 127 wrong rows to 5; 0.3.495 to 0.3.499 sweep seeds 10,000-60,000;
 area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
@@ -777,7 +777,7 @@ does not rewrite it; that rewrite is open.
       reads over every such group, 7 once limited to groups producing an
       argument of the FINAL's absent-holding atom.
 
-39. **Lessons from the constant-carry round (0.3.498).**
+39. **Lessons from the constant-carry round (0.3.499).**
     - A sweep with no wrong rows still has a round in it. Seeds 40,000-60,000
       returned none on main; their 51 raises were two bugs, both of which
       threw away a correct plan at the last step. Group raises by message and
@@ -1511,7 +1511,7 @@ a filter its grain does not determine. Open questions:
     94 to 94 (seeds 18300 and 36581 swap, each raising only in a batch); the
     first family's seeds 0-4,000: JOINs 16,282 to 16,327, summary reads 1,742
     to 1,741 (seed 2385).
-- Done in 0.3.498, from seeds 40,000-60,000 of the spellings family (on
+- Done in 0.3.499, from seeds 40,000-60,000 of the spellings family (on
   main: no wrong rows and 51 raising of 40,000 queries; after: 5 raising,
   nothing new wrong; seeds 0-40,000: 78 raising to 9, the same 5 wrong, 24
   more summary reads, JOINs +0.14%; the first family's seeds 0-4,000 stay
