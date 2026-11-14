@@ -1941,6 +1941,8 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                 # a value the aggregate's input read is not one it groups
                 # by: FINAL reads it off the rows it describes
                 final_args_here &= fact.primary | fact.grain
+            else:
+                final_args_here = _offered_at_grain(final_args_here, fact, environment)
             outs |= final_args_here
             outs |= cap_gid & region_join_keys
             outs |= cap_gid & _final_pin_anchors(ctx)

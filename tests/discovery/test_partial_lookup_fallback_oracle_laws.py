@@ -6,7 +6,11 @@ and a species property, so the class value is at species grain while the rows
 it is read beside are trees. No CTE may repeat a tree: every CTE holds at most
 as many rows as the widest table, under a WHERE on per-tree columns as well
 (a WHERE gates a `by *` total on whether it kept a row; it never multiplies
-the total's table by the kept rows)."""
+the total's table by the kept rows).
+
+Each seed runs twice: with `city` and the class as a tree's properties, and
+with both as keys under a HAVING over hidden per-tree columns, the statement a
+datasource's update builds (#977)."""
 
 import random
 from collections import defaultdict
@@ -15,6 +19,7 @@ import pytest
 
 from tests.helpers.rows import fetch_rows, normalize_numbers, widest_cte
 from trilogy import Dialects
+from trilogy.core.exceptions import UnresolvableQueryException
 
 SEEDS = 300
 CITIES = ["bos", "sfo"]
@@ -31,6 +36,10 @@ WHERES = {
     "city = 'bos'": lambda r: r["city"] == "bos",
     "height_m is null": lambda r: r["height_m"] is None,
 }
+# the per-tree columns each WHERE reads, hidden when it is written as a HAVING
+WHERE_READS = dict(
+    zip(WHERES, (["is_imagery", "height_m"], ["dbh"], ["city"], ["height_m"]))
+)
 GROUP_KEYS = [[], ["city"], ["species"], ["genus"], ["city", "species"]]
 AGGS = ["sum", "max", "count"]
 
@@ -201,7 +210,9 @@ def _aggregate(agg: str, values: list):
     return {"sum": sum, "max": max}[agg](present) if present else None
 
 
-def _query(rng: random.Random, rows: list[dict]) -> tuple[str, list[tuple]]:
+def _query(
+    rng: random.Random, rows: list[dict], having: bool = False
+) -> tuple[str, list[tuple]]:
     where = rng.choice([None, *WHERES])
     kept = _with_rare([r for r in rows if where is None or WHERES[where](r)])
     clause = f" where {where}" if where else ""
@@ -209,6 +220,16 @@ def _query(rng: random.Random, rows: list[dict]) -> tuple[str, list[tuple]]:
         columns = ["tree_id"] + rng.sample(TREE_COLUMNS + DERIVED, rng.randint(1, 4))
         if not set(columns) & set(DERIVED):
             columns.append(rng.choice(DERIVED))
+        if having and where:
+            # a HAVING keeps rows of the select's result: its aggregates read
+            # every tree, as a datasource's update statement builds them
+            kept = [r for r in _with_rare(rows) if WHERES[where](r)]
+            hidden = [f"--{c}" for c in WHERE_READS[where] if c not in columns]
+            clause = f" having {where}"
+            selected = ", ".join(columns + hidden)
+            return f"select {selected}{clause};", [
+                tuple(r[c] for c in columns) for r in kept
+            ]
         expected = [tuple(r[c] for c in columns) for r in kept]
         return f"select {', '.join(columns)}{clause};", expected
     keys = rng.choice(GROUP_KEYS)
@@ -221,16 +242,45 @@ def _query(rng: random.Random, rows: list[dict]) -> tuple[str, list[tuple]]:
     return f"select {', '.join(selected)}{clause};", expected
 
 
-def shape(seed: int) -> tuple[str, str, list[tuple], int]:
+def _keyed(model: str) -> str:
+    """`city` and the class as keys of their own, not a tree's properties."""
+    return model.replace("property tree_id.city string;", "key city string;").replace(
+        "auto fallback_class <-", "key fallback_class <-"
+    )
+
+
+def shape(seed: int, keyed: bool = False) -> tuple[str, str, list[tuple], int]:
     rng = random.Random(seed)
     model, rows, widest = _draw(rng)
-    query, expected = _query(rng, rows)
-    return model, query, expected, widest
+    query, expected = _query(rng, rows, having=keyed)
+    return (_keyed(model) if keyed else model), query, expected, widest
 
 
-@pytest.mark.parametrize("seed", range(SEEDS))
-def test_partial_lookup_prediction_matches_raw_rows(seed: int):
-    model, query, expected, widest = shape(seed)
+# Open: with the class a key, its own value beside the by-city-species flag
+# and the trees is refused (a keyless join between the flag and the class
+# step) rather than planned. A loud refusal, on main as here; not #977's.
+REFUSED_KEYED = {18, 42, 153, 155, 172, 253}
+
+
+def _cases() -> list:
+    refused = pytest.mark.xfail(
+        raises=UnresolvableQueryException, strict=True, reason="see REFUSED_KEYED"
+    )
+    return [
+        pytest.param(
+            seed,
+            keyed,
+            id=f"{seed}-{'keys' if keyed else 'properties'}",
+            marks=[refused] if keyed and seed in REFUSED_KEYED else [],
+        )
+        for keyed in (False, True)
+        for seed in range(SEEDS)
+    ]
+
+
+@pytest.mark.parametrize("seed,keyed", _cases())
+def test_partial_lookup_prediction_matches_raw_rows(seed: int, keyed: bool):
+    model, query, expected, widest = shape(seed, keyed)
     executor = Dialects.DUCK_DB.default_executor()
     try:
         executor.parse_text(model)

@@ -3616,6 +3616,10 @@ def _pre_merge_parents(
             environment,
             [built[gid] for gid in candidates if built and gid in built],
         )
+        if attrs is not None:
+            parents = _hold_lookup_sides(
+                parents, attrs, origin, plan, needed, environment
+            )
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if plan is not None and built is not None:
@@ -3647,6 +3651,62 @@ def _pre_merge_parents(
         ),
     )
     return [merged]
+
+
+def _hold_lookup_sides(
+    parents: list[StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    needed: set[str] | None,
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """A row step claiming a coarser grain than the rows it reads, paired on
+    keys that hold that grain, is a lookup on them: it holds each of their
+    rows once. Left one row per source row, every row of a key meets every
+    other (a class by species off the trees beside the per-tree step it is
+    joined to on species, #977). It keeps what the keys determine; anything
+    finer the reader needs, another side has to supply, or it stays whole."""
+    held = list(parents)
+    for idx, parent in enumerate(parents):
+        gid = _origin_group(parent, origin)
+        if gid is None or not parent.parents:
+            continue
+        group, keys = attrs[gid], plan.keys_for(gid)
+        # a `by *` total is one value on every row, whatever keys it rides
+        determined = build_fd_closure(environment, keys | {ALL_ROWS_ADDRESS})
+        if (
+            group.derivation != Derivation.BASIC
+            or not keys
+            or not group.grain_components
+            or not group.grain_components <= determined
+            or not _rows_finer_than(parent, keys, environment)
+        ):
+            continue
+        exposed = {o.address: o for o in parent.usable_outputs}
+        supplied = set().union(
+            *(
+                {o.address for o in other.usable_outputs}
+                for j, other in enumerate(held)
+                if j != idx
+            )
+        )
+        wanted = set(exposed) if needed is None else set(exposed) & needed
+        if wanted - determined - supplied:
+            continue
+        concepts = [c for address, c in exposed.items() if address in determined]
+        held[idx] = GroupNode(
+            output_concepts=concepts,
+            input_concepts=concepts,
+            environment=environment,
+            parents=[parent],
+            partial_concepts=[
+                c for c in parent.partial_concepts if c.address in determined
+            ],
+            preexisting_conditions=parent.preexisting_conditions,
+            force_group=True,
+        )
+    return held
 
 
 def _merge_plan(
@@ -6597,6 +6657,12 @@ def _assemble_final_node(
     )
     parents = _fold_passthrough_parents(parents)
     _carry_planned_keys(parents, origin, plan, environment)
+    # a planned key no widening reaches (a derived `cell` the per-tree step's
+    # rows determine) is looked up from the step computing it: left unheld,
+    # the sides pair on whatever else they share (#977)
+    parents = _project_planned_keys(
+        parents, origin, plan, environment, list(built.values())
+    )
     parents = _fold_covered_contributors(
         parents,
         environment,
