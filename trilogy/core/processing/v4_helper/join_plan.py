@@ -1067,8 +1067,11 @@ def _underkeyed_blends(
     for p in plan.pairings:
         if p.kind != PairingKind.BLEND or not {p.left, p.right} <= plan.suppliers:
             continue
+        # a dimension peel's rows are identified by its keys, as a group's
+        # are by its grain (a stored `sum(height) by city, species`)
         if not all(
-            attrs[g].derivation in GROUPING_DERIVATIONS for g in (p.left, p.right)
+            attrs[g].derivation in GROUPING_DERIVATIONS or attrs[g].dim_keys
+            for g in (p.left, p.right)
         ):
             continue
         left, right = plan.identity[p.left], plan.identity[p.right]

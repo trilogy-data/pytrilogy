@@ -3,8 +3,11 @@
 `gate_paired_short_of_its_grain`, `lookup_preserved_passes_padding`,
 `constant_key_pairs_every_row`, `keyless_pairing_fans_out`,
 `alias_is_not_the_pinned_read`, `padded_side_is_not_the_population`,
+`filtered_value_is_per_row`, `gate_feeder_is_no_population`,
+`peel_skips_row_filter`, `rename_keeps_filtered_rows`,
+`peel_paired_short_of_its_keys`, `parenthesized_conjunction_is_its_atoms`,
 `by_value_is_no_grain_key`) and `formal/Trilogy/Rollup.lean`
-(`gate_partial_resummed_off_its_grain`): a second family of random selects
+(`gate_partial_resummed_off_its_grain`, `resum_beside_finer_rows_multiplies`): a second family of random selects
 against the raw-row oracle of `test_oracle_sweep_laws.py`, in spellings the
 first family never writes: keys-only selects, row-grain selects (`tree_id`),
 `>=`/`<=`/`!=`, a gate `is null`, two gates compared or subtracted, `between`,
@@ -350,6 +353,11 @@ FOUND_SEEDS_499 = [
 OPEN: dict[int, str] = {}
 # seeds 0.3.500 fixed (each wrong on main)
 FOUND_SEEDS_500 = [1117, 30670]
+# seeds 0.3.501 fixed (each wrong or raising on main, 1554 and 31946 unparenthesized)
+FOUND_SEEDS_501 = [
+    1554, 12917, 18676, 21266, 31946, 33618, 61261, 62014, 62308, 63248, 65409,
+    70075, 70457, 85553, 87521,
+]  # fmt: skip
 
 
 def _seed(seed: int):
@@ -374,6 +382,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_497,
             *FOUND_SEEDS_499,
             *FOUND_SEEDS_500,
+            *FOUND_SEEDS_501,
             *OPEN,
             8920,
         )

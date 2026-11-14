@@ -481,6 +481,7 @@ def gen_root(
         # correlation, has nothing to join back on.
         row_atoms, gates = _split_aggregate_gates(row_conditions)
         node = None
+        scanned: BuildWhereClause | None = None
         if row_atoms is not None and gates is not None:
             fallback_outputs, derived = _with_condition_source_join_keys(
                 grain_outputs, gates, environment
@@ -498,6 +499,7 @@ def gen_root(
                 )
             )
             if node is not None:
+                scanned = row_atoms
                 conditions = _conjoin(gates, existence_conditions)
                 node = _derive_join_keys(node, derived, environment)
                 fallback_outputs = fallback_outputs + derived
@@ -545,6 +547,7 @@ def gen_root(
             hidden_concepts=hidden or None,
             combine_existing=False,
             planned_pairs=planned,
+            applied=scanned.conditional if scanned else None,
         )
     if node is None or existence_conditions is None:
         return node

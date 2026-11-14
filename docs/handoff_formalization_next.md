@@ -858,6 +858,25 @@ does not rewrite it; that rewrite is open.
       declare the culprit in a fresh model. Only call it a leak if a fresh
       executor with the same concepts plans.
 
+42. **Lessons from the 60k-90k round (0.3.501).**
+    - Try the generator's other spelling of the same shape before reading the
+      planner. Seed 18676 (keyless join, on main for five rounds) planned
+      without the WHERE's outer parentheses: the parser read `where (a and b)`
+      as the opaque `(a and b) = true`. The family writes parentheses on even
+      seeds only (`cond_text(top=seed % 2 == 1)`), so "raises on even seeds of
+      one shape" is a parser lead.
+    - A concept's `grain` is not always an FD. A row value built inside a
+      select (`id ? c`) takes the select's grain; its `keys` say what
+      determines it. Any FD fact read off `grain` needs the derivation.
+    - Reduce until the bug needs every remaining ingredient, then ask which
+      one names the code: `city as v0` (a rename) pointed at the BASIC
+      regraft; a stored HAVING value pointed at dimension peels (ROOT groups
+      the grouping rules skip); a `by *` WHERE argument pointed at the FINAL's
+      producer pick.
+    - Ablate every change, even the obvious one: of ten, one (widening a
+      peel's carry demand to keys its own keys determine) was covered by
+      counting a peel's short pairing as underkeyed, and was dropped.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1577,6 +1596,29 @@ a filter its grain does not determine. Open questions:
     10` and similar). These are not a state leak (lesson 41): each reproduces
     in a fresh executor once the one `vN` an earlier select defined is
     declared in the model, and 0.3.500 fixes all of them.
+- Done in 0.3.501, from seeds 60,000-90,000 of the spellings family (on main:
+  13 wrong and 1 raising of 60,000 queries), plus the leads 0.3.500 left
+  (12917 and the keyless joins 18676, 21266, 33618; see "What it found"): a
+  FILTER value's keys, not the select grain it was built at, are its FD row
+  (`filtered_value_is_per_row`); a condition merge knows the scan applied the
+  row atoms (`gate_feeder_is_no_population`); a column is peeled onto a key no
+  select-phase aggregate groups by only when every row filter is a value of
+  the key (`peel_skips_row_filter`, `_peel_skips_row_filter`); a rename read
+  off a scan holding a WHERE row argument is never regrafted onto a fresh scan
+  (`rename_keeps_filtered_rows`); an unfiltered row scan finer than an
+  aggregate's input grain that supplies nothing new is dropped
+  (`Rollup.resum_beside_finer_rows_multiplies`, `_drop_finer_passengers`); a
+  dimension peel sending FINAL a value exposes its keys, and a pairing short
+  of a peel's keys is underkeyed (`peel_paired_short_of_its_keys`); the FINAL
+  reads a `by *` argument off its own group; `where (a and b)` parses as the
+  conjunction (`parenthesized_conjunction_is_its_atoms`); `(a and b) and c`
+  decomposes into three atoms; a peel past a WHERE gate the key does not
+  determine is not made (seeds 1554 and 31946, wrong and raising on main when
+  written without parentheses, which the parser fix exposed). A/B over
+  spellings seeds 0-90,000 x 2 models (180,000 queries): main 14 wrong and 5
+  raising, the branch none; nothing broken; JOINs 498,295 to 499,208 (+0.18%);
+  summary reads 29,285 to 29,449 (210 gained, 46 lost). Left: no known wrong
+  or raising seed in 0-90,000.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

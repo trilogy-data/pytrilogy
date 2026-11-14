@@ -752,6 +752,14 @@ def decompose_condition(
     conditional: BoolExpr,
 ) -> list[BuildSubselectComparison | BoolExpr]:
     chunks: list[BuildSubselectComparison | BoolExpr] = []
+    # `(a and b) and c` is three atoms, as `a and b and c` is; any other
+    # parenthetical is one atom, kept as written
+    while (
+        isinstance(conditional, BuildParenthetical)
+        and isinstance(conditional.content, BuildConditional)
+        and conditional.content.operator == BooleanOperator.AND
+    ):
+        conditional = conditional.content
     if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
@@ -765,7 +773,7 @@ def decompose_condition(
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val, BuildConditional):
+                if isinstance(val, (BuildConditional, BuildParenthetical)):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)

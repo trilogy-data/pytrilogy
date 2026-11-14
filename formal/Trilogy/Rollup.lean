@@ -985,5 +985,24 @@ theorem Rollup.gate_partial_resummed_off_its_grain :
       bySpecies 3 = 2 := by
   decide
 
+/-! ## A re-sum is not joined onto rows finer than its partials
+
+`select city, form, max(sum(x) by city, species), count(id), count(id) by form`
+beside a summary storing `count(id)` by `(city, species)`: the re-sum of the
+stored counts by `form` read the summary rows joined to the trees on `(city,
+species)`, though the summary supplied every column it read. Each partial was
+counted once per tree. -/
+
+/-- Summary rows `(city, species, n)` and the trees under them: re-summed
+alone, 4; joined to the trees first, each partial repeats per tree, 6
+(`Rollup.resum_beside_finer_rows_multiplies`). -/
+theorem Rollup.resum_beside_finer_rows_multiplies :
+    let summary : List (Nat × Nat × Nat) := [(0, 0, 2), (0, 1, 1), (1, 0, 1)]
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (1, 0)]
+    (summary.map (·.2.2)).sum = 4 ∧
+      ((summary.flatMap fun s => (trees.filter (· == (s.1, s.2.1))).map
+        fun _ => s.2.2)).sum = 6 := by
+  decide
+
 end Rollup
 end Trilogy

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 
@@ -83,7 +83,7 @@ def _fd_rows(
     identifies no row, so it determines nothing; its columns carry an empty
     grain, which would read as constants (`Binding.grainless_determines_nothing`)."""
     for concept in environment.concepts.values():
-        yield _row(concept, _grain_of(concept))
+        yield _row(concept, _concept_grain(concept))
     for datasource in environment.datasources.values():
         grain = frozenset(datasource.grain.components)
         determinants = datasource.row_determinants
@@ -92,6 +92,15 @@ def _fd_rows(
         for concept in datasource.output_concepts:
             components = _grain_of(concept)
             yield _row(concept, determinants if components == grain else components)
+
+
+def _concept_grain(concept: BuildConcept) -> frozenset[str]:
+    """A filtered row value is built at its select's grain, but its keys say
+    what determines it: `tree_id ? c` in a select by `(city, species)` is one
+    value per tree, not per `(city, species)`."""
+    if concept.derivation == Derivation.FILTER and concept.keys:
+        return frozenset(concept.keys)
+    return _grain_of(concept)
 
 
 def _grain_of(concept: BuildConcept) -> frozenset[str]:

@@ -126,7 +126,11 @@ def inject_condition_at_node(
     condition_on_merge: bool = False,
     combine_existing: bool = True,
     planned_pairs: PlannedPairs | None = None,
+    applied: BoolExpr | None = None,
 ) -> StrategyNode:
+    """`applied` is what the request WHERE already filtered `node` by: the
+    merge must not pad that branch, or a feeder's group the scan rejected comes
+    back as a row."""
     if condition_on_merge:
         combined = and_optional(
             node.conditions if combine_existing else None, condition.conditional
@@ -181,6 +185,9 @@ def inject_condition_at_node(
             ),
             grain=grain,
             conditions=combined,
+            preexisting_conditions=(
+                and_optional(applied, combined) if applied is not None else None
+            ),
             hidden_concepts=hidden_concepts,
             existence_concepts=sources.existence_concepts,
             planned_pairs=planned_pairs,

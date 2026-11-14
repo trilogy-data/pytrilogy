@@ -1594,6 +1594,40 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
+def _drop_finer_passengers(
+    parents: list[StrategyNode],
+    needed: set[str],
+    input_grain: frozenset[str],
+    attrs: dict[str, GroupAttrs],
+    origin: dict[int, str],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """An unfiltered row scan finer than an aggregate's input grain, beside
+    parents supplying everything it would, adds only its multiplicity: a
+    re-sum of the summary's `count(tree_id)` by `(city, species)` joined to
+    the trees counts each partial once per tree. Never beside a region's rows:
+    the scan may be what pairs a member the others lack."""
+    if any(region_reads(p) for p in parents):
+        return parents
+    kept = list(parents)
+    for parent in parents:
+        gid = _origin_group(parent, origin)
+        if (
+            gid is None
+            or attrs[gid].derivation != Derivation.ROOT
+            or attrs[gid].condition_atoms
+            or parent.conditions is not None
+            or not _rows_finer_than(parent, input_grain, environment)
+        ):
+            continue
+        others = [p for p in kept if p is not parent]
+        supplied = {o.address for p in others for o in p.usable_outputs}
+        own = {o.address for o in parent.usable_outputs} & needed
+        if others and own <= supplied:
+            kept = others
+    return kept
+
+
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
@@ -5366,11 +5400,14 @@ def _filter_arg_producer(
     spans: frozenset[str],
 ) -> str | None:
     """The most derived of `candidates` outputting `addr`; beside a region's
-    rows, one carrying every span first."""
+    rows, one carrying every span first. A one-row value comes from a group
+    computing it at its own grain, never off rows that merely carry it (a
+    `count(tree_id) by *` beside every tree joins on nothing)."""
     return max(
         (gid for gid in candidates if addr in attrs[gid].output_concepts),
         key=lambda gid: (
             spans <= set(attrs[gid].output_concepts),
+            attrs[gid].grain_components == {ALL_ROWS_ADDRESS},
             sum(1 for a in nx.ancestors(group_graph, gid) if a in candidates),
         ),
         default=None,
@@ -7278,6 +7315,10 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         origin = {id(node): pgid for pgid, node in built.items()} | {
             id(build.node): build.group_id for build in parent_builds
         }
+        if derivation == Derivation.AGGREGATE and a.aggregate_input_grain and not atoms:
+            parents = _drop_finer_passengers(
+                parents, needed, a.aggregate_input_grain, attrs, origin, environment
+            )
         # A ROOT scan hosting a null-rejecting request atom emits exactly
         # the atom's population, so the merge may claim it. A grouping
         # parent applies the atom to its INPUT rows and its output claims
