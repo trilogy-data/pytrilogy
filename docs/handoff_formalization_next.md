@@ -1412,7 +1412,12 @@ a filter its grain does not determine. Open questions:
     it), not to choose among unfiltered sources;
   - seeds 12917 (summary only) and 18676 as before; first family 2717 and
     spellings 7061 raise only in a batch (state leaks between statements);
-  - COST_RESULT
+  - the cost, over spellings seeds 0-40,000: JOINs 220,528 to 221,483,
+    summary reads 12,912 to 12,904 (8 lost, none gained: 6 to the cover's
+    condition-group preference, 3 to the count reroute, one shared), raises
+    94 to 94 (seeds 18300 and 36581 swap, each raising only in a batch); the
+    first family's seeds 0-4,000: JOINs 16,282 to 16,327, summary reads 1,742
+    to 1,741 (seed 2385).
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

@@ -1813,7 +1813,9 @@ a design decision or a bug.
   15 of the 16 cases in `tests/discovery/test_key_sources.py` fail on main.
 - **The spellings family, seeds 30,000-40,000** (0.3.497). On main these
   20,000 queries returned 9 wrong rows and one invalid SQL statement (six
-  seeds); now 2 wrong rows (seed 30670, a lead), with no new wrong row. SPELL_RESULT
+  seeds); now 2 wrong rows (seed 30670, a lead), with no new wrong row and as
+  many raises. Over seeds 0-40,000 JOINs rise 0.4% and the summary is read on 8
+  fewer of 12,912 shapes; the first family's seeds 0-4,000 stay clean.
   - `select city, species, sum(height) by species, sum(min(height) by city,
     species, tree_form) where count_distinct(tag) by city, tree_form < 3`
     returned every row twice. The FINAL re-applied the gate, but the one side
