@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 
 from trilogy import Executor
-from trilogy.constants import logger
+from trilogy.constants import REMOTE_PREFIXES, logger
 from trilogy.core.enums import AddressType, Purpose
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
@@ -234,6 +234,59 @@ def is_missing_local_file(datasource: Datasource) -> bool:
     if not isinstance(datasource.address, Address):
         return False
     return datasource.address.is_missing_locally
+
+
+def _file_missing(address: Address, executor: Executor) -> bool:
+    """Whether the engine reports nothing at a file address. A corrupt file
+    exists - that is its own verdict - so only a missing-source error counts."""
+    dialect = executor.generator
+    try:
+        dialect.get_file_columns(executor, address)
+    except Exception as e:
+        if is_missing_source_error(e, dialect):
+            executor.connection.rollback()
+            return True
+        if is_corrupt_source_error(e, dialect):
+            executor.connection.rollback()
+            return False
+        raise
+    return False
+
+
+def is_missing_file(
+    datasource: Datasource,
+    executor: Executor,
+    cache: ColumnStatsCache | None = None,
+) -> bool:
+    """Return True if a file-backed datasource has no file behind it.
+
+    A local pattern is globbed; a remote data file is only described when the
+    (cached) schema read came back empty, since that is also what a missing
+    file yields."""
+    address = datasource.address
+    if not isinstance(address, Address) or not address.is_file:
+        return False
+    if address.is_missing_locally:
+        return True
+    if (
+        not address.location.startswith(REMOTE_PREFIXES)
+        or address.type not in DATA_FILE_TYPES
+    ):
+        return False
+    if _file_columns(datasource, executor, cache) is not None:
+        return False
+    return _file_missing(address, executor)
+
+
+def is_unbuilt(
+    datasource: Datasource,
+    executor: Executor,
+    cache: ColumnStatsCache | None = None,
+) -> bool:
+    """Whether nothing has been written at the datasource's address yet."""
+    return is_missing_file(datasource, executor, cache) or is_missing_table(
+        datasource, executor, cache
+    )
 
 
 def _is_table_address(datasource: Datasource) -> bool:

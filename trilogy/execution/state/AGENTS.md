@@ -98,7 +98,10 @@ with, so it must read as drift and rebuild once. A file is written by `COPY
 (select)`, so its awareness is the source's and a rewrite cannot change it;
 files fold the two (`_FILE_STORAGE_FAMILY`) or they would rebuild forever. Script and SQL-file addresses have no
 declaration to drift from and are not judged. A missing or unreadable file
-yields no schema; those are their own verdicts, reached afterwards.
+yields no schema; those are their own verdicts, reached afterwards. A missing file
+reads `file not found` (`is_missing_file`) whether local or remote: a remote one
+is confirmed by a missing-source error from the describe, since otherwise an
+unbuilt remote output reads fresh wherever the roots offer no expectation.
 
 ### Model-fingerprint staleness
 
@@ -220,6 +223,7 @@ Deferred-eval execution pipeline:
 2. Re-evaluate non-script assets in `plan.refresh_assets` against the live store before running them — a SQL refresh may no longer be needed if its upstream root was invalidated and the post-refresh watermark caught up.
 3. If `cascade=True` (default for single-file mode) and any script ran, do a final pass over every datasource in `env` calling `is_stale`. This catches dependents that probed fresh against the pre-refresh root watermark.
 4. Hides other not-yet-refreshed SQL assets from the query planner during each step (temporarily pops them from `executor.environment.datasources`) so generated SQL doesn't read through stale upstream tables.
+   It also hides **unbuilt** sources (`build_sources.py::hide_unbuilt_sources`): the target's build is planned, every non-root source the plan reads is checked with `is_unbuilt`, and any with nothing at its address is hidden and the build re-planned, falling back towards the roots. Parse only marks a *local* missing file `UNPOPULATED`; a remote address is assumed to exist, so on a fresh model sibling outputs would otherwise answer each other and every first build 404s (#963). When hiding leaves the plan unresolvable it raises `UnbuiltSourceError` naming the sources, not the engine's raw error. Only sources the plan actually reads are probed, so the cost is one describe per read non-root.
 5. Defensive guard: a SQL-kind asset that points at a root datasource raises `RefreshAssetError` rather than emitting confusing SQL — only refreshable roots (with `refresh_script`) are managed.
 
 `cascade=False` is set by directory mode where the orchestrator handles cross-managed-node cascade through `phys_graph`; per-node cascade would double-refresh dependents that are already separate managed nodes.

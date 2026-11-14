@@ -1587,7 +1587,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
         patch.object(state_store, "watermark_all_assets"),
         patch("trilogy.execution.state.state_store.schema_mismatch", return_value=None),
         patch(
-            "trilogy.execution.state.state_store.is_missing_local_file",
+            "trilogy.execution.state.state_store.is_missing_file",
             return_value=False,
         ),
         pytest.raises(TypeError) as exc_info,
