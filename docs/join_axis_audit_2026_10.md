@@ -2710,6 +2710,47 @@ credential-gated tests). 120 tests moved: 100 `test_complete_binding_lookup`,
 16 window-law, and the listed noise. Re-run serially on both trees they
 compile the same, apart from the GCS cache-bust URL. So no plan moved.
 
+**What decides the walk's ties (part 72).** Part 71 counted the rank's terms.
+Below the rank, `_score_join_candidate` breaks ties, and it answers two
+questions: which unjoined side the walk joins next, and the order of the joined
+sides that side is typed against, which decides which of two lefts on the same
+keys is kept and which is redundant. The second use is now its own step,
+`_lefts_in_order`, so each can be measured alone; the order is unchanged.
+
+`rank_census_plugin.py` now also holds each scorer term constant in one use
+at a time (`score_replica`, the scorer rebuilt from its terms, orders all
+14,468 merges as the scorer does). Over all of `tests/`, the merges each term
+decides:
+
+| term | next side | joined-side order | what it reads |
+|---|---|---|---|
+| name | 6,308 | 1,574 | the side's identifier |
+| grain size | 2,012 | 753 | the built side's grain |
+| nullable on the key | 1,557 | 783 | the built side's nullable outputs |
+| hosts the region | 1,170 | 280 | the built side's outputs and `~` marks |
+| partial on the key | 938 | 71 | the built side's partial outputs |
+| several partial holders | 10 | 174 | the same, over the key's unjoined holders |
+| scoped-LEFT anchor | 77 | 70 | the environment's anchor keys |
+
+No term is dead, so none is removed. Every term but the anchor reads the
+built side, not the plan, and the side's identifier decides the most. The tie-break is where resolve still reads built nodes for order.
+
+Two probes on the rank itself, over the same suite:
+
+- Key length (2,922 merges) has no semantic stand-in. Over the suite less
+  the `*_laws.py` files (928 merges it decides), at the first step it moves
+  the key it picks is in more sides' grain in 185, fewer in 147 and as many
+  in 596; what the grains determine splits the same way. It is a spelling
+  tiebreak (`local.user_id` before `local.product_id`).
+- The solid tier (45 merges) reads value-null provenance only weakly: read
+  any nullable key in its place and 1 of the merges with a held span moves
+  (`test_dimension_chain_select_matches_raw_rows[484]`); drop the nullable
+  check and 113 move. So stating the solid tier in the plan needs which
+  region-free holder can NULL the key, nearly never why.
+
+The census reruns the whole suite with the extraction in place: the same 25
+credential-gated failures as `main`.
+
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2738,7 +2779,9 @@ not built yet:
    the plan states. Of its terms, the key's spelling and the plan's holder
    count decide almost every walk. The region terms decide a few, and only
    the solid term reads a fact the plan does not state: value-null
-   provenance (part 71).
+   provenance (part 71), and of that, nearly only whether a region-free
+   holder can NULL the key. Ties below the rank (`_score_join_candidate`)
+   read the built sides, the side's name deciding the most (part 72).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
