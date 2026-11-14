@@ -353,10 +353,10 @@ FOUND_SEEDS_499 = [
 OPEN: dict[int, str] = {}
 # seeds 0.3.500 fixed (each wrong on main)
 FOUND_SEEDS_500 = [1117, 30670]
-# seeds 0.3.501 fixed (each wrong or raising on main)
+# seeds 0.3.501 fixed (each wrong or raising on main, 1554 and 31946 unparenthesized)
 FOUND_SEEDS_501 = [
-    12917, 18676, 21266, 33618, 61261, 62014, 62308, 63248, 65409, 70075,
-    70457, 85553, 87521,
+    1554, 12917, 18676, 21266, 31946, 33618, 61261, 62014, 62308, 63248, 65409,
+    70075, 70457, 85553, 87521,
 ]  # fmt: skip
 
 

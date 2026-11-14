@@ -1960,8 +1960,13 @@ a design decision or a bug.
     (a and b)` parsed as `(a and b) = true`, so no rule could place `a` or `b`
     apart, and a select the unparenthesized WHERE planned raised for a keyless
     join. The parser now reads it as the conjunction.
-  16 of the 23 cases in `tests/discovery/test_spellings_60k_gates.py` fail on
-  main.
+  Reading the parentheses as the conjunction exposed two shapes the opaque
+  atom hid (seeds 1554 and 31946, wrong and raising on main without the
+  parentheses): `(a and b) and c` now decomposes into three atoms, and a peel
+  past a WHERE gate its key does not determine is not made.
+  22 of the 29 cases in `tests/discovery/test_spellings_60k_gates.py` fail on
+  main. Over spellings seeds 0-90,000 on both models, main returns 14 wrong
+  answers and 5 raises of 180,000 queries, the branch none.
 
 ## Limits
 

@@ -1611,9 +1611,14 @@ a filter its grain does not determine. Open questions:
   dimension peel sending FINAL a value exposes its keys, and a pairing short
   of a peel's keys is underkeyed (`peel_paired_short_of_its_keys`); the FINAL
   reads a `by *` argument off its own group; `where (a and b)` parses as the
-  conjunction (`parenthesized_conjunction_is_its_atoms`). Left: none of the
-  spellings family's seeds 0-90,000 known wrong or raising; see the PR for
-  the A/B against main.
+  conjunction (`parenthesized_conjunction_is_its_atoms`); `(a and b) and c`
+  decomposes into three atoms; a peel past a WHERE gate the key does not
+  determine is not made (seeds 1554 and 31946, wrong and raising on main when
+  written without parentheses, which the parser fix exposed). A/B over
+  spellings seeds 0-90,000 x 2 models (180,000 queries): main 14 wrong and 5
+  raising, the branch none; nothing broken; JOINs 498,295 to 499,208 (+0.18%);
+  summary reads 29,285 to 29,449 (210 gained, 46 lost). Left: no known wrong
+  or raising seed in 0-90,000.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

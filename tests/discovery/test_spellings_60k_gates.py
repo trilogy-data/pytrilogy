@@ -97,6 +97,25 @@ CASES = [
         " having min(height) by tree_form = 3;",
         [("A", "Acer", 3), ("A", "Quercus", 5), ("B", "Acer", 7)],
     ),
+    # seed 1554: a peel past a gate its key does not determine
+    (
+        "select species, tree_form where (tree_form is null or count(tree_id) by"
+        " species != 1) and sum(height) by city, species <= 2;",
+        [],
+    ),
+    (
+        "select species, tree_form where (tree_form is null or count(tree_id) by *"
+        " != 1) and sum(height) by city, species <= 2;",
+        [("Tilia", "linden")],
+    ),
+    # seed 31946: a parenthesized conjunction inside a conjunction
+    (
+        "select tree_form, avg(height) as v0, avg(height) by * as v1,"
+        " sum(min(height) by city, species) as v2 where (city = 'B' and"
+        " count_distinct(tag) by * <= 5) and (count(tree_id) by city, species >="
+        " min(height) by * or coalesce(tree_form, 'none') = 'none');",
+        [],
+    ),
 ]
 
 
