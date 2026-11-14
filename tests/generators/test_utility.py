@@ -147,6 +147,23 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
     ]
 
 
+def test_a_second_island_seeds_on_nothing_then_walks_its_pairings():
+    columns = {
+        "ds~a": {"c~j"},
+        "ds~b": {"c~j"},
+        "ds~c": {"c~k"},
+        "ds~d": {"c~k"},
+    }
+    planned = resolve_join_order_v2(
+        JoinFacts(sides=_sides(columns), pair_keys=_shared(columns))
+    )
+    assert [(j.right, j.type, j.keys) for j in planned] == [
+        ("ds~a", JoinType.INNER, {"ds~b": {"c~j"}}),
+        ("ds~d", JoinType.INNER, {}),
+        ("ds~c", JoinType.INNER, {"ds~d": {"c~k"}}),
+    ]
+
+
 def test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing():
     joins = resolve_join_order_v2(JoinFacts(sides=_sides(_shared_key())))
     assert [(j.right, j.keys) for j in joins] == [("ds~b", {}), ("ds~c", {})]
