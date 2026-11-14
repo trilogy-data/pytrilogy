@@ -240,7 +240,8 @@ class SideFacts:
     held_spans: frozenset[str] = frozenset()
     # extent-free spans the side carries every value of
     complete_spans: frozenset[str] = frozenset()
-    # extent-free span -> the leaf tables whose own `~` column binds it here
+    # extent-free span or `~` key -> the leaf tables whose own `~` column
+    # binds it here
     span_bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
     # nullable key -> the spans whose extension rows NULL it
     span_padding: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -506,6 +507,18 @@ def _extent_free_join(
     return None, None
 
 
+def _one_binding(left: SideFacts, right: SideFacts) -> frozenset[str]:
+    """`~` keys both sides bind through the same leaf `~` columns: two
+    projections of one binding cover the same subset, so the `~` carries no
+    row intent between them and the other rules type the pair."""
+    return frozenset(
+        key
+        for key in left.partials & right.partials
+        if (bound := left.span_bindings.get(key))
+        and bound == right.span_bindings.get(key)
+    )
+
+
 def _partial_domain_join(
     left: str, right: str, keys: set[str], facts: JoinFacts, host: str | None
 ) -> JoinType:
@@ -725,6 +738,7 @@ def _decide_join_type(
         return extent_type, "extent_free"
     left_facts, right_facts = facts.side(left), facts.side(right)
     partial_keys = all_connecting_keys if typed_keys is None else typed_keys
+    partial_keys = partial_keys - _one_binding(left_facts, right_facts)
     if partial_keys & (left_facts.partials | right_facts.partials):
         return (
             _partial_domain_join(left, right, all_connecting_keys, facts, host),
@@ -2343,6 +2357,7 @@ def get_node_joins(
             span_bindings={
                 canon_node(address): partial_binding_sources(datasource, address)
                 for address in extent_free_spans
+                | {c.address for c in datasource.partial_concepts}
             },
         )
 

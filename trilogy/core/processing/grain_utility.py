@@ -760,29 +760,44 @@ def tighten_join_for_filtered_branch(
         join.join_type = JoinType.INNER
 
 
+def _binds_subset(source: GrainSource, address: str) -> bool:
+    """`source` binds `address` as a `~` subset with no NULL key."""
+    return address in {c.address for c in source.partial_concepts} - (
+        _nullable_addresses(source)
+    )
+
+
 def narrow_subset_full_join(
     join: SourceJoin | UnnestJoin,
     alive: set[str],
+    padded: set[str],
     coalescing_keys: set[str],
 ) -> None:
-    """A FULL whose right side is `~` on every key, each paired with a left
-    source still holding the key's whole domain, pads only the right: every
-    right row has its partner (`complete_key_domain`). A NULL key (`~?`) has
-    none, and an authored union/full relation is row intent: both stay FULL."""
+    """A FULL pads only one side when the other is `~` on every key and each
+    of its rows has a partner holding the key's whole domain
+    (`complete_key_domain`). A `~` right pairs with a left source whose every
+    row survives (`alive`); a `~` left source pairs on every stream row only
+    when no earlier join padded it. So the narrowing does not depend on which
+    side the walk joined first. A NULL key (`~?`) has no partner, and an
+    authored union/full relation is row intent: both stay FULL."""
     if not isinstance(join, Join) or join.join_type != JoinType.FULL:
         return
     if not join.pairs or _joins_a_coalescing_relation(join, coalescing_keys):
         return
-    partial = {c.address for c in join.right.partial_concepts}
-    nullable = _nullable_addresses(join.right)
     if all(
-        pair.right.address in partial
-        and pair.right.address not in nullable
+        _binds_subset(join.right, pair.right.address)
         and pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
         for pair in join.pairs
     ):
         join.join_type = JoinType.LEFT_OUTER
+    elif all(
+        _binds_subset(pair.node, pair.left.address)
+        and pair.node.identifier not in padded
+        and complete_key_domain(join.right, pair.right.address)
+        for pair in join.pairs
+    ):
+        join.join_type = JoinType.RIGHT_OUTER
 
 
 def narrow_join_types(
@@ -795,10 +810,13 @@ def narrow_join_types(
     row is already proven to match the preserved side."""
     by_id = {source.identifier: source for source in final_datasets}
     streams = {id(join): left for join, left in left_deep_joins(joins)}
+    padded: set[str] = set()
     for index, join in enumerate(joins):
+        stream = streams.get(id(join), frozenset())
         narrow_subset_full_join(
             join,
             preserved_sources(list(final_datasets), joins[:index]),
+            padded,
             proofs.coalescing_keys,
         )
         downgrade_join_for_proofs(join, proofs.proofs, final_datasets)
@@ -808,8 +826,10 @@ def narrow_join_types(
             proofs.filtered_ids,
             proofs.coalescing_keys,
             by_id,
-            streams.get(id(join), frozenset()),
+            stream,
         )
+        if isinstance(join, Join):
+            padded |= padded_by(join, stream)
 
 
 def narrow_directional_join_types(

@@ -20,6 +20,7 @@ from trilogy.core.models.execute import (
     Join,
     QueryDatasource,
 )
+from trilogy.core.processing.grain_utility import narrow_subset_full_join
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     SideFacts,
@@ -372,6 +373,45 @@ def test_complete_key_domain_is_an_unfiltered_scan_kept_whole():
     assert not complete_key_domain(merged, USER)
     merged.joins[0].join_type = JoinType.RIGHT_OUTER
     assert complete_key_domain(merged, USER)
+
+
+def _full(left: BuildDatasource, right: BuildDatasource) -> Join:
+    return Join(
+        left=left,
+        right=right,
+        join_type=JoinType.FULL,
+        pairs=[ConceptPair(left=_concept(USER), right=_concept(USER), node=left)],
+    )
+
+
+def test_a_subset_full_join_narrows_whichever_side_is_joined_first():
+    notes = _scan("notes", [USER], partial=[USER])
+    users = _scan("users", [USER])
+    onto_users = _full(users, notes)
+    narrow_subset_full_join(onto_users, {"users"}, set(), set())
+    assert onto_users.join_type == JoinType.LEFT_OUTER
+    onto_notes = _full(notes, users)
+    narrow_subset_full_join(onto_notes, {"notes"}, set(), set())
+    assert onto_notes.join_type == JoinType.RIGHT_OUTER
+    padded = _full(notes, users)
+    narrow_subset_full_join(padded, set(), {"notes"}, set())
+    assert padded.join_type == JoinType.FULL
+
+
+def test_two_projections_of_one_subset_binding_pair_as_complete():
+    def side(binding: str) -> SideFacts:
+        return SideFacts(
+            columns=frozenset({"c~k"}),
+            partials=frozenset({"c~k"}),
+            span_bindings={"c~k": frozenset({binding})},
+        )
+
+    def typed(left: str, right: str) -> JoinType:
+        facts = JoinFacts(sides={"ds~a": side(left), "ds~b": side(right)})
+        return get_join_type("ds~a", "ds~b", {"c~k"}, facts)
+
+    assert typed("fits", "fits") == JoinType.INNER
+    assert typed("fits", "other_fits") == JoinType.FULL
 
 
 def test_host_preserves_over_a_partial_feeder_whose_value_null_pairs():

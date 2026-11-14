@@ -170,13 +170,13 @@ def test_a_total_over_the_predictions(executor, query: str, expected) -> None:
     assert widest_cte(executor, sql)[0] <= TREES, sql
 
 
-def test_the_class_is_computed_once_per_species(executor) -> None:
+def test_the_class_value_is_computed_once_per_species(executor) -> None:
     sql = executor.generate_sql("select tree_id, pred_h;")[-1]
     computing = [
         name
         for name in CTE_NAME.findall(sql)
         if re.search(
-            rf"^{name} as \((?:(?!\n\w+ as \().)*END as \"fallback_class\"",
+            rf"^{name} as \((?:(?!\n\w+ as \().)*\"fallback_class\" = 'Angiosperm' THEN",
             sql,
             re.MULTILINE | re.DOTALL,
         )
