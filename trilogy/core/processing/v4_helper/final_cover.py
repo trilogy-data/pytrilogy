@@ -292,6 +292,19 @@ def elect_cover(
     row_atoms = _row_atoms(attrs, groups)
 
     where_atoms = _where_atoms(attrs, groups)
+    # a FINAL re-applying an atom that holds on an absent group reads no output
+    # off a group producing that atom's arguments: joined as a side, its rows
+    # meet the select's padded and pass
+    absent_args: set[str] = set()
+    if FINAL_NODE_ID in attrs:
+        for atom in attrs[FINAL_NODE_ID].condition_atoms:
+            absent_args |= args_holding_on_absent(atom)
+
+    def feeds_absent_atom(gid: str) -> bool:
+        return _scope_and_phase(attrs[gid].label)[1] == "condition" and bool(
+            absent_args & set(attrs[gid].output_concepts)
+        )
+
     memos: list[dict[str, bool]] = [{} for _ in where_atoms]
 
     def rows_filtered(gid: str) -> bool:
@@ -355,6 +368,7 @@ def elect_cover(
                 keyed <= exposed[gid],
                 not skips_row_atoms(gid),
                 _single_row_value(concept) or rows_filtered(gid),
+                not feeds_absent_atom(gid),
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,

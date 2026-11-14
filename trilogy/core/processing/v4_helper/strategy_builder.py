@@ -5254,6 +5254,22 @@ def _bridge_candidates(
     )
 
 
+def _final_gate_keys(
+    attrs: dict[str, GroupAttrs], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The grain keys of the FINAL WHERE's aggregates: a side elected for one
+    is folded into a sibling only if that sibling holds it too, else the gate
+    pairs short of its grain (`SelectGrain.gate_paired_short_of_its_grain`)."""
+    return _gate_grain_keys(
+        [
+            c
+            for atom in attrs[FINAL_NODE_ID].condition_atoms
+            for arg in atom.row_arguments
+            if (c := _concept_at(environment, arg.address)) is not None
+        ]
+    )
+
+
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
     return frozenset(
         key
@@ -6688,7 +6704,7 @@ def _assemble_final_node(
     parents = _fold_covered_contributors(
         parents,
         environment,
-        final_needed | filter_only_addrs,
+        final_needed | filter_only_addrs | _final_gate_keys(attrs, environment),
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
@@ -6794,6 +6810,8 @@ def _assemble_final_node(
             environment,
         )
         parents = _join_gate_hosts(parents, gate_keys, extras, built)
+    # a WHERE argument's producer is a lookup onto the sides' rows
+    lookups = frozenset(id(node) for node in arg_nodes if node not in parents)
     parents = parents + arg_nodes
     sides = side_groups(parents, origin)
     if unplanned := set(sides) - set(plan.contributors):
@@ -6850,6 +6868,7 @@ def _assemble_final_node(
         # not collapse the authored fan-out back to distinct key pairs.
         whole_grain=not final_contract.deduplicate_to_grain,
         host_stitch=True,
+        lookups=lookups,
         **_planned_join(
             merge_plan, {id(parent): held.get(id(parent)) for parent in parents}
         ),

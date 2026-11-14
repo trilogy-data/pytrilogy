@@ -10,7 +10,7 @@ from enum import Enum
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS
-from trilogy.core.enums import ComparisonOperator, Derivation
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Derivation
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
     UnresolvableQueryException,
@@ -786,7 +786,9 @@ def args_holding_on_absent(atom: BoolExpr) -> frozenset[str]:
     """The aggregates `atom` reads whose absent group can let it hold: all of
     them when the atom itself holds there, else each one nothing proves non-null
     (`sum(x) by * is null and max(x) by city > 3` holds wherever the total is
-    padding, however `max` is decided)."""
+    padding, however `max` is decided), and each COUNT, which reads 0 there,
+    not NULL (`min(x) by species - count(id) by * > 3` holds on 5 - 0),
+    unless a comparison of it to a literal rejects 0 (`count(id) by k = 2`)."""
     if not isinstance(atom, BuildConceptArgs):
         return frozenset()
     aggregates = [c for c in atom.row_arguments if c.is_aggregate]
@@ -794,7 +796,36 @@ def args_holding_on_absent(atom: BoolExpr) -> frozenset[str]:
         return frozenset(c.address for c in aggregates)
     proofs = gather_non_null_proofs(atom)
     return frozenset(
-        c.address for c in aggregates if c.address not in proofs and not c.zero_on_empty
+        c.address
+        for c in aggregates
+        if (c.zero_on_empty and not _rejects_zero(atom, c.address))
+        or (not c.zero_on_empty and c.address not in proofs)
+    )
+
+
+def _rejects_zero(atom: object, address: str) -> bool:
+    """Whether `atom` is false wherever the count `address` reads 0: a
+    comparison of it to a literal false at 0, or a conjunct (both disjuncts)
+    that is."""
+    if isinstance(atom, BuildParenthetical):
+        return _rejects_zero(atom.content, address)
+    if isinstance(atom, BuildConditional):
+        left, right = (
+            _rejects_zero(atom.left, address),
+            _rejects_zero(atom.right, address),
+        )
+        return left or right if atom.operator == BooleanOperator.AND else left and right
+    if not (
+        isinstance(atom, BuildComparison)
+        and isinstance(atom.left, BuildConcept)
+        and atom.left.address == address
+        and isinstance(atom.right, (int, float))
+        and not isinstance(atom.right, bool)
+    ):
+        return False
+    return any(
+        operator == atom.operator and not test(0, atom.right)
+        for operator, test in _ABSENT_COMPARISONS
     )
 
 

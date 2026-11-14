@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
@@ -279,6 +279,25 @@ def _planned_source_pairs(
     return out
 
 
+def _cap_lookup_joins(
+    joins: list[SourceJoin | UnnestJoin], lookups: Collection[str]
+) -> None:
+    """A lookup keyed off another lookup keeps no row of its own: RIGHT
+    becomes INNER, FULL LEFT. The first one's padding is no domain to
+    preserve, and a WHERE over the second's value that holds on NULL passes
+    the rows it alone holds (`SelectGrain.lookup_preserved_passes_padding`).
+    One keyed off the sides' rows may still be what supplies a key's domain."""
+    for join in joins:
+        if not isinstance(join, Join) or join.right.identifier not in lookups:
+            continue
+        if not any(pair.node.identifier in lookups for pair in join.pairs):
+            continue
+        if join.join_type == JoinType.RIGHT_OUTER:
+            join.join_type = JoinType.INNER
+        elif join.join_type == JoinType.FULL:
+            join.join_type = JoinType.LEFT_OUTER
+
+
 def _resolve_node(node: StrategyNode) -> BuildDatasource | QueryDatasource:
     return node.resolve()
 
@@ -310,6 +329,7 @@ class MergeNode(StrategyNode):
         host_stitch: bool = False,
         span_scope: SpanScope | None = None,
         planned_pairs: PlannedPairs | None = None,
+        lookups: frozenset[int] = frozenset(),
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -347,6 +367,9 @@ class MergeNode(StrategyNode):
         # The planner's join plan: which two parents pair on which keys. Join
         # inference pairs on these alone.
         self.planned_pairs = planned_pairs
+        # parents (by id) that only supply values to rows the others hold (a
+        # WHERE's argument): a join never preserves a row of theirs
+        self.lookups = lookups
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -745,10 +768,13 @@ class MergeNode(StrategyNode):
             if self.conditions
             else set()
         )
+        lookup_keys: set[str] = set()
+        row_keys: set[str] = set()
         for parent, source in zip(self.parents, parent_sources):
             key = source.identifier
             if isinstance(source, QueryDatasource) and key not in merged:
                 key = by_shape.setdefault(source.shape, key)
+            (lookup_keys if id(parent) in self.lookups else row_keys).add(key)
             held[key] = _held_groups(
                 held.get(key, frozenset()),
                 parent,
@@ -877,6 +903,7 @@ class MergeNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
+        _cap_lookup_joins(joins, lookup_keys - row_keys)
         narrow_join_types(joins, join_proofs, final_datasets)
         # Per-datasource NULL-ability from the resolved join graph: orders
         # ``final_datasets`` so the preserved side wins ``resolve_concept_map``'s
@@ -1128,6 +1155,9 @@ class MergeNode(StrategyNode):
             self.planned_pairs = self.planned_pairs.rebound(
                 {key: id(new) for key, new in swap.items()}
             )
+        self.lookups = frozenset(
+            id(swap[key]) if key in swap else key for key in self.lookups
+        )
 
     def copy(self) -> "MergeNode":
         node = type(self)(
@@ -1153,5 +1183,6 @@ class MergeNode(StrategyNode):
             host_stitch=self.host_stitch,
             span_scope=self.span_scope,
             planned_pairs=self.planned_pairs,
+            lookups=self.lookups,
         )
         return self.with_marks(node)
