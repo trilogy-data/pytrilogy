@@ -46,6 +46,7 @@ from trilogy.execution.state.watermarks import (
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
+    is_missing_file,
     is_missing_local_file,
     is_missing_table,
     run_freshness_probe,
@@ -614,7 +615,7 @@ class BaseStateStore:
                 filters=UpdateKeys(),
             )
 
-        if is_missing_local_file(ds):
+        if is_missing_file(ds, executor, cache=self._cache):
             return StaleAsset(
                 datasource_id=ds_id,
                 reason="file not found",

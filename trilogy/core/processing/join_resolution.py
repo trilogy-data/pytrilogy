@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
 from itertools import combinations
 from operator import attrgetter
+from typing import NamedTuple
 
 from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_MARKER_PREFIX, logger
 from trilogy.core.domain_graph import DomainGraph
@@ -814,15 +815,12 @@ def _score_join_candidate(
     x: str,
     *,
     root: str,
-    eligible_left: set[str],
     facts: JoinFacts,
     multi_partial: bool,
     anchor_sources: frozenset[str],
 ) -> tuple[int, int, str]:
     side = facts.side(x)
     base = 1
-    if x in eligible_left:
-        base += 3
     # A query-scoped LEFT anchor must seed the join base AND be processed first in
     # the per-right dedup loop so each co-anchored optional source dedups against
     # the anchor (LEFT_OUTER) instead of against the other optional source (FULL).
@@ -843,36 +841,43 @@ def _score_join_candidate(
     return (base, len(side.grain), x)
 
 
-_SOLID = "|solid"
+class _Pivot(NamedTuple):
+    """A planned key the walk ranks pairings under. A solid pivot pairs only
+    the key's holders that hold no region (`_solid_value_null_pivots`)."""
+
+    key: str
+    solid: bool = False
 
 
 def _solid_value_null_pivots(
-    pivot_map: dict[str, list[str]], facts: JoinFacts
-) -> dict[str, list[str]]:
+    pivot_map: dict[_Pivot, list[str]], facts: JoinFacts
+) -> dict[_Pivot, list[str]]:
     """A value-nullable key pairs the sides holding no region on it before a
     region's rows unite: a padded NULL is no member of the NULL group an
     aggregate the region does not feed computes on it. A side holding the
     region joins on it after, through the key's own pivot."""
     if not facts.held_spans:
         return {}
-    out: dict[str, list[str]] = {}
-    for key, sides in pivot_map.items():
+    out: dict[_Pivot, list[str]] = {}
+    for pivot, sides in pivot_map.items():
         solid = [s for s in sides if not facts.side(s).held_spans]
-        if len(solid) > 1 and any(key in facts.side(s).value_nullables for s in solid):
-            out[key + _SOLID] = solid
+        if len(solid) > 1 and any(
+            pivot.key in facts.side(s).value_nullables for s in solid
+        ):
+            out[_Pivot(pivot.key, solid=True)] = solid
     return out
 
 
 def _pivot_map(
     pair_keys: Mapping[frozenset[str], frozenset[str]],
-) -> dict[str, list[str]]:
+) -> dict[_Pivot, list[str]]:
     """Each planned key's holders: the sides the plan pairs on it."""
     out: dict[str, set[str]] = defaultdict(set)
     for pair, keys in pair_keys.items():
         if len(pair) == 2:
             for key in keys:
                 out[key] |= pair
-    return {key: sorted(holders) for key, holders in out.items()}
+    return {_Pivot(key): sorted(holders) for key, holders in out.items()}
 
 
 def _keyless_order(facts: JoinFacts, ds: str) -> tuple[bool, str, str]:
@@ -886,7 +891,7 @@ def _keyless_order(facts: JoinFacts, ds: str) -> tuple[bool, str, str]:
 
 
 def _pivot_rank(
-    pivot: str, holders: list[str], facts: JoinFacts
+    pivot: _Pivot, holders: list[str], facts: JoinFacts
 ) -> tuple[bool, bool, bool, int, int, int, str]:
     """An AUTHORED join key (scoped join / merge relation) ranks FIRST: its
     equality is a semantic pairing contract, not a heuristic tree edge. If a
@@ -902,28 +907,28 @@ def _pivot_rank(
     aggregate by `bucket` over customers no order has) ranks after the
     others are stitched: its NULL group holds their padded rows, which only
     exist once their own stitch ran."""
-    key = pivot.removesuffix(_SOLID)
+    key = pivot.key
     return (
-        pivot not in facts.authored_join_keys,
-        not pivot.endswith(_SOLID),
-        pivot not in facts.held_spans,
+        pivot.solid or key not in facts.authored_join_keys,
+        not pivot.solid,
+        pivot.solid or key not in facts.held_spans,
         max(len(facts.side(side).held_spans - {key}) for side in holders),
         len(holders),
-        len(pivot),
-        pivot,
+        len(key),
+        key,
     )
 
 
 def _ranked_edges(
-    pivot_map: Mapping[str, list[str]], facts: JoinFacts
-) -> list[tuple[str, str, str]]:
+    pivot_map: Mapping[_Pivot, list[str]], facts: JoinFacts
+) -> list[tuple[_Pivot, str, str]]:
     """Every planned pairing as (key, side, side), best-ranked first: a pair
     the plan pairs on several keys is an edge under each."""
     edges = [
         (pivot, a, b)
         for pivot, holders in pivot_map.items()
         for a, b in combinations(holders, 2)
-        if pivot.removesuffix(_SOLID) in facts.pair_keys.get(frozenset({a, b}), ())
+        if pivot.key in facts.pair_keys.get(frozenset({a, b}), ())
     ]
     return sorted(
         edges, key=lambda e: (_pivot_rank(e[0], pivot_map[e[0]], facts), e[1], e[2])
@@ -1004,7 +1009,7 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     edges = _ranked_edges(pivot_map, facts)
     output: list[JoinOrderOutput] = []
     eligible_left: set[str] = set()
-    opened: dict[str, bool] = {}
+    opened: dict[_Pivot, bool] = {}
 
     while True:
         touching = [
@@ -1016,7 +1021,7 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         if not open_edges:
             break
         root = open_edges[0][0]
-        key = root.removesuffix(_SOLID)
+        key = root.key
         # judged once, over the key's holders unjoined when it first ranks best
         multi_partial = opened.setdefault(
             root,
@@ -1030,7 +1035,6 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         score_key = partial(
             _score_join_candidate,
             root=key,
-            eligible_left=eligible_left,
             facts=facts,
             multi_partial=multi_partial,
             anchor_sources=anchor_sources,

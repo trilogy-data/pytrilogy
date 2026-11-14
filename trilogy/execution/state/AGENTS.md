@@ -98,7 +98,10 @@ with, so it must read as drift and rebuild once. A file is written by `COPY
 (select)`, so its awareness is the source's and a rewrite cannot change it;
 files fold the two (`_FILE_STORAGE_FAMILY`) or they would rebuild forever. Script and SQL-file addresses have no
 declaration to drift from and are not judged. A missing or unreadable file
-yields no schema; those are their own verdicts, reached afterwards.
+yields no schema; those are their own verdicts, reached afterwards. A missing file
+reads `file not found` (`is_missing_file`) whether local or remote: a remote one
+is confirmed by a missing-source error from the describe, since otherwise an
+unbuilt remote output reads fresh wherever the roots offer no expectation.
 
 ### Model-fingerprint staleness
 
