@@ -968,6 +968,19 @@ def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutp
     )
 
 
+def _preserved_past_inner(joins: list[JoinOrderOutput]) -> str | None:
+    """The first right a join preserves against the sides walked before it
+    (RIGHT OUTER) when an earlier join between them is INNER: on the right's
+    rows that INNER already dropped every walked side's values wherever its
+    partner missed, which no later promotion gives back."""
+    inner = False
+    for join in joins:
+        if join.type == JoinType.RIGHT_OUTER and inner:
+            return join.right
+        inner = inner or (join.type == JoinType.INNER and bool(join.keys))
+    return None
+
+
 def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     """Order the merge's sides (`facts.sides`) into a join tree by walking
     the plan's pairings (`facts.pair_keys`): two sides pair on what it pairs
@@ -977,39 +990,49 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     between two unjoined sides seeds a tree only when none touches it. Every
     choice point sorts its inputs, so the plan is deterministic across runs.
 
-    Ordering is a heuristic for plan shape only; ``ensure_content_preservation``
-    guarantees the result set regardless of the order chosen here.
+    The order is a choice of plan shape, not of rows, with one exception the
+    walk repairs: a side preserved past an INNER join among the sides walked
+    before it (`_preserved_past_inner`) seeds the walk instead, so each of
+    them hangs off its rows on its own pairing.
+    ``ensure_content_preservation`` keeps every later join from dropping the
+    rows an earlier one preserved.
     """
-    datasources = sorted(facts.sides)
-
     # A source is an anchor when it provides a scoped-LEFT anchor key as a
     # COMPLETE (non-partial) concept; optional sources are partial against it.
     # An anchor key is only ACTIVE when some present source is partial against
     # it: the boost exists to keep optional sources directional (LEFT, not
     # FULL), and with no optional side in the plan, seeding the tree on it
     # would just perturb unrelated joins.
-    anchor_sources: frozenset[str] = frozenset()
-    active_anchor_keys: set[str] = set()
-    if facts.anchor_keys:
-        active_anchor_keys = {
-            key
-            for key in facts.anchor_keys
-            if any(key in facts.side(ds).partials for ds in datasources)
-        }
-        anchor_sources = frozenset(
-            ds
-            for ds in datasources
-            if (facts.side(ds).columns & active_anchor_keys)
-            and not (active_anchor_keys & facts.side(ds).partials)
-        )
+    active_anchor_keys = {
+        key
+        for key in facts.anchor_keys
+        if any(key in side.partials for side in facts.sides.values())
+    }
+    anchor_sources = frozenset(
+        ds
+        for ds, side in facts.sides.items()
+        if side.columns & active_anchor_keys and not active_anchor_keys & side.partials
+    )
+    output = _walk(facts, anchor_sources)
+    seed = _preserved_past_inner(output)
+    if seed is not None:
+        output = _walk(facts, anchor_sources, seed)
+    ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
+    restore_full_join_providers(output)
+    return output
 
+
+def _walk(
+    facts: JoinFacts, anchor_sources: frozenset[str], seed: str | None = None
+) -> list[JoinOrderOutput]:
+    """One walk over the plan's pairings, from `seed` when given."""
     pivot_map = _pivot_map(facts.pair_keys)
     pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
     edges = _ranked_edges(pivot_map, facts)
     output: list[JoinOrderOutput] = []
-    eligible_left: set[str] = set()
+    walked: list[str] = [seed] if seed else []
+    eligible_left: set[str] = set(walked)
     opened: dict[_Pivot, bool] = {}
-    walked: list[str] = []
 
     while True:
         touching = [
@@ -1058,10 +1081,10 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         eligible_left.add(right)
         walked.append(right)
 
-    # Every side the plan pairs joined above; the rest pair with nothing, so they join on nothing and the keyless-join
-    # guard judges them.
+    # Every side the plan pairs joined above; the rest pair with nothing, so
+    # they join on nothing and the keyless-join guard judges them.
     for ds in sorted(
-        (x for x in datasources if x not in eligible_left),
+        (x for x in facts.sides if x not in eligible_left),
         key=partial(_keyless_order, facts),
     ):
         if eligible_left:
@@ -1071,9 +1094,6 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
                 )
             )
         eligible_left.add(ds)
-
-    ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
-    restore_full_join_providers(output)
     return output
 
 
