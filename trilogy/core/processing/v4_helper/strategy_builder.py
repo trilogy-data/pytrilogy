@@ -1605,7 +1605,10 @@ def _drop_finer_passengers(
     """An unfiltered row scan finer than an aggregate's input grain, beside
     parents supplying everything it would, adds only its multiplicity: a
     re-sum of the summary's `count(tree_id)` by `(city, species)` joined to
-    the trees counts each partial once per tree."""
+    the trees counts each partial once per tree. Never beside a region's rows:
+    the scan may be what pairs a member the others lack."""
+    if any(region_reads(p) for p in parents):
+        return parents
     kept = list(parents)
     for parent in parents:
         gid = _origin_group(parent, origin)
