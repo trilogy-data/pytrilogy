@@ -19,7 +19,6 @@ import pytest
 
 from tests.helpers.rows import fetch_rows, normalize_numbers, widest_cte
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
 
 SEEDS = 300
 CITIES = ["bos", "sfo"]
@@ -256,29 +255,8 @@ def shape(seed: int, keyed: bool = False) -> tuple[str, str, list[tuple], int]:
     return (_keyed(model) if keyed else model), query, expected, widest
 
 
-# Open: with the class a key, its own value beside the by-city-species flag
-# and the trees is refused (a keyless join between the flag and the class
-# step) rather than planned. A loud refusal, on main as here; not #977's.
-REFUSED_KEYED = {18, 42, 153, 155, 172, 253}
-
-
-def _cases() -> list:
-    refused = pytest.mark.xfail(
-        raises=UnresolvableQueryException, strict=True, reason="see REFUSED_KEYED"
-    )
-    return [
-        pytest.param(
-            seed,
-            keyed,
-            id=f"{seed}-{'keys' if keyed else 'properties'}",
-            marks=[refused] if keyed and seed in REFUSED_KEYED else [],
-        )
-        for keyed in (False, True)
-        for seed in range(SEEDS)
-    ]
-
-
-@pytest.mark.parametrize("seed,keyed", _cases())
+@pytest.mark.parametrize("keyed", [False, True], ids=["properties", "keys"])
+@pytest.mark.parametrize("seed", range(SEEDS))
 def test_partial_lookup_prediction_matches_raw_rows(seed: int, keyed: bool):
     model, query, expected, widest = shape(seed, keyed)
     executor = Dialects.DUCK_DB.default_executor()

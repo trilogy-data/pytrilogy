@@ -755,9 +755,11 @@ does not rewrite it; that rewrite is open.
       flag carried beside a value by cell put a row per tree under each cell.
     - A guard added where a list is re-wrapped (`zip` over parents a contract
       may split) silently dropped a parent: apply it before the list changes.
-    - Open: with the class a key, its own value beside the by-city-species
-      flag is refused as a keyless join (`REFUSED_KEYED` in
-      `test_partial_lookup_fallback_oracle_laws.py`).
+    - A FINAL survivor of a passthrough fold holds its absorbed sibling's
+      rows but kept only its own side of the plan: the pairing the sibling
+      was planned on (the trees with a flag by city, species) named no side
+      and resolve joined keyless, or refused. The survivor pairs, and is
+      widened, as every group it holds.
 
 ## Candidate areas
 

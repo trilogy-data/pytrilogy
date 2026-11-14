@@ -1738,8 +1738,11 @@ def _crosses_unsourced_aggregate(
     )
 
 
-def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
-    """Absorb a parent into a row-preserving sibling that can render it.
+def _fold_passthrough_parents(
+    parents: list[StrategyNode], absorbed: dict[int, list[StrategyNode]] | None = None
+) -> list[StrategyNode]:
+    """Absorb a parent into a row-preserving sibling that can render it;
+    `absorbed` takes each survivor's absorbed parents, by the survivor's id.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
     of another parent A's outputs from B's own source (each output is either
@@ -1817,6 +1820,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
                 available_addresses=available,
             )
             dropped.add(id(a))
+            if absorbed is not None:
+                absorbed.setdefault(id(b), []).append(a)
     return [p for p in parents if id(p) not in dropped]
 
 
@@ -6655,8 +6660,24 @@ def _assemble_final_node(
         final_merge_grain,
         environment,
     )
-    parents = _fold_passthrough_parents(parents)
-    _carry_planned_keys(parents, origin, plan, environment)
+    absorbed: dict[int, list[StrategyNode]] = {}
+    parents = _fold_passthrough_parents(parents, absorbed)
+    # a survivor holds its absorbed sibling's rows, and pairs as it did (the
+    # trees folded into a class step still pair with a flag by city, species)
+    also_holds = {
+        key: frozenset(side_groups(nodes, origin)) for key, nodes in absorbed.items()
+    }
+    _carry_planned_keys(
+        parents,
+        origin,
+        plan,
+        environment,
+        [
+            (_origin_singleton(parent, origin) or frozenset())
+            | also_holds.get(id(parent), frozenset())
+            for parent in parents
+        ],
+    )
     # a planned key no widening reaches (a derived `cell` the per-tree step's
     # rows determine) is looked up from the step computing it: left unheld,
     # the sides pair on whatever else they share (#977)
@@ -6779,7 +6800,12 @@ def _assemble_final_node(
             f"[v4] FINAL merge joins {sorted(unplanned)}, which its join plan "
             "never elected. This is a planner bug."
         )
-    merge_plan = plan.over(sides)
+    held = {
+        id(parent): own | also_holds.get(id(parent), frozenset())
+        for parent in parents
+        if (own := _origin_singleton(parent, origin)) is not None
+    }
+    merge_plan = plan.across(list(held.values()))
     logger.info(f"[v4] FINAL join plan: {merge_plan}")
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]
@@ -6824,8 +6850,7 @@ def _assemble_final_node(
         whole_grain=not final_contract.deduplicate_to_grain,
         host_stitch=True,
         **_planned_join(
-            merge_plan,
-            {id(parent): _origin_singleton(parent, origin) for parent in parents},
+            merge_plan, {id(parent): held.get(id(parent)) for parent in parents}
         ),
     )
     _clear_groupmate_completed_partials(merged, environment)
