@@ -1738,8 +1738,11 @@ def _crosses_unsourced_aggregate(
     )
 
 
-def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
-    """Absorb a parent into a row-preserving sibling that can render it.
+def _fold_passthrough_parents(
+    parents: list[StrategyNode], absorbed: dict[int, list[StrategyNode]] | None = None
+) -> list[StrategyNode]:
+    """Absorb a parent into a row-preserving sibling that can render it;
+    `absorbed` takes each survivor's absorbed parents, by the survivor's id.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
     of another parent A's outputs from B's own source (each output is either
@@ -1817,6 +1820,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
                 available_addresses=available,
             )
             dropped.add(id(a))
+            if absorbed is not None:
+                absorbed.setdefault(id(b), []).append(a)
     return [p for p in parents if id(p) not in dropped]
 
 
@@ -2867,6 +2872,7 @@ def _project_planned_keys(
             c
             for c in owed
             if isinstance(parent, GroupNode)
+            and c.address not in authored
             and concept_satisfiable(c, outputs)
             and not _carry_needs_own_node(c)
         ]
@@ -2876,7 +2882,7 @@ def _project_planned_keys(
             else frozenset()
         )
         # an authored relation's member or a rowset handle pairs as authored,
-        # never through a producer of it
+        # never through a producer of it or a rendering off its mate's column
         lookups = [
             producer
             for c in owed
@@ -3616,6 +3622,10 @@ def _pre_merge_parents(
             environment,
             [built[gid] for gid in candidates if built and gid in built],
         )
+        if attrs is not None:
+            parents = _hold_lookup_sides(
+                parents, attrs, origin, plan, needed, environment
+            )
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if plan is not None and built is not None:
@@ -3647,6 +3657,62 @@ def _pre_merge_parents(
         ),
     )
     return [merged]
+
+
+def _hold_lookup_sides(
+    parents: list[StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    needed: set[str] | None,
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """A row step claiming a coarser grain than the rows it reads, paired on
+    keys that hold that grain, is a lookup on them: it holds each of their
+    rows once. Left one row per source row, every row of a key meets every
+    other (a class by species off the trees beside the per-tree step it is
+    joined to on species, #977). It keeps what the keys determine; anything
+    finer the reader needs, another side has to supply, or it stays whole."""
+    held = list(parents)
+    for idx, parent in enumerate(parents):
+        gid = _origin_group(parent, origin)
+        if gid is None or not parent.parents:
+            continue
+        group, keys = attrs[gid], plan.keys_for(gid)
+        # a `by *` total is one value on every row, whatever keys it rides
+        determined = build_fd_closure(environment, keys | {ALL_ROWS_ADDRESS})
+        if (
+            group.derivation != Derivation.BASIC
+            or not keys
+            or not group.grain_components
+            or not group.grain_components <= determined
+            or not _rows_finer_than(parent, keys, environment)
+        ):
+            continue
+        exposed = {o.address: o for o in parent.usable_outputs}
+        supplied = set().union(
+            *(
+                {o.address for o in other.usable_outputs}
+                for j, other in enumerate(held)
+                if j != idx
+            )
+        )
+        wanted = set(exposed) if needed is None else set(exposed) & needed
+        if wanted - determined - supplied:
+            continue
+        concepts = [c for address, c in exposed.items() if address in determined]
+        held[idx] = GroupNode(
+            output_concepts=concepts,
+            input_concepts=concepts,
+            environment=environment,
+            parents=[parent],
+            partial_concepts=[
+                c for c in parent.partial_concepts if c.address in determined
+            ],
+            preexisting_conditions=parent.preexisting_conditions,
+            force_group=True,
+        )
+    return held
 
 
 def _merge_plan(
@@ -6595,8 +6661,30 @@ def _assemble_final_node(
         final_merge_grain,
         environment,
     )
-    parents = _fold_passthrough_parents(parents)
-    _carry_planned_keys(parents, origin, plan, environment)
+    absorbed: dict[int, list[StrategyNode]] = {}
+    parents = _fold_passthrough_parents(parents, absorbed)
+    # a survivor holds its absorbed sibling's rows, and pairs as it did (the
+    # trees folded into a class step still pair with a flag by city, species)
+    also_holds = {
+        key: frozenset(side_groups(nodes, origin)) for key, nodes in absorbed.items()
+    }
+    _carry_planned_keys(
+        parents,
+        origin,
+        plan,
+        environment,
+        [
+            (_origin_singleton(parent, origin) or frozenset())
+            | also_holds.get(id(parent), frozenset())
+            for parent in parents
+        ],
+    )
+    # a planned key no widening reaches (a derived `cell` the per-tree step's
+    # rows determine) is looked up from the step computing it: left unheld,
+    # the sides pair on whatever else they share (#977)
+    parents = _project_planned_keys(
+        parents, origin, plan, environment, list(built.values())
+    )
     parents = _fold_covered_contributors(
         parents,
         environment,
@@ -6713,7 +6801,12 @@ def _assemble_final_node(
             f"[v4] FINAL merge joins {sorted(unplanned)}, which its join plan "
             "never elected. This is a planner bug."
         )
-    merge_plan = plan.over(sides)
+    held = {
+        id(parent): own | also_holds.get(id(parent), frozenset())
+        for parent in parents
+        if (own := _origin_singleton(parent, origin)) is not None
+    }
+    merge_plan = plan.across(list(held.values()))
     logger.info(f"[v4] FINAL join plan: {merge_plan}")
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]
@@ -6758,8 +6851,7 @@ def _assemble_final_node(
         whole_grain=not final_contract.deduplicate_to_grain,
         host_stitch=True,
         **_planned_join(
-            merge_plan,
-            {id(parent): _origin_singleton(parent, origin) for parent in parents},
+            merge_plan, {id(parent): held.get(id(parent)) for parent in parents}
         ),
     )
     _clear_groupmate_completed_partials(merged, environment)

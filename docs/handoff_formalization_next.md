@@ -735,6 +735,32 @@ does not rewrite it; that rewrite is open.
     - Generated data must hold the model's declarations: a `~genus` fit naming
       a genus the complete (`?genus`) enrichment lacks is not a planner bug.
 
+37. **Lessons from the keyed-class round (#977).**
+    - #975 again fixed a model that was not the reporter's: theirs was public
+      (`greenmtnboy/tree_reporting`), and its `city` and fallback class are
+      keys, built through an update statement's HAVING over hidden columns.
+      Plan the reporter's own model before writing a repro; reduce from it
+      (drop target columns while a keyless per-row CTE survives) instead of
+      building up from the ingredients listed.
+    - A join plan's identity is a claim. A row step claiming a coarser grain
+      still holds one row per source row, so a side the plan pairs as a lookup
+      is held at its keys before the merge (`_hold_lookup_sides`); the plan
+      alone does not make it one.
+    - The FINAL carried planned keys by widening only. A key no widening
+      reaches (a derived `cell` the per-tree step determines) was dropped
+      silently and the sides paired on what else they shared (`city`); it is
+      looked up from its producer, as a group merge already did
+      (`_project_planned_keys`).
+    - What a coarser step offers FINAL covers WHERE arguments too: a per-tree
+      flag carried beside a value by cell put a row per tree under each cell.
+    - A guard added where a list is re-wrapped (`zip` over parents a contract
+      may split) silently dropped a parent: apply it before the list changes.
+    - A FINAL survivor of a passthrough fold holds its absorbed sibling's
+      rows but kept only its own side of the plan: the pairing the sibling
+      was planned on (the trees with a flag by city, species) named no side
+      and resolve joined keyless, or refused. The survivor pairs, and is
+      widened, as every group it holds.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
