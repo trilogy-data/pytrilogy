@@ -847,4 +847,65 @@ theorem lookup_preserved_passes_padding :
     lookup = [3] ∧ full = [3, 0, 1] := by
   decide
 
+/-! ## A total pairs on a constant
+
+`select city where sum(x) by form < sum(x) by *`: the total's group is one row
+keyed on the `all_rows` constant, and the rows it filters are a join of the
+trees to the enrichment (`form` is the species' column). The cover search binds
+no constant, so the joined rows were refused for not carrying it, and the
+select raised. A constant is a literal in any projection: carried inline, it
+pairs every row with the one total, which is the cross product the `by *`
+means. -/
+
+/-- **Paired on a constant, a row meets the one total** (`constant_key_pairs_every_row`):
+the join on the constant is the cross product with a one-row side. -/
+theorem constant_key_pairs_every_row (rows : List α) (total : Int) :
+    (rows.flatMap fun r => ([((), total)].filter (·.1 == ())).map fun t => (r, t.2)) =
+      rows.map fun r => (r, total) := by
+  have one : ∀ r : α,
+      (([((), total)].filter (·.1 == ())).map fun t => (r, t.2)) = [(r, total)] := by
+    intro r; rfl
+  simp only [one]
+  induction rows with
+  | nil => rfl
+  | cons r rs ih => simp [List.flatMap_cons, ih]
+
+/-! ## A bridge is joined where the plan pairs on it
+
+`select tree_id, avg(x) by species, min(x ? ...) where max(x) by city, form !=
+6 having count_distinct(tag) by city >= 2`: the FINAL plan pairs the species
+value with one scan of the trees on `species`, and elects a second scan for
+`tree_id` and `city`. The second scan also exposes `species`, so the first was
+skipped as joining no new island; the plan states no pairing of the species
+value with the second, and the join had no keys. A side that is some
+contributor's only planned partner is joined. -/
+
+/-- Three trees of two species: looked up on `species` each tree reads one
+value; with no keys it reads every value (`keyless_pairing_fans_out`). -/
+theorem keyless_pairing_fans_out :
+    let trees : List (Int × Int) := [(0, 0), (1, 0), (2, 1)]
+    let values : List (Int × Int) := [(0, 5), (1, 2)]
+    (trees.flatMap fun t => values.filter (·.1 == t.2)).length = 3 ∧
+      (trees.flatMap fun _ => values).length = 6 := by
+  decide
+
+/-! ## An alias of a row value is no spelling of its pinned read
+
+`auto s2 <- status` aliases the row value of `status` (a CASE over an order's
+delivery date, stored on the orders), while a select reads `status` pinned to
+its own row, where the CASE's ELSE fires for a customer with no order. The
+alias made the two one name class, and a column storing the alias answered
+the pinned read: on the padded row it is NULL, and `status is null` kept the
+customer. -/
+
+/-- A customer with no order: the pinned read evaluates the CASE on the padded
+row (`'in-transit'`, 1 here); the stored column read through the padding is
+NULL (`alias_is_not_the_pinned_read`). -/
+theorem alias_is_not_the_pinned_read :
+    let delivery : Option Int := none
+    let pinned : Option Int := some (if delivery.isSome then 0 else 1)
+    let stored : Option (Option Int) := none
+    pinned = some 1 ∧ stored.join = none ∧ pinned ≠ stored.join := by
+  decide
+
 end Trilogy.SelectGrain
