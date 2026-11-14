@@ -15,7 +15,6 @@ from trilogy.core.models.datasource import (
     UpdateKeyType,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.execution.state.build_sources import hide_unbuilt_sources
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.declaration import (
     DeclarationKey,
@@ -1215,9 +1214,8 @@ def _execute_one_asset(
                 "refreshable roots (with refresh_script) are managed"
             ),
         )
-    try:
-        hide = hide_unbuilt_sources(executor, datasource, pending_sql_ds_ids)
-        with hidden_datasources(executor.environment, hide):
+    with hidden_datasources(executor.environment, pending_sql_ds_ids):
+        try:
             sql = executor.update_datasource(
                 datasource,
                 keys=asset.filters,
@@ -1225,10 +1223,10 @@ def _execute_one_asset(
                 partitions=asset.partitions or None,
                 check_assertions=asset.datasource_id not in skip_assertions,
             )
-    except Exception as e:
-        raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
-    if on_refresh_query and sql is not None:
-        on_refresh_query(asset.datasource_id, sql)
+        except Exception as e:
+            raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
+        if on_refresh_query and sql is not None:
+            on_refresh_query(asset.datasource_id, sql)
     # Invalidate so any downstream re-eval queries the post-refresh state.
     store.invalidate_address(executor.environment, datasource.safe_address)
 

@@ -278,17 +278,6 @@ def is_missing_file(
     return _file_missing(address, executor)
 
 
-def is_unbuilt(
-    datasource: Datasource,
-    executor: Executor,
-    cache: ColumnStatsCache | None = None,
-) -> bool:
-    """Whether nothing has been written at the datasource's address yet."""
-    return is_missing_file(datasource, executor, cache) or is_missing_table(
-        datasource, executor, cache
-    )
-
-
 def _is_table_address(datasource: Datasource) -> bool:
     return not (
         isinstance(datasource.address, Address)
