@@ -147,6 +147,33 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
     ]
 
 
+def test_a_solid_value_null_pairing_walks_before_a_held_span():
+    planned = resolve_join_order_v2(
+        JoinFacts(
+            sides={
+                "ds~r": SideFacts(
+                    columns=frozenset({"c~s", "c~v"}), held_spans=frozenset({"c~s"})
+                ),
+                "ds~a": SideFacts(
+                    columns=frozenset({"c~s", "c~v"}),
+                    nullables=frozenset({"c~v"}),
+                    value_nullables=frozenset({"c~v"}),
+                ),
+                "ds~b": SideFacts(columns=frozenset({"c~v"})),
+            },
+            pair_keys={
+                frozenset({"ds~r", "ds~a"}): frozenset({"c~s"}),
+                frozenset({"ds~a", "ds~b"}): frozenset({"c~v"}),
+                frozenset({"ds~r", "ds~b"}): frozenset({"c~v"}),
+            },
+        )
+    )
+    assert [(j.right, j.keys) for j in planned] == [
+        ("ds~b", {"ds~a": {"c~v"}}),
+        ("ds~r", {"ds~b": {"c~v"}, "ds~a": {"c~s"}}),
+    ]
+
+
 def test_a_second_island_seeds_on_nothing_then_walks_its_pairings():
     columns = {
         "ds~a": {"c~j"},

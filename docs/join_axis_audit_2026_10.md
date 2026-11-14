@@ -2664,6 +2664,52 @@ are not BigQuery, `test_cli_consistency` or `test_ingest` compile the same
 apart from the GCS cache-bust URL. So no plan moved: the order change above
 is one the suite never builds.
 
+**What decides the walk's rank (part 71).** Before the plan can state the
+walk's order, it has to know what the rank reads and which of its terms
+decide anything. `_pivot_rank` ranks a pivot (a planned key) on seven terms:
+authored, solid value-null, held span, the most other spans a holder holds,
+holder count, key length, and name.
+
+- A solid pivot (a key's holders that hold no region, ranked ahead of the
+  region's stitch) was a key spelled with a `|solid` suffix. That suffix was
+  read back to rank it, to find its key, and to keep it out of the authored
+  and held-span sets. A pivot is now a `_Pivot(key, solid)`, and
+  `_pivot_rank` states those two exclusions. The order is unchanged: two
+  solid pivots tie on every term before the name only when their keys are the
+  same length, and there the shared suffix compares equal.
+- `_score_join_candidate` boosted a side already joined. Since part 70 it
+  scores only unjoined candidates, plus the joined sides `_join_onto` orders,
+  which all take the boost, so the boost ordered nothing. It is gone.
+- `test_a_solid_value_null_pairing_walks_before_a_held_span` pins the solid
+  tier above the held-span tier.
+
+`local_scripts/sql_ab/rank_census_plugin.py` replays every resolve over three
+or more sides with one term held constant and counts the merges whose join
+order moves. Over all of `tests/` (14,335 such merges), 3,954 move with every
+term but the name held:
+
+| term | merges it decides | what it reads |
+|---|---|---|
+| key length | 2,838 | the key's spelling |
+| holder count | 1,272 | the plan: how many sides it pairs on the key |
+| authored | 64 | the environment's authored join groups |
+| solid value-null | 44 | each side's region marks and value-null provenance |
+| held span | 43 | each side's region marks |
+| most other held spans | 27 | each side's region marks |
+
+So the plan already holds what decides almost every walk: the keys it pairs on
+and how many sides it pairs on each. The region terms decide few merges
+(`test_padded_null_pairing`, `test_derived_key_domain` and the dimension-chain
+oracle). Only the solid term reads
+something the plan does not state: whether a side's NULL on the key is a value
+(`provenance.values`) or padding.
+
+Suite capture against `main` (`sqlcap`, `-n 2`, `PYTHONHASHSEED=0`, worktree
+paths normalized): 45,488 keys and the same 25 failures (the
+credential-gated tests). 120 tests moved: 100 `test_complete_binding_lookup`,
+16 window-law, and the listed noise. Re-run serially on both trees they
+compile the same, apart from the GCS cache-bust URL. So no plan moved.
+
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2689,7 +2735,10 @@ not built yet:
    facts (part 69). It orders the joins by walking the pairings, not key
    by key (part 70). What is left is the rank it walks them in: still a
    resolve heuristic over each pairing's keys (`_pivot_rank`), not an order
-   the plan states.
+   the plan states. Of its terms, the key's spelling and the plan's holder
+   count decide almost every walk. The region terms decide a few, and only
+   the solid term reads a fact the plan does not state: value-null
+   provenance (part 71).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

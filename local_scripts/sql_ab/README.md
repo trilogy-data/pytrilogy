@@ -93,3 +93,14 @@ CENSUS_OUT=/tmp/census.jsonl PYTHONPATH=local_scripts/sql_ab   python -m pytest 
 ```bash
 python local_scripts/sql_ab/join_census.py /tmp/census.json "tests/modeling/**/*.preql" "tests/engine/**/*.preql" "tests/complex/**/*.preql" "tests/discovery/**/*.preql"
 ```
+
+## Rank census
+
+`rank_census_plugin.py` asks which terms of the join walk's rank
+(`join_resolution._pivot_rank`) decide an order. It replays every resolve over
+three or more sides once per term, with that term held constant, and counts
+the merges whose join order moves. Sum the per-worker files' `counts`.
+
+```bash
+RANK_OUT=/tmp/rank PYTHONPATH=local_scripts/sql_ab python -m pytest -p rank_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```
