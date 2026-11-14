@@ -2788,22 +2788,43 @@ joined both. So the scorer no longer re-sorts the joined sides:
 The scorer now answers one question, the next side. The left order is the
 walk's, and the walk is over the plan's pairings.
 
-This one moves SQL. In the suite capture against `main` (`sqlcap`, `-n 4`,
-`PYTHONHASHSEED=0`), both trees have the same 25 credential-gated failures,
-and 385 tests move: 319 in the `*_laws.py` suites, 24 in
-`test_padded_null_pairing` and the rest one or two per file. Of 411 moved statements, none changes its CTE
-or join count:
+Which left an ON reads mattered to one optimizer phase. A first capture
+of this change against `main` had 3 statements whose joins loosened
+(spellings 262 and 11030 in `test_oracle_spellings_laws`: INNER to LEFT
+OUTER, and in 11030 a HAVING moved out to a `coalesce(count, 0) = 6` in the
+WHERE), beside about 15 that tightened. Both resolves typed every join the
+same. The difference was `upgrade_outer_key_set_equivalence`
+(`UpgradeOuterFromKeySetEquivalence`): it upgrades an outer join to INNER
+when the key's value set is the same on both sides, and it tested only the
+left the pair reads. On `main` that left was a sibling of the right over the
+same filtered rows, and the proof held. The side walked first was not, and
+the proof failed, though on the rows entering the join the two lefts hold
+the same key. The tightened statements were the same luck the other way.
 
-- 370 keep their length: an ON reads the key off the side walked first
-  instead of off another left on the same key.
-- 25 are shorter: the kept left already projects what the old one had to
-  carry.
-- 16 are longer. 3 are the listed noise (`test_cli_consistency`, and a
-  Rust-binary test that ran on the second tree only because cargo had been
-  built by then). The other 13 are 7 spellings in
-  `test_oracle_spellings_laws` (6 compiled twice, base and summary), longer
-  by 1 to 95 characters: where the left walked first is a wrap that did not
-  carry the key, it now projects it (`tree_form`, spelling 10995).
+So the proof no longer depends on the spelling. `_equated_reads` collects
+the pair's left and every read of its key that an INNER join earlier in the
+same CTE equates with it, and any of them may witness the equivalence, as
+long as no earlier outer join null-extends it. An outer join pads the side
+it extends, so it equates nothing.
+`test_a_left_an_inner_join_equates_witnesses_the_key_set` pins the upgrade,
+and `test_a_left_an_outer_join_pads_is_no_witness` pins the guard.
+
+Suite capture against `main` with both changes (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures,
+and 196 tests move. None changes a CTE or join count, and no join loosens:
+
+- 24 statements tighten: LEFT OUTER or FULL to INNER, a `coalesce`
+  dropped from an ON, a filter kept in its HAVING
+  (`test_row_preserving_grain_invariant`, `test_dimension_chain_oracle_laws`,
+  `test_final_gate_lookups`, spellings 12365 and 30670, sweep 80,
+  `test_grain_pin_unnest_merge_filter`).
+- Of the rest, 32 statements are shorter and 12 longer. 2 of the longer are
+  listed noise (`test_cli_consistency`, and a Rust-binary test that ran on
+  the second tree only because cargo had been built by then). The other 10
+  are 5 spellings in `test_oracle_spellings_laws`, each compiled twice,
+  longer by 1 to 80 characters: where the left walked first is a wrap that
+  did not carry the key, it now projects it (`tree_form`, spelling 10995).
+  Joins and their types are unchanged.
 
 Every moved test passes on both trees, and the law suites compare their
 rows against a raw-row oracle, so the moved plans return the same rows.
