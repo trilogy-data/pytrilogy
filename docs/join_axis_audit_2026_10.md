@@ -2604,6 +2604,36 @@ plan moved.
 `test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing` pins
 the rule. The resolve unit tests now state their plans.
 
+**Resolve reads no join graph (part 69).** After part 68 every key and pivot
+came off the plan, yet `get_node_joins` still built a networkx graph of
+sides and columns, pruned it of every shared column the plan pairs no two
+holders on (`_drop_unpaired_keys`), and handed it to
+`resolve_join_order_v2`. The graph answered three questions the facts
+already held: which sides the merge has, which side holds an active anchor
+key, and the order keyless sides join in.
+
+- Each side's columns ride `SideFacts.columns` (the outputs it emits, in the
+  merge's spelling), and `resolve_join_order_v2` takes `JoinFacts` alone.
+  Its sides are `facts.sides`; an anchor source is a side whose columns hold
+  an active anchor key; a keyless side joins in the order of the first
+  column no other side holds (`_keyless_order`).
+- `get_node_joins` builds no graph. `_planned_pair_nodes` reads each pair's
+  keys off the two sides' columns, and `_drop_unpaired_keys` and
+  `_paired_holders` are gone: a column the plan does not pair is no key
+  whether or not it is pruned.
+- A side holding only shared, unpaired columns used to vanish from the
+  merge (it had no graph edge left); it now joins keyless and the
+  keyless-join guard judges it. The suite never builds one.
+
+Suite capture against `main` (`sqlcap`, `-n 2`, `PYTHONHASHSEED=0`,
+worktree paths normalized): 45,145 keys, the same 25 failures (the
+BigQuery, Snowflake-dialect and GCS tests this container has no credentials for), 5 tests
+moved, all listed noise: `test_cli_consistency`, `test_ingest`,
+`test_trilogy::test_unit`, the BigQuery temp-table name and the GCS
+cache-bust URL. So no plan moved.
+
+The resolve unit tests state each side's columns instead of a graph.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2623,9 +2653,10 @@ not built yet:
    not choose, `gen_select_merge_node`'s scans, a recursive walk's
    join-back and a relation rollup, so every merge between scans carries a plan, and one reaching
    join inference without one raises (part 67). Resolve takes every key and
-   pivot from the plan's pairs, with no column-overlap search left (part 68).
-   What is left is ordering the joins from the pairings, so resolve's pivot
-   heuristic stops ordering keys it was already handed.
+   pivot from the plan's pairs, with no column-overlap search left (part 68),
+   and reads no join graph: its inputs are the plan's pairs and each side's
+   facts (part 69). What is left is ordering the joins from the pairings,
+   so resolve's pivot heuristic stops ordering keys it was already handed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
