@@ -2634,6 +2634,37 @@ cache-bust URL. So no plan moved.
 
 The resolve unit tests state each side's columns instead of a graph.
 
+**Resolve walks the plan's pairings (part 70).** After part 69 resolve read
+every key off the plan, but it still ordered the joins key by key: it ranked
+each planned key (a pivot), then joined every side the plan pairs on that key
+before moving to the next, deferring a side that paired with nothing joined
+yet until its partner arrived.
+
+- `resolve_join_order_v2` walks the pairings instead. `_ranked_edges` lists
+  each planned pairing once per key it pairs on, ranked by `_pivot_rank` (the
+  old pivot order: authored keys, solid value-null pairings, held spans, then
+  holder count and name). Each step joins the unjoined side whose pairing onto
+  the joined set ranks best, ties going to `_score_join_candidate`. A pairing
+  between two unjoined sides seeds a tree only when none touches it.
+- So every join's right pairs with a side already joined, and the deferral
+  loop is gone. `_join_onto` types one right against the joined sides the
+  plan pairs it with, as the pivot loop's body did.
+- One order changes. A side joined under one key can expose a pairing that
+  ranks better than the key's remaining sides. The walk takes it next; the
+  pivot loop finished the key first.
+  `test_a_better_pairing_a_join_exposes_is_walked_next` pins it.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`,
+worktree paths normalized): 45,145 keys and the same 25 failures (the
+credential-gated tests). 152 tests moved: 103 oracle-sweep, 37
+`test_complete_binding_lookup`, 6 window-law, 2 `thelook_duckdb`, and the
+listed noise (`test_cli_consistency`, `test_ingest`, the BigQuery temp-table
+name, the GCS cache-bust URL). Re-run serially on both trees, the 149 that
+are not BigQuery, `test_cli_consistency` or `test_ingest` compile the same
+apart from the GCS cache-bust URL. So no plan moved: the order change above
+is one the suite never builds.
+
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2655,8 +2686,10 @@ not built yet:
    join inference without one raises (part 67). Resolve takes every key and
    pivot from the plan's pairs, with no column-overlap search left (part 68),
    and reads no join graph: its inputs are the plan's pairs and each side's
-   facts (part 69). What is left is ordering the joins from the pairings,
-   so resolve's pivot heuristic stops ordering keys it was already handed.
+   facts (part 69). It orders the joins by walking the pairings, not key
+   by key (part 70). What is left is the rank it walks them in: still a
+   resolve heuristic over each pairing's keys (`_pivot_rank`), not an order
+   the plan states.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
