@@ -3242,6 +3242,8 @@ class Factory:
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
+        # the statement's own concepts, before any side-effect build joins them
+        self._statement_locals = frozenset(self.local_concepts)
         self.local_non_build_concepts: dict[str, Concept] = {}
         # Environment-materialization footprint recording (see EnvBaseline):
         # while set, every `local_concepts` lookup name is added to
@@ -5083,7 +5085,11 @@ class Factory:
         for bk, bv in self.local_concepts.items():
             if bk not in new.concepts:
                 new.concepts[bk] = bv
-                new.canonical_concepts[bv.canonical_address] = bv
+                # a model's spelling of one expression never displaces the
+                # statement's (a WHERE-scoped twin beside `auto x <- max(v)`)
+                held = new.canonical_concepts.get(bv.canonical_address)
+                if held is None or held.address not in self._statement_locals:
+                    new.canonical_concepts[bv.canonical_address] = bv
         new.gen_concept_list_caches()
         return new
 

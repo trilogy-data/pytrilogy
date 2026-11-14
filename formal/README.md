@@ -1897,6 +1897,19 @@ a design decision or a bug.
   (`_PartnerFacts.filtered_nullable`). 6 of the 8 cases in
   `tests/discovery/test_padded_population_gate.py` fail on main (the other 2
   are the `is not null` complement).
+- **The batch-only raises were a model with a twin of the WHERE's aggregate**
+  (0.3.500). The spellings sweep's "Missing source reference" raises that
+  planned alone were read as state leaking between statements. Each one
+  traces to a single output an earlier select defined (`v0`), and reproduces
+  in a fresh executor with that concept declared: `auto xx <- max(max(height)
+  by city, species)` beside `select city where max(height) by city, species
+  is not null` raised on the summary model. The model's inner `max(height) by
+  city, species` displaced the WHERE-scoped twin as the expression's
+  canonical concept, the summary scan output the model's name, and the WHERE
+  re-derived its value from lineage over a table with no `height`. The
+  statement's own concept now keeps the slot. 5 of the 10 cases in
+  `tests/discovery/test_declared_twin_gate.py` fail on main (the 5 on the base
+  model are controls).
 
 ## Limits
 
