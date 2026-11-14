@@ -694,3 +694,43 @@ def test_pair_helper_resolves_canonical_concept_aliases():
     # Even though both sides reference the same ``cls`` concept object, the
     # pair helper compares by canonical address — the equality holds.
     assert _pair_key_sets_equivalent(cls, left, cls, right)
+
+
+def _read_through_equated_left(first: JoinType) -> CTE:
+    cls = _concept("CLASS")
+    other = _concept("OTHER")
+    source = _datasource_cte("source", [cls, other])
+    source.condition = BuildComparison(
+        left=other, right="X", operator=ComparisonOperator.EQ
+    )
+    twin = _grouped_child("twin", source, cls)
+    right = _grouped_child("right", source, cls)
+    base = _datasource_cte("base", [cls])
+    root = _datasource_cte("root", [cls])
+    root.parent_ctes = [base, twin, right]
+    root.joins = [
+        Join(
+            join_type=first,
+            right=twin,
+            pairs=[ConceptPair(left=cls, right=cls, node=base)],
+        ),
+        Join(
+            join_type=JoinType.LEFT_OUTER,
+            right=right,
+            pairs=[ConceptPair(left=cls, right=cls, node=base)],
+        ),
+    ]
+    return root
+
+
+def test_a_left_an_inner_join_equates_witnesses_the_key_set():
+    root = _read_through_equated_left(JoinType.INNER)
+    changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert changed
+    assert root.joins[1].join_type == JoinType.INNER
+
+
+def test_a_left_an_outer_join_pads_is_no_witness():
+    root = _read_through_equated_left(JoinType.RIGHT_OUTER)
+    UpgradeOuterFromKeySetEquivalence().optimize(root, {})
+    assert root.joins[1].join_type == JoinType.LEFT_OUTER
