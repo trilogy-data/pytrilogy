@@ -817,6 +817,47 @@ does not rewrite it; that rewrite is open.
       condition applied under a side a join pads as filtering the branch's
       rows; that is wrong, but changing it alone fixed nothing here.
 
+40. **Lessons from the padded-population round (0.3.500).**
+    - Seeds 30670 and 1117 were not a cover bug. Giving the cover a per-species
+      lookup for `tree_form` changed the plan and none of the rows: the FINAL
+      still LEFT-joined the aggregate that applied the WHERE onto the `?`
+      filter's row stream. Read the join typing (`narrow_join_types`) before
+      the cover when the keys come back unfiltered.
+    - Two facts were wrong together. `collect_applied_conditions` counted a
+      condition applied under a side a join pads (the stream FULL-joins the
+      trees to the per-form values that applied the WHERE), so the stream
+      claimed to be filtered; and `_is_filter_population` then refused the
+      real population because the stream's keys are NULL on its padded rows,
+      on the rule that a partner's NULL-keyed row "passed the WHERE". That
+      rule holds only of a partner that applied the WHERE
+      (`_PartnerFacts.filtered_nullable`). Either change alone fixes nothing;
+      ablate them as a pair and singly.
+
+41. **Lessons from the batch-only raises (0.3.500).**
+    - "Raises only in a batch" was read as state leaking between statements
+      for four rounds. It was not. All 10 batch-only raises on spellings
+      seeds 0-60,000 bisect to ONE earlier statement, and each reproduces in
+      a fresh executor once the one output that statement defined (`v0`, or
+      `species_sum` unaliased) is declared in the model: `auto xx <-
+      max(max(height) by city, species)` beside `select city where
+      max(height) by city, species is not null` raises on the summary model
+      every time. A select defines its outputs in the environment by design;
+      no cache was involved (clearing every build cache changed nothing,
+      deleting the defined concept fixed it).
+    - The bug: the build environment's `canonical_concepts` is last-write-wins
+      over the statement's locals and then the model's side-effect builds, so
+      a model concept spelling the same expression (the inner `max(height)
+      by city, species` of `xx`) displaced the WHERE-scoped twin
+      (`..._wscope`). A scan with no requested name for a node labels it with
+      that winner (`subgraph_concepts`), so the summary scan output the
+      model's name, and the WHERE re-derived its twin from lineage over a
+      table with no `height`. The statement's own concept now keeps the slot
+      (`Factory._env_finish`).
+    - To read a batch-only failure: bisect the prefix to one statement, list
+      what it added to `environment.concepts`, delete each in turn, then
+      declare the culprit in a fresh model. Only call it a leak if a fresh
+      executor with the same concepts plans.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1475,8 +1516,9 @@ a filter its grain does not determine. Open questions:
   - seed 12917 (summary only), seed 18676 (keyless join, on main too);
   - first family seed 2717 with the summary raises "Missing source reference
     to local.height" after about 640 other queries in the same process, and
-    plans alone: state leaks between statements (on main too; run the shapes
-    of `changed.json`-style batches in order to reproduce);
+    plans alone. This was never a state leak: an earlier select defined an
+    output (`v0`) respelling the WHERE's aggregate, and the planner failed
+    on any model holding such a concept (fixed in 0.3.500, lesson 41);
   - 12 raises remain on seeds 20,000-30,000: "Could not resolve connections"
     on `tree_id` selects (8) and keyless joins (3) are most of them;
   - the cost: JOINs 55,193 to 55,296 on the spellings seeds and 16,237 to
@@ -1504,7 +1546,8 @@ a filter its grain does not determine. Open questions:
     carry a looked-up property on a filtered host (a scan beneath it binds
     it), not to choose among unfiltered sources;
   - seeds 12917 (summary only) and 18676 as before; first family 2717 and
-    spellings 7061 raise only in a batch (state leaks between statements);
+    spellings 7061 raise only in a batch (not a leak: a concept an earlier
+    select defined, lesson 41);
   - the cost, over spellings seeds 0-40,000: JOINs 220,528 to 221,483,
     summary reads 12,912 to 12,904 (8 lost, none gained: 6 to the cover's
     condition-group preference, 3 to the count reroute, one shared), raises
@@ -1524,14 +1567,16 @@ a filter its grain does not determine. Open questions:
   select's grain is no spelling of an alias that is not pinned
   (`alias_is_not_the_pinned_read`, `_pinned_apart`). Left:
   - keyless joins on seeds 21266 and 33618 (summary only), not yet read;
-  - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
+  - seeds 30670 and 1117 (lesson 39; fixed in 0.3.500, lesson 40), 12917
+    (summary only), 18676 (still a
     keyless join: nested aggregates by `city, species, tree_form` beside a
     `by *` total in an OR and a HAVING by `tree_form`);
   - the 5 raises left on seeds 40,000-60,000 all plan alone and raise only in
     a batch, with the summary ("Missing source reference to local.height" or
     `tree_id`, on `select city, tree_form where max(height) by city, species <
-    10` and similar): the state leak between statements is now most of what
-    the sweep reaches.
+    10` and similar). These are not a state leak (lesson 41): each reproduces
+    in a fresh executor once the one `vN` an earlier select defined is
+    declared in the model, and 0.3.500 fixes all of them.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 

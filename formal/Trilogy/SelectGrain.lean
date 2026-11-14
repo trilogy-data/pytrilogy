@@ -908,4 +908,29 @@ theorem alias_is_not_the_pinned_read :
     pinned = some 1 ∧ stored.join = none ∧ pinned ≠ stored.join := by
   decide
 
+/-! ## A padded side is not the WHERE's population
+
+`select city, species, tree_form, ..., sum(x ? min(x) by form - count(id) by
+form < 0) where count_distinct(tag) by species != 10 and avg(x) by city, form
+is null`: the `?` filter's row stream is the trees FULL-joined to its per-form
+values, which applied the WHERE. The FINAL read that stream as filtered, since
+a condition was applied somewhere beneath it, and then refused the aggregate
+that did apply the WHERE as the population: the stream's keys are NULL on its
+padded rows, which "passed" only if the stream had. So the aggregate was
+LEFT-joined onto the stream and every species came back. A condition applied
+under a side a join pads filters none of the joined rows; a partner's NULL key
+lets its rows pass only when that partner applied the WHERE. -/
+
+/-- Four species, one kept by the WHERE: the stream pads the kept values with
+every species. Joined onto it preserving, all four come back; joined to the
+side that applied the WHERE, one (`padded_side_is_not_the_population`). -/
+theorem padded_side_is_not_the_population :
+    let species : List Int := [0, 1, 2, 3]
+    let kept := species.filter (· == 2)
+    let stream := kept ++ species.filter fun s => !kept.contains s
+    let preserved := stream
+    let inner := stream.filter kept.contains
+    preserved.length = 4 ∧ inner = [2] := by
+  decide
+
 end Trilogy.SelectGrain
