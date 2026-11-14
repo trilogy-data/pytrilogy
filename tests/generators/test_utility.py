@@ -119,6 +119,51 @@ def test_a_side_waits_for_its_planned_partner():
     ]
 
 
+def test_a_better_pairing_a_join_exposes_is_walked_next():
+    columns = {
+        "ds~a": {"c~p1"},
+        "ds~b": {"c~p1", "c~p2"},
+        "ds~c": {"c~p2"},
+        "ds~d": {"c~p2", "c~q"},
+        "ds~e": {"c~q"},
+    }
+    planned = resolve_join_order_v2(
+        JoinFacts(
+            sides=_sides(columns),
+            authored_join_keys=frozenset({"c~p1"}),
+            pair_keys={
+                frozenset({"ds~a", "ds~b"}): frozenset({"c~p1"}),
+                frozenset({"ds~b", "ds~c"}): frozenset({"c~p2"}),
+                frozenset({"ds~b", "ds~d"}): frozenset({"c~p2"}),
+                frozenset({"ds~d", "ds~e"}): frozenset({"c~q"}),
+            },
+        ),
+    )
+    assert [(j.right, j.keys) for j in planned] == [
+        ("ds~a", {"ds~b": {"c~p1"}}),
+        ("ds~d", {"ds~b": {"c~p2"}}),
+        ("ds~e", {"ds~d": {"c~q"}}),
+        ("ds~c", {"ds~b": {"c~p2"}}),
+    ]
+
+
+def test_a_second_island_seeds_on_nothing_then_walks_its_pairings():
+    columns = {
+        "ds~a": {"c~j"},
+        "ds~b": {"c~j"},
+        "ds~c": {"c~k"},
+        "ds~d": {"c~k"},
+    }
+    planned = resolve_join_order_v2(
+        JoinFacts(sides=_sides(columns), pair_keys=_shared(columns))
+    )
+    assert [(j.right, j.type, j.keys) for j in planned] == [
+        ("ds~a", JoinType.INNER, {"ds~b": {"c~j"}}),
+        ("ds~d", JoinType.INNER, {}),
+        ("ds~c", JoinType.INNER, {"ds~d": {"c~k"}}),
+    ]
+
+
 def test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing():
     joins = resolve_join_order_v2(JoinFacts(sides=_sides(_shared_key())))
     assert [(j.right, j.keys) for j in joins] == [("ds~b", {}), ("ds~c", {})]
