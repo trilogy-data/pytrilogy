@@ -817,6 +817,22 @@ does not rewrite it; that rewrite is open.
       condition applied under a side a join pads as filtering the branch's
       rows; that is wrong, but changing it alone fixed nothing here.
 
+40. **Lessons from the padded-population round (0.3.500).**
+    - Seeds 30670 and 1117 were not a cover bug. Giving the cover a per-species
+      lookup for `tree_form` changed the plan and none of the rows: the FINAL
+      still LEFT-joined the aggregate that applied the WHERE onto the `?`
+      filter's row stream. Read the join typing (`narrow_join_types`) before
+      the cover when the keys come back unfiltered.
+    - Two facts were wrong together. `collect_applied_conditions` counted a
+      condition applied under a side a join pads (the stream FULL-joins the
+      trees to the per-form values that applied the WHERE), so the stream
+      claimed to be filtered; and `_is_filter_population` then refused the
+      real population because the stream's keys are NULL on its padded rows,
+      on the rule that a partner's NULL-keyed row "passed the WHERE". That
+      rule holds only of a partner that applied the WHERE
+      (`_PartnerFacts.filtered_nullable`). Either change alone fixes nothing;
+      ablate them as a pair and singly.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1524,7 +1540,8 @@ a filter its grain does not determine. Open questions:
   select's grain is no spelling of an alias that is not pinned
   (`alias_is_not_the_pinned_read`, `_pinned_apart`). Left:
   - keyless joins on seeds 21266 and 33618 (summary only), not yet read;
-  - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
+  - seeds 30670 and 1117 (lesson 39; fixed in 0.3.500, lesson 40), 12917
+    (summary only), 18676 (still a
     keyless join: nested aggregates by `city, species, tree_form` beside a
     `by *` total in an OR and a HAVING by `tree_form`);
   - the 5 raises left on seeds 40,000-60,000 all plan alone and raise only in

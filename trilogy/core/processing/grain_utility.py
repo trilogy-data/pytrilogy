@@ -50,7 +50,11 @@ from trilogy.core.processing.join_resolution import (
     held_region_spans,
     preserved_sources,
 )
-from trilogy.core.processing.utility import join_left_sources, left_deep_joins
+from trilogy.core.processing.utility import (
+    join_left_sources,
+    left_deep_joins,
+    padded_by,
+)
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -413,13 +417,19 @@ class JoinProofs:
 
 
 def collect_applied_conditions(source: GrainSource) -> list[BoolExpr]:
-    """All filter conditions applied anywhere within a parent branch's tree."""
+    """The filter conditions every row of a parent branch passed: applied
+    anywhere within its tree, but not under a side a join there pads, whose
+    padded rows passed nothing."""
     out: list[BoolExpr] = []
     if isinstance(source, QueryDatasource):
         if source.condition is not None:
             out.append(source.condition)
+        padded: set[str] = set()
+        for join, left in left_deep_joins(source.joins):
+            padded |= padded_by(join, left)
         for parent in source.datasources:
-            out.extend(collect_applied_conditions(parent))
+            if parent.identifier not in padded:
+                out.extend(collect_applied_conditions(parent))
     return out
 
 
@@ -433,6 +443,8 @@ class _PartnerFacts:
     filtered_regions: frozenset[str] = frozenset()
     nullable: frozenset[str] = frozenset()
     identifiers: frozenset[str] = frozenset()
+    # nullable keys of a side that applied the WHERE: its NULL-keyed rows passed
+    filtered_nullable: frozenset[str] = frozenset()
 
 
 def _partner_facts(
@@ -443,6 +455,7 @@ def _partner_facts(
     filtered_regions: set[str] = set()
     nullable: set[str] = set()
     identifiers: set[str] = set()
+    filtered_nullable: set[str] = set()
     for source in sources:
         identifiers.add(source.identifier)
         partial |= {c.address for c in source.partial_concepts}
@@ -451,12 +464,14 @@ def _partner_facts(
         regions |= spans
         if source.identifier in filtered_ids:
             filtered_regions |= spans
+            filtered_nullable |= _nullable_addresses(source)
     return _PartnerFacts(
         frozenset(partial),
         frozenset(regions),
         frozenset(filtered_regions),
         frozenset(nullable),
         frozenset(identifiers),
+        frozenset(filtered_nullable),
     )
 
 
@@ -503,7 +518,7 @@ def _is_filter_population(
     if source is None:
         return True
     if (
-        join_addresses & partner.nullable
+        join_addresses & partner.filtered_nullable
         and not _rejects_padding(source)
         and not _reads_partner(source, partner)
     ):
