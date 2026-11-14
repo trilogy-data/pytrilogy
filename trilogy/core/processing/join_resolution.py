@@ -236,6 +236,8 @@ class SideFacts:
     determined: frozenset[str] = frozenset()
     # covers every `~`-licensed key the node emits, so extension rows ride it
     hosts: bool = False
+    # every column is a one-row value (a `by *` total, a constant)
+    one_row: bool = False
     # spans the side holds a region's rows on
     held_spans: frozenset[str] = frozenset()
     # extent-free spans the side carries every value of
@@ -1059,15 +1061,22 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         walked.append(right)
 
     # Every side the plan pairs joined above; the rest pair with nothing, so they join on nothing and the keyless-join
-    # guard judges them.
+    # guard judges them. A one-row side (a `by *` total) is empty only when its
+    # input is, or a gate on it failed: it cross-joins, never pads.
     for ds in sorted(
         (x for x in datasources if x not in eligible_left),
         key=partial(_keyless_order, facts),
     ):
         if eligible_left:
+            one_row = facts.side(ds).one_row or all(
+                facts.side(x).one_row for x in eligible_left
+            )
             output.append(
                 JoinOrderOutput(
-                    left=min(eligible_left), right=ds, type=JoinType.FULL, keys={}
+                    left=min(eligible_left),
+                    right=ds,
+                    type=JoinType.INNER if one_row else JoinType.FULL,
+                    keys={},
                 )
             )
         eligible_left.add(ds)
@@ -2316,6 +2325,12 @@ def get_node_joins(
                 for a in _fd_closure(environment, datasource.grain.components)
             ),
             hosts=hosts,
+            one_row=bool(columns)
+            and all(
+                concept.granularity == Granularity.SINGLE_ROW
+                for concept in datasource.output_concepts
+                if concept.address not in datasource.hidden_concepts
+            ),
             held_spans=frozenset(held_spans),
             complete_spans=frozenset(
                 canon_node(address)

@@ -194,8 +194,9 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
     ),
     ("siblings", "scalar"): (PINNED_TOTAL, ("year",)),
     ("siblings", "total_only"): (
-        "rule 4: a total alone beside a derived dimension is not rolled",
-        None,
+        "rule 4: a total alone beside a derived dimension is not rolled under "
+        "a WHERE",
+        ("city", "species", "property", "year"),
     ),
     **{
         ("existence", shape): (
