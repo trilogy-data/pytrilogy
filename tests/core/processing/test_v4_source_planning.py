@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
@@ -615,16 +617,39 @@ def test_a_bridge_merge_pairs_on_the_search_s_joins():
     ) == {"local.customer_id", "local.item_id"}
 
 
-def test_a_bridge_parent_the_search_did_not_choose_leaves_the_merge_unplanned():
+def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
     _, benv = _build_grained_bridge()
     plan = BridgePlan(
         concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"})
     )
     chosen, connector, filled = object(), object(), object()
-    assert _bridge_plan(plan, [chosen], {id(chosen): "ds~a"}) is not None
-    assert _bridge_plan(plan, [chosen, connector], {id(chosen): "ds~a"}) is None
-    sides = {id(chosen): "ds~a", id(filled): "ds~b"}
-    assert _bridge_plan(plan, [chosen, filled], sides) is None
+    sides = {id(chosen): "ds~a", id(connector): "connector~r.k", id(filled): "ds~b"}
+    unsearched = {
+        "connector~r.k": frozenset({"r.k", "local.k"}),
+        "ds~b": frozenset({"local.j"}),
+    }
+    planned = _bridge_plan(plan, [chosen, connector, filled], sides, unsearched)
+    assert planned.grain_paired == {"connector~r.k"}
+    assert planned.between(frozenset({"ds~a"}), frozenset({"connector~r.k"})) == {
+        "r.k",
+        "local.k",
+    }
+    assert planned.between(frozenset({"ds~a"}), frozenset({"ds~b"})) == {"local.j"}
+    assert planned.between(frozenset({"connector~r.k"}), frozenset({"ds~b"})) == {
+        "r.k",
+        "local.k",
+        "local.j",
+    }
+
+
+def test_a_bridge_side_nothing_planned_is_a_planner_bug():
+    _, benv = _build_grained_bridge()
+    plan = BridgePlan(
+        concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"})
+    )
+    chosen, stray = object(), object()
+    with pytest.raises(ValueError, match="planner bug"):
+        _bridge_plan(plan, [chosen, stray], {id(chosen): "ds~a"})
 
 
 def test_a_bridge_through_a_chosen_connector_pairs_on_its_grain():

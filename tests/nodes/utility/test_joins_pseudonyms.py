@@ -126,6 +126,16 @@ def test_delta_of_a_baseline_grown_since_its_classes_computes_its_own():
 # --- get_node_joins: pseudonym equivalence ---------------------------------
 
 
+def _planned(
+    build: BuildEnvironment, left: str, right: str, key: str
+) -> dict[frozenset[str], frozenset[str]]:
+    return {
+        frozenset(
+            {build.datasources[left].identifier, build.datasources[right].identifier}
+        ): frozenset({key})
+    }
+
+
 def test_get_node_joins_merge_joins_on_canonical_key():
     """Two datasources sharing only a pseudonym key must join on that key, not
     collapse to a 1=1 cross product (q23 regression)."""
@@ -133,6 +143,7 @@ def test_get_node_joins_merge_joins_on_canonical_key():
     joins = get_node_joins(
         [build.datasources["p1.people"], build.datasources["p2.people"]],
         environment=build,
+        planned_pairs=_planned(build, "p1.people", "p2.people", "p2.uname"),
     )
     assert len(joins) == 1
     join = joins[0]
@@ -227,7 +238,9 @@ merge a_id.a_name into b_id.b_name;
 """)
     build = env.materialize_for_select()
     joins = get_node_joins(
-        [build.datasources["a_src"], build.datasources["b_src"]], environment=build
+        [build.datasources["a_src"], build.datasources["b_src"]],
+        environment=build,
+        planned_pairs=_planned(build, "a_src", "b_src", "local.b_name"),
     )
     assert len(joins) == 1
     join = joins[0]
@@ -257,7 +270,9 @@ merge a_id.a_name into b_id.b_name;
 """)
     build = env.materialize_for_select()
     joins = get_node_joins(
-        [build.datasources["a_src"], build.datasources["b_src"]], environment=build
+        [build.datasources["a_src"], build.datasources["b_src"]],
+        environment=build,
+        planned_pairs=_planned(build, "a_src", "b_src", "local.b_name"),
     )
     assert len(joins) == 1
     join = joins[0]

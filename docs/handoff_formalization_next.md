@@ -709,7 +709,60 @@ does not rewrite it; that rewrite is open.
       fail a shape that plans alone (first family 2717): when a shape fails
       only in a batch, bisect the prefix before reading the planner.
 
-36. **Lessons from the FINAL-lookup round (0.3.497).**
+36. **Lessons from the class-beside-lookups round (#972).**
+    - #970 fixed the shape its repro had (a leaf scan beside one-row
+      constants) and narrowed every rule to it; the reported model reached
+      species through partial lookups, so the trees were a merge, not a leaf
+      scan, and the class was derived from the species itself. Before 0.3.492
+      the plan was right by accident: the class table sat in the root bucket,
+      so the merge's grain held `fit_class` and the grain-claim guard grouped.
+      A fix narrowed to a repro needs a generator over the ingredients the
+      reporter lists, not the repro alone
+      (`test_partial_lookup_fallback_oracle_laws.py`).
+    - The projection adapter read a parent's inputs as what it could project:
+      an attribute only a sibling supplies made the projection unrenderable,
+      and a value the parent computes (the class) was never projected at all.
+    - A BASIC step offered FINAL every selected column it could reach, so a
+      class by species carried `tree_id` and held one row per tree.
+    - A nullable side is not the fact by being nullable: a lookup the other
+      side's rows determine names no row with its NULL key
+      (`SideFacts.determined`). Preserving it kept a species whose trees the
+      WHERE dropped.
+    - Only a written `by *` is a constant of the query; a bare total is the
+      select's aggregate over its rows. Peeling a written total's table under
+      a WHERE is exact when no atom reads that table and every selected value
+      of the total also reads the kept rows; otherwise the gate needs the
+      cross join (`_peel_exact_under_where`).
+    - Generated data must hold the model's declarations: a `~genus` fit naming
+      a genus the complete (`?genus`) enrichment lacks is not a planner bug.
+
+37. **Lessons from the keyed-class round (#977).**
+    - #975 again fixed a model that was not the reporter's: theirs was public
+      (`greenmtnboy/tree_reporting`), and its `city` and fallback class are
+      keys, built through an update statement's HAVING over hidden columns.
+      Plan the reporter's own model before writing a repro; reduce from it
+      (drop target columns while a keyless per-row CTE survives) instead of
+      building up from the ingredients listed.
+    - A join plan's identity is a claim. A row step claiming a coarser grain
+      still holds one row per source row, so a side the plan pairs as a lookup
+      is held at its keys before the merge (`_hold_lookup_sides`); the plan
+      alone does not make it one.
+    - The FINAL carried planned keys by widening only. A key no widening
+      reaches (a derived `cell` the per-tree step determines) was dropped
+      silently and the sides paired on what else they shared (`city`); it is
+      looked up from its producer, as a group merge already did
+      (`_project_planned_keys`).
+    - What a coarser step offers FINAL covers WHERE arguments too: a per-tree
+      flag carried beside a value by cell put a row per tree under each cell.
+    - A guard added where a list is re-wrapped (`zip` over parents a contract
+      may split) silently dropped a parent: apply it before the list changes.
+    - A FINAL survivor of a passthrough fold holds its absorbed sibling's
+      rows but kept only its own side of the plan: the pairing the sibling
+      was planned on (the trees with a flag by city, species) named no side
+      and resolve joined keyless, or refused. The survivor pairs, and is
+      widened, as every group it holds.
+
+38. **Lessons from the FINAL-lookup round (0.3.497).**
     - A fix that changes how one join is typed can remove the domain another
       relied on. Capping every WHERE-argument producer's join to non-preserving
       fixed seed 31824 and broke three shapes main was right on, where the
