@@ -220,7 +220,7 @@ def test_a_solid_value_null_pairing_walks_before_a_held_span():
         )
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~b", {"ds~a": {"c~v"}}),
+        ("ds~a", {"ds~b": {"c~v"}}),
         ("ds~r", {"ds~b": {"c~v"}, "ds~a": {"c~s"}}),
     ]
 

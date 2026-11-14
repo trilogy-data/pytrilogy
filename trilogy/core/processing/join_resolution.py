@@ -836,8 +836,6 @@ def _score_join_candidate(
     # LEFT off it instead of meeting FULL before it arrives
     if side.hosts and not is_partial:
         base += 3
-    if root in side.nullables:
-        base += 1
     return (base, len(side.grain), x)
 
 
