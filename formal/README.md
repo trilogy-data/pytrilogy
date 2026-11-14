@@ -1863,7 +1863,11 @@ a design decision or a bug.
     cover search found that join, but a joined source plan refused the request
     for not binding the constant, which no scan does. A constant is a literal
     in any projection: the joined plan now carries it inline
-    (`SelectGrain.constant_key_pairs_every_row`).
+    (`SelectGrain.constant_key_pairs_every_row`), unless the request's
+    conditions read a row column. There the joins may pad the column, and in
+    `tests/engine/test_derived_key_domain.py` a stored `status` filtered `is
+    null` under the customers' LEFT JOIN kept a customer with no order whose
+    derived status is `'in-transit'`.
   - `select tree_id, avg(height) by species, min(height ? not (tag = 'x')) where
     max(height) by city, tree_form != 6 having count_distinct(tag) by city >=
     2` raised "keyless join". The FINAL plan elected two scans of the trees as

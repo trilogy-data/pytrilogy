@@ -787,6 +787,15 @@ does not rewrite it; that rewrite is open.
       request naming a constant (`all_rows`, the key of a `by *` total)
       because the cover search never binds one, while the one-scan path
       rendered it inline.
+    - A refusal can be load-bearing. Carrying the constant on every joined
+      plan made `test_derived_key_domain.py` return a customer with no order
+      under `status is null`, but only after another statement had run on
+      the same executor: the joined plan filters the stored `status` beside a
+      LEFT JOIN that pads it, while the model reads `status` derived above
+      the join. The carry is limited to conditions over aggregates; seeds
+      42921 and 59635 (a row atom beside the total) still raise. Run whole
+      test files, not single cases, before calling a planner change clean:
+      the cases share executors.
     - Column overlap is not a pairing. `_join_elected_bridges` skipped a
       bridge once another exposed the same columns, but resolve pairs on the
       plan, which named only the skipped bridge. Decide what to join from the
@@ -1508,6 +1517,9 @@ a filter its grain does not determine. Open questions:
   bridge that is some contributor's only planned partner is joined even when
   another bridge exposes the same column (`keyless_pairing_fans_out`,
   `_sole_partners`; "keyless join"). Left:
+  - seeds 42921 and 59635: the total beside a row atom (`city = 'B' and
+    ...`) still raises, since the constant is carried only under conditions
+    over aggregates. The fix is the padded stored-column filter itself;
   - keyless joins on seeds 21266 and 33618 (summary only), not yet read;
   - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
     keyless join: nested aggregates by `city, species, tree_form` beside a
