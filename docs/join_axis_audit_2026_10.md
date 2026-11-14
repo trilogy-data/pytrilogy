@@ -2752,6 +2752,62 @@ Two probes on the rank itself, over the same suite:
 The census reruns the whole suite with the extraction in place: the same 25
 credential-gated failures as `main`.
 
+**The walk keeps the left it walked first (part 73).** Part 72 split the
+scorer's two uses. Before moving either onto the plan, the census asked
+whether any built-side term the scorer reads has a plan or contract stand-in
+that orders the same merges. None does. Over all of `tests/` (14,321 merges
+with three or more sides), the merges each stand-in moves in the pick of the
+next side:
+
+| stand-in | for | moves | the term held constant moves |
+|---|---|---|---|
+| `bool(held_spans)` (region marks) | hosts | 1,152 | 1,170 |
+| the key in its `held_spans` | hosts | 1,154 | 1,170 |
+| keys the plan pairs the side on | grain size | 2,824 | 1,964 |
+| the grain's FD closure | grain size | 3,715 | 1,964 |
+| value-nullable on the key | nullable on the key | 1,306 | 1,557 |
+
+Read for every reader, typing included, the region marks move 1,989 merges
+in place of `hosts`, and dropping `hosts` moves 2,004. So hosting is not the
+region contract restated: the contract is a different fact, and a stand-in
+moves about as much as dropping the term.
+
+The second use is different in kind. Which of two lefts on the same keys a
+right keeps is not a choice of what to join next; the walk has already
+joined both. So the scorer no longer re-sorts the joined sides:
+
+- `_lefts_in_order` is gone. `_join_onto` types a right against the sides
+  already joined in the order the walk joined them, and of two lefts on the
+  same keys it keeps the one walked first.
+- The scoped-LEFT anchor still seeds the tree. Walked first, it is the left
+  each co-anchored optional source dedups against.
+- `test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept` pins it.
+  It fails on `main`, where the side nullable on the key outscored the side
+  walked first.
+
+The scorer now answers one question, the next side. The left order is the
+walk's, and the walk is over the plan's pairings.
+
+This one moves SQL. In the suite capture against `main` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`), both trees have the same 25 credential-gated failures,
+and 385 tests move: 319 in the `*_laws.py` suites, 24 in
+`test_padded_null_pairing` and the rest one or two per file. Of 411 moved statements, none changes its CTE
+or join count:
+
+- 370 keep their length: an ON reads the key off the side walked first
+  instead of off another left on the same key.
+- 25 are shorter: the kept left already projects what the old one had to
+  carry.
+- 16 are longer. 3 are the listed noise (`test_cli_consistency`, and a
+  Rust-binary test that ran on the second tree only because cargo had been
+  built by then). The other 13 are 7 spellings in
+  `test_oracle_spellings_laws` (6 compiled twice, base and summary), longer
+  by 1 to 95 characters: where the left walked first is a wrap that did not
+  carry the key, it now projects it (`tree_form`, spelling 10995).
+
+Every moved test passes on both trees, and the law suites compare their
+rows against a raw-row oracle, so the moved plans return the same rows.
+
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2782,7 +2838,9 @@ not built yet:
    the solid term reads a fact the plan does not state: value-null
    provenance (part 71), and of that, nearly only whether a region-free
    holder can NULL the key. Ties below the rank (`_score_join_candidate`)
-   read the built sides, the side's name deciding the most (part 72).
+   read the built sides, the side's name deciding the most (part 72), and no
+   plan or contract fact stands in for any of them. They pick only the next
+   side: which of two lefts is kept follows the walk (part 73).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
