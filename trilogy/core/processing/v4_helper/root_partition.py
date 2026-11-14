@@ -27,6 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BoolExpr,
@@ -861,17 +862,24 @@ def _peel_skips_row_filter(
     key: str,
     d0_grouping_grains: list[frozenset[str]],
     pre_aggregate_filter_args: frozenset[str],
+    aggregate_grains: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> bool:
     """A peel keyed on no select-phase grouping key joins back only through a
-    condition-phase gate on that key, whose groups never saw a row filter the
-    key does not determine: `tree_form` off the enrichment beside `max(h) by
-    species > 0 and height > 2` keeps a species whose only tree is 2 tall."""
+    condition-phase gate on that key, whose groups never saw a filter the key
+    does not determine: `tree_form` off the enrichment beside `max(h) by
+    species > 0 and height > 2` keeps a species whose only tree is 2 tall, and
+    beside `sum(h) by city, species <= 2` one with no such pair."""
     if any(key in grain for grain in d0_grouping_grains):
         return False
+    finer = {
+        component
+        for grain in aggregate_grains.values()
+        for component in grain - {ALL_ROWS_ADDRESS}
+    }
     return any(
         not build_fd_determines(environment, {key}, arg, include_empty_grain=False)
-        for arg in pre_aggregate_filter_args
+        for arg in pre_aggregate_filter_args | finer
     )
 
 
@@ -1113,7 +1121,11 @@ def _split_root_dimension_clusters(
                 continue
             if finest is not None:
                 if _peel_skips_row_filter(
-                    finest, d0_grouping_grains, pre_aggregate_filter_args, environment
+                    finest,
+                    d0_grouping_grains,
+                    pre_aggregate_filter_args,
+                    aggregate_grains,
+                    environment,
                 ):
                     continue
                 assignment[addr] = frozenset({finest})
