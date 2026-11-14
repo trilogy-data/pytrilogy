@@ -7,10 +7,9 @@ decide a join walk.
 Every `resolve_join_order_v2` over three or more sides is replayed once per
 variant, each with one rank term held constant (`solid` also drops the solid
 pivots, `solid_nullable` reads any nullable key for a value-nullable one), or
-one scorer term held constant in one of its two uses: `right:` the pick of the
-next side, `left:` the order of the joined sides it is typed against
-(`_lefts_in_order`). A variant whose join order differs is counted as deciding
-that merge. `score_replica` counts merges the scorer's replica orders
+one scorer term held constant, or read off a stand-in fact (`STAND_INS`; the
+`field:` variants replace a side fact for every reader, typing included). A
+variant whose join order differs is counted as deciding that merge. `score_replica` counts merges the scorer's replica orders
 differently from the scorer itself; it must stay 0.
 Writes `<RANK_OUT>.<worker>.json`: {counts, hits: [{variant, nodeid}]}.
 """
@@ -20,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Iterator
-from functools import partial
 from typing import Any
 
 import pytest
@@ -31,7 +29,6 @@ _resolve = jr.resolve_join_order_v2
 _rank = jr._pivot_rank
 _solid = jr._solid_value_null_pivots
 _score = jr._score_join_candidate
-_lefts = jr._lefts_in_order
 _counts: dict[str, int] = {}
 _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
@@ -102,11 +99,43 @@ def _solid_nullable(pivot_map, facts):
     return out
 
 
-def _scorer(off: frozenset[str]) -> Callable[..., tuple[int, int, str]]:
-    """`_score_join_candidate` with the terms in `off` held constant."""
+def _paired(facts: jr.JoinFacts, x: str) -> int:
+    return len(
+        frozenset().union(*(k for pair, k in facts.pair_keys.items() if x in pair))
+    )
+
+
+# stand-in name -> (term it replaces, the side fact read in its place)
+STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str, str], Any]]] = {
+    "hosts=held_any": ("hosts", lambda f, x, r: bool(f.side(x).held_spans)),
+    "hosts=held_root": ("hosts", lambda f, x, r: r in f.side(x).held_spans),
+    "grain=paired": ("grain", lambda f, x, r: _paired(f, x)),
+    "grain=determined": ("grain", lambda f, x, r: len(f.side(x).determined)),
+    "nullable=value": ("nullable", lambda f, x, r: r in f.side(x).value_nullables),
+}
+
+
+def _scorer(
+    off: frozenset[str], stand_in: str | None = None
+) -> Callable[..., tuple[int, int, str]]:
+    """`_score_join_candidate` with the terms in `off` held constant, and the
+    term `stand_in` replaces reading its fact instead."""
+    term, read = STAND_INS[stand_in] if stand_in else ("", None)
 
     def score(x, *, root, facts, multi_partial, anchor_sources):
         side = facts.side(x)
+        if read is not None:
+            side = jr.replace(
+                side,
+                **{
+                    "hosts": {"hosts": bool(read(facts, x, root))},
+                    "nullable": {
+                        "nullables": side.nullables - {root}
+                        | ({root} if read(facts, x, root) else set())
+                    },
+                    "grain": {"grain": frozenset(range(read(facts, x, root)))},
+                }[term],
+            )
         base = 1
         if x in anchor_sources and "anchor" not in off:
             base += 10
@@ -125,22 +154,27 @@ def _scorer(off: frozenset[str]) -> Callable[..., tuple[int, int, str]]:
     return score
 
 
-def _replay_score(facts: jr.JoinFacts, off: frozenset[str], use: str) -> list:
-    variant = _scorer(off)
-
-    def lefts(joined, score):
-        return _lefts(
-            joined, partial(variant if use == "left" else _score, **score.keywords)
-        )
-
-    if use == "right":
-        jr._score_join_candidate = variant
-    jr._lefts_in_order = lefts
+def _replay_score(
+    facts: jr.JoinFacts, off: frozenset[str], stand_in: str | None = None
+) -> list:
+    jr._score_join_candidate = _scorer(off, stand_in)
     try:
         return _signature(_resolve(facts))
     finally:
         jr._score_join_candidate = _score
-        jr._lefts_in_order = _lefts
+
+
+# whole-field stand-ins: every reader of the field reads the stand-in
+FIELD_STAND_INS: dict[str, Callable[[jr.SideFacts], dict[str, Any]]] = {
+    "field:hosts=held_any": lambda s: {"hosts": bool(s.held_spans)},
+    "field:hosts=off": lambda s: {"hosts": False},
+}
+
+
+def _replay_field(facts: jr.JoinFacts, name: str) -> list:
+    read = FIELD_STAND_INS[name]
+    sides = {node: jr.replace(s, **read(s)) for node, s in facts.sides.items()}
+    return _signature(_resolve(jr.replace(facts, sides=sides)))
 
 
 def _hit(name: str) -> None:
@@ -163,12 +197,17 @@ def _census(facts: jr.JoinFacts) -> list[jr.JoinOrderOutput]:
             _hit("solid_nullable")
     finally:
         jr._solid_value_null_pivots = _solid
-    if _replay_score(facts, frozenset(), "left") != base:
+    for name in FIELD_STAND_INS:
+        if _replay_field(facts, name) != base:
+            _hit(name)
+    if _replay_score(facts, frozenset()) != base:
         _hit("score_replica")
-    for use in ("right", "left"):
-        for term in SCORE_TERMS:
-            if _replay_score(facts, frozenset({term}), use) != base:
-                _hit(f"{use}:{term}")
+    for term in SCORE_TERMS:
+        if _replay_score(facts, frozenset({term})) != base:
+            _hit(term)
+    for stand_in in STAND_INS:
+        if _replay_score(facts, frozenset(), stand_in) != base:
+            _hit(stand_in)
     return out
 
 

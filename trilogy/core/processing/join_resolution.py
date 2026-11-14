@@ -821,9 +821,9 @@ def _score_join_candidate(
 ) -> tuple[int, int, str]:
     side = facts.side(x)
     base = 1
-    # A query-scoped LEFT anchor must seed the join base AND be processed first in
-    # the per-right dedup loop so each co-anchored optional source dedups against
-    # the anchor (LEFT_OUTER) instead of against the other optional source (FULL).
+    # A query-scoped LEFT anchor must seed the join base: a right is typed
+    # against the lefts in walk order, so each co-anchored optional source
+    # dedups against the anchor (LEFT_OUTER), not the other optional (FULL).
     # The boost dominates the multi_partial bump so the anchor always outranks.
     if x in anchor_sources:
         base += 10
@@ -935,24 +935,14 @@ def _ranked_edges(
     )
 
 
-def _lefts_in_order(
-    joined: Collection[str], score: Callable[[str], tuple[int, int, str]]
-) -> list[str]:
-    """The joined sides a right is typed against, best-scored last: the
-    scorer that picks the right also decides which of two lefts on the same
-    keys is kept and which is redundant."""
-    return sorted(joined, key=score)
-
-
-def _join_onto(
-    right: str, base: list[str], facts: JoinFacts, eligible_left: set[str]
-) -> JoinOrderOutput:
-    """`right` joined onto every side in `base` (best-scored last) the plan
-    pairs it with, on what the plan pairs them on."""
+def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutput:
+    """`right` joined onto every side already walked that the plan pairs it
+    with, on what the plan pairs them on. Of two lefts on the same keys, the
+    one walked first is kept and the other is redundant."""
     joinkeys: dict[str, set[str]] = {}
     join_types: set[JoinType] = set()
     deduped: list[tuple[str, set[str]]] = []
-    for left in reversed(base):
+    for left in walked:
         keys = get_connection_keys(facts.pair_keys, left, right)
         if not keys:
             continue
@@ -968,7 +958,7 @@ def _join_onto(
         ):
             deduped.append((left, keys))
             continue
-        join_types.add(get_join_type(left, right, keys, facts, eligible_left))
+        join_types.add(get_join_type(left, right, keys, facts, walked))
         joinkeys[left] = keys
     return JoinOrderOutput(
         right=right,
@@ -1019,6 +1009,7 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     output: list[JoinOrderOutput] = []
     eligible_left: set[str] = set()
     opened: dict[_Pivot, bool] = {}
+    walked: list[str] = []
 
     while True:
         touching = [
@@ -1059,19 +1050,13 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
             key=score_key,
         )
         if touching:
-            output.append(
-                _join_onto(
-                    right,
-                    _lefts_in_order(eligible_left, score_key),
-                    facts,
-                    eligible_left,
-                )
-            )
+            output.append(_join_onto(right, walked, facts))
         elif eligible_left:
             # a second island: its seed joins on nothing and the keyless-join
             # guard judges it
             output.append(JoinOrderOutput(right=right, type=JoinType.INNER, keys={}))
         eligible_left.add(right)
+        walked.append(right)
 
     # Every side the plan pairs joined above; the rest pair with nothing, so they join on nothing and the keyless-join
     # guard judges them.

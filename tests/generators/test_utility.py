@@ -147,6 +147,33 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
     ]
 
 
+def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
+    planned = resolve_join_order_v2(
+        JoinFacts(
+            sides={
+                "ds~a": SideFacts(
+                    columns=frozenset({"c~k", "c~p"}),
+                    grain=frozenset({"c~g1", "c~g2"}),
+                ),
+                "ds~b": SideFacts(columns=frozenset({"c~k"})),
+                "ds~c": SideFacts(
+                    columns=frozenset({"c~k", "c~p"}), nullables=frozenset({"c~k"})
+                ),
+            },
+            authored_join_keys=frozenset({"c~p"}),
+            pair_keys={
+                frozenset({"ds~a", "ds~c"}): frozenset({"c~k", "c~p"}),
+                frozenset({"ds~a", "ds~b"}): frozenset({"c~k"}),
+                frozenset({"ds~b", "ds~c"}): frozenset({"c~k"}),
+            },
+        )
+    )
+    assert [(j.right, j.redundant) for j in planned] == [
+        ("ds~c", {}),
+        ("ds~b", {"ds~c": {"c~k"}}),
+    ]
+
+
 def test_a_solid_value_null_pairing_walks_before_a_held_span():
     planned = resolve_join_order_v2(
         JoinFacts(
