@@ -161,6 +161,7 @@ from .group_graph import (
 from .history import V4History
 from .join_plan import (
     JoinPlan,
+    PairingKind,
     carries,
     carryable,
     elect_bridges,
@@ -5231,6 +5232,25 @@ def _join_elected_bridges(
     return parents
 
 
+def _sole_partners(plan: JoinPlan, contributors: Sequence[str]) -> frozenset[str]:
+    """The sides some contributor pairs with alone under `plan`: joined
+    whatever the islands, since another side exposing the same column is no
+    pairing the plan states (a species value beside two scans of the trees,
+    planned on `species` with only one of them)."""
+    sole: set[str] = set()
+    for gid in contributors:
+        partners = {
+            p.right if p.left == gid else p.left
+            for p in plan.pairings
+            if gid in (p.left, p.right)
+            and p.left != p.right
+            and p.kind != PairingKind.SCALAR
+        }
+        if len(partners) == 1:
+            sole |= partners
+    return frozenset(sole)
+
+
 def _bridge_candidates(
     group_graph: nx.DiGraph,
     planned: Sequence[str],
@@ -6712,7 +6732,10 @@ def _assemble_final_node(
         parents,
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
         environment,
-        frozenset(id(_planned_side(built, gid)) for gid in bridged.keying),
+        frozenset(
+            id(_planned_side(built, gid))
+            for gid in bridged.keying | _sole_partners(plan, contributing)
+        ),
     )
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)

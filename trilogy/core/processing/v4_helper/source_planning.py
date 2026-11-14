@@ -100,7 +100,7 @@ from trilogy.core.processing.v4_helper.network_model import (
     union,
 )
 from trilogy.core.processing.v4_helper.network_search import search_sources
-from trilogy.core.processing.v4_helper.projection import inline_scalar
+from trilogy.core.processing.v4_helper.projection import inline_scalar, widen_projection
 from trilogy.utility import unique
 
 
@@ -705,7 +705,10 @@ def _network_source(
     # emitter can compute this inline" is a claim about lineage, and it does not
     # survive a parent that is itself only reachable through a rowset body.
     bridged_addresses = {concept.address for concept in bridge_concepts}
-    if not {c.address for c in _requested_concepts(request)} <= bridged_addresses:
+    if (
+        not {c.address for c in _requested_concepts(request) if not _is_constant(c)}
+        <= bridged_addresses
+    ):
         return NetworkDecision(bridge=None)
 
     # Keep concept nodes by ADDRESS, not by `concept_to_node`: a graph concept node
@@ -2568,7 +2571,15 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
+    if merged is not None:
+        # a constant is a literal, valid in any projection: the search never
+        # binds one, so the merge carries it inline
+        widen_projection(merged, [c for c in request.outputs if _is_constant(c)])
     return merged
+
+
+def _is_constant(concept: BuildConcept) -> bool:
+    return concept.derivation == Derivation.CONSTANT
 
 
 def _bridge_plan(

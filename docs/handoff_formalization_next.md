@@ -73,7 +73,7 @@ summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
 0.3.495: selects checked against Python over the raw rows, not against
 another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
-family from 127 wrong rows to 5; 0.3.495 to 0.3.497 sweep seeds 10,000-40,000;
+family from 127 wrong rows to 5; 0.3.495 to 0.3.498 sweep seeds 10,000-60,000;
 area 1).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
@@ -777,6 +777,33 @@ does not rewrite it; that rewrite is open.
       reads over every such group, 7 once limited to groups producing an
       argument of the FINAL's absent-holding atom.
 
+39. **Lessons from the constant-carry round (0.3.498).**
+    - A sweep with no wrong rows still has a round in it. Seeds 40,000-60,000
+      returned none on main; their 51 raises were two bugs, both of which
+      threw away a correct plan at the last step. Group raises by message and
+      reduce the largest group first.
+    - A guard that compares a request's names with a plan's columns has to
+      know which names no column carries. The joined source plan refused any
+      request naming a constant (`all_rows`, the key of a `by *` total)
+      because the cover search never binds one, while the one-scan path
+      rendered it inline.
+    - Column overlap is not a pairing. `_join_elected_bridges` skipped a
+      bridge once another exposed the same columns, but resolve pairs on the
+      plan, which named only the skipped bridge. Decide what to join from the
+      plan the join is resolved against, not from what the nodes expose.
+    - Seeds 30670 and 1117 are not fixed by giving `tree_form` to the
+      filtered `(city, species)` host in the cover alone. That fixed the
+      reduced repro, but on the full seed the FINAL still elected the `?`
+      filter's unfiltered row stream as a bridge (from stage-2 facts, where
+      the host has no `tree_form`), and typed it as the preserved side. The
+      WHERE there holds on a padded row (`count_distinct(...) != 10` reads 0
+      past the host), so the host is rightly not the WHERE's population, and
+      seed 1117 then raised. The fix has to make the host carry the property
+      in stage 2 (grouping by `species, tree_form` is the same rows), so no
+      bridge is elected. Separately, `collect_applied_conditions` counts a
+      condition applied under a side a join pads as filtering the branch's
+      rows; that is wrong, but changing it alone fixed nothing here.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1471,6 +1498,22 @@ a filter its grain does not determine. Open questions:
     94 to 94 (seeds 18300 and 36581 swap, each raising only in a batch); the
     first family's seeds 0-4,000: JOINs 16,282 to 16,327, summary reads 1,742
     to 1,741 (seed 2385).
+- Done in 0.3.498, from seeds 40,000-60,000 of the spellings family (on
+  main: no wrong rows and 51 raising of 40,000 queries; after: 5 raising,
+  nothing new wrong): a joined source plan carries a requested constant
+  inline (`SelectGrain.constant_key_pairs_every_row`; a `by *` total beside a
+  gate keyed on `tree_form` raised "Could not resolve connections"), and a
+  bridge that is some contributor's only planned partner is joined even when
+  another bridge exposes the same column (`keyless_pairing_fans_out`,
+  `_sole_partners`; "keyless join"). Left:
+  - seeds 30670 and 1117 (lesson 39), 12917 (summary only), 18676 (still a
+    keyless join: nested aggregates by `city, species, tree_form` beside a
+    `by *` total in an OR and a HAVING by `tree_form`);
+  - the 5 raises left on seeds 40,000-60,000 all plan alone and raise only in
+    a batch, with the summary ("Missing source reference to local.height" or
+    `tree_id`, on `select city, tree_form where max(height) by city, species <
+    10` and similar): the state leak between statements is now most of what
+    the sweep reaches.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
