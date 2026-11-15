@@ -620,7 +620,9 @@ enable_python_datasources = true
 
 **postgres / mysql / sql_server** — `host`, `port`, `username`, `password`,
 `database`. **snowflake** — `account`, `username`, `password`, `database`,
-`schema`. **presto / trino** — `host`, `port`, `username`, `password`,
+`schema`. **databricks** — `host`, `http_path`, `access_token`, `catalog`,
+`schema` (unset connection fields read `DATABRICKS_HOST`,
+`DATABRICKS_HTTP_PATH`, `DATABRICKS_TOKEN`). **presto / trino** — `host`, `port`, `username`, `password`,
 `catalog`, `schema`. **sqlite** — `path`. **clickhouse** — `mode`
 (`chdb` embedded or `server`), plus `host`/`port`/`username`/`password`/
 `database`/`secure` in server mode, or `chdb_path` in chdb mode.
@@ -673,6 +675,7 @@ and key.
 - `postgres` / `postgresql` - PostgreSQL
 - `bigquery` - Google BigQuery
 - `snowflake` - Snowflake
+- `databricks` - Databricks SQL warehouses
 - `redshift` - Amazon Redshift
 - `trino` - Trino/Presto
 - `sql_server` - Microsoft SQL Server

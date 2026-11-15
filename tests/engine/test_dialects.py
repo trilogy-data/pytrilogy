@@ -12,7 +12,12 @@ from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 
 
 def test_error_not_provided():
-    for val in [Dialects.PRESTO, Dialects.TRINO, Dialects.SNOWFLAKE]:
+    for val in [
+        Dialects.PRESTO,
+        Dialects.TRINO,
+        Dialects.SNOWFLAKE,
+        Dialects.DATABRICKS,
+    ]:
         with raises(ValueError, match="Config must be provided"):
             val.default_engine()
 
@@ -52,6 +57,7 @@ GROUPING_DIALECTS = [
     Dialects.TRINO,
     Dialects.CLICKHOUSE,
     Dialects.SQL_SERVER,
+    Dialects.DATABRICKS,
 ]
 
 _SCHEMA = """
@@ -111,6 +117,7 @@ QUALIFY_DIALECTS = [
     Dialects.PRESTO,
     Dialects.TRINO,
     Dialects.CLICKHOUSE,
+    Dialects.DATABRICKS,
 ]
 
 NO_QUALIFY_DIALECTS = [Dialects.POSTGRES, Dialects.SQLITE, Dialects.SQL_SERVER]
