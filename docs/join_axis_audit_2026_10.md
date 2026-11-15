@@ -3256,6 +3256,20 @@ dropped that group first.
   as `(NULL, customer)` rows. The summed query drops them, on `main` and
   here alike.
 
+Suite capture against `main` with parts 79-82 (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): the same 25 credential-gated failures, nothing else.
+231 tests move, adding up to INNER -284, LEFT +99, RIGHT +182, FULL +1,
+null-safe pairs -31. Against parts 79-80 alone, parts 81-82 move 123:
+- the INNERs only the unsound proof forced become RIGHT or LEFT OUTER
+  (152 in `test_relation_rollup_laws`, 19 in the dimension-chain oracle,
+  4 in `test_dashboard_queries`, a few in subset-join pins);
+- null-safe pairs leave joins whose padding passed different filters
+  (`test_rowset_declared_join_pairing`, `test_gcat`,
+  `test_padded_population_gate`);
+- one `test_rule_soundness_laws` case gains an INNER and a FULL.
+
+Every row-checking law in those files passes.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
