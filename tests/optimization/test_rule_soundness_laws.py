@@ -112,7 +112,7 @@ RULES = [
 FIRES = {
     DropIdentityGroup: (
         SPLIT,
-        "where (amount > 3) or (name is null) select rqty, note, order_id;",
+        "where rqty in (1, 10) select order_id, note, name;",
     ),
     FoldExistenceIntoAggregate: (
         SPLIT,
@@ -128,7 +128,7 @@ FIRES = {
     ),
     UpgradeOuterFromKeySetEquivalence: (
         SPLIT,
-        "where region is null select reason, rqty, note;",
+        "where returned is null select reason, name;",
     ),
 }
 

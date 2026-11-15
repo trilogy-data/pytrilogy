@@ -3042,6 +3042,110 @@ though. In `test_derived_key_domain` and `test_total_beside_lookup_gate` (6
 statements) the other order renders a self-join of one CTE without an
 alias, and DuckDB rejects the duplicate name. So the partial term stays.
 
+**A merge's copies coalesce an outer join written from either side (part
+77).** Part 76 left the partial term deciding one thing besides plan shape:
+with it dropped, 6 statements in `test_derived_key_domain` and
+`test_total_beside_lookup_gate` rendered `"wakeful" INNER JOIN "quizzical"
+INNER JOIN "wakeful"`, and DuckDB rejected the duplicate name. The walk was
+not at fault. One merge of `customers` and `orders` is built twice, by two
+consumers. A QueryDatasource's identity names the sides its joins NULL-extend
+whichever way the join is written (`_null_extended_sides`), so
+`customers LEFT JOIN orders` and `orders RIGHT JOIN customers` are one CTE, and
+`CTE.__add__` merges the two copies. `coalesce_duplicate_joins` then kept
+both joins: it merged mirrored joins only when both were INNER. On `main` the
+partial term happened to orient both copies the same way.
+
+- An outer join now folds into its mirror when both NULL-extend the same
+  CTEs, with the same pair re-orientation INNER joins used
+  (`_absorb_mirrored`). A join that pads the other side is a different
+  relation and stays.
+- `test_an_outer_join_merges_into_its_mirror` and
+  `test_outer_joins_padding_different_sides_stay_apart` pin it. The first
+  fails on `main`.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): both
+trees have the same 25 credential-gated failures. 200 tests move, and every
+one is column order under xdist: no statement changes length, and no join or
+CTE count moves. So no plan moved.
+
+With part 77 in place and the partial term dropped, the whole suite fails
+only on 3 shape pins (`test_first_region_holder_is_left_at_plan_time`,
+`test_forked_full_column_set`, `test_resolve_join_order_v2`), the two
+`test_rule_fires_and_keeps_rows` pins whose rule no longer fires on the
+tighter plan, and the 25 credential-gated tests. No row check fails. So the
+walk's order no longer decides rows or whether a plan renders anywhere in the
+suite. What the partial term still decides is plan quality: 4,324 tests
+move, INNER -383, FULL +62, LEFT -3,239 and RIGHT +3,553 (mostly the same
+joins written from the other side), CTEs -141.
+
+**A complete right beside a subset partner is not padded (part 78).** Of the
+FULL joins the dropped partial term added, most came from one shape. A merge
+of a `~?species` side `X` (ecoregions with their species, NULL where an
+ecoregion has none), `trees` and `enrichment` (both complete on `species`):
+
+```text
+partial term kept:     trees INNER enrichment FULL X
+partial term dropped:  X FULL trees FULL enrichment
+```
+
+The rows are the same, but the second plan keeps `enrichment` FULL. Typed
+against `X` alone it is FULL (`partial_domain`), and the walk reduces its
+types over every left. Yet every `enrichment` row has a partner: `trees`
+survives the FULL with all its rows, holds every species, and the ON reads
+`coalesce(X.species, trees.species)`, which on each stream row is the trees'
+species or NULL beside it.
+
+- `narrow_subset_full_join` narrows such a FULL to LEFT OUTER
+  (`_pairs_every_right_row`). The rule applies when the join is on one key,
+  the right is complete and never NULL on it, some left binds it `~`, and a
+  surviving complete left was paired directly with every other left on that
+  key by an earlier join (`_equated_by`). `narrow_join_types` passes the
+  joins before each one.
+- The `~` partner is what makes the narrowing safe. A first version that took
+  any non-NULL right failed 88 tests, among them authored full joins
+  (`test_scoped_join`), union-join axes (`test_union_join_one_sided_axis`)
+  and presence probes. There two complete sources can disagree, and the FULL
+  is row intent, not a typing artifact.
+- `test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row` pins
+  the rule and its three guards: no earlier equating, no surviving complete
+  left, and no `~` partner.
+- The two `test_rule_fires_and_keeps_rows` pins
+  (`DropIdentityGroup`, `UpgradeOuterFromKeySetEquivalence`) no longer fire
+  on their queries, because the plan is already tight. They now use short
+  random queries on which each rule still fires, with the partial
+  term kept or dropped.
+
+Suite capture against part 77: both trees have the same 25 credential-gated
+failures. Apart from the 2 re-pinned queries and column-order noise, 5 tests
+move, and all tighten: 2 FULLs become LEFT OUTER
+(`test_relation_keyed_on_the_grain[beside_property-none]`,
+`test_a_property_summed_by_its_own_key_over_a_region_counts_each_once`), and
+4 `coalesce` calls leave an ON (`test_derived_key_domain`,
+`test_two_facts_at_one_grain`). On the walk's own order the rule rarely has a
+FULL to narrow. It matters when the `~` partner is walked first.
+
+With the partial term dropped on top of part 78, the same 3 shape pins and
+the 25 credential-gated tests fail, and nothing else. Against part 78, 4,226
+tests move: FULL +1, INNER -261, CTEs -141, `coalesce` -47, and 108,358
+characters fewer. By file:
+
+| file | INNER | FULL | CTEs | characters |
+|---|---|---|---|---|
+| `test_unnest_filter_laws` | +144 | 0 | -144 | -105,996 |
+| `test_rule_soundness_laws` | +63 | -3 | 0 | -4,250 |
+| `test_relation_rollup_laws` | -450 | 0 | -40 | -1,239 |
+| `test_dimension_chain_oracle_laws` | -7 | 0 | +41 | +1,018 |
+| `test_summary_cover_laws` | -9 | +8 | 0 | +282 |
+
+So the partial term stays, as grain size and hosting did in part 75: dropping
+it adds CTEs and FULL joins in two families, and loosens a third. The
+relation-rollup loss is not join typing. Both orders type the merge's joins
+alike, and part 78 narrows the one that differed. The optimizer narrows
+`(trees INNER enrichment) FULL X` to INNER under the WHERE, but narrows
+`X FULL trees LEFT enrichment` only to `X LEFT trees`, and the CTE below it
+keeps a RIGHT OUTER. Which outer join a phase can tighten still depends on
+which side the walk joined first.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3081,8 +3185,16 @@ not built yet:
    hosting decide only shape, and the shape they pick is the better one. The
    partial term decided rows through subset narrowing that worked in one
    direction only. Narrowing now works in both directions, and two
-   projections of one `~` binding pair as complete (part 76). The term still
-   decides whether one self-join renders with an alias.
+   projections of one `~` binding pair as complete (part 76). Whether a
+   merge built twice renders no longer depends on the walk either: an
+   outer join folds into its mirror (part 77). So no term decides rows or
+   rendering in the suite, and with the partial term dropped only shape pins
+   fail. A complete right beside a `~` partner narrows whichever side is
+   walked first (part 78). The partial term still decides plan quality.
+   Dropping it adds 41 CTEs in the dimension-chain oracle and 8 FULLs in
+   summary cover. It also loosens 450 INNERs in relation rollup, where the
+   optimizer narrows outer joins differently depending on which side was
+   joined first.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
