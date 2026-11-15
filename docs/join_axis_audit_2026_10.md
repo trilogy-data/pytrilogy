@@ -2829,6 +2829,103 @@ and 196 tests move. None changes a CTE or join count, and no join loosens:
 Every moved test passes on both trees, and the law suites compare their
 rows against a raw-row oracle, so the moved plans return the same rows.
 
+**A side preserved past an INNER seeds the walk (part 74).** Before the
+scorer's terms can be read off the plan, each one has to be a choice of plan
+shape only, as `resolve_join_order_v2`'s docstring claimed: "ordering is a
+heuristic for plan shape only; `ensure_content_preservation` guarantees the
+result set regardless of the order". So each built-side term was dropped in
+turn and the whole suite run:
+
+| term dropped | tests whose SQL moves | tests that fail |
+|---|---|---|
+| grain size | 3,896 | 2 shape pins |
+| nullable on the key | 2,829 | 3 shape pins, **10 rule-soundness laws (rows)** |
+
+In the nullable run 5 TPC-DS tests also failed. Each passes when run alone,
+so they are not counted.
+
+The order decides rows. With the nullable term gone,
+`test_rule_soundness_laws` (`where ((reason is null) or (name is null)) and
+(not (sum(amount) by cust_id > 6)) select name, note, count(order_id) by
+cust_id`) returns an extra all-NULL row. The walk now joins the
+`sum(amount) by cust_id` side first, INNER-joins the count to it, then joins
+the customers side RIGHT OUTER:
+
+```sql
+FROM cooperative                                     -- sum(amount) by cust_id
+  INNER JOIN questionable ON cooperative.cust_id = questionable.cust_id
+  RIGHT OUTER JOIN thoughtful ON cooperative.cust_id = thoughtful.cust_id
+WHERE coalesce(cooperative.sum > 6, False) = False
+```
+
+Customer 2's count was filtered out (its sum is 7), so the INNER drops
+customer 2's sum as well. The RIGHT OUTER pads it back as NULL, and the WHERE
+reads that NULL as "not over 6". The nullable term had kept the customers
+side first, which gives `thoughtful LEFT cooperative LEFT questionable`.
+Each partner then hangs off the customer's own row, and customer 2's sum
+still filters it out.
+
+The hazard is the shape, not this term. A join that preserves its right
+against the sides walked before it (RIGHT OUTER) keeps the right's rows. But
+an INNER join among those sides has already dropped each of them wherever
+its partner missed, and `ensure_content_preservation` only widens joins
+*after* a preserving one, so nothing gives those values back. Three sides on
+one key are enough: a region holder `a` and two feeders `b` and `c`, with
+nothing on the feeders to break the tie. On `main` the walk gives
+`c INNER b RIGHT OUTER a`.
+
+- `_preserved_past_inner` finds the first right a join preserves past an
+  earlier keyed INNER. `resolve_join_order_v2` walks again with that side as
+  the seed (`_walk`), so each side hangs off the preserved rows on its own
+  pairing. It walks again once. Over the suites where it fires, the second
+  walk never has the shape again.
+- The docstring now says the order chooses plan shape, except for this case,
+  which the walk repairs.
+- `test_a_side_preserved_past_an_inner_join_seeds_the_walk` pins the
+  three-side case above. It fails on `main`.
+
+With the rule in place and the nullable term dropped, the whole suite
+fails only on the 3 shape pins, a timing test (`test_copy_perf`) and the 25
+credential-gated tests. All 10 soundness laws hold. In that suite the
+nullable term was deciding rows only through this shape.
+
+On `main`'s scorer the rewalk fires in about 30 tests. Suite capture against
+`main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): both trees have the same 25
+credential-gated failures, and 48 tests move:
+
+- 19 tests turn `x INNER y RIGHT OUTER h` into
+  `h LEFT x LEFT y` (`test_padded_null_pairing`, `test_derived_key_domain`,
+  8 `test_partial_lookup_fallback_oracle_laws` seeds), for example:
+
+  ```sql
+  -- main
+  cte_3 INNER JOIN cte_0 ON cte_3.bucket IS NOT DISTINCT FROM cte_0.bucket
+        RIGHT OUTER JOIN cte_4 ON cte_3.customer_id = cte_4.customer_id
+  -- part 74
+  cte_4 LEFT OUTER JOIN cte_3 ON cte_4.customer_id = cte_3.customer_id
+        LEFT OUTER JOIN cte_0 ON cte_3.bucket IS NOT DISTINCT FROM cte_0.bucket
+                             AND cte_3.customer_id IS NOT NULL
+  ```
+
+  The preserved side was already preserved. Only the INNER between its
+  partners becomes a LEFT, so a partner's values no longer depend on the
+  other partner matching.
+- 3 tests tighten: a LEFT OUTER becomes INNER
+  (`test_final_gate_lookups` query 4, spelling 31824), and a FULL becomes
+  LEFT OUTER (`test_partial_lookup_fallback_oracle_laws` seed 128).
+- 4 tests reorder joins whose types are all INNER once the optimizer has run
+  (`test_outer_padding_null_not_a_value`, 2 more fallback-oracle seeds).
+- The other 22 move where the rewalk never fired: `test_cli_consistency`,
+  `test_ingest`, `test_config_bootstrap_dialect`, `test_trilogy::test_unit`, the window
+  laws under xdist, `test_complete_binding_lookup`, the BigQuery temp-table
+  name, the GCS cache-bust URL, a local HTTP port
+  (`test_unbuilt_sources`), and ON-conjunct or column order
+  (`test_where_hosts`, `test_total_beside_lookup_gate`).
+
+Every moved test passes on both trees. On the suite's data the INNER never
+dropped a row its RIGHT OUTER kept, so no row assertion moves either. The
+soundness laws above are the rows that differ.
+
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -2861,7 +2958,10 @@ not built yet:
    holder can NULL the key. Ties below the rank (`_score_join_candidate`)
    read the built sides, the side's name deciding the most (part 72), and no
    plan or contract fact stands in for any of them. They pick only the next
-   side: which of two lefts is kept follows the walk (part 73).
+   side: which of two lefts is kept follows the walk (part 73). The order
+   decided rows in one shape, a side preserved past an INNER among the sides
+   walked before it. The walk now seeds that side instead, so the nullable
+   term no longer decides rows in the suite (part 74).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
