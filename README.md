@@ -33,7 +33,7 @@ Headline features:
 - No manual joins; no from clause
 - Reusable models, types, and functions
 - Safe refactoring across queries
-- Supports all standard engines: BigQuery, DuckDB, Snowflake, Presto
+- Supports all standard engines: BigQuery, DuckDB, Snowflake, Databricks, ClickHouse, Postgres and more
 - Easy to write - for humans and AI
 - Built-in semantic layer without boilerplate or YAML
 
@@ -146,14 +146,20 @@ Versus SQL, Trilogy aims to:
 
 ## Backend Support
 
-| Backend | Status | Notes |
-|---------|--------|-------|
-| **BigQuery** | Core | Full support |
-| **DuckDB** | Core | Full support |
-| **Snowflake** | Core | Full support |
-| **Sqlite** | Core | Full support |
-| **SQL Server** | Experimental | Limited testing |
-| **Presto** | Experimental | Limited testing |
+| Backend | Status | Install | Notes |
+|---------|--------|---------|-------|
+| **BigQuery** | Core | `pytrilogy[bigquery]` | Full support |
+| **DuckDB** | Core | included | Full support |
+| **Snowflake** | Core | `pytrilogy[snowflake]` | Full support |
+| **SQLite** | Core | included | Full support |
+| **ClickHouse** | Beta | `pytrilogy[clickhouse]` or `pytrilogy[chdb]` (embedded) | Executed in tests through embedded chdb; server smoke tests opt-in |
+| **Databricks** | Experimental | `pytrilogy[databricks]` | Smoke-tested against a SQL warehouse; opt-in live tests |
+| **Postgres** | Experimental | `pytrilogy[postgres]` | Rendering tests only |
+| **MySQL** | Experimental | `pytrilogy[mysql]` | Rendering tests only |
+| **Trino** | Experimental | `trino` driver | Rendering tests only |
+| **Presto** | Experimental | `pyhive` driver | Rendering tests only |
+| **SQL Server** | Experimental | — | SQL generation only; no built-in connection |
+| **Dataframe** | Experimental | `pandas` | pandas DataFrames queried through DuckDB |
 
 ## Syntax Overview
 
@@ -384,6 +390,12 @@ trilogy file exists path                 # exit 0 if present, 1 otherwise
 - `--account` - Snowflake account
 - `--username` - Username
 - `--password` - Password
+
+**Databricks:**
+- `--host` - Workspace hostname (default: `DATABRICKS_HOST`)
+- `--http_path` - SQL warehouse HTTP path (default: `DATABRICKS_HTTP_PATH`)
+- `--access_token` - Personal access token (default: `DATABRICKS_TOKEN`)
+- `--catalog` / `--schema` - Optional default catalog and schema
 
 ## Config Files
 The CLI can pick up default configuration from a config file in the toml format. 
