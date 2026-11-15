@@ -814,17 +814,21 @@ def narrow_subset_full_join(
     A complete right beside a `~` left is not padded either when a surviving
     left equated with that `~` one holds the key's whole domain: the FULL was
     typed off the `~` partner, walked before the complete left
-    (`_pairs_every_right_row`)."""
+    (`_complete_anchor`). When that left is on every stream row, non-NULL,
+    every stream row has a partner too, and the join is INNER."""
     if not isinstance(join, Join) or join.join_type != JoinType.FULL:
         return
     if not join.pairs or _joins_a_coalescing_relation(join, coalescing_keys):
         return
-    if all(
+    anchor = _complete_anchor(join, alive, prior)
+    if anchor is not None and _on_every_row(anchor, padded):
+        join.join_type = JoinType.INNER
+    elif anchor is not None or all(
         _binds_subset(join.right, pair.right.address)
         and pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
         for pair in join.pairs
-    ) or _pairs_every_right_row(join, alive, prior):
+    ):
         join.join_type = JoinType.LEFT_OUTER
     elif all(
         _binds_subset(pair.node, pair.left.address)
@@ -835,33 +839,45 @@ def narrow_subset_full_join(
         join.join_type = JoinType.RIGHT_OUTER
 
 
-def _pairs_every_right_row(
+def _complete_anchor(
     join: Join, alive: set[str], prior: Sequence[SourceJoin | UnnestJoin]
-) -> bool:
-    """A join on one key, from a complete right onto a `~` left and a
-    surviving complete left an earlier join equated with it. Both complete
-    sides hold the key's whole domain, so every right row has a partner, and
-    the ON reads the coalesce of the lefts, which on any stream row is the
-    complete left's value or NULL beside it."""
+) -> ConceptPair | None:
+    """For a join on one key, from a complete right onto a `~` left, the
+    surviving complete left an earlier join equated with every other left.
+    Both complete sides hold the key's whole domain, so every right row has
+    a partner, and the ON reads the coalesce of the lefts, which on any
+    stream row is the complete left's value or NULL beside it."""
     if len({pair.right.address for pair in join.pairs}) != 1:
-        return False
+        return None
     address = join.pairs[0].right.address
     if not complete_key_domain(join.right, address) or address in (
         _nullable_addresses(join.right)
     ):
-        return False
+        return None
     if not any(
         pair.left.address in {c.address for c in pair.node.partial_concepts}
         for pair in join.pairs
     ):
-        return False
-    return any(
-        anchor.node.identifier in alive
-        and complete_key_domain(anchor.node, anchor.left.address)
-        and all(
-            other is anchor or _equated_by(prior, anchor, other) for other in join.pairs
-        )
-        for anchor in join.pairs
+        return None
+    return next(
+        (
+            anchor
+            for anchor in join.pairs
+            if anchor.node.identifier in alive
+            and complete_key_domain(anchor.node, anchor.left.address)
+            and all(
+                other is anchor or _equated_by(prior, anchor, other)
+                for other in join.pairs
+            )
+        ),
+        None,
+    )
+
+
+def _on_every_row(pair: ConceptPair, padded: set[str]) -> bool:
+    """No earlier join padded the left, and its key is never NULL."""
+    return pair.node.identifier not in padded and pair.left.address not in (
+        _nullable_addresses(pair.node)
     )
 
 

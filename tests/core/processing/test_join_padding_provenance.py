@@ -523,9 +523,12 @@ def test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row():
             pairs=[_pair(notes), _pair(users)],
         )
 
-    narrowed = onto_both()
-    narrow_subset_full_join(narrowed, {"notes", "users"}, set(), set(), prior)
-    assert narrowed.join_type == JoinType.LEFT_OUTER
+    padded = onto_both()
+    narrow_subset_full_join(padded, {"notes", "users"}, {"users"}, set(), prior)
+    assert padded.join_type == JoinType.LEFT_OUTER
+    on_every_row = onto_both()
+    narrow_subset_full_join(on_every_row, {"notes", "users"}, set(), set(), prior)
+    assert on_every_row.join_type == JoinType.INNER
     unequated = onto_both()
     narrow_subset_full_join(unequated, {"notes", "users"}, set(), set(), [])
     assert unequated.join_type == JoinType.FULL
