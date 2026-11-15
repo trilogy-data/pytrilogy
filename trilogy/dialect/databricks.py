@@ -313,11 +313,12 @@ class DatabricksDialect(BaseDialect):
     def hash_column_value(self, column_name: str) -> str:
         return f"md5(CAST({self.safe_quote(column_name)} AS STRING))"
 
-    def get_table_schema(
-        self, executor: Any, table_name: str, schema: str | None = None
-    ) -> list[TableColumn]:
-        """information_schema is per catalog; a `catalog.schema` qualifier
-        reads that catalog's, a bare schema the session's current one."""
+    def _table_scope(
+        self, table_name: str, schema: str | None
+    ) -> tuple[str, str, str | None]:
+        """The information_schema to read (it is per catalog), the bare table
+        name, and the schema; a `catalog.schema` qualifier reads that
+        catalog's, a bare schema the session's current one."""
         catalog = None
         if schema and "." in schema:
             catalog, schema = schema.split(".", 1)
@@ -330,14 +331,40 @@ class DatabricksDialect(BaseDialect):
             if catalog
             else "information_schema"
         )
-        query = f"""
-        SELECT column_name, data_type, is_nullable, comment
-        FROM {info}.columns
-        WHERE lower(table_name) = lower({self.render_string_literal(table_name)})
-        """
+        return info, table_name, schema
+
+    def _table_filter(self, alias: str, table_name: str, schema: str | None) -> str:
+        clause = f"lower({alias}.table_name) = lower({self.render_string_literal(table_name)})"
         if schema:
-            query += f" AND lower(table_schema) = lower({self.render_string_literal(schema)})"
-        query += " ORDER BY ordinal_position"
+            clause += f" AND lower({alias}.table_schema) = lower({self.render_string_literal(schema)})"
+        return clause
+
+    def get_table_schema(
+        self, executor: Any, table_name: str, schema: str | None = None
+    ) -> list[TableColumn]:
+        info, table_name, schema = self._table_scope(table_name, schema)
+        query = f"""
+        SELECT c.column_name, c.data_type, c.is_nullable, c.comment
+        FROM {info}.columns c
+        WHERE {self._table_filter("c", table_name, schema)}
+        ORDER BY c.ordinal_position"""
         return self._columns_from_info_schema_rows(
             executor.execute_raw_sql(query).fetchall()
         )
+
+    def get_table_primary_keys(
+        self, executor: Any, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Unity Catalog's informational (unenforced) PRIMARY KEY constraint."""
+        info, table_name, schema = self._table_scope(table_name, schema)
+        query = f"""
+        SELECT k.column_name
+        FROM {info}.table_constraints t
+        JOIN {info}.key_column_usage k
+          ON k.constraint_catalog = t.constraint_catalog
+         AND k.constraint_schema = t.constraint_schema
+         AND k.constraint_name = t.constraint_name
+        WHERE t.constraint_type = 'PRIMARY KEY'
+          AND {self._table_filter("t", table_name, schema)}
+        ORDER BY k.ordinal_position"""
+        return [r[0] for r in executor.execute_raw_sql(query).fetchall()]
