@@ -984,15 +984,34 @@ def scan_filtered_roots(
 def coarse_rolled_roots(
     mandatory_list: list[BuildConcept],
     materialized_roots: frozenset[str],
+    conditions: list[BuildWhereClause],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
 ) -> frozenset[str]:
-    """Aggregate roots at a grain coarser than the select's rows
-    (`ConceptAttrs.coarse_rolled`)."""
-    target = set(BuildGrain.from_concepts(mandatory_list).components)
+    """The roots `materialized_root_addresses` took by `_coarse_rolls_up` alone
+    (`ConceptAttrs.coarse_rolled`); a root it took by an exact or total read
+    keeps its own bucket."""
+    target_grain = BuildGrain.from_concepts(mandatory_list)
+    where = combine_where_clauses(conditions)
     return frozenset(
         c.address
         for c in mandatory_list
-        if c.address in materialized_roots and coarser_than_rows(c, target, environment)
+        if c.address in materialized_roots
+        and not _exactly_materialized(
+            c, target_grain, where, environment, datasources, unions
+        )
+        and not _total_rolls_up(c, False, where, environment, datasources, unions)
+        and _coarse_rolls_up(
+            c,
+            False,
+            mandatory_list,
+            target_grain,
+            where,
+            environment,
+            datasources,
+            unions,
+        )
     )
 
 
@@ -1445,7 +1464,16 @@ def _build_from_graph_traced(
             mandatory_list, materialized_roots, conditions, environment
         ),
         coarse_rolled_roots=coarse_rolled_roots(
-            mandatory_list, materialized_roots, environment
+            mandatory_list,
+            materialized_roots,
+            conditions,
+            environment,
+            g.scope.datasources,
+            [
+                ds
+                for ds in g.datasources.values()
+                if isinstance(ds, BuildUnionDatasource)
+            ],
         ),
     )
     if plan_trace.active():
