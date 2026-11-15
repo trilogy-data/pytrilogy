@@ -259,6 +259,9 @@ _PENALTY_FK = 1
 # those are foreign keys and keep their tier.
 _IDENTIFIER_TOKENS = ("id", "sk", "key", "fk")
 _BOOST_IDENTIFIER_NAME = -1
+# The table's own identity beats another entity's id that happens to be unique
+# too (``supplier_id`` on a one-supplier-per-franchise ``franchises`` table).
+_BOOST_TABLE_IDENTITY = -2
 
 
 def _column_grain_penalty(
@@ -268,11 +271,12 @@ def _column_grain_penalty(
 
     The table's own identity column — the surrogate/natural key whose name stem
     is the table's entity (``call_center_sk`` in ``call_center``) — is its best
-    grain and never penalized, even though it looks like a foreign key.
+    grain, outranking any other identifier, even though it looks like a foreign
+    key.
     """
     stem = _fk_stem(canonical)
     if stem and _stem_related(stem, table_canonical):
-        return 0
+        return _BOOST_TABLE_IDENTITY
     if canonical in _IDENTIFIER_TOKENS or canonical.endswith("_id"):
         return _BOOST_IDENTIFIER_NAME
     if datatype in _MEASURE_TYPES:
