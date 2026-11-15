@@ -242,3 +242,18 @@ def test_a_rank_and_its_total_need_their_own_node(fixed: Executor):
     assert _carry_needs_own_node(rank)
     assert _carry_needs_own_node(rank.lineage.order_by[0].expr)
     assert not _carry_needs_own_node(env.concepts["local.orbit_code"])
+    assert not _carry_needs_own_node(rank, {rank.address})
+
+
+def test_a_value_over_the_rank_is_read_from_its_rows(fixed: Executor):
+    rows = fetch_rows(
+        fixed,
+        f"select vehicle_label, {RANK}, vehicle_rank = 1 as is_top"
+        " order by vehicle_label asc;",
+    )
+    assert rows == [
+        ("Atlas", 2, False),
+        ("Atlas-V", 2, False),
+        ("Delta", 1, True),
+        ("Soyuz", 3, False),
+    ]
