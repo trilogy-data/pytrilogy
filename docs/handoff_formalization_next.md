@@ -77,7 +77,9 @@ family from 127 wrong rows to 5; 0.3.495 to 0.3.499 sweep seeds 10,000-60,000;
 area 1; 0.3.503 clears the four sweep answers 0.3.502 left, sweeps the first
 family to 90,000, and settles every pass-cap query; lesson 45; 0.3.504
 sweeps both families to 150,000 and fixes the five answers main gets wrong or
-raises on there; lesson 46).
+raises on there; lesson 46; 0.3.505 sweeps both families to 210,000,
+fixes the four answers main gets wrong, raises on or cannot run, and reads
+an aggregate coarser than the rows off the summary; lesson 47).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -1037,6 +1039,34 @@ does not rewrite it; that rewrite is open.
       totals now read off their own row). The first family, 0-150,000 x 2
       models: main 1 wrong, the branch none; summary reads, scans and JOINs
       unchanged (598,046 on both sides).
+
+47. **Lessons from the 150k-210k round (0.3.505).**
+    - Run the A/B over the whole range, not only the new seeds: spellings
+      11684 was wrong on main and on #998's head, but the last round's sweep
+      passed it (its records were cached against an older generator). FINAL
+      re-applied an OR atom for a projection and read `city`, finer than its
+      species rows, off a gate joined FULL on nothing
+      (`SelectGrain.final_reads_finer_column_off_gate`).
+    - Several left sides of one key render as their coalesce. Pruning one
+      member as implied leaves the others, and a padded side holds NULL on
+      every row it missed; keep a coalesce group whole, then let
+      `prune_outer_join_pairs` keep the side nothing pads (185026).
+    - Gate a planner-wide efficiency change with a full A/B before narrowing
+      it twice. The coarse rollup (an aggregate coarser than the select's rows
+      re-summed off the summary at its own grain) first broke 18 queries:
+      bare aggregates are already pinned `by tree_id`, and a plain subset test
+      took `{tree_id}` as coarser than `{species, tree_id}`. Swapping the test
+      for "does not FD-determine the rows" then broke 242, because a grain off
+      the row keys (`by tree_form` beside `tree_id`) has no row to join back
+      on. Both conditions together: a strict subset of the row keys that does
+      not determine them. Summary reads +755 (spellings) and +425 (first).
+    - Leads: the coarse rollup under a WHERE (it reads the rows the WHERE
+      kept, so it stays on the trees); 131836's root sourced from the summary;
+      tpc_ds q83's RIGHT JOIN date pin, which is on main too.
+    - Spellings 0-210,000 x 2 models (420,000 queries): main 4 wrong, 1 raising
+      and 2 invalid, the branch none; nothing broken; summary reads 75,087 to
+      75,842; scans -542; JOINs -2,008. The first family 0-210,000: nothing
+      wrong on either side; summary reads +425, scans -401, JOINs -3,319.
 
 ## Candidate areas
 

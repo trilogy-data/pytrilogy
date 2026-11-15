@@ -2058,6 +2058,48 @@ a design decision or a bug.
   First family 0-150,000: main 1 wrong, the branch none, the same reads,
   scans and JOINs.
 
+- **The 150k-210k sweep** (0.3.505). Seeds 150,000-210,000 of both oracle
+  families; on main the spellings hold 1 wrong answer, 1 invalid statement
+  and 1 raise there, and the full A/B over 0-210,000 found one more wrong
+  answer below 150,000 that the last round's sweep had passed:
+  - `select tree_id, count(tree_id) by city, tree_form as v0, tag as v1 where
+    not (min(height) by species != count_distinct(tag) by tree_form)` returned
+    every tree (spellings 185026; `SelectGrain.pruned_coalesce_member_pads_gate`).
+    The FINAL paired `min(height) by species` on `tree_form` from the row
+    stream and from the LEFT-joined count; the pair reduction pruned the row
+    stream's pair as implied by `species`, which left the count's padded
+    `tree_form`. Several sides of one key are their coalesce, so a group is
+    kept whole and `prune_outer_join_pairs` keeps the side nothing pads.
+  - Two plans for one merge joined a one-row gate and a row stream on
+    nothing, in opposite orders; merged into one CTE, it referenced the gate
+    twice (spellings 177430, invalid; `SelectGrain.mirrored_cross_join_is_one`).
+    `coalesce_duplicate_joins` now keeps one keyless cross join per pair of
+    sides.
+  - `min(height) by tree_form`, re-aggregated from `min(height) by species`,
+    shared a group with `sum(height) by tree_form`, which a `?` filter beside
+    `min(height) by species` read: the two groups read each other and the
+    group graph raised a cycle (spellings 172552, summary only;
+    `Rollup.merged_groups_read_each_other`). Groups that read each other split
+    by each member's depth; no other group changes.
+  - `select species, tree_form, min(height) where (max(height) by species > 8
+    or city = 'B') and max(height) by city > 20` returned one row of NULLs
+    (spellings 11684; `SelectGrain.final_reads_finer_column_off_gate`). FINAL
+    re-applied the OR for the `tree_form` projection and read `city`, finer
+    than its species rows, off the city gate joined FULL on nothing. A
+    projection the host grain pins is re-filtered at FINAL only when the
+    atom's columns are functions of that grain.
+  - Efficiency: `select city, species, sum(height) by city` scanned the trees.
+    An aggregate whose grain does not determine the select's rows is now
+    re-summed from the summary at its own grain and joined back on it
+    (`Rollup.coarse_resum_joined_on_its_grain`), when its grain is a strict
+    subset of the row keys, no WHERE filters its rows and no aggregate at the
+    select's rows groups by it; read at row grain it is wrong
+    (`Rollup.coarse_read_at_row_grain_misreads`).
+  - Spellings 0-210,000 x 2 models (420,000 queries): main 4 wrong, 1 raising
+    and 2 invalid, the branch none; nothing broken; summary reads +755, scans
+    -542, JOINs -2,008. The first family: nothing wrong on either side; summary
+    reads +425, scans -401, JOINs -3,319.
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
