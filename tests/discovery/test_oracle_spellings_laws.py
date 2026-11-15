@@ -367,6 +367,10 @@ FOUND_SEEDS_502 = [38477, 67126, 69075, 70914, 71062]
 # seeds 0.3.503 fixed: a join widened past a LEFT kept its widening once the
 # LEFT narrowed to INNER (38273, a pair no tree has)
 FOUND_SEEDS_503 = [38273]
+# seeds 0.3.504 fixed: a total read off a `?` filter's unfiltered rows took
+# the keys with it (103208, 109374); a rename made a twin a finer partial
+# (103923); a reader built without its unbuilt row parent (131836)
+FOUND_SEEDS_504 = [103208, 103923, 109374, 131836]
 
 
 def _seed(seed: int):
@@ -394,6 +398,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_501,
             *FOUND_SEEDS_502,
             *FOUND_SEEDS_503,
+            *FOUND_SEEDS_504,
             *OPEN,
             8920,
         )

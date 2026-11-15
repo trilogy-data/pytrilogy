@@ -1042,5 +1042,41 @@ theorem Rollup.total_gate_from_summary_min (g : α → κ) (ks : List κ)
   rw [keep_true] at h
   simp only [s, h]
 
+/-! ## A renamed grain is the same grain
+
+`select id, city as v0, max(x ? max(x) by city, species >= 10) having max(x) by
+city, species < 5`: the HAVING's aggregate reads `by species, v0` once the
+select renames `city`, and the partial election took the filter's `max(x) by
+city, species` for a strictly finer partial of it. A rename is a bijection on
+the grain's values: the groups are the same, so neither is a partial of the
+other, and re-aggregating one into the other is the identity
+(`renamed_grain_same_groups`). -/
+
+/-- Grouped by `(city, species)` or by `(species, v0)` with `v0 = city`, the
+three trees fall in the same two groups (`renamed_grain_same_groups`). -/
+theorem Rollup.renamed_grain_same_groups :
+    let rows : List (Int × Int × Int) := [(1, 1, 3), (1, 1, 5), (2, 1, 7)]
+    let byCity := (rows.map fun (c, s, _) => (c, s)).eraseDups
+    let byRename := (rows.map fun (c, s, _) => (s, c)).eraseDups
+    byCity.length = 2 ∧ byRename.map (fun (s, c) => (c, s)) = byCity := by
+  decide
+
+/-! ## A filtered scan carries its filter columns
+
+`select max(min(x) by city), min(min(x) by form) where city = 'A'`: both
+nested aggregates roll up from the `(city, species)` summary, and the roots
+were split into one scan per aggregate. `city` went with the per-city scan,
+and the per-form scan, which the WHERE filters below its own grain, read
+every city. A scan-filtered root is sourced with the WHERE's row columns
+(`split_scan_reads_every_row`). -/
+
+/-- Summary rows `(city, form, lo)`: under `city = 1` the least per-form
+minimum is 3; read off every city it is 2 (`split_scan_reads_every_row`). -/
+theorem Rollup.split_scan_reads_every_row :
+    let rows : List (Int × Int × Int) := [(1, 1, 3), (1, 1, 5), (2, 1, 7), (2, 2, 2)]
+    let least := fun (xs : List (Int × Int × Int)) => (xs.map (·.2.2)).min?
+    least (rows.filter (·.1 == 1)) = some 3 ∧ least rows = some 2 := by
+  decide
+
 end Rollup
 end Trilogy

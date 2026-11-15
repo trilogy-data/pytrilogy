@@ -1115,3 +1115,28 @@ theorem gate_total_is_no_group :
     let inner := gate.flatMap fun g => counts.map fun c => (g, c)
     full = [(2, 0)] ∧ inner = [] := by
   decide
+
+namespace Trilogy.SelectGrain
+
+/-! ## A total is read off its own row, never off a row stream
+
+`select city, form, sum(x) by * as v0, sum(x ? sum(x) by * >= 2) as v1 where
+max(x) by city, species is null`: the cover read `v0` off the `?` filter's row
+stream, the most derived group carrying it, and the FINAL took the keys off
+that stream too. The WHERE filtered the total and the filtered sum, not the
+stream, so every `(city, form)` the trees hold came back. A total is one row,
+which pairs with every kept row; read off a stream, it brings the stream's
+rows with it (`total_off_row_stream_keeps_rejected`). -/
+
+/-- Four `(city, form)` pairs, one kept by the WHERE. Read off the stream, the
+total comes back on all four; joined as its own row onto the kept pairs, on
+one (`total_off_row_stream_keeps_rejected`). -/
+theorem total_off_row_stream_keeps_rejected :
+    let stream : List (Int × Int) := [(1, 0), (1, 1), (2, 1), (2, 2)]
+    let kept : List (Int × Int) := [(1, 0)]
+    let total : List Int := [0]
+    (stream.flatMap fun k => total.map fun t => (k, t)).length = 4 ∧
+      (kept.flatMap fun k => total.map fun t => (k, t)) = [((1, 0), 0)] := by
+  decide
+
+end Trilogy.SelectGrain

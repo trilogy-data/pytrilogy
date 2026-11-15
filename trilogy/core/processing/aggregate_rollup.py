@@ -753,7 +753,10 @@ def _rolls_up_from(
         return False
     fine_grain = set(_grain_identity(fine.grain))
     coarse_grain = set(_grain_identity(coarse.grain))
-    if not fine_grain or fine_grain == coarse_grain:
+    # `by species, v0` with `city as v0` is the grain `by city, species` spells
+    if not fine_grain or _grain_identity(
+        fine.grain, concepts_by_address
+    ) == _grain_identity(coarse.grain, concepts_by_address):
         return False
     if not _grain_reaches(coarse_grain, fine_grain, concepts_by_address):
         return False
