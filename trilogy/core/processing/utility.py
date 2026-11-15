@@ -404,7 +404,7 @@ def sort_select_output_processed(
     cte.hidden_concepts = {
         c.address
         for c in cte.output_columns
-        if (c.address not in targets or c.address in hidden)
+        if (c.address not in output_addresses or c.address in hidden)
     }
     cte.output_columns = new_output
     return cte

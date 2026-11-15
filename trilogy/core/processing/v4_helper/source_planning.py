@@ -16,7 +16,11 @@ from dataclasses import dataclass, field
 from trilogy.constants import logger
 from trilogy.core.constants import parent_axis_keys
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
-from trilogy.core.graph_models import ReferenceGraph, concept_to_node
+from trilogy.core.graph_models import (
+    ReferenceGraph,
+    concept_to_node,
+    datasource_to_node,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -1806,7 +1810,7 @@ def _finer_filter_rollup_source(
         for c in target_components
     } | {c.canonical_address for c in outputs if not c.is_aggregate}
     candidates: list[tuple[str, BuildDatasource | BuildUnionDatasource]] = [
-        (f"ds~{ds.name}", ds) for ds in request.graph.scope.datasources
+        (datasource_to_node(ds), ds) for ds in request.graph.scope.datasources
     ] + [
         (node, ds)
         for node, ds in request.graph.datasources.items()
@@ -1933,7 +1937,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         # addressable here. A union *member* lives in the environment but the
         # graph only carries the union node, so scanning it directly would
         # KeyError; leave it to the union planner.
-        if f"ds~{ds.name}" not in request.graph.datasources:
+        if datasource_to_node(ds) not in request.graph.datasources:
             continue
         if not condition_implies(
             conditions.conditional, ds.non_partial_for.conditional
@@ -1959,7 +1963,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
     if not matches:
         return None
     matches.sort(key=lambda ds: (dominators(ds, matches), ds.name))
-    return _scan(request, f"ds~{matches[0].name}", outputs, conditions)
+    return _scan(request, datasource_to_node(matches[0]), outputs, conditions)
 
 
 def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
@@ -2038,7 +2042,7 @@ def _plan_joined_filter_rollup(
     joined_addresses = {c.address for c in joined}
     scan = _scan(
         request,
-        f"ds~{ds.name}",
+        datasource_to_node(ds),
         unique(
             [c for c in outputs if c.address not in joined_addresses]
             + grain_keys
@@ -2228,7 +2232,7 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         and c.canonical_address not in {o.canonical_address for o in ds.output_concepts}
     ]
     scan = _scan(
-        request, f"ds~{ds.name}", [c for c in scan_outputs if c not in unbound]
+        request, datasource_to_node(ds), [c for c in scan_outputs if c not in unbound]
     )
     # the scan is the hub: a lookup joins it on its grain, each list's
     # pairs on that list's keys
