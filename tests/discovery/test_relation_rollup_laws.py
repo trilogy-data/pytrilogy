@@ -9,6 +9,8 @@ Random trees and lists (repeats, empty, NULL, unlisted species) are read with
 and without a `(city, species)` summary storing the count, sum and max; both
 must answer alike, and the summary must be read wherever no WHERE applies."""
 
+from functools import partial
+
 import pytest
 
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
@@ -21,6 +23,7 @@ from tests.unnest.test_unnest_filter_laws import (
     without_repeats,
 )
 from trilogy import Dialects
+from trilogy.core.processing import join_resolution
 
 SEEDS = range(10)
 
@@ -208,3 +211,55 @@ def test_the_relation_join_is_planned(monkeypatch, spelling):
     )
     assert '"summary"' in sql, sql
     assert every_side_planned(stated)
+
+
+# trees and lists over the same species, as the model's complete bindings say
+CONFORMING = [
+    seed
+    for seed in range(40)
+    if {t[2] for t in random_data(seed).trees} == set(random_data(seed).lists)
+][:3]
+
+
+def _blind_to_partials(score, x, **kwargs):
+    return score(x, **{**kwargs, "root": "", "multi_partial": False})
+
+
+@pytest.mark.parametrize("where", list(FILTERS))
+@pytest.mark.parametrize("spelling", list(SPELLINGS))
+def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
+    """The walk's partial term picks plan shape only: a `~` side joined
+    first (an unnest of the lists beside the trees) answers alike."""
+    model, value, sizing, literal = SPELLINGS[spelling]
+    condition = FILTERS[where].format(v=value, k=literal)
+    blind = partial(_blind_to_partials, join_resolution._score_join_candidate)
+    for select in SHAPES.values():
+        query = (
+            f"select {select.format(v=value)}"
+            f"{' where ' + condition if condition else ''};"
+        )
+        for seed in CONFORMING:
+            data = random_data(seed)
+            _, walked = _rows(_executor(model, data, sizing), query)
+            with monkeypatch.context() as m:
+                m.setattr(join_resolution, "_score_join_candidate", blind)
+                sql, blind_rows = _rows(_executor(model, data, sizing), query)
+            assert blind_rows == walked, (query, seed, sql)
+
+
+ELEMENT_ORACLE = """select e, count(distinct tree_id) from trees t
+left join enrichment using (species)
+left join lateral (select unnest(native_ecoregions) as e) on true
+where {where} group by 1"""
+
+
+@pytest.mark.parametrize("where", ["city = 'A'", "species != 'oak'"])
+@pytest.mark.parametrize("seed", CONFORMING)
+def test_a_filtered_relation_keeps_the_empty_list_group(seed, where):
+    """A tree whose species lists no ecoregion counts under a NULL one, with
+    a WHERE as without."""
+    model, value, sizing, _ = SPELLINGS["element"]
+    executor = _executor(model, random_data(seed), sizing)
+    sql, got = _rows(executor, f"select {value}, count(tree_id) as n where {where};")
+    expected = executor.execute_raw_sql(ELEMENT_ORACLE.format(where=where))
+    assert got == sorted((tuple(r) for r in expected.fetchall()), key=repr), sql

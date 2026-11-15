@@ -52,6 +52,7 @@ from trilogy.core.processing.join_resolution import (
     preserved_sources,
 )
 from trilogy.core.processing.utility import (
+    collect_applied_conditions,
     join_left_sources,
     left_deep_joins,
     padded_by,
@@ -417,23 +418,6 @@ class JoinProofs:
     coalescing_keys: set[str] = field(default_factory=set)
 
 
-def collect_applied_conditions(source: GrainSource) -> list[BoolExpr]:
-    """The filter conditions every row of a parent branch passed: applied
-    anywhere within its tree, but not under a side a join there pads, whose
-    padded rows passed nothing."""
-    out: list[BoolExpr] = []
-    if isinstance(source, QueryDatasource):
-        if source.condition is not None:
-            out.append(source.condition)
-        padded: set[str] = set()
-        for join, left in left_deep_joins(source.joins):
-            padded |= padded_by(join, left)
-        for parent in source.datasources:
-            if parent.identifier not in padded:
-                out.extend(collect_applied_conditions(parent))
-    return out
-
-
 @dataclass(frozen=True)
 class _PartnerFacts:
     """What one side of a join knows that decides whether the other side is
@@ -446,6 +430,8 @@ class _PartnerFacts:
     identifiers: frozenset[str] = frozenset()
     # nullable keys of a side that applied the WHERE: its NULL-keyed rows passed
     filtered_nullable: frozenset[str] = frozenset()
+    # filter atoms every source of the side applied
+    applied: tuple[BoolExpr, ...] = ()
 
 
 def _partner_facts(
@@ -457,8 +443,15 @@ def _partner_facts(
     nullable: set[str] = set()
     identifiers: set[str] = set()
     filtered_nullable: set[str] = set()
+    applied: list[BoolExpr] | None = None
     for source in sources:
         identifiers.add(source.identifier)
+        atoms = _applied_atoms(source)
+        applied = (
+            atoms
+            if applied is None
+            else [a for a in applied if any(a == b for b in atoms)]
+        )
         partial |= {c.address for c in source.partial_concepts}
         nullable |= _nullable_addresses(source)
         spans = held_region_spans(source)
@@ -473,7 +466,23 @@ def _partner_facts(
         frozenset(nullable),
         frozenset(identifiers),
         frozenset(filtered_nullable),
+        tuple(applied or ()),
     )
+
+
+def _applied_atoms(source: GrainSource) -> list[BoolExpr]:
+    return [
+        atom
+        for condition in collect_applied_conditions(source)
+        for atom in decompose_condition(condition)
+    ]
+
+
+def _applies_all_of(source: GrainSource, partner: _PartnerFacts) -> bool:
+    """The partner applied every filter `source` did, so its rows passed
+    whatever narrowed `source`'s."""
+    atoms = _applied_atoms(source)
+    return bool(atoms) and all(any(a == b for b in partner.applied) for a in atoms)
 
 
 def _reads_partner(source: GrainSource, partner: _PartnerFacts) -> bool:
@@ -525,10 +534,13 @@ def _is_filter_population(
     ):
         return False
     # A `~` side lacks members whatever the WHERE says: a WHERE on the key
-    # alone (`cust_id != 10`) filters both sides alike, so its narrowness is
-    # the `~`, not the WHERE.
+    # alone (`cust_id != 10`), or one the partner applied too (`city = 'A'`
+    # on the trees beside the trees' unnested lists), filters both sides
+    # alike, so its narrowness is the `~`, not the WHERE.
     partial_keys = join_addresses & {c.address for c in source.partial_concepts}
-    if partial_keys - partner.partial and _filters_only_keys(source, join_addresses):
+    if partial_keys - partner.partial and (
+        _filters_only_keys(source, join_addresses) or _applies_all_of(source, partner)
+    ):
         return False
     held = held_region_spans(source)
     if join_addresses & partner.regions and not join_addresses & held:
@@ -786,17 +798,21 @@ def narrow_subset_full_join(
     A complete right beside a `~` left is not padded either when a surviving
     left equated with that `~` one holds the key's whole domain: the FULL was
     typed off the `~` partner, walked before the complete left
-    (`_pairs_every_right_row`)."""
+    (`_complete_anchor`). When that left is on every stream row, non-NULL,
+    every stream row has a partner too, and the join is INNER."""
     if not isinstance(join, Join) or join.join_type != JoinType.FULL:
         return
     if not join.pairs or _joins_a_coalescing_relation(join, coalescing_keys):
         return
-    if all(
+    anchor = _complete_anchor(join, alive, prior)
+    if anchor is not None and _on_every_row(anchor, padded):
+        join.join_type = JoinType.INNER
+    elif anchor is not None or all(
         _binds_subset(join.right, pair.right.address)
         and pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
         for pair in join.pairs
-    ) or _pairs_every_right_row(join, alive, prior):
+    ):
         join.join_type = JoinType.LEFT_OUTER
     elif all(
         _binds_subset(pair.node, pair.left.address)
@@ -807,33 +823,45 @@ def narrow_subset_full_join(
         join.join_type = JoinType.RIGHT_OUTER
 
 
-def _pairs_every_right_row(
+def _complete_anchor(
     join: Join, alive: set[str], prior: Sequence[SourceJoin | UnnestJoin]
-) -> bool:
-    """A join on one key, from a complete right onto a `~` left and a
-    surviving complete left an earlier join equated with it. Both complete
-    sides hold the key's whole domain, so every right row has a partner, and
-    the ON reads the coalesce of the lefts, which on any stream row is the
-    complete left's value or NULL beside it."""
+) -> ConceptPair | None:
+    """For a join on one key, from a complete right onto a `~` left, the
+    surviving complete left an earlier join equated with every other left.
+    Both complete sides hold the key's whole domain, so every right row has
+    a partner, and the ON reads the coalesce of the lefts, which on any
+    stream row is the complete left's value or NULL beside it."""
     if len({pair.right.address for pair in join.pairs}) != 1:
-        return False
+        return None
     address = join.pairs[0].right.address
     if not complete_key_domain(join.right, address) or address in (
         _nullable_addresses(join.right)
     ):
-        return False
+        return None
     if not any(
         pair.left.address in {c.address for c in pair.node.partial_concepts}
         for pair in join.pairs
     ):
-        return False
-    return any(
-        anchor.node.identifier in alive
-        and complete_key_domain(anchor.node, anchor.left.address)
-        and all(
-            other is anchor or _equated_by(prior, anchor, other) for other in join.pairs
-        )
-        for anchor in join.pairs
+        return None
+    return next(
+        (
+            anchor
+            for anchor in join.pairs
+            if anchor.node.identifier in alive
+            and complete_key_domain(anchor.node, anchor.left.address)
+            and all(
+                other is anchor or _equated_by(prior, anchor, other)
+                for other in join.pairs
+            )
+        ),
+        None,
+    )
+
+
+def _on_every_row(pair: ConceptPair, padded: set[str]) -> bool:
+    """No earlier join padded the left, and its key is never NULL."""
+    return pair.node.identifier not in padded and pair.left.address not in (
+        _nullable_addresses(pair.node)
     )
 
 

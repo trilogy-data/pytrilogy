@@ -18,6 +18,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -171,6 +172,25 @@ def padded_by(join: SourceJoin, left: frozenset[str]) -> set[str]:
     if join.join_type in PADS_RIGHT_JOIN_TYPES:
         padded.add(join.right.identifier)
     return padded
+
+
+def collect_applied_conditions(
+    source: BuildDatasource | QueryDatasource,
+) -> list[BoolExpr]:
+    """The filter conditions every row of a parent branch passed: applied
+    anywhere within its tree, but not under a side a join there pads, whose
+    padded rows passed nothing."""
+    out: list[BoolExpr] = []
+    if isinstance(source, QueryDatasource):
+        if source.condition is not None:
+            out.append(source.condition)
+        padded: set[str] = set()
+        for join, left in left_deep_joins(source.joins):
+            padded |= padded_by(join, left)
+        for parent in source.datasources:
+            if parent.identifier not in padded:
+                out.extend(collect_applied_conditions(parent))
+    return out
 
 
 _EMPTY_ADDRS: frozenset[str] = frozenset()
