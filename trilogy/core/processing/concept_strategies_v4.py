@@ -523,6 +523,11 @@ def materialized_root_addresses(
         ):
             out.add(concept.address)
             continue
+        if not exact and _coarse_rolls_up(
+            concept, condition_only, target_grain, where, environment, datasources, unions
+        ):
+            out.add(concept.address)
+            continue
         # A rolled root joins the target-grain scan, so an aggregate at another
         # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
@@ -626,6 +631,30 @@ def _total_rolls_up(
     return _is_rollable_aggregate(concept) and bool(
         _rollup_sources(
             concept, [concept], concept.grain, None, environment, datasources, unions
+        )
+    )
+
+
+def _coarse_rolls_up(
+    concept: BuildConcept,
+    condition_only: bool,
+    target_grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
+) -> bool:
+    if condition_only or where is not None or not _is_rollable_aggregate(concept):
+        return False
+    if not isinstance(concept.lineage, BuildAggregateWrapper) or not concept.lineage.by:
+        return False
+    grain = set(concept.grain.components) if concept.grain else set()
+    if not grain or not grain < set(target_grain.components):
+        return False
+    keys = [environment.concepts.get(c.address) or c for c in concept.lineage.by]
+    return bool(
+        _rollup_sources(
+            concept, [concept, *keys], concept.grain, None, environment, datasources, unions
         )
     )
 
@@ -873,6 +902,24 @@ def scan_filtered_roots(
         if concept.address in materialized_roots
         and concept.derivation == Derivation.AGGREGATE
         and filter_finer_row_args(where, concept.grain, environment.concepts)
+    )
+
+
+def coarse_rolled_roots(
+    mandatory_list: list[BuildConcept],
+    materialized_roots: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """Aggregate roots at a grain strictly coarser than the select's rows."""
+    target = set(BuildGrain.from_concepts(mandatory_list).components)
+    return frozenset(
+        c.address
+        for c in mandatory_list
+        if c.address in materialized_roots
+        and c.derivation == Derivation.AGGREGATE
+        and c.grain is not None
+        and c.grain.components
+        and set(c.grain.components) < target
     )
 
 
@@ -1323,6 +1370,9 @@ def _build_from_graph_traced(
         datasources=g.scope.datasources,
         scan_filtered_roots=scan_filtered_roots(
             mandatory_list, materialized_roots, conditions, environment
+        ),
+        coarse_rolled_roots=coarse_rolled_roots(
+            mandatory_list, materialized_roots, environment
         ),
     )
     if plan_trace.active():

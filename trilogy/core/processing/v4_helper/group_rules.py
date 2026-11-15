@@ -1149,6 +1149,8 @@ def partition_roots(
             if d.granularity != Granularity.SINGLE_ROW or d.scan_filtered
         ]
 
+        coarse_items = [(n, d) for n, d in main_items if d.coarse_rolled]
+        main_items = [(n, d) for n, d in main_items if not d.coarse_rolled]
         global_inputs = _global_aggregate_inputs(
             main_items, concept_graph, concept_edges, concept_attrs, output_addresses
         )
@@ -1187,6 +1189,18 @@ def partition_roots(
                 output_addresses,
             )
         ]
+        coarse_by_grain: dict[frozenset[str], list[NodeItem]] = defaultdict(list)
+        for node, data in coarse_items:
+            coarse_by_grain[data.grain_components].append((node, data))
+        for grain, members in coarse_by_grain.items():
+            bucket = _root_bucket(
+                label_value,
+                RootReason.ENTITY,
+                members,
+                f"dim:{'|'.join(sorted(grain))}",
+            )
+            bucket.dim_keys = grain
+            buckets.append(bucket)
         if single_row_items:
             # Distinct id from the keyed `grp:root:root:∅` bucket so they stay
             # separate scans the FINAL node cross-joins.

@@ -2552,6 +2552,7 @@ def build_concept_graph(
     *,
     datasources: Sequence[BuildDatasource],
     scan_filtered_roots: frozenset[str] = frozenset(),
+    coarse_rolled_roots: frozenset[str] = frozenset(),
 ) -> tuple[nx.DiGraph, dict[str, ConceptAttrs], EdgeMap]:
     """Build the concept-level DAG. Constraint edges (d1->d0) record the
     invariant that filter inputs must be available above any row-shape barrier
@@ -2808,6 +2809,8 @@ def build_concept_graph(
     for n in graph.nodes:
         if attrs[n].address in scan_filtered_roots:
             attrs[n].scan_filtered = True
+        if attrs[n].address in coarse_rolled_roots:
+            attrs[n].coarse_rolled = True
 
     # Group nodes by scope-and-phase. Condition-phase nodes are d1 by
     # construction; the only d0 candidates live in the matching blank-phase

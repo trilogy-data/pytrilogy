@@ -679,33 +679,45 @@ def _uncovered_exposing_output_contributor(
         # off its other contributors. A dimension projection whose outputs
         # the host grain determines is pinned by that join and needs none,
         # unless the atom holds on a group the host never formed: the join
-        # then keeps the rows it rejected, padded like a key with no rows.
+        # then keeps the rows it rejected, padded like a key with no rows,
+        # and FINAL can read the atom's columns on its own rows: a column finer
+        # than the host grain has no value there, only one off a group keyed
+        # on nothing FINAL holds.
         own_outputs = (members & mandatory_addrs) - covered_members
-        if (
-            all_collapsing
-            and own_outputs
-            and (
-                accepts_absent
-                or not any(
-                    build_fd_determines_all(
-                        environment, host.grain_components, own_outputs
-                    )
-                    for host in collapsing_hosts
-                )
-            )
-            and (
-                accepts_absent
-                or (
-                    row_inputs <= final_exposable
-                    and not all(
-                        _decided_per_group(row_inputs, host, buckets)
-                        for host in collapsing_hosts
-                    )
-                )
+        if not (all_collapsing and own_outputs):
+            continue
+        if any(
+            build_fd_determines_all(environment, host.grain_components, own_outputs)
+            for host in collapsing_hosts
+        ):
+            if accepts_absent and _final_reads_at_host_grain(
+                atom, collapsing_hosts, environment
+            ):
+                return True
+            continue
+        if accepts_absent or (
+            row_inputs <= final_exposable
+            and not all(
+                _decided_per_group(row_inputs, host, buckets)
+                for host in collapsing_hosts
             )
         ):
             return True
     return False
+
+
+def _final_reads_at_host_grain(
+    atom: BoolExpr, hosts: list[GroupBucket], environment: BuildEnvironment
+) -> bool:
+    """Every row column `atom` reads is a function of a host's grain, the grain
+    FINAL's rows hold. A finer column (`city` beside a `by species` host) has
+    no value on a FINAL row: FINAL could only read it off a group keyed on
+    nothing it holds."""
+    columns = {c.address for c in atom.row_arguments if not c.is_aggregate}
+    return any(
+        build_fd_determines_all(environment, host.grain_components, columns)
+        for host in hosts
+    )
 
 
 _ABSENT_COMPARISONS = (
