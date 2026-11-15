@@ -30,8 +30,9 @@ GENERATOR_FILES = [
     "tests/discovery/test_rollup_resolution_laws.py",
     "tests/discovery/test_oracle_sweep_laws.py",
     "tests/discovery/test_oracle_spellings_laws.py",
-    "local_scripts/oracle_sweep/runner.py",
 ]
+# Bump when a record's fields or meaning change: cached records are keyed on it.
+RECORD_VERSION = 1
 MODELS = ("base", "summary")
 # Seeds per task. Fixed, so a `--carry-state` run does not depend on `--jobs`.
 CHUNK = 250
@@ -186,7 +187,7 @@ def extract_ref(ref: str) -> tuple[str, Path]:
 
 
 def generator_hash() -> str:
-    digest = hashlib.sha1()
+    digest = hashlib.sha1(str(RECORD_VERSION).encode())
     for name in GENERATOR_FILES:
         digest.update((REPO / name).read_bytes())
     return digest.hexdigest()[:12]

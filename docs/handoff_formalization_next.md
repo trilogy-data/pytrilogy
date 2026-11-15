@@ -905,7 +905,7 @@ does not rewrite it; that rewrite is open.
       round's A/B: wrong / raising / invalid, summary reads, trees scans and
       JOINs on both sides, and the seeds that moved. Main's side is cached per
       commit, so it is paid for once; the branch's side is 180,000 queries in
-      about 25 minutes on 4 cores, where one process took hours.
+      16 minutes on 4 cores, where one process took hours.
     - Profile the harness before the planner. The "5x by seed 20,000" was not
       concepts piling up (lesson 43 guessed that): the environment keeps every
       CTE name it handed out, and `generate_cte_name` rebuilt the free-name
@@ -918,6 +918,16 @@ does not rewrite it; that rewrite is open.
     - The clean-model default cannot see a bug that needs an earlier
       statement's definition (lesson 41). Run `--carry-state` once a round
       for those; the committed suites share an executor and cover it too.
+    - The first full run on clean models found two wrong answers on main
+      that no earlier sweep reported, each wrong on a fresh executor and on
+      both models. Both are open:
+      - spellings 38273: `select city, species, tree_form,
+        count_distinct(tag) by species as v0 where max(height) by city,
+        tree_form != 10` returns a `(B, Quercus)` row no tree has;
+      - first family 5328: `select count(min(height) by city, species) as v0
+        where (count_distinct(tag) by * = 2 and sum(height) by city < 2)`
+        returns `(0,)` where the WHERE keeps no row (a GROUP BY emits no
+        empty group, a total included).
     - Iterate on a slice, then confirm on the range: `--seeds @file` replays
       only the seeds the last diff named (seconds), and `show <seed>` prints
       one seed's query, oracle rows and SQL for both models.

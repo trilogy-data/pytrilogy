@@ -350,7 +350,9 @@ FOUND_SEEDS_499 = [
     58788, 59509, 59635,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
-OPEN: dict[int, str] = {}
+OPEN: dict[int, str] = {
+    38273: "a (city, species) pair no tree has passes a gate by city, tree_form",
+}
 # seeds 0.3.500 fixed (each wrong on main)
 FOUND_SEEDS_500 = [1117, 30670]
 # seeds 0.3.501 fixed (each wrong or raising on main, 1554 and 31946 unparenthesized)

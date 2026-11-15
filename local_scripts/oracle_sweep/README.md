@@ -30,7 +30,7 @@ Spellings seeds 0-90,000 x 2 models (180,000 queries), 4 cores:
 
 | | before | now |
 |---|---|---|
-| one side | 1.7 h at seed-0 speed, slowing ~5x by seed 20,000 | 23 min |
+| one side | 1.7 h at seed-0 speed, slowing ~5x by seed 20,000 | 20 min (16 with the base cached) |
 | an A/B | both sides, every time | the base once per commit, then one side |
 
 Where the time went, and what each fix is:
@@ -47,7 +47,7 @@ Where the time went, and what each fix is:
 - **Both sides of an A/B were run every time.** A `--ref`'s package is
   extracted once (`git archive`, as recipe step 4 does by hand) and its
   records are cached per commit under `.cache/oracle_sweep/`, keyed on the
-  generators too. Main is paid for once; a wider range only runs the seeds it
+  generator files and `RECORD_VERSION` too. Main is paid for once; a wider range only runs the seeds it
   is missing.
 - **11% of the spellings seeds repeat a query**; each is planned once.
 - **Unchanged SQL is not run again.** In `ab`, a query whose SQL hashes to the
