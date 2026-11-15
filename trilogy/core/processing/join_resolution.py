@@ -75,6 +75,8 @@ class JoinOrderOutput:
     # left sources providing the same keys, left out as redundant: a FULL
     # join needs them back (`restore_full_join_providers`)
     redundant: dict[str, set[str]] = field(default_factory=dict, compare=False)
+    # the type before `ensure_content_preservation` widened it
+    own_type: JoinType | None = None
 
     @property
     def lefts(self) -> set[str]:
@@ -123,6 +125,29 @@ def prune_outer_join_pairs(joins: list[SourceJoin | UnnestJoin]) -> None:
         if join.pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
             join.pairs = preserved_key_pairs(join.pairs, padded, _pair_source)
         padded |= padded_by(join, left)
+
+
+def restore_unpadded_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
+    """A join widened to keep the rows an earlier join padded takes back its
+    own type once narrowing made every such earlier join pad nothing: the
+    widening only held rows that no longer arrive."""
+    padded: set[str] = set()
+    for join, left in left_deep_joins(joins):
+        own = join.own_type
+        if own is not None and own != join.join_type:
+            lefts = {source.identifier for source in join_left_sources(join)}
+            if not lefts & padded and own in _NARROWER.get(join.join_type, ()):
+                join.join_type = own
+        padded |= padded_by(join, left)
+
+
+_NARROWER: dict[JoinType, frozenset[JoinType]] = {
+    JoinType.FULL: frozenset(
+        {JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.INNER}
+    ),
+    JoinType.LEFT_OUTER: frozenset({JoinType.INNER}),
+    JoinType.RIGHT_OUTER: frozenset({JoinType.INNER}),
+}
 
 
 def _pair_source(pair: ConceptPair) -> str:
@@ -820,11 +845,14 @@ def ensure_content_preservation(
                 has_prior_left = True
         # a prior right preservation only comes with a prior left one
         if has_prior_left:
-            review_join.type = (
+            widened = (
                 JoinType.FULL
                 if has_prior_right or review_join.type == JoinType.RIGHT_OUTER
                 else JoinType.LEFT_OUTER
             )
+            if widened != review_join.type:
+                review_join.own_type = review_join.type
+                review_join.type = widened
 
 
 def _score_join_candidate(
@@ -1712,7 +1740,16 @@ def single_row_source(ds: DataSource) -> bool:
     return is_scalar_condition(ds.condition, materialized=materialized)
 
 
-def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
+def _gate_total(source: DataSource, gates: Collection[str], single: bool) -> bool:
+    """A total only the WHERE reads holds a row wherever its atom can keep one:
+    on no rows the atom reads NULL and keeps none, so it pairs as one row,
+    however it was computed (a re-sum of stored partials included)."""
+    return single or (source.identifier in gates and not source.grain.components)
+
+
+def narrow_keyless_joins(
+    joins: list[SourceJoin | UnnestJoin], gates: Collection[str] = frozenset()
+) -> None:
     """A keyless outer join (``ON 1=1``) pairs every row with every row, so it
     only differs from INNER when a side is EMPTY. A side that provably holds
     one row pairs with every row of the other, and when the other is empty
@@ -1727,7 +1764,9 @@ def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
 
     Grand totals joined only to each other stay outer: each is the `()`
     group of its own rows, so the result has that group when any of them
-    does, as a union-merged key keeps a key from either side."""
+    does, as a union-merged key keeps a key from either side. A `gates`
+    total (one only the WHERE reads) is not the select's group: it holds a
+    row whether or not the WHERE keeps any, so it never keeps the join outer."""
     left_has_rows = False
     all_totals = True
     keyed_seen = False
@@ -1744,10 +1783,13 @@ def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
             continue
         if join.left is not None and not keyed_seen:
             left_single = single_row_source(join.left)
-            left_has_rows = left_has_rows or left_single
+            left_has_rows = left_has_rows or _gate_total(join.left, gates, left_single)
             all_totals = all_totals and left_single
-        right_has_rows = single_row_source(join.right)
-        all_totals = all_totals and right_has_rows
+            all_totals = all_totals and join.left.identifier not in gates
+        right_single = single_row_source(join.right)
+        right_has_rows = _gate_total(join.right, gates, right_single)
+        all_totals = all_totals and right_single
+        all_totals = all_totals and join.right.identifier not in gates
         if (left_has_rows or right_has_rows) and not all_totals:
             join.join_type = JoinType.INNER
         left_has_rows = left_has_rows or right_has_rows
@@ -2474,6 +2516,7 @@ def get_node_joins(
             left=ds_node_map[j.left] if j.left else None,
             right=ds_node_map[j.right],
             join_type=j.type,
+            own_type=j.own_type,
             concepts=[] if not j.keys else None,
             pairs=reduce_concept_pairs(
                 [

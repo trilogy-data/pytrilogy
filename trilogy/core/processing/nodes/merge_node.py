@@ -52,6 +52,7 @@ from trilogy.core.processing.join_resolution import (
     narrow_keyless_joins,
     preserved_sources,
     prune_outer_join_pairs,
+    restore_unpadded_joins,
 )
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -565,6 +566,20 @@ class MergeNode(StrategyNode):
             c.address for c in read if c.address in solid_outputs and c.zero_on_empty
         )
 
+    def _gate_sources(
+        self, final_datasets: list[QueryDatasource | BuildDatasource]
+    ) -> set[str]:
+        """Parents that supply only what the WHERE reads, none of the outputs."""
+        if not self.conditions:
+            return set()
+        hidden = self.hidden_concepts or set()
+        visible = {c.address for c in self.output_concepts if c.address not in hidden}
+        return {
+            ds.identifier
+            for ds in final_datasets
+            if not visible & {c.address for c in ds.output_concepts}
+        }
+
     def _join_proofs(
         self,
         final_datasets: list[QueryDatasource | BuildDatasource],
@@ -912,7 +927,8 @@ class MergeNode(StrategyNode):
         null_status = compute_outer_null_status(joins)
         prune_outer_join_pairs(joins)
         narrow_directional_join_types(joins, join_proofs, final_datasets)
-        narrow_keyless_joins(joins)
+        restore_unpadded_joins(joins)
+        narrow_keyless_joins(joins, self._gate_sources(final_datasets))
         # FULL JOINs only: both sides may be NULL, so source_map needs every
         # input supplying the address. For LEFT/RIGHT the preserved-side
         # ordering above suffices.

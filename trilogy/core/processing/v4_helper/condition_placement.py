@@ -2116,6 +2116,9 @@ def plan_condition_placements(
                 environment,
             )
         )
+        placements[clause_start:] = _drop_covered_final_reapplies(
+            placements[clause_start:], scope
+        )
         placements.extend(
             _conjunction_recompute_placements(
                 placements[clause_start:],
@@ -2139,6 +2142,44 @@ def plan_condition_placements(
     placements.extend(_pin_input_placements(placements, scope))
     _check_final_atoms_precede_aggregates(placements, mandatory_list, environment)
     return placements
+
+
+def _drop_covered_final_reapplies(
+    clause_placements: list[ConditionPlacement], scope: _PlacementScope
+) -> list[ConditionPlacement]:
+    """A FINAL re-application stands for the contributors the upstream-most
+    host left unfiltered. Once the atom is copied onto each of them, every
+    output arrives filtered, and re-reading the atom's row inputs at FINAL
+    would only join a group FINAL has no key for."""
+    out: list[ConditionPlacement] = []
+    for placement in clause_placements:
+        if placement.reason is PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR:
+            atom = placement.atom
+            hosts = tuple(
+                gid
+                for other in clause_placements
+                if other.atom is atom
+                and other.reason
+                in (
+                    PlacementReason.UPSTREAM_MOST,
+                    PlacementReason.UNCOVERED_GROUPING_HOST,
+                )
+                for gid in other.group_ids
+                if gid != FINAL_NODE_ID
+            )
+            if not _uncovered_exposing_output_contributor(
+                hosts,
+                {c.address for c in atom.row_arguments},
+                scope.buckets,
+                scope.carried,
+                scope.group_graph,
+                {c.address for c in scope.mandatory_list},
+                scope.environment,
+                accepts_absent=holds_on_absent_group(atom),
+            ):
+                continue
+        out.append(placement)
+    return out
 
 
 def _pin_input_placements(

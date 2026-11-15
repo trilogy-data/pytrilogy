@@ -113,4 +113,67 @@ theorem ungated_breaks_contract (d R : α → Bool) (a : α)
   have := h (fun _ => false) a (by simp [pushUngated, hd]) rfl
   simp [hR] at this
 
+/-! ## A phase reports only what it changed
+
+The driver stops at the first pass on which every phase reports no change, so
+a phase that reports a change it did not make keeps it running to the pass
+cap as surely as two phases undoing each other. Pushdown tested whether a
+parent already held a candidate by comparing it with the parent's AND-atoms
+one by one; a parenthesized conjunction `(a and b)` is one candidate but two
+atoms there, so it was never held, and appending it (which dedups atoms) left
+the WHERE as it was while the push reported a change, on every pass (spellings
+seeds 2936 and 4849, a parenthesized HAVING conjunction). A conjunction is
+held when each conjunct is. -/
+
+/-- A pushdown candidate: one atom, or a parenthesized conjunction of atoms. -/
+inductive Candidate
+  | atom (n : Nat)
+  | conj (ns : List Nat)
+
+/-- The parent holds each atom of the candidate. -/
+def held (s : State Nat) : Candidate → Bool
+  | .atom n => s n
+  | .conj ns => ns.all s
+
+/-- The old test: a candidate is held when it is one of the parent's atoms. -/
+def heldAsOne (s : State Nat) : Candidate → Bool
+  | .atom n => s n
+  | .conj _ => false
+
+/-- Appending a candidate adds each of its atoms (`append_condition` dedups). -/
+def append (s : State Nat) : Candidate → State Nat
+  | .atom n => fun m => s m || m == n
+  | .conj ns => fun m => s m || ns.contains m
+
+/-- Appending a candidate the parent holds changes nothing. -/
+theorem append_held_is_identity (s : State Nat) (c : Candidate)
+    (h : held s c = true) : append s c = s := by
+  funext m
+  cases c with
+  | atom n =>
+    simp only [held] at h
+    simp only [append]
+    by_cases hm : m = n
+    · subst hm; simp [h]
+    · simp [hm]
+  | conj ns =>
+    simp only [held, List.all_eq_true] at h
+    simp only [append]
+    cases hsm : s m
+    · simp only [Bool.false_or]
+      cases hc : ns.contains m
+      · rfl
+      · have := h m (by simpa using hc)
+        rw [hsm] at this
+        exact absurd this (by decide)
+    · rfl
+
+/-- `(1 and 2)` beside a WHERE holding `1` and `2`: the old test reports it new
+though appending it changes nothing (`conjunction_reported_as_new`). -/
+theorem conjunction_reported_as_new :
+    let s : State Nat := fun n => n == 1 || n == 2
+    heldAsOne s (.conj [1, 2]) = false ∧ held s (.conj [1, 2]) = true ∧
+      append s (.conj [1, 2]) = s := by
+  refine ⟨rfl, rfl, append_held_is_identity _ _ rfl⟩
+
 end Trilogy.Fixpoint

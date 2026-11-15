@@ -350,9 +350,7 @@ FOUND_SEEDS_499 = [
     58788, 59509, 59635,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
-OPEN: dict[int, str] = {
-    38273: "a (city, species) pair no tree has passes a gate by city, tree_form",
-}
+OPEN: dict[int, str] = {}
 # seeds 0.3.500 fixed (each wrong on main)
 FOUND_SEEDS_500 = [1117, 30670]
 # seeds 0.3.501 fixed (each wrong or raising on main, 1554 and 31946 unparenthesized)
@@ -366,6 +364,9 @@ FOUND_SEEDS_501 = [
 # cannot place falls back alone) or would pad a NULL row on (69075, 70914,
 # 71062: a one-row total joined FULL onto empty rows)
 FOUND_SEEDS_502 = [38477, 67126, 69075, 70914, 71062]
+# seeds 0.3.503 fixed: a join widened past a LEFT kept its widening once the
+# LEFT narrowed to INNER (38273, a pair no tree has)
+FOUND_SEEDS_503 = [38273]
 
 
 def _seed(seed: int):
@@ -392,6 +393,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_500,
             *FOUND_SEEDS_501,
             *FOUND_SEEDS_502,
+            *FOUND_SEEDS_503,
             *OPEN,
             8920,
         )
