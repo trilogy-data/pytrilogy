@@ -363,34 +363,91 @@ def _partition_standard_aggregates(
         )
         entries.setdefault(key, []).append((node, data))
     distinct_by_key = _fold_distinct_rewritable_buckets(entries)
+    groups = [
+        (key, layer_index, layer)
+        for key, members in entries.items()
+        for layer_index, layer in enumerate(
+            _lineage_layers(members, concept_graph, concept_edges)
+        )
+    ]
     buckets: list[GroupBucket] = []
-    for key, members in entries.items():
+    for key, layer_index, layer, split in _split_cyclic_groups(
+        groups, concept_graph, concept_edges
+    ):
         label, depth_label, grain, input_grain, populations = key
-        layers = _lineage_layers(members, concept_graph, concept_edges)
-        for layer_index, layer in enumerate(layers):
-            bucket = _bucket_for(
-                depth_label, layer[0][1].derivation, grain, label=label
-            )
-            segments: list[str] = []
-            if input_grain and input_grain != grain:
-                segments.append("input:" + "|".join(sorted(input_grain)))
-            if populations:
-                segments.append("pop:" + "|".join(sorted(populations)))
-            # Layer 0 keeps the unsplit group id; only later layers are
-            # discriminated.
-            if layer_index:
-                segments.append(f"layer:{layer_index}")
-            if segments:
-                bucket.discriminator = ":".join(segments)
-            if input_grain:
-                bucket.aggregate_input_grain = input_grain
-            layer_addrs = {data.address for _, data in layer}
-            bucket.aggregate_distinct_addrs = (
-                distinct_by_key.get(key, set()) & layer_addrs
-            )
-            _add_members(bucket, layer)
-            buckets.append(bucket)
+        bucket = _bucket_for(depth_label, layer[0][1].derivation, grain, label=label)
+        segments: list[str] = []
+        if input_grain and input_grain != grain:
+            segments.append("input:" + "|".join(sorted(input_grain)))
+        if populations:
+            segments.append("pop:" + "|".join(sorted(populations)))
+        # Layer 0 keeps the unsplit group id; only later layers are
+        # discriminated.
+        if layer_index:
+            segments.append(f"layer:{layer_index}")
+        if split is not None:
+            segments.append(f"split:{split}")
+        if segments:
+            bucket.discriminator = ":".join(segments)
+        if input_grain:
+            bucket.aggregate_input_grain = input_grain
+        layer_addrs = {data.address for _, data in layer}
+        bucket.aggregate_distinct_addrs = distinct_by_key.get(key, set()) & layer_addrs
+        _add_members(bucket, layer)
+        buckets.append(bucket)
     return buckets
+
+
+def _split_cyclic_groups(
+    groups: list[tuple[AggKey, int, list[NodeItem]]],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+) -> list[tuple[AggKey, int, list[NodeItem], int | None]]:
+    """Groups that read each other through their members' lineage, split by
+    each member's depth among the aggregates. `_lineage_layers` splits a
+    consumer from its producer within one group; across groups, two members
+    that are each fine alone can still meet: `min(h) by form`, re-aggregated
+    from `min(h) by species`, beside `sum(h) by form`, which a `by species`
+    filter beside `min(h) by species` reads, is a cycle of two groups."""
+    members = {node for _, _, layer in groups for node, _ in layer}
+    ancestors = {
+        node: _lineage_reach(node, lineage_predecessors, concept_graph, concept_edges)
+        & (members - {node})
+        for node in members
+    }
+    owner = {
+        node: str(i) for i, (_, _, layer) in enumerate(groups) for node, _ in layer
+    }
+    graph = nx.DiGraph()
+    graph.add_nodes_from(owner.values())
+    graph.add_edges_from(
+        (owner[a], owner[node])
+        for node in members
+        for a in ancestors[node]
+        if owner[a] != owner[node]
+    )
+    cyclic = {
+        int(i)
+        for component in nx.strongly_connected_components(graph)
+        if len(component) > 1
+        for i in component
+    }
+    if not cyclic:
+        return [(key, index, layer, None) for key, index, layer in groups]
+    # `ancestors` is transitive, so an ancestor always has fewer of its own
+    depth: dict[str, int] = {}
+    for node in sorted(members, key=lambda n: (len(ancestors[n]), n)):
+        depth[node] = max((depth[a] + 1 for a in ancestors[node]), default=0)
+    out: list[tuple[AggKey, int, list[NodeItem], int | None]] = []
+    for i, (key, index, layer) in enumerate(groups):
+        if i not in cyclic:
+            out.append((key, index, layer, None))
+            continue
+        by_depth: dict[int, list[NodeItem]] = defaultdict(list)
+        for item in layer:
+            by_depth[depth.get(item[0], 0)].append(item)
+        out += [(key, index, by_depth[d], d) for d in sorted(by_depth)]
+    return out
 
 
 def _root(uf: list[int], x: int) -> int:
