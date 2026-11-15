@@ -110,6 +110,9 @@ does not rewrite it; that rewrite is open.
      --import-mode=append <repo>/tests/<area>/test_<area>_laws.py -q
    ```
 
+   For the oracle families, `python -m local_scripts.oracle_sweep ab` does
+   this over any seed range, in parallel, with main's side cached (lesson 44).
+
    `--import-mode=append` is required: `tests/` is a package, so pytest's
    default mode prepends the repo root to `sys.path` and the branch's
    `trilogy/` silently wins over `PYTHONPATH` (lesson 16). Check once with a
@@ -597,7 +600,7 @@ does not rewrite it; that rewrite is open.
       failed on main (`FOUND_SEEDS`) rather than raising `SEEDS`.
     - Measure efficiency in the same A/B, not only correctness: per shape,
       whether the summary is read and how many CTEs and joins the SQL has
-      (scratchpad `effsweep.py` over `shape(seed)`). The first cut of this
+      (now `python -m local_scripts.oracle_sweep ab`, lesson 44). The first cut of this
       round's summary guards fixed every wrong row and lost the summary on 44
       shapes main read correctly, and `test_rollup_resolution_laws.py` failed
       56 cases on it; narrowing each guard to the shape that broke brought it
@@ -892,8 +895,42 @@ does not rewrite it; that rewrite is open.
       pads a NULL row whenever the rows are empty, so a summary read that
       plans can still be a wrong answer: run the oracle on what the
       efficiency change newly plans (3 seeds of 90,000 caught it).
-    - A sweep that reuses one executor slows ~5x by seed 20,000 (each select
-      defines concepts, lesson 41); clear it every 500 seeds.
+    - A sweep that reuses one executor slows ~5x by seed 20,000; clear it
+      every 500 seeds. (Lesson 44: the cause was CTE naming, since fixed, and
+      the sweep tool resets the environment per seed.)
+
+44. **Lessons from making the sweeps fast (after 0.3.502).**
+    - Use `python -m local_scripts.oracle_sweep` (its README has the
+      commands), not a new scratchpad script. `ab --seeds 0:90000` is the
+      round's A/B: wrong / raising / invalid, summary reads, trees scans and
+      JOINs on both sides, and the seeds that moved. Main's side is cached per
+      commit, so it is paid for once; the branch's side is 180,000 queries in
+      16 minutes on 4 cores, where one process took hours.
+    - Profile the harness before the planner. The "5x by seed 20,000" was not
+      concepts piling up (lesson 43 guessed that): the environment keeps every
+      CTE name it handed out, and `generate_cte_name` rebuilt the free-name
+      list against all of them on every call. The planner's own profile is
+      flat (no function over 3% of a query).
+    - A copy of the parsed environment per query (`deepcopy`, 1 ms) plans
+      byte-identical SQL to a fresh executor. Records then do not depend on
+      seed order or worker count, which is what lets a sweep be chunked over
+      cores and its two sides be diffed by SQL hash.
+    - The clean-model default cannot see a bug that needs an earlier
+      statement's definition (lesson 41). Run `--carry-state` once a round
+      for those; the committed suites share an executor and cover it too.
+    - The first full run on clean models found two wrong answers on main
+      that no earlier sweep reported, each wrong on a fresh executor and on
+      both models. Both are open:
+      - spellings 38273: `select city, species, tree_form,
+        count_distinct(tag) by species as v0 where max(height) by city,
+        tree_form != 10` returns a `(B, Quercus)` row no tree has;
+      - first family 5328: `select count(min(height) by city, species) as v0
+        where (count_distinct(tag) by * = 2 and sum(height) by city < 2)`
+        returns `(0,)` where the WHERE keeps no row (a GROUP BY emits no
+        empty group, a total included).
+    - Iterate on a slice, then confirm on the range: `--seeds @file` replays
+      only the seeds the last diff named (seconds), and `show <seed>` prints
+      one seed's query, oracle rows and SQL for both models.
 
 ## Candidate areas
 
