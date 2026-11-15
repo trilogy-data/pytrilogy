@@ -16,6 +16,7 @@ import pytest
 from tests.helpers.models import LINE_ITEMS
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from tests.helpers.rows import ExecutorCache, executor_for, sorted_rows
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 
 _BASE = """
@@ -206,6 +207,27 @@ def test_padding_from_an_earlier_join_never_pairs_a_value_null(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected
+
+
+@pytest.mark.parametrize("walk", WALKS)
+def test_a_side_pairing_the_padding_by_its_own_null_group_carries_it(
+    monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """Cat's padded bucket pairs the count's NULL group, which holds her row;
+    the target's value-NULL group is another population, whichever of the
+    two the walk joins first."""
+    flip_walk_spelling(monkeypatch, walk)
+    assert sorted_rows(
+        _executor(TWO_REGIONS),
+        "select customer_id, bucket, sum(target) by bucket as t, "
+        "count(customer_id) by bucket as n",
+    ) == [
+        (1, "a", 7, 1),
+        (1, None, 5, 2),
+        (2, "b", 8, 1),
+        (3, None, None, 2),
+        (None, "z", 9, 0),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -424,7 +446,13 @@ def test_a_coalesced_inner_key_pairs_value_nulls_null_safely():
     ) == [(1, 5, 1), (1, 7, 1)]
 
 
-def test_a_where_the_padded_row_passes_is_not_pushed_into_the_padded_side():
+@pytest.mark.parametrize("walk", WALKS)
+def test_a_where_the_padded_row_passes_is_not_pushed_into_the_padded_side(
+    monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """`cost` is read off the products and the filtered total alike, each
+    FULL joined: it is the coalesce of both, whichever is walked first."""
+    flip_walk_spelling(monkeypatch, walk)
     assert sorted_rows(
         _executor(LINE_ITEMS),
         "select user_id, cost, sum(cost) by product_id as sc where cost is null",

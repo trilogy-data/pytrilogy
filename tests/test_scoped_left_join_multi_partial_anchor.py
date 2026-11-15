@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 from trilogy.executor import Executor
@@ -64,7 +65,11 @@ def executor(tmp_path: Path) -> Executor:
     return Dialects.DUCK_DB.default_executor(environment=Environment())
 
 
-def test_chained_left_join_narrows_to_store_anchor(executor: Executor):
+@pytest.mark.parametrize("walk", WALKS)
+def test_chained_left_join_narrows_to_store_anchor(
+    executor: Executor, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    flip_walk_spelling(monkeypatch, walk)
     rows = [tuple(r) for r in executor.execute_text(PRESERVING_QUERY)[0].fetchall()]
     # store is the transitive superset (catalog ⊆ web ⊆ store): web-only cust 3
     # and catalog-only cust 4 are non-members and drop; store customers survive.

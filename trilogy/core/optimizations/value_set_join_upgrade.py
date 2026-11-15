@@ -358,6 +358,45 @@ def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPai
     return reads
 
 
+def _paired_before(cte: CTE, target: Join, a: ConceptPair, b: ConceptPair) -> bool:
+    """Whether a join before ``target`` paired the two reads' left keys with a
+    plain equality: on any row each is the other's value or NULL."""
+    reads = {(a.node.name, a.left.address), (b.node.name, b.left.address)}
+    for j in cte.joins or []:
+        if j is target:
+            return False
+        if not isinstance(j, Join):
+            continue
+        if any(
+            not p.is_nullable
+            and {(p.node.name, p.left.address), (j.right.name, p.right.address)}
+            == reads
+            for p in j.pairs or []
+        ):
+            return True
+    return False
+
+
+def _anchors_coalesce(
+    cte: CTE,
+    target: Join,
+    anchor: ConceptPair,
+    pair: ConceptPair,
+) -> bool:
+    """``anchor`` decides the value ``target`` reads ``pair``'s right key off:
+    the two read the same right key, the anchor's left is on every row entering
+    ``target`` with no NULL key, and ``pair``'s left was paired with it before.
+    The ON's coalesce of the lefts is then the anchor's value, whichever left
+    the walk joined first (a second `subset join` member beside the anchor)."""
+    return (
+        anchor is not pair
+        and anchor.right.address == pair.right.address
+        and not _null_extended_before(cte, target, anchor.node.name)
+        and not _emits_null(anchor.left, anchor.node)
+        and _paired_before(cte, target, anchor, pair)
+    )
+
+
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """True when ``side_cte`` can emit NULL for ``concept`` (a ROLLUP/CUBE/
     GROUPING SETS key carries NULL at its subtotal rows)."""
@@ -984,27 +1023,51 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         graph_proof_only: bool,
     ) -> bool:
         """Every row of one side of `join` finds a partner on the other, its
-        NULL-key rows included, so preserving it keeps nothing."""
-        for pair in join.pairs or []:
-            sub, sub_cte, sup, sup_cte = _subset_first(pair, right_cte, right_is_subset)
-            if not _pair_side_fully_matches(
-                sub,
-                sub_cte,
-                sup,
-                sup_cte,
-                self.domain_graph,
-                graph_proof_only=graph_proof_only,
+        NULL-key rows included, so preserving it keeps nothing. A subset
+        right whose key the ON reads off several lefts (a FULL's coalesce)
+        needs one of them to hold it whole (`_anchors_coalesce`)."""
+        pairs = join.pairs or []
+        for pair in pairs:
+            if self._pair_fully_matches(
+                cte, join, pair, right_cte, right_is_subset, graph_proof_only
             ):
-                return False
-            if not (
-                pair.is_nullable
-                and not _unpaired_guest_padding(sub, sub_cte, sup, sup_cte)
-                or not _key_nullable(sub, sub_cte)
+                continue
+            if not right_is_subset or not any(
+                _anchors_coalesce(cte, join, anchor, pair)
+                and self._pair_fully_matches(
+                    cte, join, anchor, right_cte, True, graph_proof_only
+                )
+                for anchor in pairs
             ):
-                return False
-            if not right_is_subset and _null_extended_before(cte, join, sub_cte.name):
                 return False
         return True
+
+    def _pair_fully_matches(
+        self,
+        cte: CTE,
+        join: Join,
+        pair: ConceptPair,
+        right_cte: CTE | UnionCTE,
+        right_is_subset: bool,
+        graph_proof_only: bool,
+    ) -> bool:
+        sub, sub_cte, sup, sup_cte = _subset_first(pair, right_cte, right_is_subset)
+        if not _pair_side_fully_matches(
+            sub,
+            sub_cte,
+            sup,
+            sup_cte,
+            self.domain_graph,
+            graph_proof_only=graph_proof_only,
+        ):
+            return False
+        if not (
+            pair.is_nullable
+            and not _unpaired_guest_padding(sub, sub_cte, sup, sup_cte)
+            or not _key_nullable(sub, sub_cte)
+        ):
+            return False
+        return right_is_subset or not _null_extended_before(cte, join, sub_cte.name)
 
     def _narrow_directionally(
         self,

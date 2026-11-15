@@ -14,6 +14,9 @@ Data (harness): store_cust keys {1,2,3}, web_cust keys {1,2,4}.
 
 from pathlib import Path
 
+import pytest
+
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.join_matrix.harness import make_engine, sort_rows, write_models
 
 BASE = """
@@ -91,4 +94,21 @@ def test_two_subset_joins_or_of_members(tmp_path: Path):
         "where web_cust.cust_sk is not null or cat_cust.k_sk is not null;"
     )
     # web contributes {1,2}, cat contributes {2,3} -> {1,2,3}
+    assert _rows(tmp_path, query) == [(1,), (2,), (3,)]
+
+
+@pytest.mark.parametrize("walk", WALKS)
+def test_a_second_subset_member_is_not_padded_whichever_is_walked_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """The second member joins on the coalesce of the anchor and the first,
+    which is the anchor's value on every row: web-only cust 4 is no member."""
+    flip_walk_spelling(monkeypatch, walk)
+    query = (
+        "with cat_cust as where l_val > 2 select l_key as k_sk; "
+        "select store_cust.cust_sk as c_sk "
+        "subset join web_cust.cust_sk = store_cust.cust_sk "
+        "subset join cat_cust.k_sk = store_cust.cust_sk "
+        "where web_cust.cust_sk is not null or cat_cust.k_sk is not null;"
+    )
     assert _rows(tmp_path, query) == [(1,), (2,), (3,)]

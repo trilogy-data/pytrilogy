@@ -3270,6 +3270,94 @@ null-safe pairs -31. Against parts 79-80 alone, parts 81-82 move 123:
 
 Every row-checking law in those files passes.
 
+**The walk's spellings decide no rows (parts 83-87).** Before the plan can
+state the walk's order, every term it would replace has to decide plan shape
+only. Parts 74-79 showed that for the nullable and partial terms. The terms
+that decide the most walks were never checked: the key's length and name at
+the bottom of the rank (part 71), and the side's name at the bottom of the
+scorer (part 72). Neither is a fact about rows, so a walk that breaks those
+ties the other way round must return the same rows.
+
+`tests/helpers/walk_order.py` reverses them, and
+`local_scripts/sql_ab/walk_flip_plugin.py` runs the suite that way
+(`WALK_FLIP=key,side`). Every other rank and scorer term stays. On `main`,
+35 tests fail under the flip and pass without it. 23 are shape pins (SQL
+text, a join count, a rule firing; each mirrors or reorders joins). The
+other 12, in six families, return different rows, and four of them are planner bugs. In each
+the default walk was right only because of how the names sort, or because
+the data happened to hide the loss.
+
+- **A second `subset join` member is padded (part 84).** `select
+  store_cust.cust_sk subset join web_cust.cust_sk = store_cust.cust_sk
+  subset join cat_cust.k_sk = store_cust.cust_sk` types both members FULL
+  (`partial_domain`). `UpgradeOuterFromKeySetEquivalence` narrows the first
+  to LEFT OUTER, but not the second: its ON reads `coalesce(store, first
+  member)`, and `_side_fully_matches` asked every left read to be a complete
+  superset. On every row entering the join, the anchor's key is non-NULL
+  and the first member's is the anchor's value or NULL, so the coalesce
+  is the anchor's value. One fully-matching anchor per right key now
+  suffices (`_anchors_coalesce`: the anchor is never null-extended before,
+  never NULL on the key, and an earlier join paired it with the other read
+  by `=`). On `main` the default walk joins `cat_cust` second, whose keys lie
+  inside the store's on the harness data, so the FULL kept no extra row.
+  Walked the other way, the web-only customer 4 came back. The q78-family
+  chain (`test_chained_left_join_narrows_to_store_anchor`) has the same
+  shape.
+- **A FULL join's shared column reads one provider (part 85).** `select
+  user_id, cost, sum(cost) by product_id as sc where cost is null` FULL joins
+  the products and the filtered total, and both carry `cost`. The merge read
+  `cost` off whichever provider sorted first (`null_status`, then the
+  identifier). The filtered total's `cost` is NULL on every product it
+  dropped, so walked that way the WHERE kept every user. Join keys already
+  read the coalesce of every FULL provider (`full_join_concepts`). Now every
+  column the right of a FULL shares with a side joined before it does too
+  (`merge_node._full_join_concepts`). The two copies agree wherever both
+  have a row.
+- **A side paired with the padding through its own NULL group carries it
+  (part 86).** In `test_padded_null_pairing`, `count(customer_id) by bucket`
+  holds Cat's padded row in its NULL group, so pairing it with the padding
+  is right (`_pads_beside`). But on that row its `bucket` is then the
+  padding's NULL. A later join reading `coalesce(orders.bucket,
+  count.bucket)` against the targets' value-NULL group escaped the guard,
+  because `_absent_key_groups` saw a left that was not absent, and Cat got
+  bucket NULL's target. When the count was walked after the targets, the
+  guard was already in place. Such a side is now recorded with the padding's
+  absent sides (`_padding_guard`).
+- **A join keyed off a pruned left keeps its widened type (part 87).** In
+  dimension-chain seed 90 the walk joins the seats side first, RIGHT OUTER
+  onto the count, then types the model lookup INNER against the seats side
+  (the left walked first, part 73). `ensure_content_preservation` widens it
+  to LEFT, since the RIGHT padded that side. `prune_outer_join_pairs` then
+  keys the join off the count, which no join padded, and
+  `restore_unpadded_joins` read that as "the widening holds nothing" and
+  restored the INNER. That INNER was typed against the side whose pair was
+  just pruned, and it dropped the flight with no tail. A join whose pairs
+  pruning drops now keeps no type of its own to restore.
+
+The other two families are not planner bugs:
+
+- `test_bucket_count_rides_the_tree_key` (6 cases) returns the same rows.
+  Its fan-out check (`find_fanout_joins`) read the join's right as the
+  multiplying side, so `enrichment INNER trees` on `species` failed where
+  `trees INNER enrichment` passed. A stream that is unique per the join's
+  left keys is the lookup, whichever side it is. The helper now says so,
+  and still catches the fan-out it was written for
+  (`test_checker_catches_the_fanout_when_the_gate_is_disabled`).
+- `test_merged_unnest_bridge_row_projection` loses ecoregion 600's tree-less
+  row when the walk's keys are reversed. `merge merged_key into
+  ecoregion_id` declares the two domains EQUAL, and EQUAL narrowing is on
+  by default. Ecoregion 600 is in no species' list, so the data breaks the
+  declaration, and dropping the row is licensed either way. On `main` an
+  earlier FULL only happens to pad the narrowing's witness. The test still
+  pins the default walk's row.
+
+With parts 84-87 the flipped suite fails only on the 23 shape pins and that
+row, beside the 25 credential-gated tests. Each fix has a test that runs
+under the default walk and under each reversed spelling
+(`flip_walk_spelling`). The five that compare rows fail on `main`.
+
+SUITE_CAPTURE
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3325,7 +3413,12 @@ not built yet:
    INNER had come from an unsound optimizer proof, an earlier INNER forcing
    a later join's side (part 81). The proof's fix exposed a padded NULL
    paired null-safe across sides that had passed different filters, which
-   `main`'s unsound INNER had hidden (part 82).
+   `main`'s unsound INNER had hidden (part 82). The spelling tie-breaks
+   decided rows too. With each spelling reversed, four planner bugs
+   surfaced, and each is fixed (parts 84-87). The flipped suite now differs
+   only in shape, apart from one test whose data breaks a declared EQUAL
+   merge. So the plan can state those ties without moving rows. What
+   order it should state is the next step.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

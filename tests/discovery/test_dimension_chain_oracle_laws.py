@@ -17,6 +17,7 @@ from collections import defaultdict
 import pytest
 
 from tests.helpers.rows import fetch_rows
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 
 SEEDS = 600
@@ -161,6 +162,22 @@ def _sorted(rows: list[tuple]) -> list[tuple]:
 
 @pytest.mark.parametrize("seed", range(SEEDS))
 def test_dimension_chain_select_matches_raw_rows(seed: int):
+    _assert_matches_raw_rows(seed)
+
+
+@pytest.mark.parametrize("walk", WALKS[1:])
+@pytest.mark.parametrize("seed", [90])
+def test_a_walk_keyed_off_a_pruned_left_keeps_its_widened_type(
+    seed: int, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """The flight with no tail counts under a NULL tail with no model: the
+    model's join, typed INNER against the seats side walked first, is keyed
+    off the count once that pair is pruned, so it stays the widened LEFT."""
+    flip_walk_spelling(monkeypatch, walk)
+    _assert_matches_raw_rows(seed)
+
+
+def _assert_matches_raw_rows(seed: int) -> None:
     rng = random.Random(seed)
     text, rows = _draw(rng)
     attrs = rng.sample(ATTRS, rng.randint(1, 3))

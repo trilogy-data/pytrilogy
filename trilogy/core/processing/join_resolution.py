@@ -121,11 +121,16 @@ def prune_outer_join_pairs(joins: list[SourceJoin | UnnestJoin]) -> None:
     """Drop redundant duplicate-key pairs from directional outer joins: a
     left side no earlier join pads equals the key on every row, so the
     others' pairs only bloat the coalesce. With every left side padded the
-    coalesce IS the key, and all pairs stay."""
+    coalesce IS the key, and all pairs stay. A join keyed off other lefts
+    than it was typed against keeps no type of its own to restore: the left
+    walked first, now pruned, decided it (`restore_unpadded_joins`)."""
     padded: set[str] = set()
     for join, left in left_deep_joins(joins):
         if join.pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
-            join.pairs = preserved_key_pairs(join.pairs, padded, _pair_source)
+            kept = preserved_key_pairs(join.pairs, padded, _pair_source)
+            if len(kept) < len(join.pairs):
+                join.own_type = None
+            join.pairs = kept
         padded |= padded_by(join, left)
 
 
@@ -1989,7 +1994,8 @@ class _MergePadding:
     """Rows an earlier join of this merge null-extended every `padded` side
     on, to carry the regions `host` holds (`spans`). `keys`: what each side
     was paired on. `absent`: every side with no row there, the padded ones
-    and each later side that could not pair with them."""
+    and each later side that could not pair with them, or paired with them
+    only through its own NULL group of those rows."""
 
     padded: frozenset[str]
     host: str
@@ -2180,10 +2186,15 @@ def _padding_guard(
     right = facts.side(join.right)
     for padding in earlier:
         absent = _absent_key_groups(pairs, padding.absent)
-        if not absent or any(
+        if not absent:
+            continue
+        if any(
             _pads_beside(right, merge.canon_node(group[0].right.address), padding.spans)
             for group in absent
         ):
+            # the right's NULL group is those rows: paired there, its key is
+            # their NULL too, and a later side reading it pairs the padding
+            padding.absent.add(join.right)
             continue
         if not all(any(p.is_nullable for p in group) for group in absent):
             # a key compared with `=` never pairs a NULL

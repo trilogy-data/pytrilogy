@@ -104,3 +104,15 @@ the merges whose join order moves. Sum the per-worker files' `counts`.
 ```bash
 RANK_OUT=/tmp/rank PYTHONPATH=local_scripts/sql_ab python -m pytest -p rank_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
 ```
+
+## Walk flip
+
+`walk_flip_plugin.py` asks whether the join walk's spelling tie-breaks decide
+rows. It reverses the key spelling (`key`) and the side name (`side`) the walk
+breaks ties on (`tests/helpers/walk_order.py`), and leaves every other term
+alone. A test that fails only under the flip either pins a shape (read its
+assertion) or has rows that depend on how names sort, which is a bug.
+
+```bash
+WALK_FLIP=key,side PYTHONPATH=local_scripts/sql_ab python -m pytest -p walk_flip_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```

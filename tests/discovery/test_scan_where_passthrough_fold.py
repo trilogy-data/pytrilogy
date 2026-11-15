@@ -18,6 +18,7 @@ over the trees-to-species join and no GROUP BY above a join on `species`.
 import pytest
 
 from tests.helpers.grain_contract import find_fanout_joins
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 from trilogy.core.exceptions import UnresolvableQueryException
 
@@ -100,9 +101,15 @@ def _plan(model: dict[str, str], query: str):
     return processed, environment, rows
 
 
+@pytest.mark.parametrize("walk", WALKS)
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("query", QUERIES)
-def test_bucket_count_rides_the_tree_key(model: dict[str, str], query: str):
+def test_bucket_count_rides_the_tree_key(
+    model: dict[str, str], query: str, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """The species lookup and the trees meet on `species` from either side:
+    the stream walked first is the lookup, and multiplies nothing."""
+    flip_walk_spelling(monkeypatch, walk)
     processed, environment, rows = _plan(model, query)
     assert not find_fanout_joins(processed.ctes, environment)
     assert len(processed.ctes) == 3, [cte.name for cte in processed.ctes]
