@@ -69,7 +69,7 @@ def _parent_attrs(
     """The lineage parents of a bucket's primaries."""
     return [
         concept_attrs[parent]
-        for primary in bucket.primary_members
+        for primary in bucket.primary_node_ids
         for parent in _lineage_parents(concept_graph, concept_edges, primary)
     ]
 
@@ -104,12 +104,15 @@ def native_grain_filter_inputs(
     A one-value filter (`avg(x) by * ? cond`) is one row whatever it reads.
     A key parent is read on the rows of a table binding it beside its grain,
     so those determinants ride too.
+
+    A set read only through `IN` keeps its declared grain: nothing of its
+    input rows rides a side channel into a row stream.
     """
-    if bucket.primary_node_ids and all(
-        concept_attrs[p].granularity == Granularity.SINGLE_ROW
-        for p in bucket.primary_node_ids
-    ):
+    primaries = [concept_attrs[p] for p in bucket.primary_node_ids]
+    if primaries and all(p.granularity == Granularity.SINGLE_ROW for p in primaries):
         return frozenset()
+    if primaries and all(p.existence_only for p in primaries):
+        return frozenset(bucket.grain_components)
     parents = _parent_attrs(bucket, concept_graph, concept_edges, concept_attrs)
     inherited = frozenset().union(*(_row_grain(p) | p.keys for p in parents))
     return inherited or frozenset(bucket.grain_components)
@@ -186,9 +189,17 @@ def _lineage_parent_addrs(
     concept_attrs: dict[str, ConceptAttrs],
     address: str,
 ) -> set[str]:
+    """A column is named by address; with no outer-query node, its labelled
+    copies (condition phase, rowset body) carry its lineage."""
+    nodes = (
+        [address]
+        if address in concept_graph.nodes
+        else [n for n, a in concept_attrs.items() if a.address == address]
+    )
     return {
         concept_attrs[u].address
-        for u in _lineage_parents(concept_graph, concept_edges, address)
+        for node in nodes
+        for u in _lineage_parents(concept_graph, concept_edges, node)
     }
 
 

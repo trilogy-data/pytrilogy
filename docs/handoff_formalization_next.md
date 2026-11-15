@@ -77,7 +77,7 @@ family from 127 wrong rows to 5; 0.3.495 to 0.3.499 sweep seeds 10,000-60,000;
 area 1; 0.3.503 clears the four sweep answers 0.3.502 left, sweeps the first
 family to 90,000, and settles every pass-cap query; lesson 45; 0.3.504
 sweeps both families to 150,000 and fixes the five answers main gets wrong or
-raises on there; lesson 46; 0.3.505 sweeps both families to 210,000,
+raises on there; lesson 46; 0.3.506 sweeps both families to 210,000,
 fixes the four answers main gets wrong, raises on or cannot run, and reads
 an aggregate coarser than the rows off the summary; lesson 47).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
@@ -1040,7 +1040,7 @@ does not rewrite it; that rewrite is open.
       models: main 1 wrong, the branch none; summary reads, scans and JOINs
       unchanged (598,046 on both sides).
 
-47. **Lessons from the 150k-210k round (0.3.505).**
+47. **Lessons from the 150k-210k round (0.3.506).**
     - Run the A/B over the whole range, not only the new seeds: spellings
       11684 was wrong on main and on #998's head, but the last round's sweep
       passed it (its records were cached against an older generator). FINAL

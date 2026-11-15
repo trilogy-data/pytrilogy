@@ -493,7 +493,10 @@ class _CleanFeederCache:
 
     def _build(self, group: tuple[BuildConcept, ...]) -> StrategyNode | None:
         # Imported lazily: `concept_strategies_v4` imports this module's package.
-        from trilogy.core.processing.concept_strategies_v4 import search_concepts
+        from trilogy.core.processing.concept_strategies_v4 import (
+            lineage_sourceable,
+            search_concepts,
+        )
 
         v4_history = self._history
         addresses = {concept.address for concept in group}
@@ -502,8 +505,16 @@ class _CleanFeederCache:
             # only shape the feeder's grain. A tuple must not be widened; an
             # extra column would change which rows the subselect projects. Nor
             # a filter: shown alone its predicate narrows the rows, where
-            # beside a key it is a CASE whose NULL would be a member.
-            addresses |= set(group[0].keys or set())
+            # beside a key it is a CASE whose NULL would be a member. Nor by a
+            # key no plan sources: a stored set whose inputs are unbound.
+            addresses |= {
+                key
+                for key in group[0].keys or set()
+                if key in self._environment.concepts
+                and lineage_sourceable(
+                    self._environment.concepts[key], self._environment, set()
+                )
+            }
         search = [
             self._environment.concepts[address]
             for address in sorted(addresses)
@@ -2592,7 +2603,11 @@ def _widen_scan_chain(
         ) and not _widen_inputs_below(node, concept, available, depth):
             return False
         available = renderable_addresses(node)
-    if _synthesizes_handle(concept, node, available):
+    # an aggregate or window computed here would read this node's rows, not
+    # the statement's (a rank over a scan's raw launches)
+    if _synthesizes_handle(concept, node, available) or _carry_needs_own_node(
+        concept, available
+    ):
         return False
     widen_projection(
         node,
@@ -2751,14 +2766,18 @@ def _carried_handle_is_partial(
     return False
 
 
-def _carry_needs_own_node(concept: BuildConcept) -> bool:
+def _carry_needs_own_node(
+    concept: BuildConcept, available: Collection[str] = frozenset()
+) -> bool:
     """True when synthesizing ``concept`` from a parent's row stream would need
     a row-shaping node of its own (aggregate, window, recursion, ...), so it
     cannot be widened onto a scan.
 
     A ROWSET handle terminates the walk: its value arrives materialized at the
     rowset boundary rather than being recomputed here, so a derived key over one
-    (`agg.period + 53`) stays carryable onto a scan its relation binds.
+    (`agg.period + 53`) stays carryable onto a scan its relation binds. So
+    does a column already ``available``: its value is the statement's, and an
+    expression over it (`rank > 1`) is computed per row.
     """
     stack = [concept]
     seen: set[str] = set()
@@ -2767,7 +2786,11 @@ def _carry_needs_own_node(concept: BuildConcept) -> bool:
         if current.address in seen:
             continue
         seen.add(current.address)
-        if current.derivation == Derivation.ROWSET:
+        if (
+            current.derivation == Derivation.ROWSET
+            or current.address in available
+            or not current.pseudonyms.isdisjoint(available)
+        ):
             continue
         if current.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             return True
@@ -2884,7 +2907,7 @@ def _project_planned_keys(
             if isinstance(parent, GroupNode)
             and c.address not in authored
             and concept_satisfiable(c, outputs)
-            and not _carry_needs_own_node(c)
+            and not _carry_needs_own_node(c, outputs)
         ]
         determined = (
             strict_fd_closure(environment, frozenset(outputs))
@@ -3022,7 +3045,7 @@ def _carry_join_keys(
             # cannot render that way (it needs its own aggregate/window node),
             # so widening a plain scan onto one emits a column nothing can
             # source (`avg(amount) by part` asked of the bare `rows` scan).
-            if concept.address not in available and _carry_needs_own_node(concept):
+            if _carry_needs_own_node(concept, available):
                 continue
             carried.append(concept)
             input_candidates.extend(_row_lineage_closure(concept))

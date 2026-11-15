@@ -1,4 +1,4 @@
-"""The reduced shapes of the 150,000-210,000 sweep (0.3.505).
+"""The reduced shapes of the 150,000-210,000 sweep (0.3.506).
 
 - `formal/Trilogy/SelectGrain.lean` (`pruned_coalesce_member_pads_gate`): a key
   several left sides pair renders their coalesce; pruning the side nothing pads
