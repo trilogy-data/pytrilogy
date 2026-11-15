@@ -15,7 +15,7 @@ import pytest
 
 from tests.helpers.rows import executor_for, fetch_rows, normalize_numbers
 from trilogy.core.enums import Derivation
-from trilogy.core.processing.v4_helper.strategy_builder import _computes_barrier
+from trilogy.core.processing.v4_helper.strategy_builder import _carry_needs_own_node
 from trilogy.executor import Executor
 
 TEMPLATE = """
@@ -236,12 +236,9 @@ def test_rank_beside_partial_merge_random_rows(seed: int):
         executor.close()
 
 
-def test_projection_passes_a_barrier_through_never_computes_it(fixed: Executor):
+def test_a_rank_and_its_total_need_their_own_node(fixed: Executor):
     env = fixed.environment.materialize_for_select()
     rank = next(c for c in env.concepts.values() if c.derivation == Derivation.WINDOW)
-    total = rank.lineage.order_by[0].expr
-    scan = {"local.vehicle_name", "local.orb_pay", "local.id"}
-    assert _computes_barrier(rank, scan)
-    assert _computes_barrier(total, scan)
-    assert not _computes_barrier(rank, scan | {rank.address})
-    assert not _computes_barrier(env.concepts["local.orbit_code"], scan)
+    assert _carry_needs_own_node(rank)
+    assert _carry_needs_own_node(rank.lineage.order_by[0].expr)
+    assert not _carry_needs_own_node(env.concepts["local.orbit_code"])

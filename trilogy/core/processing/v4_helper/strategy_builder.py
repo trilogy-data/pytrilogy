@@ -2603,8 +2603,10 @@ def _widen_scan_chain(
         ) and not _widen_inputs_below(node, concept, available, depth):
             return False
         available = renderable_addresses(node)
-    if _synthesizes_handle(concept, node, available) or _computes_barrier(
-        concept, available
+    # an aggregate or window computed here would read this node's rows, not
+    # the statement's (a rank over a scan's raw launches)
+    if _synthesizes_handle(concept, node, available) or (
+        concept.address not in available and _carry_needs_own_node(concept)
     ):
         return False
     widen_projection(
@@ -2614,24 +2616,6 @@ def _widen_scan_chain(
         available_addresses=available,
     )
     return True
-
-
-# Values read off the set of rows they are computed over, not one row.
-_ROW_SET_VALUES = (Derivation.WINDOW, Derivation.AGGREGATE)
-
-
-def _computes_barrier(concept: BuildConcept, available: set[str]) -> bool:
-    """A projection only passes a window or aggregate through: computed there,
-    it reads that node's rows (a rank over a scan's raw rows, not the
-    statement's), so it must already be a column of its inputs. A row
-    expression over such a column (`case when s.q > 10`) is computed there."""
-    if concept.address in available or concept.pseudonyms & available:
-        return False
-    if concept.derivation in _ROW_SET_VALUES:
-        return True
-    return any(
-        _computes_barrier(arg, available) for arg in row_lineage_arguments(concept)
-    )
 
 
 def _widen_below(
