@@ -1740,6 +1740,13 @@ def single_row_source(ds: DataSource) -> bool:
     return is_scalar_condition(ds.condition, materialized=materialized)
 
 
+def _gate_total(source: DataSource, gates: Collection[str], single: bool) -> bool:
+    """A total only the WHERE reads holds a row wherever its atom can keep one:
+    on no rows the atom reads NULL and keeps none, so it pairs as one row,
+    however it was computed (a re-sum of stored partials included)."""
+    return single or (source.identifier in gates and not source.grain.components)
+
+
 def narrow_keyless_joins(
     joins: list[SourceJoin | UnnestJoin], gates: Collection[str] = frozenset()
 ) -> None:
@@ -1776,11 +1783,12 @@ def narrow_keyless_joins(
             continue
         if join.left is not None and not keyed_seen:
             left_single = single_row_source(join.left)
-            left_has_rows = left_has_rows or left_single
+            left_has_rows = left_has_rows or _gate_total(join.left, gates, left_single)
             all_totals = all_totals and left_single
             all_totals = all_totals and join.left.identifier not in gates
-        right_has_rows = single_row_source(join.right)
-        all_totals = all_totals and right_has_rows
+        right_single = single_row_source(join.right)
+        right_has_rows = _gate_total(join.right, gates, right_single)
+        all_totals = all_totals and right_single
         all_totals = all_totals and join.right.identifier not in gates
         if (left_has_rows or right_has_rows) and not all_totals:
             join.join_type = JoinType.INNER

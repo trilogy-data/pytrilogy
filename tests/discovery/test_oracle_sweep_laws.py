@@ -330,7 +330,9 @@ FOUND_SEEDS = [
 ]  # fmt: skip
 # seeds 0.3.503 fixed: a `by *` gate the WHERE reads is no total of the
 # select's rows, so it does not keep a keyless join to the select's total outer
-FOUND_SEEDS_503 = [5328]
+# (5328; 84194 a re-sum of the summary's counts); a row atom copied onto every
+# grouping its host skips is not re-applied at FINAL (74021, raised)
+FOUND_SEEDS_503 = [5328, 74021, 84194]
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
