@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from trilogy import Environment
@@ -8,6 +10,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.nodes import MergeNode, RecursiveNode, UnionNode
 from trilogy.core.processing.v4_helper.source_planning import (
@@ -217,59 +220,34 @@ merge first_parent into pid;
 """
 
 
-def _build_partial_union():
+def _build(model: str) -> tuple[Environment, BuildEnvironment]:
     env = Environment()
-    env.parse(PARTIAL_UNION_MODEL)
+    env.parse(model)
     return env, env.materialize_for_select()
 
 
-def _source_outputs(benv):
-    return [
-        benv.concepts[address]
-        for address in [
-            "local.week_seq",
-            "local.ext_sales_price",
-            "local.item_id",
-            "local.order_id",
-            "local.sales_channel",
-        ]
-    ]
+_SALES_OUTPUTS = (
+    "local.week_seq",
+    "local.ext_sales_price",
+    "local.item_id",
+    "local.order_id",
+    "local.sales_channel",
+)
 
 
-def _build_grained_bridge():
-    env = Environment()
-    env.parse(GRAINED_BRIDGE_MODEL)
-    return env, env.materialize_for_select()
-
-
-def _build_channel_dim():
-    env = Environment()
-    env.parse(CHANNEL_DIM_MODEL)
-    return env, env.materialize_for_select()
-
-
-def _build_partitioned_channel_dim():
-    env = Environment()
-    env.parse(PARTITIONED_CHANNEL_DIM_MODEL)
-    return env, env.materialize_for_select()
-
-
-def _build_condition_only():
-    env = Environment()
-    env.parse(CONDITION_ONLY_MODEL)
-    return env, env.materialize_for_select()
-
-
-def _build_partial_key_with_watermark():
-    env = Environment()
-    env.parse(PARTIAL_KEY_WITH_WATERMARK_MODEL)
-    return env, env.materialize_for_select()
-
-
-def _build_recursive_connector():
-    env = Environment()
-    env.parse(RECURSIVE_CONNECTOR_MODEL)
-    return env, env.materialize_for_select()
+def _request(
+    built: tuple[Environment, BuildEnvironment],
+    *addresses: str,
+    conditions: BuildWhereClause | None = None,
+) -> SourceRequest:
+    env, benv = built
+    return SourceRequest(
+        outputs=[benv.concepts[a] for a in addresses],
+        environment=benv,
+        graph=generate_graph(benv),
+        history=V4History(base_environment=env),
+        conditions=conditions,
+    )
 
 
 def _network_bridge(request):
@@ -281,7 +259,7 @@ def _network_bridge(request):
 
 class TestBridgeSourcePlanning:
     def test_original_datasource_nodes_restore_same_address_bridge_key(self):
-        _, benv = _build_grained_bridge()
+        _, benv = _build(GRAINED_BRIDGE_MODEL)
         source_graph = generate_graph(benv)
         bridge_graph = source_graph.copy()
         catalog_customer = next(
@@ -304,7 +282,7 @@ class TestBridgeSourcePlanning:
         assert bridge_graph.has_edge("ds~catalog_sales", catalog_customer)
 
     def test_generated_graph_carries_the_enum_partition_union(self):
-        _, benv = _build_partial_union()
+        _, benv = _build(PARTIAL_UNION_MODEL)
         graph = generate_graph(benv)
 
         union = graph.datasources["ds~web_sales-catalog_sales"]
@@ -339,13 +317,7 @@ class TestBridgeSourcePlanning:
             assert {child.namespace for child in union.children} == {node[3]}
 
     def test_bridge_search_includes_requested_grain_keys(self):
-        env, benv = _build_channel_dim()
-        request = SourceRequest(
-            outputs=[benv.concepts["local.channel_dim_text_id"]],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
+        request = _request(_build(CHANNEL_DIM_MODEL), "local.channel_dim_text_id")
 
         search = _search_concepts_for_bridge(request)
 
@@ -356,13 +328,7 @@ class TestBridgeSourcePlanning:
         }
 
     def test_bridge_treats_grain_keys_as_injected_concepts(self):
-        env, benv = _build_channel_dim()
-        request = SourceRequest(
-            outputs=[benv.concepts["local.channel_dim_text_id"]],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
+        request = _request(_build(CHANNEL_DIM_MODEL), "local.channel_dim_text_id")
 
         plan = _network_bridge(request)
 
@@ -374,13 +340,7 @@ class TestBridgeSourcePlanning:
         }
 
     def test_bridge_component_source_exposes_selected_concept_grain_keys(self):
-        env, benv = _build_channel_dim()
-        request = SourceRequest(
-            outputs=[benv.concepts["local.channel_dim_text_id"]],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
+        request = _request(_build(CHANNEL_DIM_MODEL), "local.channel_dim_text_id")
         plan = _network_bridge(request)
         assert plan is not None
 
@@ -396,7 +356,7 @@ class TestBridgeSourcePlanning:
             } <= {concept.address for concept in branch.output_concepts}
 
     def test_component_source_exposes_selected_graph_node_grain_keys(self):
-        _, benv = _build_partitioned_channel_dim()
+        _, benv = _build(PARTITIONED_CHANNEL_DIM_MODEL)
         graph = generate_graph(benv)
         ds_node = "ds~web_dim-catalog_dim"
         selected = [
@@ -408,13 +368,7 @@ class TestBridgeSourcePlanning:
         assert any("c~local.sales_channel@" in node for node in extra)
 
     def test_bridge_uses_union_source_for_partial_channel_sources(self):
-        env, benv = _build_partial_union()
-        request = SourceRequest(
-            outputs=_source_outputs(benv),
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
+        request = _request(_build(PARTIAL_UNION_MODEL), *_SALES_OUTPUTS)
 
         plan = _network_bridge(request)
 
@@ -422,13 +376,7 @@ class TestBridgeSourcePlanning:
         assert "ds~web_sales-catalog_sales" in plan.graph.datasources
 
     def test_bridge_datasource_nodes_materialize_union_parent(self):
-        env, benv = _build_partial_union()
-        request = SourceRequest(
-            outputs=_source_outputs(benv),
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
+        request = _request(_build(PARTIAL_UNION_MODEL), *_SALES_OUTPUTS)
         plan = _network_bridge(request)
         assert plan is not None
 
@@ -443,16 +391,11 @@ class TestBridgeSourcePlanning:
         bridge emitter has no cross join. So the search must report a decision the
         bridge CANNOT satisfy, letting `_direct_source` build the complete-key
         merge rather than routing through one partial scan. (brief 06)"""
-        env, benv = _build_partial_key_with_watermark()
-        request = SourceRequest(
-            outputs=[
-                benv.concepts["local.code"],
-                benv.concepts["local.id"],
-                benv.concepts["local.data_through"],
-            ],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
+        request = _request(
+            _build(PARTIAL_KEY_WITH_WATERMARK_MODEL),
+            "local.code",
+            "local.id",
+            "local.data_through",
         )
 
         decision = _network_source(request)
@@ -464,17 +407,12 @@ class TestBridgeSourcePlanning:
         """Sourcing a partial foreign key (`code`) alongside a single-row
         constant (`data_through`) must still merge the complete dimension source
         (`carrier`), leaving `code` non-partial. (brief 06)"""
-        env, benv = _build_partial_key_with_watermark()
         node = plan_source(
-            SourceRequest(
-                outputs=[
-                    benv.concepts["local.code"],
-                    benv.concepts["local.id"],
-                    benv.concepts["local.data_through"],
-                ],
-                environment=benv,
-                graph=generate_graph(benv),
-                history=V4History(base_environment=env),
+            _request(
+                _build(PARTIAL_KEY_WITH_WATERMARK_MODEL),
+                "local.code",
+                "local.id",
+                "local.data_through",
             )
         )
 
@@ -495,14 +433,8 @@ class TestBridgeSourcePlanning:
         the recursion as a parent (carrying both its key `id` and the join key
         `first_parent`) and join it to the dimension source, not drop it and
         render INVALID_REFERENCE. (brief 02)"""
-        env, benv = _build_recursive_connector()
         node = plan_source(
-            SourceRequest(
-                outputs=[benv.concepts["local.id"], benv.concepts["local.plabel"]],
-                environment=benv,
-                graph=generate_graph(benv),
-                history=V4History(base_environment=env),
-            )
+            _request(_build(RECURSIVE_CONNECTOR_MODEL), "local.id", "local.plabel")
         )
 
         assert node is not None
@@ -523,7 +455,8 @@ class TestBridgeSourcePlanning:
         assert {"local.id", "local.first_parent"} <= connector_outputs
 
     def test_direct_source_includes_condition_only_row_args(self):
-        env, benv = _build_condition_only()
+        built = _build(CONDITION_ONLY_MODEL)
+        _, benv = built
         condition = BuildWhereClause(
             conditional=BuildComparison(
                 left=benv.concepts["local.month_seq"],
@@ -532,15 +465,7 @@ class TestBridgeSourcePlanning:
             )
         )
 
-        node = plan_source(
-            SourceRequest(
-                outputs=[benv.concepts["local.value"]],
-                environment=benv,
-                graph=generate_graph(benv),
-                history=V4History(base_environment=env),
-                conditions=condition,
-            )
-        )
+        node = plan_source(_request(built, "local.value", conditions=condition))
 
         assert node is not None
         assert "local.value" in {concept.address for concept in node.output_concepts}
@@ -562,17 +487,7 @@ select 1 order_id, 10 customer_id union all select 2, 10
 
 
 def _source_orders(*addresses: str):
-    env = Environment()
-    env.parse(SOURCE_GROUPING_MODEL)
-    benv = env.materialize_for_select()
-    node = plan_source(
-        SourceRequest(
-            outputs=[benv.concepts[a] for a in addresses],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
-        )
-    )
+    node = plan_source(_request(_build(SOURCE_GROUPING_MODEL), *addresses))
     assert node is not None
     return node
 
@@ -595,16 +510,11 @@ def test_a_source_plan_marks_the_rows_it_groups():
 
 
 def test_a_bridge_merge_pairs_on_the_search_s_joins():
-    env, benv = _build_grained_bridge()
     node = plan_source(
-        SourceRequest(
-            outputs=[
-                benv.concepts[a]
-                for a in ("local.catalog_quantity", "local.ticket_number")
-            ],
-            environment=benv,
-            graph=generate_graph(benv),
-            history=V4History(base_environment=env),
+        _request(
+            _build(GRAINED_BRIDGE_MODEL),
+            "local.catalog_quantity",
+            "local.ticket_number",
         )
     )
     assert isinstance(node, MergeNode) and node.planned_pairs is not None
@@ -617,11 +527,16 @@ def test_a_bridge_merge_pairs_on_the_search_s_joins():
     ) == {"local.customer_id", "local.item_id"}
 
 
-def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
-    _, benv = _build_grained_bridge()
-    plan = BridgePlan(
-        concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"})
+def _bridge_over_a(**stated: Any) -> BridgePlan:
+    """A bridge whose one searched scan is `ds~a`."""
+    _, benv = _build(GRAINED_BRIDGE_MODEL)
+    return BridgePlan(
+        concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"}), **stated
     )
+
+
+def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
+    plan = _bridge_over_a()
     chosen, connector, filled = object(), object(), object()
     sides = {id(chosen): "ds~a", id(connector): "connector~r.k", id(filled): "ds~b"}
     unsearched = {
@@ -643,21 +558,14 @@ def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
 
 
 def test_a_bridge_side_nothing_planned_is_a_planner_bug():
-    _, benv = _build_grained_bridge()
-    plan = BridgePlan(
-        concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"})
-    )
+    plan = _bridge_over_a()
     chosen, stray = object(), object()
     with pytest.raises(ValueError, match="planner bug"):
         _bridge_plan(plan, [chosen, stray], {id(chosen): "ds~a"})
 
 
 def test_a_bridge_through_a_chosen_connector_pairs_on_its_grain():
-    _, benv = _build_grained_bridge()
-    plan = BridgePlan(
-        concepts=[],
-        graph=generate_graph(benv),
-        scans=frozenset({"ds~a"}),
+    plan = _bridge_over_a(
         connector_aliases=("r.k",),
         join_keys={frozenset({"ds~a", "connector~r.k"}): frozenset({"local.k"})},
     )
@@ -673,6 +581,6 @@ def test_a_bridge_through_a_chosen_connector_pairs_on_its_grain():
 
 
 def test_a_hub_with_no_lookups_is_its_own_merge():
-    _, benv = _build_grained_bridge()
+    _, benv = _build(GRAINED_BRIDGE_MODEL)
     hub = object()
     assert _merged(hub, [], benv, 0) is hub

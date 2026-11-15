@@ -8,6 +8,7 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import AggregateGroupingMode, ComparisonOperator, Derivation
 from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import GroupNode
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
@@ -45,6 +46,20 @@ address trees;
 """
 
 
+def _build_env() -> BuildEnvironment:
+    return Environment().parse(MODEL)[0].materialize_for_select()
+
+
+def _trees_scan(env: BuildEnvironment, *addresses: str) -> SelectNode:
+    columns = [env.concepts[a] for a in addresses]
+    return SelectNode(
+        input_concepts=columns,
+        output_concepts=columns,
+        environment=env,
+        datasource=env.datasources["trees"],
+    )
+
+
 def _attrs(derivation: Derivation | None, *outputs: str) -> GroupAttrs:
     return GroupAttrs(
         depth_label=DepthLabel.D0, derivation=derivation, output_concepts=outputs
@@ -52,9 +67,7 @@ def _attrs(derivation: Derivation | None, *outputs: str) -> GroupAttrs:
 
 
 def test_gate_key_no_side_renders_is_joined_from_its_row_stream():
-    env = Environment()
-    env.parse(MODEL)
-    build = env.materialize_for_select()
+    build = _build_env()
     graph = nx.DiGraph()
     for gid in ("rows", "agg", "basic", FINAL_NODE_ID):
         graph.add_node(gid)
@@ -81,9 +94,7 @@ def test_gate_key_no_side_renders_is_joined_from_its_row_stream():
 
 
 def test_root_side_carries_an_argument_it_outputs():
-    env = Environment()
-    env.parse(MODEL)
-    build = env.materialize_for_select()
+    build = _build_env()
     graph = nx.DiGraph()
     for gid in ("rows", "basic", FINAL_NODE_ID):
         graph.add_node(gid)
@@ -151,7 +162,7 @@ def test_bridge_candidates_are_planned_groups_decided_before_the_consumer():
 
 
 def test_cover_holds_what_a_contributor_renders_and_is_owed():
-    env = Environment().parse(MODEL)[0].materialize_for_select()
+    env = _build_env()
     genus = env.concepts["local.genus"]
     cover = _FinalCover(
         ["basic"],
@@ -167,7 +178,7 @@ def test_cover_holds_what_a_contributor_renders_and_is_owed():
 def _placed_atom_graph(
     host: str, mode: AggregateGroupingMode
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs], BuildWhereClause]:
-    env = Environment().parse(MODEL)[0].materialize_for_select()
+    env = _build_env()
     atom = BuildComparison(
         left=env.concepts["local.raw_species"],
         right="oak",
@@ -230,7 +241,7 @@ def test_sole_contributor_reads_where_condition_placement_put_the_atom(
 def test_row_condition_applies_before_an_aggregate_whose_input_rows_hold_it(
     derivation: Derivation, member: str, column: str, applied: bool
 ):
-    env = Environment().parse(MODEL)[0].materialize_for_select()
+    env = _build_env()
     graph = nx.DiGraph()
     graph.add_edges_from([("root", "agg"), ("agg", FINAL_NODE_ID)])
     attrs = {
@@ -261,21 +272,19 @@ def test_row_condition_applies_before_an_aggregate_whose_input_rows_hold_it(
 def test_final_dedup_holds_only_what_its_projection_keeps(
     dedup: bool, node_type: type, held: set[str]
 ):
-    env = Environment().parse(MODEL)[0].materialize_for_select()
+    env = _build_env()
     species = env.concepts["local.raw_species"]
-    columns = [env.concepts["local.tree_id"], species]
-    scan = SelectNode(
-        input_concepts=columns,
-        output_concepts=columns,
-        environment=env,
-        datasource=env.datasources["trees"],
-    )
+    scan = _trees_scan(env, "local.tree_id", species.address)
     contract = FinalAssemblyContract(
         output_addresses=frozenset({species.address}), deduplicate_to_grain=dedup
     )
 
     node, holds = _final_dedup(
-        scan, frozenset(c.address for c in columns), [species], contract, env
+        scan,
+        frozenset({"local.tree_id", species.address}),
+        [species],
+        contract,
+        env,
     )
 
     assert type(node) is node_type
@@ -283,15 +292,9 @@ def test_final_dedup_holds_only_what_its_projection_keeps(
 
 
 def test_uncovered_final_dedups_its_first_planned_group():
-    env = Environment().parse(MODEL)[0].materialize_for_select()
+    env = _build_env()
     species = env.concepts["local.raw_species"]
-    columns = [env.concepts["local.tree_id"], species]
-    scan = SelectNode(
-        input_concepts=columns,
-        output_concepts=columns,
-        environment=env,
-        datasource=env.datasources["trees"],
-    )
+    scan = _trees_scan(env, "local.tree_id", species.address)
     attrs = {
         "scan": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
         FINAL_NODE_ID: GroupAttrs(
@@ -341,17 +344,8 @@ def test_parent_region_reads_are_its_planned_groups():
 
 
 def test_parent_covered_only_by_a_sibling_holding_its_planned_regions():
-    env = Environment().parse(MODEL)[0].materialize_for_select()
-    tree_id = env.concepts["local.tree_id"]
-    built = {
-        gid: SelectNode(
-            input_concepts=[tree_id],
-            output_concepts=[tree_id],
-            environment=env,
-            datasource=env.datasources["trees"],
-        )
-        for gid in ("domain", "sib")
-    }
+    env = _build_env()
+    built = {gid: _trees_scan(env, "local.tree_id") for gid in ("domain", "sib")}
     graph = nx.DiGraph()
     graph.add_edge("domain", "agg")
     graph.add_edge("sib", "agg")

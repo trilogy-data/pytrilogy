@@ -93,7 +93,8 @@ from trilogy.core.processing.v4_helper.concept_graph import (
 )
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_closure,
-    build_fd_determines,
+    strict_fd_closure,
+    strict_fd_determines,
 )
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
 from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
@@ -251,9 +252,7 @@ def _scan_rows_at_grain(
     if ds.grain.abstract or not ds.grain.issubset(target_grain):
         return False
     return all(
-        build_fd_determines(
-            environment, ds.grain.components, component, include_empty_grain=False
-        )
+        strict_fd_determines(environment, ds.grain.components, component)
         for component in target_grain.components - ds.grain.components
     )
 
@@ -643,9 +642,7 @@ def _stored_coarser_roots(
     determine (`slope` by `g` beside `id`, or inside `count(id ? resid < 1)`):
     joined from that table on its grain, not recomputed from the finer rows
     and joined back on the same keys."""
-    reachable = build_fd_closure(
-        environment, target_grain.components, include_empty_grain=False
-    )
+    reachable = strict_fd_closure(environment, target_grain.components)
     found: set[str] = set()
     seen: set[str] = set()
     stack = list(candidates)

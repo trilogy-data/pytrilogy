@@ -158,13 +158,14 @@ def test_get_node_joins_merge_joins_on_canonical_key():
 # --- get_modifiers ----------------------------------------------------------
 
 
-def _two_sided_nullable_env():
-    """Both datasources carry the join key as a nullable column."""
-    env, _ = parse("""
+def _shared_key_env(a_binding: str = "?shared"):
+    """Both datasources carry the join key, nullable on `b_src` and bound on
+    `a_src` as `a_binding` (nullable too by default)."""
+    env, _ = parse(f"""
 key a_id int;
 key shared int;
 key b_id int;
-datasource a_src (a_id:a_id, shared:?shared) grain(a_id) address a_src;
+datasource a_src (a_id:a_id, shared:{a_binding}) grain(a_id) address a_src;
 datasource b_src (b_id:b_id, shared:?shared) grain(b_id) address b_src;
 """)
     return env.materialize_for_select()
@@ -173,7 +174,7 @@ datasource b_src (b_id:b_id, shared:?shared) grain(b_id) address b_src;
 def test_get_modifiers_both_sides_nullable():
     """Null-safe equality is only meaningful when a NULL key must match a NULL
     key -> stamp NULLABLE only when both sides are nullable."""
-    build = _two_sided_nullable_env()
+    build = _shared_key_env()
     a = build.datasources["a_src"]
     b = build.datasources["b_src"]
     shared = build.concepts["shared"]
@@ -183,14 +184,7 @@ def test_get_modifiers_both_sides_nullable():
 def test_get_modifiers_one_side_nullable_stays_plain():
     """A nullable key against a non-null key (e.g. a dimension PK) must NOT get
     the null-safe wrapper -- it is equivalent to ``=`` and only costs perf."""
-    env, _ = parse("""
-key a_id int;
-key shared int;
-key b_id int;
-datasource a_src (a_id:a_id, shared:shared) grain(a_id) address a_src;
-datasource b_src (b_id:b_id, shared:?shared) grain(b_id) address b_src;
-""")
-    build = env.materialize_for_select()
+    build = _shared_key_env("shared")
     a = build.datasources["a_src"]  # shared non-null
     b = build.datasources["b_src"]  # shared nullable
     shared = build.concepts["shared"]
@@ -201,7 +195,7 @@ datasource b_src (b_id:b_id, shared:?shared) grain(b_id) address b_src;
 def test_get_modifiers_nullable_via_pseudonym():
     """Both-sides-nullable must be detected even when one side carries the key
     under an equivalent (pseudonym) address -- a raw-address check misses it."""
-    build = _two_sided_nullable_env()
+    build = _shared_key_env()
     a = build.datasources["a_src"]
     b = build.datasources["b_src"]
     # b carries the key under a pseudonym; the join references the alias address.
@@ -221,27 +215,33 @@ def test_get_modifiers_nullable_via_pseudonym():
 # --- get_node_joins end-to-end: partial / nullable preservation ------------
 
 
-def test_get_node_joins_merge_partial_preserved():
-    """A partial column on one side of a pseudonym merge must drive an outer
-    join (preserve the complete side)."""
+def _merged_name_joins(modifier: str):
+    """The joins of a pseudonym merge whose `a_src` side binds the merged
+    column under `modifier`."""
     env = Environment()
-    env.parse("""
+    env.parse(f"""
 key a_id int;
 property a_id.a_name string;
 key b_id int;
 property b_id.b_name string;
-datasource a_src (a_id:a_id, a_name:~a_name) grain(a_id)
+datasource a_src (a_id:a_id, a_name:{modifier}a_name) grain(a_id)
     query '''select 1 a_id, 'x' a_name''';
 datasource b_src (b_id:b_id, b_name:b_name) grain(b_id)
     query '''select 1 b_id, 'x' b_name''';
 merge a_id.a_name into b_id.b_name;
 """)
     build = env.materialize_for_select()
-    joins = get_node_joins(
+    return get_node_joins(
         [build.datasources["a_src"], build.datasources["b_src"]],
         environment=build,
         planned_pairs=_planned(build, "a_src", "b_src", "local.b_name"),
     )
+
+
+def test_get_node_joins_merge_partial_preserved():
+    """A partial column on one side of a pseudonym merge must drive an outer
+    join (preserve the complete side)."""
+    joins = _merged_name_joins("~")
     assert len(joins) == 1
     join = joins[0]
     assert join.join_type in (
@@ -256,24 +256,7 @@ def test_get_node_joins_merge_nullable_drives_outer_join():
     """A nullable join key on a merge pseudonym must propagate to the join
     scorer so the join is widened to an outer join (preserving the NULL-key
     rows) rather than silently INNER-joining them away."""
-    env = Environment()
-    env.parse("""
-key a_id int;
-property a_id.a_name string;
-key b_id int;
-property b_id.b_name string;
-datasource a_src (a_id:a_id, a_name:?a_name) grain(a_id)
-    query '''select 1 a_id, 'x' a_name''';
-datasource b_src (b_id:b_id, b_name:b_name) grain(b_id)
-    query '''select 1 b_id, 'x' b_name''';
-merge a_id.a_name into b_id.b_name;
-""")
-    build = env.materialize_for_select()
-    joins = get_node_joins(
-        [build.datasources["a_src"], build.datasources["b_src"]],
-        environment=build,
-        planned_pairs=_planned(build, "a_src", "b_src", "local.b_name"),
-    )
+    joins = _merged_name_joins("?")
     assert len(joins) == 1
     join = joins[0]
     assert join.pairs

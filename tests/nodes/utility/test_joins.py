@@ -3,6 +3,7 @@ from collections import defaultdict
 import pytest
 
 from trilogy import parse
+from trilogy.core.domain_graph import DomainGraph, FDEdge
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildFunction, BuildGrain
 from trilogy.core.models.execute import (
@@ -21,6 +22,34 @@ from trilogy.core.processing.join_resolution import (
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.common import render_join, render_join_concept
+
+FACT_DIM_MODEL = """
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """
+
+
+def _scan(ds, concepts: list, grain: set[str]) -> QueryDatasource:
+    return QueryDatasource(
+        input_concepts=concepts,
+        output_concepts=concepts,
+        datasources=[ds],
+        grain=BuildGrain(components=grain),
+        joins=[],
+        source_map={c.address: {ds} for c in concepts},
+    )
+
+
+def _same(concept, node, modifiers: list[Modifier] | None = None) -> ConceptPair:
+    """`concept` equated with itself, read off `node` on the left."""
+    return ConceptPair(
+        left=concept, right=concept, node=node, modifiers=modifiers or []
+    )
 
 
 def test_render_join_concept():
@@ -187,48 +216,21 @@ address baz;
     join_ds_2 = env.datasources["join_ds_2"]
 
     # Create QueryDatasources
-    root_qds = QueryDatasource(
-        input_concepts=[concept_a],
-        output_concepts=[concept_a],
-        datasources=[root_ds],
-        grain=BuildGrain(components={concept_a.address}),
-        joins=[],
-        source_map={concept_a.address: {root_ds}},
+    root_qds = _scan(root_ds, [concept_a], {concept_a.address})
+    join_qds_1 = _scan(
+        join_ds_1, [concept_a, concept_b], {concept_a.address, concept_b.address}
     )
-
-    join_qds_1 = QueryDatasource(
-        input_concepts=[concept_a, concept_b],
-        output_concepts=[concept_a, concept_b],
-        datasources=[join_ds_1],
-        grain=BuildGrain(components={concept_a.address, concept_b.address}),
-        joins=[],
-        source_map={
-            concept_a.address: {join_ds_1},
-            concept_b.address: {join_ds_1},
-        },
-    )
-
-    join_qds_2 = QueryDatasource(
-        input_concepts=[concept_a, concept_b, concept_c],
-        output_concepts=[concept_a, concept_b, concept_c],
-        datasources=[join_ds_2],
-        grain=BuildGrain(
-            components={concept_b.address}
-        ),  # Key point: grain is just b, making it a PK
-        joins=[],
-        source_map={
-            concept_a.address: {join_ds_2},
-            concept_b.address: {join_ds_2},
-            concept_c.address: {join_ds_2},
-        },
+    # Key point: grain is just b, making it a PK
+    join_qds_2 = _scan(
+        join_ds_2, [concept_a, concept_b, concept_c], {concept_b.address}
     )
 
     # Create concept pairs representing multiple join conditions
     # This represents a join where we have both 'a' and 'b' as join keys,
     # but since join_qds_2 has grain of just 'b', the 'a' join is redundant
     test_pairs = [
-        ConceptPair(left=concept_a, right=concept_a, node=join_qds_1),
-        ConceptPair(left=concept_b, right=concept_b, node=join_qds_1),
+        _same(concept_a, join_qds_1),
+        _same(concept_b, join_qds_1),
     ]
 
     # Test the reduction - should keep only the primary key join (b)
@@ -242,7 +244,7 @@ address baz;
     assert reduced_pairs[0].right == concept_b
 
     # Test case with no reduction needed - single concept pair
-    single_pair = [ConceptPair(left=concept_a, right=concept_a, node=root_qds)]
+    single_pair = [_same(concept_a, root_qds)]
 
     reduced_single = reduce_concept_pairs(single_pair, join_qds_1)
     assert len(reduced_single) == 1
@@ -282,24 +284,10 @@ address f1_tbl;
     x = build_env.concepts["x"]
     dim = build_env.datasources["dim"]
     f1 = build_env.datasources["f1"]
-    left_qds = QueryDatasource(
-        input_concepts=[a, b],
-        output_concepts=[a, b],
-        datasources=[dim],
-        grain=BuildGrain(components={a.address}),
-        joins=[],
-        source_map={a.address: {dim}, b.address: {dim}},
-    )
+    left_qds = _scan(dim, [a, b], {a.address})
     # right grain {a, x} is NOT a subset of the join keys, so the existing
     # grain restriction stays out of the way and the FD prune is what decides
-    right_qds = QueryDatasource(
-        input_concepts=[a, b, x],
-        output_concepts=[a, b, x],
-        datasources=[f1],
-        grain=BuildGrain(components={a.address, x.address}),
-        joins=[],
-        source_map={a.address: {f1}, b.address: {f1}, x.address: {f1}},
-    )
+    right_qds = _scan(f1, [a, b, x], {a.address, x.address})
     return build_env, a, b, left_qds, right_qds
 
 
@@ -310,8 +298,8 @@ def test_reduce_concept_pairs_fd_through_binding():
     binding and keeps both (the pre-graph behavior, pinned here too)."""
     build_env, a, b, left_qds, right_qds = _fd_test_sources()
     pairs = [
-        ConceptPair(left=a, right=a, node=left_qds),
-        ConceptPair(left=b, right=b, node=left_qds),
+        _same(a, left_qds),
+        _same(b, left_qds),
     ]
     without_graph = reduce_concept_pairs(list(pairs), right_qds)
     assert len(without_graph) == 2
@@ -327,8 +315,8 @@ def test_reduce_concept_pairs_fd_never_prunes_grain_pair():
     x = build_env.concepts["x"]
     right_qds.grain = BuildGrain(components={b.address, x.address})
     pairs = [
-        ConceptPair(left=a, right=a, node=left_qds),
-        ConceptPair(left=b, right=b, node=left_qds),
+        _same(a, left_qds),
+        _same(b, left_qds),
     ]
     reduced = reduce_concept_pairs(
         list(pairs), right_qds, domain_graph=build_env.domain_graph
@@ -338,8 +326,8 @@ def test_reduce_concept_pairs_fd_never_prunes_grain_pair():
 
 def _null_safe_pairs(a, b, left_qds) -> list[ConceptPair]:
     return [
-        ConceptPair(left=a, right=a, node=left_qds, modifiers=[Modifier.NULLABLE]),
-        ConceptPair(left=b, right=b, node=left_qds, modifiers=[Modifier.NULLABLE]),
+        _same(a, left_qds, [Modifier.NULLABLE]),
+        _same(b, left_qds, [Modifier.NULLABLE]),
     ]
 
 
@@ -363,8 +351,6 @@ def test_reduce_concept_pairs_null_safe_grain_is_no_restriction():
 def test_reduce_concept_pairs_fd_transitive():
     """Pure transitive closure: A → B, B → C prunes the c pair when a is
     joined, even though no single declaration relates a to c."""
-    from trilogy.core.domain_graph import DomainGraph, FDEdge
-
     build_env, a, b, left_qds, right_qds = _fd_test_sources()
     c = build_env.concepts["x"]
     graph = DomainGraph(
@@ -375,8 +361,8 @@ def test_reduce_concept_pairs_fd_transitive():
     )
     right_qds.grain = BuildGrain(components={a.address})
     pairs = [
-        ConceptPair(left=a, right=a, node=left_qds),
-        ConceptPair(left=c, right=c, node=left_qds),
+        _same(a, left_qds),
+        _same(c, left_qds),
     ]
     reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
     assert len(reduced) == 1
@@ -386,8 +372,6 @@ def test_reduce_concept_pairs_fd_transitive():
 def test_reduce_concept_pairs_fd_mutual_keeps_one():
     """Mutually-dependent keys (a → b and b → a) keep exactly one pair —
     greedy over the surviving determinant set, never both pruned."""
-    from trilogy.core.domain_graph import DomainGraph, FDEdge
-
     _build_env, a, b, left_qds, right_qds = _fd_test_sources()
     graph = DomainGraph(
         fd_edges=[
@@ -396,8 +380,8 @@ def test_reduce_concept_pairs_fd_mutual_keeps_one():
         ]
     )
     pairs = [
-        ConceptPair(left=a, right=a, node=left_qds),
-        ConceptPair(left=b, right=b, node=left_qds),
+        _same(a, left_qds),
+        _same(b, left_qds),
     ]
     reduced = reduce_concept_pairs(list(pairs), right_qds, domain_graph=graph)
     assert len(reduced) == 1, reduced
@@ -511,18 +495,29 @@ def test_get_join_type_multiple_connecting_keys():
     assert result == JoinType.FULL
 
 
+def _cte(name: str, concepts: list, ds) -> CTE:
+    return CTE(
+        name=name,
+        output_columns=concepts,
+        grain=BuildGrain(),
+        source=_scan(ds, concepts, set()),
+        source_map={c.address: [ds.identifier] for c in concepts},
+    )
+
+
+def _plain_equality(
+    left: str,
+    right: str,
+    modifiers: list[Modifier],
+    jointype: JoinType | None = None,
+) -> str:
+    return f"{left} = {right}"
+
+
 def test_render_join_coalesce():
     """When multiple CTEConceptPairs share the same right concept,
     render_join should produce a COALESCE on the left values."""
-    env, _ = parse("""
-key shared_id int;
-key fact1_id int;
-key fact2_id int;
-
-datasource dim (id:shared_id) grain(shared_id) address dim_table;
-datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
-datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
-    """)
+    env, _ = parse(FACT_DIM_MODEL)
     dialect = BaseDialect()
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
@@ -532,52 +527,19 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     ds_f1 = env.datasources["fact1"]
     ds_f2 = env.datasources["fact2"]
 
-    def make_cte(name, concepts, ds):
-        qds = QueryDatasource(
-            input_concepts=concepts,
-            output_concepts=concepts,
-            datasources=[ds],
-            grain=BuildGrain(),
-            joins=[],
-            source_map={c.address: {ds} for c in concepts},
-        )
-        return CTE(
-            name=name,
-            output_columns=concepts,
-            grain=BuildGrain(),
-            source=qds,
-            source_map={c.address: [ds.identifier] for c in concepts},
-        )
-
-    cte_f1 = make_cte("fact1_cte", [f1_id, shared], ds_f1)
-    cte_f2 = make_cte("fact2_cte", [f2_id, shared], ds_f2)
-    cte_dim = make_cte("dim_cte", [shared], ds_dim)
+    cte_f1 = _cte("fact1_cte", [f1_id, shared], ds_f1)
+    cte_f2 = _cte("fact2_cte", [f2_id, shared], ds_f2)
+    cte_dim = _cte("dim_cte", [shared], ds_dim)
 
     # Two pairs with same right concept but different left CTEs
     join = Join(
         right=cte_dim,
         join_type=JoinType.LEFT_OUTER,
         pairs=[
-            ConceptPair(
-                left=shared,
-                right=shared,
-                node=cte_f1,
-            ),
-            ConceptPair(
-                left=shared,
-                right=shared,
-                node=cte_f2,
-            ),
+            _same(shared, cte_f1),
+            _same(shared, cte_f2),
         ],
     )
-
-    def null_wrapper(
-        left: str,
-        right: str,
-        modifiers: list[Modifier],
-        jointype: JoinType | None = None,
-    ) -> str:
-        return f"{left} = {right}"
 
     result = render_join(
         join=join,
@@ -585,7 +547,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         render_expr_func=dialect.render_expr,
         cte=cte_f1,
         use_map=defaultdict(set),
-        null_wrapper=null_wrapper,
+        null_wrapper=_plain_equality,
     )
     assert result is not None
     assert "coalesce(" in result
@@ -636,26 +598,16 @@ datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_tabl
 
     # Same left concept, different datasources, WITH PARTIAL -> keep both
     pairs_partial = [
-        ConceptPair(
-            left=shared,
-            right=shared,
-            node=ds_f1,
-            modifiers=[Modifier.PARTIAL],
-        ),
-        ConceptPair(
-            left=shared,
-            right=shared,
-            node=ds_f2,
-            modifiers=[Modifier.PARTIAL],
-        ),
+        _same(shared, ds_f1, [Modifier.PARTIAL]),
+        _same(shared, ds_f2, [Modifier.PARTIAL]),
     ]
     result_partial = reduce_concept_pairs(pairs_partial, ds_dim)
     assert len(result_partial) == 2
 
     # Same left concept, different datasources, NO PARTIAL -> deduplicate
     pairs_no_partial = [
-        ConceptPair(left=shared, right=shared, node=ds_f1),
-        ConceptPair(left=shared, right=shared, node=ds_f2),
+        _same(shared, ds_f1),
+        _same(shared, ds_f2),
     ]
     result_no_partial = reduce_concept_pairs(pairs_no_partial, ds_dim)
     assert len(result_no_partial) == 1
@@ -666,15 +618,7 @@ def test_reduce_concept_pairs_outer_join_keeps_dups():
     ``(right, left.address)`` pairs from different datasources — the JOIN ON
     renderer (or downstream prune) needs all candidates to decide which side
     is preserved."""
-    env, _ = parse("""
-key shared_id int;
-key fact1_id int;
-key fact2_id int;
-
-datasource dim (id:shared_id) grain(shared_id) address dim_table;
-datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
-datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
-    """)
+    env, _ = parse(FACT_DIM_MODEL)
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
     ds_f1 = env.datasources["fact1"]
@@ -682,8 +626,8 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     ds_dim = env.datasources["dim"]
 
     pairs = [
-        ConceptPair(left=shared, right=shared, node=ds_f1),
-        ConceptPair(left=shared, right=shared, node=ds_f2),
+        _same(shared, ds_f1),
+        _same(shared, ds_f2),
     ]
     # INNER (default) deduplicates because neither pair is partial.
     inner_result = reduce_concept_pairs(pairs, ds_dim, JoinType.INNER)
@@ -695,6 +639,10 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     for outer in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL):
         outer_result = reduce_concept_pairs(list(pairs), ds_dim, outer)
         assert len(outer_result) == 2, f"{outer.name} should keep both pairs"
+
+
+def _bare(left, right, jointype: JoinType) -> Join:
+    return Join(left=left, right=right, join_type=jointype, concepts=[])
 
 
 def test_compute_outer_null_status():
@@ -712,71 +660,33 @@ datasource c (id:id) grain(id) address c;
     ds_c = env.datasources["c"]
 
     # A LEFT OUTER B  →  B is NULL-able (score 1), A preserved (score 0).
-    joins = [
-        Join(
-            left=ds_a,
-            right=ds_b,
-            join_type=JoinType.LEFT_OUTER,
-            concepts=[],
-        )
-    ]
+    joins = [_bare(ds_a, ds_b, JoinType.LEFT_OUTER)]
     status = compute_outer_null_status(joins)
     assert status.get(ds_a.identifier, 0) == 0
     assert status[ds_b.identifier] == 1
 
     # A RIGHT OUTER B  →  A is NULL-able, B preserved.
-    joins = [
-        Join(
-            left=ds_a,
-            right=ds_b,
-            join_type=JoinType.RIGHT_OUTER,
-            concepts=[],
-        )
-    ]
+    joins = [_bare(ds_a, ds_b, JoinType.RIGHT_OUTER)]
     status = compute_outer_null_status(joins)
     assert status[ds_a.identifier] == 1
     assert status.get(ds_b.identifier, 0) == 0
 
     # FULL → both NULL-able.
-    joins = [
-        Join(
-            left=ds_a,
-            right=ds_b,
-            join_type=JoinType.FULL,
-            concepts=[],
-        )
-    ]
+    joins = [_bare(ds_a, ds_b, JoinType.FULL)]
     status = compute_outer_null_status(joins)
     assert status[ds_a.identifier] == 1
     assert status[ds_b.identifier] == 1
 
     # INNER → no contribution.
-    joins = [
-        Join(
-            left=ds_a,
-            right=ds_b,
-            join_type=JoinType.INNER,
-            concepts=[],
-        )
-    ]
+    joins = [_bare(ds_a, ds_b, JoinType.INNER)]
     status = compute_outer_null_status(joins)
     assert status == {}
 
     # Stacked outer joins accumulate. A LEFT B, then (A merged) LEFT C →
     # B and C each get score 1.
     joins = [
-        Join(
-            left=ds_a,
-            right=ds_b,
-            join_type=JoinType.LEFT_OUTER,
-            concepts=[],
-        ),
-        Join(
-            left=None,  # multi-left after first join
-            right=ds_c,
-            join_type=JoinType.LEFT_OUTER,
-            concepts=[],
-        ),
+        _bare(ds_a, ds_b, JoinType.LEFT_OUTER),
+        _bare(None, ds_c, JoinType.LEFT_OUTER),  # multi-left after first join
     ]
     status = compute_outer_null_status(joins)
     assert status.get(ds_a.identifier, 0) == 0
@@ -784,8 +694,8 @@ datasource c (id:id) grain(id) address c;
     assert status[ds_c.identifier] == 1
 
     joins = [
-        Join(left=ds_a, right=ds_b, join_type=JoinType.LEFT_OUTER, concepts=[]),
-        Join(left=ds_b, right=ds_c, join_type=JoinType.LEFT_OUTER, concepts=[]),
+        _bare(ds_a, ds_b, JoinType.LEFT_OUTER),
+        _bare(ds_b, ds_c, JoinType.LEFT_OUTER),
     ]
     status = compute_outer_null_status(joins)
     assert status[ds_b.identifier] == 1
@@ -797,15 +707,7 @@ def test_prune_outer_join_pairs_drops_nullable_side():
     ``(right_addr, left_addr)``, prune to keep the most-preserved side. The
     NULL-able side's pair would render ``coalesce(preserved, nullable) =
     right`` — always equal to ``preserved``, so pure SQL bloat."""
-    env, _ = parse("""
-key shared_id int;
-key fact1_id int;
-key fact2_id int;
-
-datasource dim (id:shared_id) grain(shared_id) address dim_table;
-datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
-datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
-    """)
+    env, _ = parse(FACT_DIM_MODEL)
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
     ds_dim = env.datasources["dim"]
@@ -814,19 +716,14 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
 
     # f1 LEFT OUTER f2 → f2 is NULL-able. Then dim LEFT JOIN with multi-left
     # candidates {f1, f2} sharing shared_id. The pair from f2 should be pruned.
-    upstream_join = Join(
-        left=ds_f1,
-        right=ds_f2,
-        join_type=JoinType.LEFT_OUTER,
-        concepts=[],
-    )
+    upstream_join = _bare(ds_f1, ds_f2, JoinType.LEFT_OUTER)
     multi_left_join = Join(
         left=None,
         right=ds_dim,
         join_type=JoinType.LEFT_OUTER,
         pairs=[
-            ConceptPair(left=shared, right=shared, node=ds_f1),
-            ConceptPair(left=shared, right=shared, node=ds_f2),
+            _same(shared, ds_f1),
+            _same(shared, ds_f2),
         ],
     )
     joins = [upstream_join, multi_left_join]
@@ -844,8 +741,8 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         right=ds_dim,
         join_type=JoinType.FULL,
         pairs=[
-            ConceptPair(left=shared, right=shared, node=ds_f1),
-            ConceptPair(left=shared, right=shared, node=ds_f2),
+            _same(shared, ds_f1),
+            _same(shared, ds_f2),
         ],
     )
     prune_outer_join_pairs([full_join])
@@ -862,8 +759,8 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         right=ds_dim,
         join_type=JoinType.LEFT_OUTER,
         pairs=[
-            ConceptPair(left=shared, right=shared, node=ds_f1),
-            ConceptPair(left=shared, right=shared, node=ds_f2),
+            _same(shared, ds_f1),
+            _same(shared, ds_f2),
             ConceptPair(left=other_concept, right=shared, node=ds_f1),
             ConceptPair(
                 left=other_concept_f2_alias,
@@ -884,15 +781,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
 
 
 def test_prune_outer_join_pairs_keeps_every_padded_side():
-    env, _ = parse("""
-key shared_id int;
-key fact1_id int;
-key fact2_id int;
-
-datasource dim (id:shared_id) grain(shared_id) address dim_table;
-datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
-datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
-    """)
+    env, _ = parse(FACT_DIM_MODEL)
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
     ds_dim = env.datasources["dim"]
@@ -902,15 +791,15 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         left=None,
         right=ds_f2,
         join_type=JoinType.FULL,
-        pairs=[ConceptPair(left=shared, right=shared, node=ds_f1)],
+        pairs=[_same(shared, ds_f1)],
     )
     right_join = Join(
         left=None,
         right=ds_dim,
         join_type=JoinType.RIGHT_OUTER,
         pairs=[
-            ConceptPair(left=shared, right=shared, node=ds_f1),
-            ConceptPair(left=shared, right=shared, node=ds_f2),
+            _same(shared, ds_f1),
+            _same(shared, ds_f2),
         ],
     )
     joins = [upstream_full, right_join]

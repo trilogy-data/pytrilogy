@@ -270,6 +270,11 @@ def test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots():
     assert [(j.left, j.right, j.keys) for j in joins][-1] == ("ds~a", "ds~d", {})
 
 
+def _step(right: str, jointype: JoinType, left: str) -> JoinOrderOutput:
+    """`right` joined onto `left` on `id`."""
+    return JoinOrderOutput(right=right, type=jointype, keys={left: {"id"}})
+
+
 def test_empty_joins_list():
     """Test that an empty list doesn't cause any errors."""
     joins = []
@@ -279,9 +284,7 @@ def test_empty_joins_list():
 
 def test_single_join_unchanged():
     """Test that a single join remains unchanged regardless of type."""
-    join = JoinOrderOutput(
-        right="table_b", type=JoinType.INNER, keys={"table_a": {"id"}}
-    )
+    join = _step("table_b", JoinType.INNER, "table_a")
     joins = [join]
     ensure_content_preservation(joins)
     assert join.type == JoinType.INNER
@@ -289,12 +292,8 @@ def test_single_join_unchanged():
 
 def test_full_join_always_skipped():
     """Test that FULL joins are never modified."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.FULL, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.FULL, "table_b")
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join2.type == JoinType.FULL
@@ -302,12 +301,8 @@ def test_full_join_always_skipped():
 
 def test_no_prior_null_introducing_joins():
     """Test that join types remain unchanged when no prior joins introduce nulls."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.INNER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.INNER, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.INNER
@@ -316,12 +311,8 @@ def test_no_prior_null_introducing_joins():
 
 def test_prior_left_outer_promotes_to_left_outer():
     """Test that a prior LEFT_OUTER join promotes current join to LEFT_OUTER."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.LEFT_OUTER
@@ -333,9 +324,7 @@ def test_prior_left_outer_promotes_to_left_outer():
 def test_prior_right_outer_promotes_to_left_outer():
     """A prior RIGHT_OUTER padded table_a into the accumulated stream; a join
     keyed off table_a preserves that stream (its left), not table_c."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.RIGHT_OUTER, "table_a")
     join2 = JoinOrderOutput(
         right="table_c",
         type=JoinType.INNER,
@@ -348,12 +337,8 @@ def test_prior_right_outer_promotes_to_left_outer():
 
 
 def test_prior_right_outer_keyed_on_its_preserved_side_unchanged():
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.RIGHT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join2.type == JoinType.INNER
@@ -365,12 +350,8 @@ def test_prior_full_join_promotes_to_full():
     to FULL when it is keyed on the FULL's spine and that key is a demanded
     domain. Anything weaker would depend on which side the ordering recorded
     as the FULL's left/right, making the plan order-dependent."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.FULL, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
     joins = [join1, join2]
     ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
     assert join1.type == JoinType.FULL
@@ -380,12 +361,8 @@ def test_prior_full_join_promotes_to_full():
 def test_prior_full_join_undemanded_spine_preserves_the_stream_only():
     """Two facts partial on a key pivot through its complete dimension: with
     the key undemanded, the dimension's unmatched rows are nobody's."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.FULL, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
     ensure_content_preservation([join1, join2])
     assert join2.type == JoinType.LEFT_OUTER
 
@@ -393,11 +370,9 @@ def test_prior_full_join_undemanded_spine_preserves_the_stream_only():
 def test_prior_full_join_order_invariant():
     """Building on either side of a symmetric FULL must give the same result."""
     for left, right in (("table_a", "table_b"), ("table_b", "table_a")):
-        j1 = JoinOrderOutput(right=right, type=JoinType.FULL, keys={left: {"id"}})
+        j1 = _step(right, JoinType.FULL, left)
         # join builds on table_b regardless of which side it was in the FULL
-        j2 = JoinOrderOutput(
-            right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-        )
+        j2 = _step("table_c", JoinType.INNER, "table_b")
         joins = [j1, j2]
         ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
         assert j2.type == JoinType.FULL, (left, right)
@@ -406,12 +381,8 @@ def test_prior_full_join_order_invariant():
 def test_both_prior_paddings_preserve_the_stream():
     """A LEFT padded table_b and a RIGHT padded table_d, both into the
     accumulated stream; a join keyed off both preserves that stream."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.RIGHT_OUTER, keys={"table_d": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.RIGHT_OUTER, "table_d")
     join3 = JoinOrderOutput(
         right="table_e",
         type=JoinType.INNER,
@@ -426,15 +397,9 @@ def test_both_prior_paddings_preserve_the_stream():
 
 def test_complex_chain_with_multiple_promotions():
     """Test a complex chain of joins with multiple type promotions."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
-    join3 = JoinOrderOutput(
-        right="table_d", type=JoinType.INNER, keys={"table_c": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
+    join3 = _step("table_d", JoinType.INNER, "table_c")
     joins = [join1, join2, join3]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.LEFT_OUTER
@@ -444,9 +409,7 @@ def test_complex_chain_with_multiple_promotions():
 
 def test_no_overlap_in_keys_no_promotion():
     """Test that joins with no overlapping keys don't affect each other."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
     join2 = JoinOrderOutput(
         right="table_d",
         type=JoinType.INNER,
@@ -476,12 +439,8 @@ def test_multiple_keys_in_join():
 
 def test_right_outer_with_multiple_predecessors():
     """Test RIGHT_OUTER logic with multiple predecessor joins."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.INNER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.RIGHT_OUTER, keys={"table_b": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.INNER, "table_a")
+    join2 = _step("table_c", JoinType.RIGHT_OUTER, "table_b")
     join3 = JoinOrderOutput(
         right="table_d",
         type=JoinType.INNER,
@@ -496,9 +455,7 @@ def test_right_outer_with_multiple_predecessors():
 
 def test_left_outer_already_correct_type():
     """Test that a join that already has the correct type is not modified."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
     join2 = JoinOrderOutput(
         right="table_c",
         type=JoinType.LEFT_OUTER,  # Already the correct type
@@ -529,15 +486,9 @@ def test_edge_case_empty_keys():
 
 def test_modification_continues_processing():
     """Test that the continue statement works correctly after modification."""
-    join1 = JoinOrderOutput(
-        right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
-    )
-    join2 = JoinOrderOutput(
-        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
-    )
-    join3 = JoinOrderOutput(
-        right="table_d", type=JoinType.INNER, keys={"table_c": {"id"}}
-    )
+    join1 = _step("table_b", JoinType.LEFT_OUTER, "table_a")
+    join2 = _step("table_c", JoinType.INNER, "table_b")
+    join3 = _step("table_d", JoinType.INNER, "table_c")
     joins = [join1, join2, join3]
     ensure_content_preservation(joins)
 

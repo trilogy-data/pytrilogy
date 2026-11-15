@@ -79,6 +79,22 @@ def lineage_successors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str
     ]
 
 
+def existence_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    """The nodes feeding `node` a subselect, not rows."""
+    return [
+        pred
+        for pred in graph.predecessors(node)
+        if edge_kind(edges, pred, node) == EdgeKind.EXISTENCE
+    ]
+
+
+def feeds_existence(graph: nx.DiGraph, edges: EdgeMap, node: str) -> bool:
+    return any(
+        edge_kind(edges, node, succ) == EdgeKind.EXISTENCE
+        for succ in graph.successors(node)
+    )
+
+
 def edges_of_kind(edges: EdgeMap, *kinds: EdgeKind) -> list[Edge]:
     wanted = set(kinds)
     return [edge for edge, a in edges.items() if a.kind in wanted]

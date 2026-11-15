@@ -79,7 +79,7 @@ def _splits_aggregate_groups(
     still reaches join inference from the other side of the relation."""
     # Local import: v4_helper imports this package.
     from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
+        strict_fd_determines,
     )
 
     if not any(c.is_aggregate for c in outputs):
@@ -91,9 +91,7 @@ def _splits_aggregate_groups(
         group = {canonical, *members}
         if group & axis:
             axis |= group
-    return member not in axis and not build_fd_determines(
-        environment, axis, member, include_empty_grain=False
-    )
+    return member not in axis and not strict_fd_determines(environment, axis, member)
 
 
 def outputs_with_scoped_join_mates(

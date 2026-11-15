@@ -13,7 +13,9 @@ optional metadata, they're what keeps row identity intact through the SUM.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from functools import cached_property
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS, GRAIN_SEPARATOR
@@ -64,9 +66,9 @@ from .constants import (
 )
 from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
 from .functional_dependency import (
-    build_fd_determines,
     minimize_build_grain,
     origin_relation_stored,
+    strict_fd_determines,
 )
 from .models import ConceptAttrs
 from .network_build import null_sensitive
@@ -104,6 +106,30 @@ PHASE_CONDITION_SUFFIX = "@condition"
 # therefore plans under a stage-qualified condition label, splitting its whole
 # lineage subtree (and its root_d1 feeder) from the other stages'.
 _STAGE_QUALIFIER_PREFIX = ":s"
+
+
+def _resolved(concept: BuildConcept, environment: BuildEnvironment) -> BuildConcept:
+    """The environment's own build of `concept`, or `concept` when it has none."""
+    return environment.concepts.get(concept.address, concept) or concept
+
+
+def _known_concepts(
+    addresses: Iterable[str], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    return [environment.concepts[a] for a in addresses if a in environment.concepts]
+
+
+def _own_concept(address: str, environment: BuildEnvironment) -> BuildConcept | None:
+    """The concept at `address` when it still answers under that address; a
+    collapsed merge member resolves to its canonical instead."""
+    concept = environment.concepts.get(address)
+    return concept if concept is not None and concept.address == address else None
+
+
+def _rowset_of(concept: BuildConcept) -> str | None:
+    """The rowset `concept` is a handle of."""
+    lineage = concept.lineage
+    return lineage.rowset.name if isinstance(lineage, BuildRowsetItem) else None
 
 
 def _union_key_siblings(
@@ -159,11 +185,7 @@ def _walk_aggregate_grain_inputs(
     if concept.derivation == Derivation.AGGREGATE:
         return []
     if concept.derivation == Derivation.ROWSET:
-        return [
-            environment.concepts[c]
-            for c in concept.grain.components
-            if c in environment.concepts
-        ]
+        return _known_concepts(concept.grain.components, environment)
     if concept.derivation == Derivation.UNION:
         # A union output's per-arm keys can't be stacked into one column, so
         # its usable row identity is a sibling union over those keys (which a
@@ -183,9 +205,7 @@ def _walk_aggregate_grain_inputs(
     if derived_key(concept):
         return [concept]
     if concept.purpose == Purpose.PROPERTY and concept.keys:
-        return [
-            environment.concepts[c] for c in concept.keys if c in environment.concepts
-        ]
+        return _known_concepts(concept.keys, environment)
     if concept.lineage is None:
         return []
     if isinstance(concept.lineage, BuildFilterItem):
@@ -200,24 +220,10 @@ def _walk_aggregate_grain_inputs(
     inner_grain = _inner_aggregate_grain(concept.lineage)
     for arg in concept.lineage.concept_arguments:
         if _function_of(arg, inner_grain):
-            collected.extend(
-                environment.concepts[g]
-                for g in sorted(inner_grain)
-                if g in environment.concepts
-            )
+            collected.extend(_known_concepts(sorted(inner_grain), environment))
         else:
             collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
     return collected
-
-
-def _derived_key_row_grain(
-    concept: BuildConcept, environment: BuildEnvironment
-) -> frozenset[str]:
-    """The rows a derived key is computed on: its inputs'. Its values are its
-    own grain, but the stream deriving it holds one per input row, and pairs
-    with its siblings on those rows' keys (`crown2` by `cls` and `genus`
-    joins back to the trees on both)."""
-    return derived_key_inputs(concept, environment.concepts)
 
 
 def derived_key(concept: BuildConcept) -> bool:
@@ -362,7 +368,7 @@ def _lineage_args(
     aggregate the statement re-aggregates from a partial consumes that partial
     (`BuildEnvironment.partial_sources`)."""
     return [
-        environment.concepts.get(p.address, p) or p
+        _resolved(p, environment)
         for p in sourced_arguments(concept, environment.partial_sources)
     ]
 
@@ -370,9 +376,9 @@ def _lineage_args(
 def _upstream_default(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
+    """Lineage args minus existence-only ones (a semijoin RHS), which get a
+    side-channel `existence` edge instead (see `build_concept_graph`)."""
     existence_only = lineage_existence_only(concept)
-    if not existence_only:
-        return _lineage_args(concept, environment)
     return [
         c
         for c in _lineage_args(concept, environment)
@@ -426,7 +432,7 @@ def _arm_scopes_sourcing(
         if current.address in seen:
             continue
         seen.add(current.address)
-        resolved = environment.concepts.get(current.address, current) or current
+        resolved = _resolved(current, environment)
         if resolved.lineage is not None and resolved.derivation not in (
             Derivation.ROOT,
             Derivation.UNION,
@@ -508,11 +514,7 @@ def _collapsible_anchor(concept: BuildConcept, environment: BuildEnvironment) ->
     rowset_name = lineage.rowset.name
     for addr in environment.statement_output_addresses or ():
         authored = environment.concepts.get(addr)
-        if (
-            authored is not None
-            and isinstance(authored.lineage, BuildRowsetItem)
-            and authored.lineage.rowset.name == rowset_name
-        ):
+        if authored is not None and _rowset_of(authored) == rowset_name:
             return False
     return True
 
@@ -535,21 +537,16 @@ def _rowset_local_grain_identity(
     consuming aggregate already groups BY: those are first-class row
     contributors whose canonical the co-grain siblings must keep sharing
     (redirecting breaks the zip's same-key narrowing evidence)."""
-    lineage = grain_concept.lineage
-    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name == rowset_name:
+    own_rowset = _rowset_of(grain_concept)
+    if own_rowset == rowset_name:
         return grain_concept
     if not _collapsible_anchor(grain_concept, environment):
         return grain_concept
-    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name in keep_rowsets:
+    if own_rowset in keep_rowsets:
         return grain_concept
     for mate in sorted(_relation_mates(grain_concept.address, environment)):
-        mate_concept = environment.concepts.get(mate)
-        if (
-            mate_concept is not None
-            and mate_concept.address == mate
-            and isinstance(mate_concept.lineage, BuildRowsetItem)
-            and mate_concept.lineage.rowset.name == rowset_name
-        ):
+        mate_concept = _own_concept(mate, environment)
+        if mate_concept is not None and _rowset_of(mate_concept) == rowset_name:
             return mate_concept
     return grain_concept
 
@@ -621,8 +618,8 @@ def _scoped_canonical(
     widening the plan to FULL."""
     for canonical, members in environment.scoped_join_key_groups.items():
         if concept.address in members:
-            canon = environment.concepts.get(canonical)
-            if canon is not None and canon.address == canonical:
+            canon = _own_concept(canonical, environment)
+            if canon is not None:
                 return canon
     return concept
 
@@ -751,8 +748,7 @@ def _aggregate_authored_grain(
         g_concept = environment.concepts.get(g)
         if g_concept is not None and _collapsible_anchor(g_concept, environment):
             for mate in sorted(_relation_mates(g, environment) & by_addrs):
-                mate_concept = environment.concepts.get(mate)
-                if mate_concept is not None and mate_concept.address == mate:
+                if _own_concept(mate, environment) is not None:
                     chosen = mate
                     break
         redirected.add(chosen)
@@ -807,7 +803,7 @@ def _row_identity_components(
         if isinstance(node, BuildConcept):
             # `count(grain(...) ? cond)` reaches the tuple through the filter's
             # content, and the desugar itself is hoisted to a virtual concept.
-            resolved = environment.concepts.get(node.address, node) or node
+            resolved = _resolved(node, environment)
             stack.append(resolved.lineage)
         elif isinstance(node, BuildFilterItem):
             stack.append(node.content)
@@ -1006,11 +1002,7 @@ def _upstream_aggregate(
                     # The arg is itself an inner aggregate; its output grain is the
                     # join bridge (see docstring). A non-aggregate arg's grain is
                     # NOT added; its own row identity already flows via the walk.
-                    base.extend(
-                        environment.concepts[g]
-                        for g in arg.grain.components
-                        if g in environment.concepts
-                    )
+                    base.extend(_known_concepts(arg.grain.components, environment))
     return base
 
 
@@ -1019,16 +1011,8 @@ def _upstream_filter(
 ) -> list[BuildConcept]:
     """FILTER: lineage args plus property keys of the filtered concept
     (matches `resolve_filter_parent_concepts`). A filter over a property
-    needs the property's keys to keep the row stream identifiable.
-
-    Existence-only args (semijoin RHS) are dropped from the row lineage; they
-    get a side-channel `existence` edge instead (see `build_concept_graph`)."""
-    existence_only = lineage_existence_only(concept)
-    base = [
-        c
-        for c in _lineage_args(concept, environment)
-        if c.address not in existence_only
-    ]
+    needs the property's keys to keep the row stream identifiable."""
+    base = _upstream_default(concept, environment)
     if isinstance(concept.lineage, BuildFilterItem):
         direct_parent = concept.lineage.content
         if (
@@ -1036,27 +1020,16 @@ def _upstream_filter(
             and direct_parent.purpose in (Purpose.PROPERTY, Purpose.METRIC)
             and direct_parent.keys
         ):
-            base += [
-                environment.concepts[k]
-                for k in direct_parent.keys
-                if k in environment.concepts
-            ]
+            base += _known_concepts(direct_parent.keys, environment)
     return base
 
 
-def _grain_and_keys(
+def _grain_concepts(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    extras: list[BuildConcept] = []
-    if concept.grain:
-        for g in concept.grain.components:
-            if g in environment.concepts:
-                extras.append(environment.concepts[g])
-    if concept.keys:
-        for k in concept.keys:
-            if k in environment.concepts:
-                extras.append(environment.concepts[k])
-    return extras
+    if not concept.grain:
+        return []
+    return _known_concepts(concept.grain.components, environment)
 
 
 def _window_aggregate_grain_keys(
@@ -1080,14 +1053,11 @@ def _window_aggregate_grain_keys(
             continue
         seen.add(arg.address)
         if arg.derivation == Derivation.AGGREGATE:
-            for gkey in arg.grain.components:
-                if gkey in environment.concepts:
-                    extras.append(environment.concepts[gkey])
+            extras.extend(_known_concepts(arg.grain.components, environment))
             continue  # stop at the aggregate boundary
         if arg.derivation == Derivation.BASIC and arg.lineage is not None:
             stack.extend(
-                environment.concepts.get(p.address, p) or p
-                for p in arg.lineage.concept_arguments
+                _resolved(p, environment) for p in arg.lineage.concept_arguments
             )
     return extras
 
@@ -1099,9 +1069,10 @@ def _upstream_window(
     closure, plus the window's own grain components and keys (matches
     `resolve_window_parent_concepts`)."""
     return (
-        list(_lineage_args(concept, environment))
+        _lineage_args(concept, environment)
         + _window_aggregate_grain_keys(concept, environment)
-        + _grain_and_keys(concept, environment)
+        + _grain_concepts(concept, environment)
+        + _known_concepts(concept.keys or (), environment)
     )
 
 
@@ -1110,12 +1081,7 @@ def _upstream_subselect(
 ) -> list[BuildConcept]:
     """SUBSELECT: lineage args plus grain components (matches
     `resolve_subselect_parent_concepts`)."""
-    base = list(_lineage_args(concept, environment))
-    if concept.grain:
-        for g in concept.grain.components:
-            if g in environment.concepts:
-                base.append(environment.concepts[g])
-    return base
+    return _lineage_args(concept, environment) + _grain_concepts(concept, environment)
 
 
 _UPSTREAM: dict[Derivation, UpstreamFetcher] = {
@@ -1193,7 +1159,7 @@ def renamed_coalescing_relation(
     return [
         c
         for address in sorted(relation)
-        if (c := environment.concepts.get(address)) is not None and c.address == address
+        if (c := _own_concept(address, environment)) is not None
     ]
 
 
@@ -1211,9 +1177,7 @@ def _scalar_of_materialized(
     return bool(arguments) and all(
         argument.address in materialized_roots
         or _scalar_of_materialized(
-            environment.concepts.get(argument.address) or argument,
-            materialized_roots,
-            environment,
+            _resolved(argument, environment), materialized_roots, environment
         )
         for argument in arguments
     )
@@ -1273,10 +1237,9 @@ def _unsourced_relation_mates(
     subset_map = environment.domain_graph.subset_join_map()
 
     def _rowset_mate(address: str) -> BuildConcept | None:
-        mate = environment.concepts.get(address)
+        mate = _own_concept(address, environment)
         if (
             mate is None
-            or mate.address != address
             or not isinstance(mate.lineage, BuildRowsetItem)
             or address in demanded
             or (authored is not None and address in authored)
@@ -1286,9 +1249,7 @@ def _unsourced_relation_mates(
 
     def _anchor_rowset_name(address: str) -> str | None:
         concept = environment.concepts.get(address)
-        if concept is None or not isinstance(concept.lineage, BuildRowsetItem):
-            return None
-        return concept.lineage.rowset.name
+        return _rowset_of(concept) if concept is not None else None
 
     out: dict[str, BuildConcept] = {}
     anchor_rowset_counts: dict[str, int] = {}
@@ -1298,8 +1259,8 @@ def _unsourced_relation_mates(
             anchor_rowset_counts[name] = anchor_rowset_counts.get(name, 0) + 1
     for canonical, members in environment.scoped_join_key_groups.items():
         for member in sorted({canonical, *members} & demanded):
-            member_concept = environment.concepts.get(member)
-            if member_concept is None or member_concept.address != member:
+            member_concept = _own_concept(member, environment)
+            if member_concept is None:
                 continue
             if member in coalescing:
                 for other in sorted({canonical, *members} - {member}):
@@ -1657,20 +1618,12 @@ def _rowset_key_handles(
     exposes the grain the value is computed at."""
     if concept.derivation != Derivation.BASIC or not concept.keys:
         return []
-    read_rowsets = {
-        u.lineage.rowset.name
-        for u in upstreams
-        if isinstance(u.lineage, BuildRowsetItem)
-    }
+    read_rowsets = {_rowset_of(u) for u in upstreams} - {None}
     upstream_addrs = {u.address for u in upstreams}
     out: list[BuildConcept] = []
     for key in sorted(concept.keys - upstream_addrs):
         handle = environment.concepts.get(key)
-        if (
-            handle is not None
-            and isinstance(handle.lineage, BuildRowsetItem)
-            and handle.lineage.rowset.name in read_rowsets
-        ):
+        if handle is not None and _rowset_of(handle) in read_rowsets:
             out.append(handle)
     return out
 
@@ -1704,18 +1657,31 @@ def _grain_pin_anchors(concept: BuildConcept) -> frozenset[str]:
     )
 
 
-def _add_concept(
-    concept: BuildConcept,
-    environment: BuildEnvironment,
-    graph: nx.DiGraph,
-    edges: EdgeMap,
-    attrs: dict[str, ConceptAttrs],
-    label: str = "",
-    materialized_roots: frozenset[str] = frozenset(),
-    datasource_addresses: frozenset[str] = frozenset(),
-    pinned_probes: frozenset[str] = frozenset(),
-    datasources: Sequence[BuildDatasource] = (),
-) -> None:
+@dataclass(frozen=True)
+class _Walk:
+    """What every `_add_concept` call of one graph build shares."""
+
+    environment: BuildEnvironment
+    graph: nx.DiGraph
+    edges: EdgeMap
+    attrs: dict[str, ConceptAttrs]
+    datasources: Sequence[BuildDatasource]
+    materialized_roots: frozenset[str] = frozenset()
+    datasource_addresses: frozenset[str] = frozenset()
+    pinned_probes: frozenset[str] = frozenset()
+
+    @cached_property
+    def root_like(self) -> frozenset[str]:
+        return self.materialized_roots | self.pinned_probes
+
+    def node_of(self, concept: BuildConcept, label: str = "") -> str:
+        """The node `concept` occupies when walked under `label`."""
+        return node_id(
+            _effective_label(concept, label, self.root_like), concept.address
+        )
+
+
+def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
     The label encodes (scope, phase): scope is "" for the outer query / the
@@ -1734,6 +1700,10 @@ def _add_concept(
     its member's own scan, so it belongs in the ROOT bucket where `plan_source`
     pins it per side) but its lineage IS walked: the probe's argument is the
     group's axis key, which the plan still needs as the join spine."""
+    environment = walk.environment
+    graph = walk.graph
+    datasources = walk.datasources
+    datasource_addresses = walk.datasource_addresses
     alternatives = _alternative_origins(concept, environment, datasource_addresses)
     use_hub = len(alternatives) >= 2
     if not use_hub:
@@ -1743,9 +1713,9 @@ def _add_concept(
         origin = _resolve_pseudonym_origin(concept, environment, datasource_addresses)
         if origin is not None:
             concept = origin
-    root_like = materialized_roots | pinned_probes
-    is_materialized_root = concept.address in materialized_roots
-    is_pinned_probe = concept.address in pinned_probes
+    root_like = walk.root_like
+    is_materialized_root = concept.address in walk.materialized_roots
+    is_pinned_probe = concept.address in walk.pinned_probes
     eff_label = _effective_label(concept, label, root_like)
     nid = node_id(eff_label, concept.address)
     if nid in graph:
@@ -1791,20 +1761,21 @@ def _add_concept(
         # as an obligation output.
         member = probe_member_address(concept.address, environment)
         member_concept = environment.concepts.get(member) if member else None
-        if member_concept is not None and isinstance(
-            member_concept.lineage, BuildRowsetItem
-        ):
-            rowset_name = member_concept.lineage.rowset.name
+        if member_concept is not None:
+            rowset_name = _rowset_of(member_concept)
     is_rename = (
         isinstance(concept.lineage, BuildFunction)
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     if not is_materialized_root and derived_key(concept):
-        out_grain = _derived_key_row_grain(concept, environment)
+        # A derived key's values are its own grain, but the stream deriving it
+        # holds one per input row, and pairs with its siblings on those rows'
+        # keys (`crown2` by `cls` and `genus` joins back to the trees on both).
+        out_grain = derived_key_inputs(concept, environment.concepts)
     if not is_materialized_root:
         out_grain = axis_scalar_reads(concept, environment) or out_grain
-    if _scalar_of_materialized(concept, materialized_roots, environment):
+    if _scalar_of_materialized(concept, walk.materialized_roots, environment):
         out_grain = frozenset()
     if (
         not is_materialized_root
@@ -1862,7 +1833,7 @@ def _add_concept(
             out_grain |= widen
             aggregate_input_grain |= coalesced_axis
     graph.add_node(nid)
-    attrs[nid] = ConceptAttrs(
+    walk.attrs[nid] = ConceptAttrs(
         address=concept.address,
         label=eff_label,
         derivation=(
@@ -1933,25 +1904,11 @@ def _add_concept(
     # pass sees a single ordinary lineage parent.
     if use_hub:
         for origin in alternatives:
-            _add_concept(
-                origin,
-                environment,
-                graph,
-                edges,
-                attrs,
-                label,
-                materialized_roots,
-                datasource_addresses,
-                pinned_probes,
-                datasources,
-            )
-            origin_nid = node_id(
-                _effective_label(origin, label, root_like), origin.address
-            )
+            _add_concept(origin, walk, label)
             add_edge(
                 graph,
-                edges,
-                origin_nid,
+                walk.edges,
+                walk.node_of(origin, label),
                 nid,
                 EdgeKind.LINEAGE,
                 alt_group=concept.address,
@@ -2018,9 +1975,7 @@ def _add_concept(
     # side, so each side's scan parents the aggregate.
     upstream_addrs = {u.address for u in upstreams}
     upstreams.extend(
-        environment.concepts[addr]
-        for addr in sorted(coalesced_axis - upstream_addrs)
-        if addr in environment.concepts
+        _known_concepts(sorted(coalesced_axis - upstream_addrs), environment)
     )
     upstream_labels = _upstream_labels(concept, upstreams, label, environment)
     for upstream, upstream_walk_label in zip(upstreams, upstream_labels):
@@ -2034,23 +1989,11 @@ def _add_concept(
                 _resolve_pseudonym_origin(upstream, environment, datasource_addresses)
                 or upstream
             )
-        _add_concept(
-            upstream,
-            environment,
-            graph,
-            edges,
-            attrs,
-            upstream_walk_label,
-            materialized_roots,
-            datasource_addresses,
-            pinned_probes,
-            datasources,
-        )
-        upstream_label = _effective_label(upstream, upstream_walk_label, root_like)
+        _add_concept(upstream, walk, upstream_walk_label)
         add_edge(
             graph,
-            edges,
-            node_id(upstream_label, upstream.address),
+            walk.edges,
+            walk.node_of(upstream, upstream_walk_label),
             nid,
             EdgeKind.LINEAGE,
         )
@@ -2342,12 +2285,7 @@ def _whole_grain_determines(
 
 
 def _host_outputs_on_row_preserving_aggregates(
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    graph: nx.DiGraph,
-    edges: EdgeMap,
-    attrs: dict[str, ConceptAttrs],
-    root_like: frozenset[str],
+    mandatory_list: list[BuildConcept], walk: _Walk
 ) -> None:
     """Widen the grouping grain of an aggregate that reduces nothing with the
     select outputs only its whole grain determines.
@@ -2365,6 +2303,10 @@ def _host_outputs_on_row_preserving_aggregates(
     A covered KEY hosts like any value (`order_id` beside `sum(qty)` at
     `item_id`). It makes the grouping grain two-keyed, which is only safe
     because a two-`~` span keeps its extension families apart on its own."""
+    environment = walk.environment
+    graph = walk.graph
+    edges = walk.edges
+    attrs = walk.attrs
     hosts = [
         nid
         for nid, node in attrs.items()
@@ -2383,8 +2325,7 @@ def _host_outputs_on_row_preserving_aggregates(
     candidates = [
         nid
         for concept in mandatory_list
-        if (nid := node_id(_effective_label(concept, "", root_like), concept.address))
-        in attrs
+        if (nid := walk.node_of(concept)) in attrs
         and _is_row_scalar(graph, edges, attrs, nid)
     ]
     for host in hosts:
@@ -2422,15 +2363,13 @@ def _stamp_determining_key_roots(
             if root.keys & present:
                 continue
             kept = [key for key in keys if key != root.address]
-            if not kept or not build_fd_determines(
-                environment, set(kept), root.address, include_empty_grain=False
+            if not kept or not strict_fd_determines(
+                environment, set(kept), root.address
             ):
                 continue
             for key in list(kept):
                 rest = [k for k in kept if k != key]
-                if rest and build_fd_determines(
-                    environment, set(rest), root.address, include_empty_grain=False
-                ):
+                if rest and strict_fd_determines(environment, set(rest), root.address):
                     kept = rest
             root.determining_key_roots = frozenset(kept)
 
@@ -2453,16 +2392,7 @@ def _lineage_leaves(concepts: list[BuildConcept]) -> list[BuildConcept]:
 
 
 def _add_rowset_handle_relations(
-    mandatory_list: list[BuildConcept],
-    conditions: list[BuildWhereClause],
-    environment: BuildEnvironment,
-    graph: nx.DiGraph,
-    edges: EdgeMap,
-    attrs: dict[str, ConceptAttrs],
-    materialized_roots: frozenset[str],
-    datasource_addresses: frozenset[str],
-    pinned_probes: frozenset[str],
-    datasources: Sequence[BuildDatasource],
+    mandatory_list: list[BuildConcept], conditions: list[BuildWhereClause], walk: _Walk
 ) -> None:
     """A statement join on a demanded rowset's handle (`union join ticket =
     rs.t`) is a RELATION edge from the other side's member to the handle leaf,
@@ -2470,17 +2400,16 @@ def _add_rowset_handle_relations(
     handle is a leaf, never walked. Only when the statement reads beside the
     rowset: a select of the rowset alone reads its rows alone. A rowset the
     WHERE alone reads is a condition source, paired through its feeder."""
+    environment = walk.environment
+    graph = walk.graph
+    attrs = walk.attrs
     leaves = _lineage_leaves(
         [
             *mandatory_list,
             *(c for clause in conditions for c in clause.concept_arguments),
         ]
     )
-    rowsets = {
-        c.lineage.rowset.name
-        for c in _lineage_leaves(mandatory_list)
-        if isinstance(c.lineage, BuildRowsetItem)
-    }
+    rowsets = {_rowset_of(c) for c in _lineage_leaves(mandatory_list)} - {None}
     if not rowsets or all(isinstance(c.lineage, BuildRowsetItem) for c in leaves):
         return
     statement = _statement_scoped_relation_members(environment)
@@ -2491,29 +2420,14 @@ def _add_rowset_handle_relations(
         concepts = [
             c for addr in sorted(relation) if (c := environment.concepts.get(addr))
         ]
-        handles = [
-            c
-            for c in concepts
-            if isinstance(c.lineage, BuildRowsetItem)
-            and c.lineage.rowset.name in rowsets
-        ]
+        handles = [c for c in concepts if _rowset_of(c) in rowsets]
         mates = [c for c in concepts if c.derivation == Derivation.ROOT]
         for handle in handles:
             handle_nid = node_id("", handle.address)
             for concept in (handle, *mates):
                 nid = node_id("", concept.address)
                 added = nid not in graph
-                _add_concept(
-                    concept,
-                    environment,
-                    graph,
-                    edges,
-                    attrs,
-                    materialized_roots=materialized_roots,
-                    datasource_addresses=datasource_addresses,
-                    pinned_probes=pinned_probes,
-                    datasources=datasources,
-                )
+                _add_concept(concept, walk)
                 if added and nid in attrs:
                     attrs[nid].relation_only = True
             for mate in mates:
@@ -2523,7 +2437,7 @@ def _add_rowset_handle_relations(
                     and mate_nid in graph
                     and not graph.has_edge(mate_nid, handle_nid)
                 ):
-                    add_edge(graph, edges, mate_nid, handle_nid, EdgeKind.RELATION)
+                    add_edge(graph, walk.edges, mate_nid, handle_nid, EdgeKind.RELATION)
 
 
 def _joins_no_key(condition: ConceptAttrs, scalar: ConceptAttrs) -> bool:
@@ -2552,12 +2466,7 @@ def _scalar_row_sources(
 
 
 def _constrain_aggregates_by_root_conditions(
-    graph: nx.DiGraph,
-    edges: EdgeMap,
-    attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
-    row_arg_addresses: set[str],
-    root_like: frozenset[str],
+    walk: _Walk, row_arg_addresses: set[str]
 ) -> None:
     """A WHERE on a ROOT column filters the rows an outer aggregate reads unless
     the aggregate's grain decides it. An aggregate over roots shares its input
@@ -2565,12 +2474,16 @@ def _constrain_aggregates_by_root_conditions(
     reads no root (a rowset paired on a declared join) has nothing else making
     the WHERE's scan a row parent, and the WHERE could only filter its output.
     One over literals alone (`sum(1)`) reads no rows for the WHERE to filter."""
+    environment = walk.environment
+    graph = walk.graph
+    edges = walk.edges
+    attrs = walk.attrs
     lineage = lineage_subgraph(graph, edges)
     for address in sorted(row_arg_addresses):
         concept = environment.concepts.get(address)
         if concept is None or concept.derivation != Derivation.ROOT:
             continue
-        src = node_id(_effective_label(concept, "", root_like), address)
+        src = node_id(_effective_label(concept, "", walk.root_like), address)
         if src not in graph:
             continue
         for dst, node in attrs.items():
@@ -2660,24 +2573,20 @@ def build_concept_graph(
     datasource_addresses = frozenset(
         c.address for ds in datasources for c in ds.output_concepts
     )
-    pinned_probes = pinned_probe_addresses(environment, datasources)
-    root_like = materialized_roots | pinned_probes
+    walk = _Walk(
+        environment=environment,
+        graph=graph,
+        edges=edges,
+        attrs=attrs,
+        datasources=datasources,
+        materialized_roots=materialized_roots,
+        datasource_addresses=datasource_addresses,
+        pinned_probes=pinned_probe_addresses(environment, datasources),
+    )
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
-        _add_concept(
-            concept,
-            environment,
-            graph,
-            edges,
-            attrs,
-            materialized_roots=materialized_roots,
-            datasource_addresses=datasource_addresses,
-            pinned_probes=pinned_probes,
-            datasources=datasources,
-        )
-    _host_outputs_on_row_preserving_aggregates(
-        mandatory_list, environment, graph, edges, attrs, root_like
-    )
+        _add_concept(concept, walk)
+    _host_outputs_on_row_preserving_aggregates(mandatory_list, walk)
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so depth labels
     # are never retro-promoted. A later `then where` stage's
@@ -2687,7 +2596,7 @@ def build_concept_graph(
     staged_labels = _staged_condition_labels(conditions, staged_conditions)
     for clause in conditions:
         for concept in clause.concept_arguments:
-            resolved = environment.concepts.get(concept.address, concept) or concept
+            resolved = _resolved(concept, environment)
             base_label = staged_labels.get(resolved.address, _condition_label(""))
             # An argument sourced only inside union arms is a filter on those
             # arms' rows: walk it under each arm's scope so its atom hosts on
@@ -2702,34 +2611,13 @@ def build_concept_graph(
                 for scope in _arm_scopes_sourcing(resolved, environment, attrs)
             ] or [base_label]
             for walk_label in walk_labels:
-                _add_concept(
-                    resolved,
-                    environment,
-                    graph,
-                    edges,
-                    attrs,
-                    label=walk_label,
-                    materialized_roots=materialized_roots,
-                    datasource_addresses=datasource_addresses,
-                    pinned_probes=pinned_probes,
-                    datasources=datasources,
-                )
+                _add_concept(resolved, walk, walk_label)
 
     # Unreferenced rowset-handle key-group mates of demanded members (see
     # `_unsourced_relation_mates`): without a node here the mate's rowset never
     # enters the plan and the relation axis collapses to one side's domain.
     for mate in _unsourced_relation_mates(mandatory_list, conditions, environment):
-        _add_concept(
-            mate,
-            environment,
-            graph,
-            edges,
-            attrs,
-            materialized_roots=materialized_roots,
-            datasource_addresses=datasource_addresses,
-            pinned_probes=pinned_probes,
-            datasources=datasources,
-        )
+        _add_concept(mate, walk)
 
     # A statement-scoped join key authored as a computed expression (`union
     # join rank orders.oid order by orders.amt desc = customers.rnk`) is
@@ -2784,34 +2672,10 @@ def build_concept_graph(
             if origin is None or origin.lineage is None:
                 continue
             canonical = resolved_member
-            _add_concept(
-                origin,
-                environment,
-                graph,
-                edges,
-                attrs,
-                materialized_roots=materialized_roots,
-                datasource_addresses=datasource_addresses,
-                pinned_probes=pinned_probes,
-                datasources=datasources,
-            )
-            _add_concept(
-                canonical,
-                environment,
-                graph,
-                edges,
-                attrs,
-                materialized_roots=materialized_roots,
-                datasource_addresses=datasource_addresses,
-                pinned_probes=pinned_probes,
-                datasources=datasources,
-            )
-            origin_nid = node_id(
-                _effective_label(origin, "", root_like), origin.address
-            )
-            canonical_nid = node_id(
-                _effective_label(canonical, "", root_like), canonical.address
-            )
+            _add_concept(origin, walk)
+            _add_concept(canonical, walk)
+            origin_nid = walk.node_of(origin)
+            canonical_nid = walk.node_of(canonical)
             if (
                 origin_nid in graph
                 and canonical_nid in graph
@@ -2819,18 +2683,7 @@ def build_concept_graph(
                 and not graph.has_edge(origin_nid, canonical_nid)
             ):
                 add_edge(graph, edges, origin_nid, canonical_nid, EdgeKind.RELATION)
-        _add_rowset_handle_relations(
-            mandatory_list,
-            conditions,
-            environment,
-            graph,
-            edges,
-            attrs,
-            materialized_roots=materialized_roots,
-            datasource_addresses=datasource_addresses,
-            pinned_probes=pinned_probes,
-            datasources=datasources,
-        )
+        _add_rowset_handle_relations(mandatory_list, conditions, walk)
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
     # its inner select is a self-contained sub-query that `gen_rowset` plans
@@ -2845,7 +2698,9 @@ def build_concept_graph(
     # the existence-only args from the filter's lineage; here each source is
     # walked under the filter node's label and wired with an `existence` edge
     # to the filter so it lands in its own group and renders as `... IN
-    # (SELECT src FROM <cte>)`.
+    # (SELECT src FROM <cte>)`. The source is walked as written, with no
+    # materialized roots or pinned probes.
+    existence_walk = _Walk(environment, graph, edges, attrs, datasources)
     for nid in list(graph.nodes):
         fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
@@ -2863,16 +2718,8 @@ def build_concept_graph(
                 if addr in row_read and _split_condition_label(flabel) is None
                 else flabel
             )
-            _add_concept(
-                source,
-                environment,
-                graph,
-                edges,
-                attrs,
-                label=slabel,
-                datasources=datasources,
-            )
-            src_nid = node_id(_effective_label(source, slabel), source.address)
+            _add_concept(source, existence_walk, slabel)
+            src_nid = existence_walk.node_of(source, slabel)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
                 add_edge(graph, edges, src_nid, nid, EdgeKind.EXISTENCE)
 
@@ -2883,19 +2730,14 @@ def build_concept_graph(
     # from the losing-arm prune.
     sink_ids: set[str] = set()
     for c in mandatory_list:
-        sid = node_id(_effective_label(c, "", root_like), c.address)
+        sid = walk.node_of(c)
         if sid in graph:
             sink_ids.add(sid)
     for clause in conditions:
         for cc in clause.concept_arguments:
-            resolved = environment.concepts.get(cc.address, cc) or cc
-            sid = node_id(
-                _effective_label(
-                    resolved,
-                    staged_labels.get(resolved.address, _condition_label("")),
-                    root_like,
-                ),
-                resolved.address,
+            resolved = _resolved(cc, environment)
+            sid = walk.node_of(
+                resolved, staged_labels.get(resolved.address, _condition_label(""))
             )
             if sid in graph:
                 sink_ids.add(sid)
@@ -2916,8 +2758,7 @@ def build_concept_graph(
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
-            for c in atom.row_arguments:
-                row_arg_addresses.add(c.address)
+            row_arg_addresses.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():
                 for ec in arg_group:
                     existence_arg_addresses.add(ec.address)
@@ -3003,9 +2844,7 @@ def build_concept_graph(
                 if not graph.has_edge(src, dst):
                     add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
 
-    _constrain_aggregates_by_root_conditions(
-        graph, edges, attrs, environment, row_arg_addresses, root_like
-    )
+    _constrain_aggregates_by_root_conditions(walk, row_arg_addresses)
 
     # Existence edges: for each `... IN <subselect>` atom, the existence
     # source must be built and topologically ordered before the host

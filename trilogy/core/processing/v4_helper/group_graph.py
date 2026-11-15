@@ -16,7 +16,7 @@ single bucket). No derivation is privileged in the orchestrator.
 """
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
 
@@ -56,6 +56,7 @@ from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    NESTED_DEPTHS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
@@ -76,13 +77,13 @@ from .extent_ownership import (
     elect_extent_owners,
 )
 from .functional_dependency import (
-    build_fd_closure,
-    build_fd_determines,
-    build_fd_determines_all,
     concept_attr_fd_determines,
+    strict_fd_closure,
+    strict_fd_determines,
+    strict_fd_determines_all,
 )
 from .group_behaviors import Behavior, behavior_for
-from .group_rules import DEFAULT_RULE, GROUPING_RULES
+from .group_rules import DEFAULT_RULE, GROUPING_RULES, _lineage_reach
 from .join_plan import (
     authored_axes,
     carryable,
@@ -118,13 +119,16 @@ _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
 }
 
 
-def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> set[str]:
-    """The first non-primary lineage ancestor of each primary: the columns a
-    group actually consumes. Walks through primaries computed inside the group
-    (a primary whose lineage arg is another primary, such as a chained rename)
-    so the demand bottoms out on real inputs, not intermediates."""
+def _leaf_inputs(
+    starts: Iterable[str], primaries: set[str], lineage_parents: dict[str, set[str]]
+) -> set[str]:
+    """The first non-primary lineage ancestors of the primaries in `starts`:
+    the columns a group actually consumes for them. Walks through primaries
+    computed inside the group (a primary whose lineage arg is another primary,
+    such as a chained rename) so the demand bottoms out on real inputs, not
+    intermediates."""
     leaves: set[str] = set()
-    for c in primaries:
+    for c in starts:
         stack = list(lineage_parents.get(c, set()))
         seen: set[str] = set()
         while stack:
@@ -199,19 +203,13 @@ def _lineage_leaf_addresses(
 ) -> set[str]:
     """Addresses of `node`'s lineage ancestors that have no lineage parent of
     their own: the raw inputs the concept ultimately computes from."""
-    leaves: set[str] = set()
-    visited: set[str] = {node}
-    stack = [node]
-    while stack:
-        cur = stack.pop()
-        preds = lineage_predecessors(concept_graph, concept_edges, cur)
-        if cur != node and not preds:
-            leaves.add(concept_attrs[cur].address)
-        for p in preds:
-            if p not in visited:
-                visited.add(p)
-                stack.append(p)
-    return leaves
+    return {
+        concept_attrs[ancestor].address
+        for ancestor in _lineage_reach(
+            node, lineage_predecessors, concept_graph, concept_edges
+        )
+        if not lineage_predecessors(concept_graph, concept_edges, ancestor)
+    }
 
 
 def _fold_rollup_key_dims(
@@ -251,7 +249,7 @@ def _fold_rollup_key_dims(
             continue
         for node in bucket.primary_node_ids:
             attrs = concept_attrs[node]
-            if attrs.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
+            if attrs.depth_label in NESTED_DEPTHS:
                 continue
             # A pure rename is a pseudonym of its source key; the renderer
             # resolves it to the rolled-up key column directly, so it neither
@@ -277,9 +275,7 @@ def _fold_rollup_key_dims(
         src.member_depths.pop(address, None)
         tgt = buckets[target_gid]
         if node not in tgt.primary_node_ids:
-            tgt.primary_node_ids.append(node)
-            tgt.primary_members.append(address)
-            tgt.member_depths[address] = concept_attrs[node].depth_label
+            tgt.add_member(address, node, concept_attrs[node].depth_label)
         primary_group[node] = target_gid
     for gid in [g for g, b in buckets.items() if not b.primary_node_ids]:
         del buckets[gid]
@@ -358,11 +354,7 @@ def _materialize_group_graph(
     # group, that ordering is already implied by lineage and the extra edge is
     # a pure back-edge forming a cycle with no new ordering (the gated row arg
     # and the existence source's input share one node). Drop those.
-    lineage_sub = lineage_subgraph(group_graph, group_edges)
-    for gu, gv in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
-        if gv in lineage_sub and gu in lineage_sub and nx.has_path(lineage_sub, gv, gu):
-            remove_edge(group_graph, group_edges, gu, gv)
-
+    #
     # Same for a CONSTRAINT edge: it orders the condition group at or ABOVE the
     # group it constrains. When that group is a lineage ANCESTOR of the
     # condition group (the condition is computed FROM its rows, which is what
@@ -372,8 +364,8 @@ def _materialize_group_graph(
     # only a cycle. The atom lands at the merge instead, which for a
     # row-level scalar selects exactly the same conjunction.
     lineage_sub = lineage_subgraph(group_graph, group_edges)
-    for gu, gv in list(edges_of_kind(group_edges, EdgeKind.CONSTRAINT)):
-        if gv in lineage_sub and gu in lineage_sub and nx.has_path(lineage_sub, gv, gu):
+    for gu, gv in edges_of_kind(group_edges, EdgeKind.EXISTENCE, EdgeKind.CONSTRAINT):
+        if nx.has_path(lineage_sub, gv, gu):
             remove_edge(group_graph, group_edges, gu, gv)
 
     return group_graph, attrs, group_edges
@@ -612,11 +604,10 @@ def _color_phases(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     condition_group_ids: set[str],
-) -> set[str]:
+) -> None:
     """Mark each edge as `pre_condition` or `post_condition`. Any edge from a
     condition-bearing group (or any descendant of one) is post-condition;
-    everything earlier is pre-condition. Returns the downstream set so the
-    FINAL-sink wiring can use the same coloring."""
+    everything earlier is pre-condition."""
     downstream: set[str] = set(condition_group_ids)
     for cgid in condition_group_ids:
         downstream |= nx.descendants(group_graph, cgid)
@@ -624,7 +615,6 @@ def _color_phases(
         attrs.phase = (
             EdgePhase.POST_CONDITION if u in downstream else EdgePhase.PRE_CONDITION
         )
-    return downstream
 
 
 def _add_final_node(
@@ -659,9 +649,7 @@ def _grain_determines(
     """Every key of `targets` is a function of `determinants` together."""
     if not determinants or not targets:
         return False
-    return build_fd_determines_all(
-        environment, determinants, targets, include_empty_grain=False
-    )
+    return strict_fd_determines_all(environment, determinants, targets)
 
 
 def _offered_at_grain(
@@ -672,10 +660,30 @@ def _offered_at_grain(
     `tree_id` holds one row per tree, #972); FINAL reads it off the rows."""
     if fact.derivation != Derivation.BASIC or not fact.grain:
         return offered
-    determined = build_fd_closure(environment, fact.grain, include_empty_grain=False)
+    determined = strict_fd_closure(environment, fact.grain)
     if not all(_declared_at(environment, determined, addr) for addr in fact.primary):
         return offered
     return offered & (fact.primary | determined)
+
+
+def _offered_to_final(
+    offered: set[str], fact: "GroupFacts", environment: BuildEnvironment
+) -> set[str]:
+    """What a group offers FINAL of the columns it can carry. A value an
+    aggregate's input read is not one it groups by: FINAL reads it off the
+    rows it describes."""
+    if fact.derivation in GROUPING_DERIVATIONS:
+        return offered & (fact.primary | fact.grain)
+    return _offered_at_grain(offered, fact, environment)
+
+
+def _siblings(group_graph: nx.DiGraph, gid: str, succ: str) -> list[str]:
+    """The groups feeding `succ` beside `gid`."""
+    return [
+        pred
+        for pred in group_graph.predecessors(succ)
+        if pred not in (gid, FINAL_NODE_ID)
+    ]
 
 
 def _declared_at(
@@ -758,9 +766,7 @@ def _source_asked_root_keys(
             and concept.derivation == Derivation.ROOT
             # a table beside the outputs that binds it widens to it in place
             and not any(key in t and outputs <= t for t in tables)
-            and build_fd_determines(
-                environment, outputs, key, include_empty_grain=False
-            )
+            and strict_fd_determines(environment, outputs, key)
         )
         if missing:
             root.output_concepts = (*root.output_concepts, *missing)
@@ -1185,7 +1191,7 @@ def _consumer_sibling_grains(
     """The grains `gid`'s row parents already stand at, which a dimension
     parent beside them is projected to rather than asked to carry: the grain
     of any parent computed off aggregates, and the spans of any region
-    domain. No pairing reads them; they only fix the projection (part 34)."""
+    domain. No pairing reads them; they only fix the projection."""
     rows = row_parents(group_graph, group_edges, gid)
     # A non-grouping consumer pairing a GROUPING row parent (a population
     # aggregate at grain G) with row-grain siblings reads the sibling at G
@@ -1334,7 +1340,7 @@ def _refresh_input_contracts(
     for gid in consumers:
         input_grain = attrs[gid].input_grain
         # a bridge widens the consumer's sourcing and fixes the projection; no
-        # pairing reads it (part 35)
+        # pairing reads it
         sourcing_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
@@ -1383,6 +1389,11 @@ class GroupFacts:
     derivation: Derivation | None
     behavior: Behavior
     native_grain: frozenset[str] = frozenset()
+
+    def regrain(self, grain: frozenset[str]) -> None:
+        """Re-anchor the rows this group emits, declared and native alike."""
+        self.grain = grain
+        self.native_grain = grain
 
 
 @dataclass
@@ -1486,7 +1497,7 @@ def _extend_grouping_output_rides(
             or fact.derivation in GROUPING_DERIVATIONS
         ):
             continue
-        leaves = _leaf_inputs(fact.primary, lineage_parents)
+        leaves = _leaf_inputs(fact.primary, fact.primary, lineage_parents)
         if not leaves:
             continue
         contributors = _grouping_output_contributors(
@@ -1507,8 +1518,7 @@ def _extend_grouping_output_rides(
         rides[gid] = grouping_grain
         changed = True
         if not fact.grain <= grouping_grain:
-            fact.grain = grouping_grain
-            fact.native_grain = grouping_grain
+            fact.regrain(grouping_grain)
     return changed
 
 
@@ -1586,8 +1596,7 @@ def _anchor_scalars_to_dim_peel_key(
             continue
         key = next(iter(keys))
         if key and not fact.grain <= key:
-            fact.grain = key
-            fact.native_grain = key
+            fact.regrain(key)
 
 
 def _grouping_lineage_ancestors(
@@ -1649,8 +1658,7 @@ def _widen_window_grain_to_grouping_parent(
             continue
         parent_grain = next(iter(grouping_grains))
         if fact.grain < parent_grain:
-            fact.grain = parent_grain
-            fact.native_grain = parent_grain
+            fact.regrain(parent_grain)
 
 
 def _widen_mixed_scalar_basic_to_final_spine(
@@ -1716,15 +1724,13 @@ def _widen_mixed_scalar_basic_to_final_spine(
         return
     mandatory_addresses = {c.address for c in mandatory_list}
     extra_keys = spine - mandatory_addresses
-    if extra_keys and not build_fd_determines_all(
-        environment, mandatory_addresses, extra_keys, include_empty_grain=False
+    if extra_keys and not strict_fd_determines_all(
+        environment, mandatory_addresses, extra_keys
     ):
         return
     for gid in candidates:
-        fact = facts[gid]
-        if fact.grain < spine:
-            fact.grain = spine
-            fact.native_grain = spine
+        if facts[gid].grain < spine:
+            facts[gid].regrain(spine)
 
 
 def _solid_aggregate_over_region_group(
@@ -1807,11 +1813,11 @@ class _InputPass:
     """What `_concept_sets` derives before its reverse pass, read by
     each group's inputs (`_group_inputs`)."""
 
+    demand: "Demand"
     attrs: dict[str, GroupAttrs]
     domain_carried: dict[str, set[str]]
     domain_gids: set[str]
     domain_members: dict[str, set[str]]
-    environment: BuildEnvironment
     existence_demand: dict[str, set[str]]
     facts: dict[str, GroupFacts]
     final_condition_args: set[str]
@@ -1819,16 +1825,10 @@ class _InputPass:
     group_edges: EdgeMap
     group_graph: nx.DiGraph
     io: GroupIOPlan
-    lineage_parents: dict[str, set[str]]
     lineage_sub: nx.DiGraph
     mandatory_alias_addresses: set[str]
-    pseudonym_mates: dict[str, frozenset[str]]
     region_join_keys: frozenset[str]
-    relation_edge_members: frozenset[str]
-    rollup_padded: frozenset[str]
-    scoped_axis_mates: dict[str, frozenset[str]]
     solid: set[str]
-    source_grain_of: dict[str, frozenset[str]]
     pin_anchors: dict[str, frozenset[str]]
 
 
@@ -1892,67 +1892,52 @@ def _gate_args_filtered_here(gid: str, succ: str, ctx: _InputPass) -> set[str]:
 def _group_inputs(gid: str, ctx: _InputPass) -> None:
     """One step of the reverse topological pass: what `gid` reads from its
     parents, given what its consumers read from it."""
+    demand = ctx.demand
     attrs = ctx.attrs
-    domain_carried = ctx.domain_carried
-    domain_gids = ctx.domain_gids
-    domain_members = ctx.domain_members
-    environment = ctx.environment
-    existence_demand = ctx.existence_demand
+    environment = demand.environment
     facts = ctx.facts
-    final_condition_args = ctx.final_condition_args
-    final_gate_grains = ctx.final_gate_grains
     group_edges = ctx.group_edges
     group_graph = ctx.group_graph
     io = ctx.io
-    lineage_parents = ctx.lineage_parents
-    lineage_sub = ctx.lineage_sub
-    mandatory_alias_addresses = ctx.mandatory_alias_addresses
-    pseudonym_mates = ctx.pseudonym_mates
+    lineage_parents = demand.lineage_parents
     region_join_keys = ctx.region_join_keys
-    relation_edge_members = ctx.relation_edge_members
-    rollup_padded = ctx.rollup_padded
-    scoped_axis_mates = ctx.scoped_axis_mates
+    relation_edge_members = demand.relation_edge_members
+    rollup_padded = demand.rollup_padded
+    scoped_axis_mates = demand.scoped_axis_mates
     solid = ctx.solid
-    source_grain_of = ctx.source_grain_of
     if gid == FINAL_NODE_ID:
         return
     fact = facts[gid]
+    is_grouping = fact.derivation in GROUPING_DERIVATIONS
     cap_gid = io.capability[gid]
-    outs: set[str] = existence_demand.get(gid, set()) & cap_gid
+    outs: set[str] = ctx.existence_demand.get(gid, set()) & cap_gid
     outs |= _hosted_condition_outputs(
         attrs[gid].condition_atoms, fact.derivation, cap_gid
     )
     solid_root = gid in solid
     for succ in group_graph.successors(gid):
         if succ == FINAL_NODE_ID:
-            mand = cap_gid & mandatory_alias_addresses
-            if fact.derivation in GROUPING_DERIVATIONS:
-                mand &= fact.primary | fact.grain
-            else:
-                mand = _offered_at_grain(mand, fact, environment)
-            for desc in nx.descendants(lineage_sub, gid):
+            mand = _offered_to_final(
+                cap_gid & ctx.mandatory_alias_addresses, fact, environment
+            )
+            for desc in nx.descendants(ctx.lineage_sub, gid):
                 if facts[desc].derivation in GROUPING_DERIVATIONS:
                     mand -= io.outputs[desc]
             if solid_root:
-                mand -= domain_carried.get(attrs[gid].label, set())
+                mand -= ctx.domain_carried.get(attrs[gid].label, set())
             outs |= mand
-            final_args_here = cap_gid & final_condition_args
-            if fact.derivation in GROUPING_DERIVATIONS:
-                # a value the aggregate's input read is not one it groups
-                # by: FINAL reads it off the rows it describes
-                final_args_here &= fact.primary | fact.grain
-            else:
-                final_args_here = _offered_at_grain(final_args_here, fact, environment)
+            final_args_here = _offered_to_final(
+                cap_gid & ctx.final_condition_args, fact, environment
+            )
             outs |= final_args_here
             outs |= cap_gid & region_join_keys
             outs |= cap_gid & _final_pin_anchors(ctx)
             # a row-level argument or a dimension peel beside a gate pairs on
             # the gate's grain (`rqty > 1 or sum(amount) by cust_id > 8`)
-            if gid in domain_gids or (
-                (final_args_here or attrs[gid].dim_keys)
-                and fact.derivation not in GROUPING_DERIVATIONS
+            if gid in ctx.domain_gids or (
+                (final_args_here or attrs[gid].dim_keys) and not is_grouping
             ):
-                outs |= cap_gid & final_gate_grains
+                outs |= cap_gid & ctx.final_gate_grains
             # a dim peel beside a region domain joins the region's rows
             # back on its keys (the fact's FK cluster is the bridge)
             # and a dim peel sending FINAL a value (a stored `min(height) by
@@ -1980,16 +1965,13 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                     member_mates = scoped_axis_mates.get(member, frozenset())
                     if not member_mates:
                         continue
-                    for sibling in group_graph.predecessors(succ):
-                        if sibling in (gid, FINAL_NODE_ID):
-                            continue
-                        if member_mates & facts[sibling].primary:
-                            outs.add(member)
-                            break
+                    if any(
+                        member_mates & facts[sibling].primary
+                        for sibling in _siblings(group_graph, gid, succ)
+                    ):
+                        outs.add(member)
             if fact.grain:
-                for sibling in group_graph.predecessors(succ):
-                    if sibling == gid or sibling == FINAL_NODE_ID:
-                        continue
+                for sibling in _siblings(group_graph, gid, succ):
                     sibling_fact = facts[sibling]
                     # Two ROW STREAMS at incomparable grains related by
                     # FD, one solid and one reading a region domain: a
@@ -2008,7 +1990,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                     # sibling pairs on its own grain, which it emits.
                     if (
                         solid_root != (sibling in solid)
-                        and fact.derivation not in GROUPING_DERIVATIONS
+                        and not is_grouping
                         and sibling_fact.derivation not in GROUPING_DERIVATIONS
                         and not fact.grain <= sibling_fact.grain
                         and not sibling_fact.grain <= fact.grain
@@ -2030,7 +2012,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                     # sibling emits its grain and pairs through the rules
                     # above; so does one that can hold this stream's grain.
                     if (
-                        fact.derivation not in GROUPING_DERIVATIONS
+                        not is_grouping
                         and sibling_fact.grain
                         and sibling_fact.grain <= _stored_columns(environment)
                         and sibling_fact.derivation not in GROUPING_DERIVATIONS
@@ -2066,28 +2048,22 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             # only a domain feeding `succ` supplies it: another region's
             # domain (the customers beside a bucket-fed aggregate) does not
             for pred in group_graph.predecessors(succ):
-                demanded -= domain_members.get(pred, set())
-        if fact.derivation in GROUPING_DERIVATIONS:
+                demanded -= ctx.domain_members.get(pred, set())
+        if is_grouping:
             sibling_providable: set[str] = set()
-            for sib in group_graph.predecessors(succ):
-                if sib in (gid, FINAL_NODE_ID):
-                    continue
-                if facts[sib].derivation in GROUPING_DERIVATIONS:
-                    continue
-                sibling_providable |= io.capability.get(sib, set())
+            for sib in _siblings(group_graph, gid, succ):
+                if facts[sib].derivation not in GROUPING_DERIVATIONS:
+                    sibling_providable |= io.capability.get(sib, set())
             keep = fact.primary | fact.grain
             demanded -= sibling_providable - keep
         outs |= demanded
-        for sibling in group_graph.predecessors(succ):
-            if sibling == gid or sibling == FINAL_NODE_ID:
-                continue
-            if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
-                continue
-            outs |= facts[sibling].grain & cap_gid
+        for sibling in row_parents(group_graph, group_edges, succ):
+            if sibling != gid:
+                outs |= facts[sibling].grain & cap_gid
         # a dimension peel is read by its key: the reader pairs it with the
         # rows it decorates on that axis, whatever else it demands
         outs |= attrs[gid].anchor_keys & cap_gid
-    if fact.derivation in GROUPING_DERIVATIONS:
+    if is_grouping:
         outs |= fact.grain & cap_gid
         # A grouping group whose grain component is a STATEMENT-scoped join
         # axis it cannot produce still owns that axis through its OWN side's
@@ -2100,15 +2076,13 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
         # its rowset rename).
         for missing in fact.grain - cap_gid:
             mates = set(scoped_axis_mates.get(missing, frozenset()))
-            mates |= pseudonym_mates.get(missing, frozenset())
+            mates |= demand.pseudonym_mates.get(missing, frozenset())
             for mate in sorted(mates):
                 if mate in cap_gid:
                     outs.add(mate)
                     break
     io.outputs[gid] = outs
 
-    ins: set[str] = set()
-    is_grouping = fact.derivation in GROUPING_DERIVATIONS
     # A primary member a hosted atom references is computed here for the
     # WHERE even when nothing downstream demands it (`where all_amt > 0`
     # over a union that selects only `all_k`), so it demands its inputs of
@@ -2119,36 +2093,20 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
         for arg in atom.row_arguments
         if arg.address in fact.primary
     }
-    for concept_addr in outs | hosted_primary:
-        if concept_addr in fact.primary:
-            stack = list(lineage_parents.get(concept_addr, set()))
-            seen_chain: set[str] = set()
-            while stack:
-                parent_addr = stack.pop()
-                if parent_addr in seen_chain:
-                    continue
-                seen_chain.add(parent_addr)
-                if parent_addr in fact.primary:
-                    stack.extend(lineage_parents.get(parent_addr, set()))
-                    continue
-                ins.add(parent_addr)
-                # a component of the rows the aggregate reads (a coarser
-                # aggregate's partial at `city, form`) is their identity, not
-                # a value to read at its own source grain
-                if (
-                    is_grouping
-                    and parent_addr not in fact.grain
-                    and parent_addr not in attrs[gid].aggregate_input_grain
-                ):
-                    for gc in source_grain_of.get(parent_addr, frozenset()):
-                        if gc not in fact.primary:
-                            ins.add(gc)
+    computed = outs | hosted_primary
+    ins = _leaf_inputs(computed & fact.primary, fact.primary, lineage_parents)
+    if is_grouping:
+        # a component of the rows the aggregate reads (a coarser aggregate's
+        # partial at `city, form`) is their identity, not a value to read at
+        # its own source grain
+        for leaf in ins - fact.grain - attrs[gid].aggregate_input_grain:
+            ins |= demand.source_grain.get(leaf, frozenset()) - fact.primary
+    for concept_addr in computed - fact.primary:
+        parent_addrs = lineage_parents.get(concept_addr, set())
+        if is_grouping and parent_addrs and parent_addrs <= fact.grain:
+            ins |= parent_addrs
         else:
-            parent_addrs = lineage_parents.get(concept_addr, set())
-            if is_grouping and parent_addrs and parent_addrs <= fact.grain:
-                ins |= parent_addrs
-            else:
-                ins.add(concept_addr)
+            ins.add(concept_addr)
     for atom in attrs[gid].condition_atoms:
         for arg in atom.row_arguments:
             if arg.address not in fact.primary:
@@ -2290,7 +2248,6 @@ def _concept_sets(
     concept_attrs = demand.concept_attrs
     mandatory_list = demand.mandatory_list
     environment = demand.environment
-    rollup_padded = demand.rollup_padded
     scoped_axis_mates = demand.scoped_axis_mates
     relation_edge_members = demand.relation_edge_members
     mandatory_addresses = demand.output_addresses
@@ -2395,9 +2352,7 @@ def _concept_sets(
             # excluded: a scan that absorbs one would drop the rowset's
             # internal filter.
             for member in scan_advertisable_members:
-                if member not in cap and build_fd_determines(
-                    environment, cap, member, include_empty_grain=False
-                ):
+                if member not in cap and strict_fd_determines(environment, cap, member):
                     cap.add(member)
             # a dim peel's keys identify its rows, the axis it joins back on;
             # a region's span rides the scan as the axis the region's rows do
@@ -2466,12 +2421,7 @@ def _concept_sets(
                         pointwise
                         and (addr not in concept_attrs or addr in region_join_keys)
                         and bool(fact.native_grain)
-                        and build_fd_determines(
-                            environment,
-                            fact.native_grain,
-                            addr,
-                            include_empty_grain=False,
-                        )
+                        and strict_fd_determines(environment, fact.native_grain, addr)
                     )
                 ):
                     cap.add(addr)
@@ -2518,11 +2468,11 @@ def _concept_sets(
         existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
     ctx = _InputPass(
+        demand=demand,
         attrs=attrs,
         domain_carried=domain_carried,
         domain_gids=domain_gids,
         domain_members=domain_members,
-        environment=environment,
         existence_demand=existence_demand,
         facts=facts,
         final_condition_args=final_condition_args,
@@ -2530,16 +2480,10 @@ def _concept_sets(
         group_edges=group_edges,
         group_graph=group_graph,
         io=io,
-        lineage_parents=lineage_parents,
         lineage_sub=lineage_sub,
         mandatory_alias_addresses=mandatory_alias_addresses,
-        pseudonym_mates=pseudonym_mates,
         region_join_keys=region_join_keys,
-        relation_edge_members=relation_edge_members,
-        rollup_padded=rollup_padded,
-        scoped_axis_mates=scoped_axis_mates,
         solid=solid,
-        source_grain_of=source_grain_of,
         pin_anchors=pin_anchors,
     )
     for gid in reversed(topo):

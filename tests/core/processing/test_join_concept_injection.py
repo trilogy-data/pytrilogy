@@ -120,19 +120,29 @@ def build_working_graph(
     return g
 
 
+def _property(name: str, key: str) -> BuildConcept:
+    return create_test_concept(name, purpose=Purpose.PROPERTY, keys={f"test.{key}"})
+
+
+def _working(
+    datasources: list[BuildDatasource], relevant_concepts: list[BuildConcept]
+) -> tuple[ReferenceGraph, list[str]]:
+    """The working graph over `relevant_concepts`, and their nodes."""
+    graph = build_working_graph(datasources, relevant_concepts)
+    return graph, [concept_to_node(c) for c in relevant_concepts]
+
+
 class TestReinjectCommonJoinKeysV2:
     """Tests for the reinject_common_join_keys_v2 function."""
 
     def test_no_injection_single_datasource(self):
         """With only one datasource, no join concepts should be injected."""
         concept_a = create_test_concept("a")
-        concept_b = create_test_concept("b", purpose=Purpose.PROPERTY, keys={"test.a"})
+        concept_b = _property("b", "a")
         ds1 = create_test_datasource("ds1", [concept_a, concept_b])
 
         orig_g = build_test_graph([concept_a, concept_b], [ds1])
-        working_g = build_working_graph([ds1], [concept_b])
-
-        nodelist = [concept_to_node(concept_b)]
+        working_g, nodelist = _working([ds1], [concept_b])
         initial_nodes = set(working_g.nodes)
 
         result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
@@ -149,13 +159,9 @@ class TestReinjectCommonJoinKeysV2:
         customer_id = create_test_concept("customer_id")
         # shared_key exists in both datasources and is already in the working graph
         shared_key = create_test_concept("shared_key")
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
+        customer_name = _property("customer_name", "customer_id")
         order_id = create_test_concept("order_id")
-        order_total = create_test_concept(
-            "order_total", purpose=Purpose.PROPERTY, keys={"test.order_id"}
-        )
+        order_total = _property("order_total", "order_id")
 
         ds_customers = create_test_datasource(
             "customers", [customer_id, customer_name, shared_key]
@@ -169,15 +175,9 @@ class TestReinjectCommonJoinKeysV2:
             [ds_customers, ds_orders],
         )
         # shared_key creates a path between the two datasources
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders], [customer_name, order_total, shared_key]
         )
-
-        nodelist = [
-            concept_to_node(customer_name),
-            concept_to_node(order_total),
-            concept_to_node(shared_key),
-        ]
 
         result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
@@ -193,9 +193,7 @@ class TestReinjectCommonJoinKeysV2:
         considered 'already present', they need to be added with that grain.
         """
         customer_id = create_test_concept("customer_id")
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
+        customer_name = _property("customer_name", "customer_id")
 
         ds_customers = create_test_datasource("customers", [customer_id, customer_name])
         ds_orders = create_test_datasource("orders", [customer_id])
@@ -206,15 +204,10 @@ class TestReinjectCommonJoinKeysV2:
         )
         # Build working graph with customer_id.with_default_grain() to match
         # how the function checks for existing nodes
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders],
             [customer_id.with_default_grain(), customer_name],
         )
-
-        nodelist = [
-            concept_to_node(customer_id.with_default_grain()),
-            concept_to_node(customer_name),
-        ]
         initial_node_count = len(working_g.nodes)
 
         reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
@@ -230,12 +223,8 @@ class TestReinjectCommonJoinKeysV2:
         """
         customer_id = create_test_concept("customer_id")
         shared_key = create_test_concept("shared_key")
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
-        order_total = create_test_concept(
-            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
-        )
+        customer_name = _property("customer_name", "customer_id")
+        order_total = _property("order_total", "shared_key")
 
         ds_customers = create_test_datasource(
             "customers", [customer_id, customer_name, shared_key]
@@ -249,16 +238,10 @@ class TestReinjectCommonJoinKeysV2:
             [ds_customers, ds_orders],
         )
         # shared_key (with default grain) creates the path between datasources
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders],
             [customer_name, order_total, shared_key.with_default_grain()],
         )
-
-        nodelist = [
-            concept_to_node(customer_name),
-            concept_to_node(order_total),
-            concept_to_node(shared_key.with_default_grain()),
-        ]
         # Mark customer_id as a synonym to skip - shared_key is already present
         synonyms = {customer_id.address}
 
@@ -281,9 +264,7 @@ class TestReinjectCommonJoinKeysV2:
             "customer_id", pseudonyms={"test.customer_key"}
         )
         customer_key = create_test_concept("customer_key")
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
+        customer_name = _property("customer_name", "customer_id")
 
         ds_customers = create_test_datasource(
             "customers", [customer_id, customer_key, customer_name]
@@ -295,15 +276,10 @@ class TestReinjectCommonJoinKeysV2:
             [ds_customers, ds_orders],
         )
         # customer_key (with default grain) is already in working graph
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders],
             [customer_key.with_default_grain(), customer_name],
         )
-
-        nodelist = [
-            concept_to_node(customer_key.with_default_grain()),
-            concept_to_node(customer_name),
-        ]
 
         initial_node_count = len(working_g.nodes)
         reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
@@ -321,14 +297,10 @@ class TestReinjectCommonJoinKeysV2:
         line_items, and product_id between line_items and products.
         """
         order_id = create_test_concept("order_id")
-        order_date = create_test_concept(
-            "order_date", purpose=Purpose.PROPERTY, keys={"test.order_id"}
-        )
+        order_date = _property("order_date", "order_id")
         line_item_id = create_test_concept("line_item_id")
         product_id = create_test_concept("product_id")
-        product_name = create_test_concept(
-            "product_name", purpose=Purpose.PROPERTY, keys={"test.product_id"}
-        )
+        product_name = _property("product_name", "product_id")
         # extra_key is shared between orders and line_items
         extra_order_key = create_test_concept("extra_order_key")
         # extra_product_key is shared between line_items and products
@@ -358,17 +330,10 @@ class TestReinjectCommonJoinKeysV2:
             [ds_orders, ds_line_items, ds_products],
         )
         # Include keys that create paths between datasources
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_orders, ds_line_items, ds_products],
             [order_date, product_name, extra_order_key, extra_product_key],
         )
-
-        nodelist = [
-            concept_to_node(order_date),
-            concept_to_node(product_name),
-            concept_to_node(extra_order_key),
-            concept_to_node(extra_product_key),
-        ]
 
         result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
@@ -382,12 +347,8 @@ class TestReinjectCommonJoinKeysV2:
         """A concept only on one datasource should not be injected."""
         customer_id = create_test_concept("customer_id")
         shared_key = create_test_concept("shared_key")
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
-        order_total = create_test_concept(
-            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
-        )
+        customer_name = _property("customer_name", "customer_id")
+        order_total = _property("order_total", "shared_key")
         # internal_code is only on orders, not on customers
         internal_code = create_test_concept("internal_code")
 
@@ -403,15 +364,9 @@ class TestReinjectCommonJoinKeysV2:
             [ds_customers, ds_orders],
         )
         # shared_key creates the path between datasources
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders], [customer_name, order_total, shared_key]
         )
-
-        nodelist = [
-            concept_to_node(customer_name),
-            concept_to_node(order_total),
-            concept_to_node(shared_key),
-        ]
 
         result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
@@ -427,15 +382,9 @@ class TestReinjectCommonJoinKeysV2:
         customer_id = create_test_concept("customer_id")
         shared_key = create_test_concept("shared_key")
         # customer_status is shared but is a property, not a key
-        customer_status = create_test_concept(
-            "customer_status", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
-        customer_name = create_test_concept(
-            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
-        )
-        order_total = create_test_concept(
-            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
-        )
+        customer_status = _property("customer_status", "customer_id")
+        customer_name = _property("customer_name", "customer_id")
+        order_total = _property("order_total", "shared_key")
 
         ds_customers = create_test_datasource(
             "customers", [customer_id, customer_name, customer_status, shared_key]
@@ -449,15 +398,9 @@ class TestReinjectCommonJoinKeysV2:
             [ds_customers, ds_orders],
         )
         # shared_key creates the path between datasources
-        working_g = build_working_graph(
+        working_g, nodelist = _working(
             [ds_customers, ds_orders], [customer_name, order_total, shared_key]
         )
-
-        nodelist = [
-            concept_to_node(customer_name),
-            concept_to_node(order_total),
-            concept_to_node(shared_key),
-        ]
 
         reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 

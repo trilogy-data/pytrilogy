@@ -45,15 +45,18 @@ def _concept(
     )
 
 
-def _source(
-    name: str, grain_addresses: set[str], outputs: list[BuildConcept]
-) -> QueryDatasource:
-    base = BuildDatasource(
+def _scan(name: str, columns: list[BuildConcept]) -> BuildDatasource:
+    return BuildDatasource(
         name=name,
-        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in outputs],
+        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in columns],
         address=name,
         grain=BuildGrain(),
     )
+
+
+def _projection_of(
+    base: BuildDatasource, grain_addresses: set[str], outputs: list[BuildConcept]
+) -> QueryDatasource:
     return QueryDatasource(
         input_concepts=outputs,
         output_concepts=outputs,
@@ -62,6 +65,16 @@ def _source(
         grain=BuildGrain(components=frozenset(grain_addresses)),
         joins=[],
     )
+
+
+def _source(
+    name: str, grain_addresses: set[str], outputs: list[BuildConcept]
+) -> QueryDatasource:
+    return _projection_of(_scan(name, outputs), grain_addresses, outputs)
+
+
+def _keyless(left: str, right: str, jointype: JoinType) -> JoinOrderOutput:
+    return JoinOrderOutput(right=right, type=jointype, keys={}, left=left)
 
 
 def _check(
@@ -83,11 +96,7 @@ def test_keyless_join_with_shared_axis_raises() -> None:
         ),
         "ds~dates": _source("dates", {"local.date_id"}, [_concept("date_id")]),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~dates", type=JoinType.INNER, keys={}, left="ds~customers"
-        )
-    ]
+    joins = [_keyless("ds~customers", "ds~dates", JoinType.INNER)]
     with pytest.raises(UnresolvableQueryException, match="keyless join"):
         _check(joins, sources)
 
@@ -105,11 +114,7 @@ def test_keyless_join_via_fd_key_raises() -> None:
             [_concept("review_id", keys={"local.cust_id"})],
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~reviews", type=JoinType.INNER, keys={}, left="ds~customers"
-        )
-    ]
+    joins = [_keyless("ds~customers", "ds~reviews", JoinType.INNER)]
     with pytest.raises(UnresolvableQueryException, match="keyless join"):
         _check(joins, sources)
 
@@ -129,11 +134,7 @@ def test_keyless_join_axis_disjoint_allowed() -> None:
             [_concept("by_item", purpose=Purpose.METRIC)],
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~by_item", type=JoinType.FULL, keys={}, left="ds~by_store"
-        )
-    ]
+    joins = [_keyless("ds~by_store", "ds~by_item", JoinType.FULL)]
     _check(joins, sources)
 
 
@@ -153,11 +154,7 @@ def test_unprojected_grain_component_is_not_an_axis() -> None:
             [_concept("name"), _concept("births", purpose=Purpose.METRIC)],
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~merged", type=JoinType.INNER, keys={}, left="ds~by_name"
-        )
-    ]
+    joins = [_keyless("ds~by_name", "ds~merged", JoinType.INNER)]
     _check(joins, sources)
 
 
@@ -168,11 +165,7 @@ def test_keyless_join_against_empty_grain_side_allowed() -> None:
             "global_total", set(), [_concept("total", purpose=Purpose.METRIC)]
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~global_total", type=JoinType.FULL, keys={}, left="ds~customers"
-        )
-    ]
+    joins = [_keyless("ds~customers", "ds~global_total", JoinType.FULL)]
     _check(joins, sources)
 
 
@@ -191,11 +184,7 @@ def test_keyless_join_against_single_row_side_allowed() -> None:
             [_concept("value", granularity=Granularity.SINGLE_ROW)],
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~const", type=JoinType.FULL, keys={}, left="ds~customers"
-        )
-    ]
+    joins = [_keyless("ds~customers", "ds~const", JoinType.FULL)]
     _check(joins, sources)
 
 
@@ -207,11 +196,7 @@ def test_keyless_join_against_self_grained_metric_allowed() -> None:
             "agg", {"local.total"}, [_concept("total", purpose=Purpose.METRIC)]
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~agg", type=JoinType.FULL, keys={}, left="ds~customers"
-        )
-    ]
+    joins = [_keyless("ds~customers", "ds~agg", JoinType.FULL)]
     _check(joins, sources)
 
 
@@ -228,9 +213,7 @@ def test_keyed_metric_self_grain_is_not_row_independent() -> None:
             [_concept("total", purpose=Purpose.METRIC, keys={"local.grp_key"})],
         ),
     }
-    joins = [
-        JoinOrderOutput(right="ds~agg", type=JoinType.FULL, keys={}, left="ds~facts")
-    ]
+    joins = [_keyless("ds~facts", "ds~agg", JoinType.FULL)]
     with pytest.raises(UnresolvableQueryException, match="keyless join"):
         _check(joins, sources)
 
@@ -285,32 +268,13 @@ def test_rollup_padded_axis_excluded() -> None:
         "ds~rollup": _source("rollup", {"local.cat"}, [_concept("cat")]),
         "ds~dims": _source("dims", {"local.cat"}, [_concept("cat")]),
     }
-    joins = [
-        JoinOrderOutput(right="ds~dims", type=JoinType.FULL, keys={}, left="ds~rollup")
-    ]
+    joins = [_keyless("ds~rollup", "ds~dims", JoinType.FULL)]
     _check(joins, sources, rollup_padded=frozenset({"local.cat"}))
 
 
-def _projection_of(
-    base: BuildDatasource, grain_addresses: set[str], outputs: list[BuildConcept]
-) -> QueryDatasource:
-    return QueryDatasource(
-        input_concepts=outputs,
-        output_concepts=outputs,
-        datasources=[base],
-        source_map={c.address: {base} for c in outputs},
-        grain=BuildGrain(components=frozenset(grain_addresses)),
-        joins=[],
-    )
-
-
 def _arm_scan() -> BuildDatasource:
-    columns = [_concept("gid"), _concept("value", purpose=Purpose.PROPERTY)]
-    return BuildDatasource(
-        name="arm_scan",
-        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in columns],
-        address="arm_scan",
-        grain=BuildGrain(),
+    return _scan(
+        "arm_scan", [_concept("gid"), _concept("value", purpose=Purpose.PROPERTY)]
     )
 
 
@@ -325,9 +289,7 @@ def test_keyless_join_between_projections_of_one_relation_raises() -> None:
             base, {"local.value"}, [_concept("value", purpose=Purpose.PROPERTY)]
         ),
     }
-    joins = [
-        JoinOrderOutput(right="ds~value", type=JoinType.INNER, keys={}, left="ds~gid")
-    ]
+    joins = [_keyless("ds~gid", "ds~value", JoinType.INNER)]
     with pytest.raises(UnresolvableQueryException, match="one source relation"):
         _check(joins, sources)
 
@@ -347,9 +309,5 @@ def test_aggregates_over_one_relation_still_cross_join() -> None:
             base, {"local.iid"}, [_concept("by_value", purpose=Purpose.METRIC)]
         ),
     }
-    joins = [
-        JoinOrderOutput(
-            right="ds~by_value", type=JoinType.FULL, keys={}, left="ds~by_gid"
-        )
-    ]
+    joins = [_keyless("ds~by_gid", "ds~by_value", JoinType.FULL)]
     _check(joins, sources)

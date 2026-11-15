@@ -25,8 +25,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_nodes
+from trilogy.core.optimizations.utils import null_padded_nodes
 from trilogy.core.processing.condition_utility import condition_proves_non_null
+from trilogy.core.processing.utility import equivalent_addresses
 
 
 def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:

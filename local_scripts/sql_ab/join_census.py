@@ -85,13 +85,6 @@ def nonempty(key: str):
 
 
 # ---- stage 2: group graph ---------------------------------------------------
-def p_final_contract(
-    orig, group_graph, attrs, mandatory_list, environment, *rest, **kw
-):
-    r = orig(group_graph, attrs, mandatory_list, environment, *rest, **kw)
-    return r
-
-
 def p_regraft_candidate(orig, *a, **k):
     r = orig(*a, **k)
     if r is not None:
@@ -129,12 +122,14 @@ def p_cover(orig, group_graph, group_edges, attrs, groups, *a, **k):
     return r
 
 
+def pairings(plan) -> list[list]:
+    return [[p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings]
+
+
 def p_plan(orig, *a, **k):
     plan = orig(*a, **k)
     REC["final.plan_keys"] = sorted(plan.join_keys)
-    REC["final.plan_pairings"] = [
-        [p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings
-    ]
+    REC["final.plan_pairings"] = pairings(plan)
     REC["final.plan_carry"] = {g: sorted(v) for g, v in plan.carry_demands.items()}
     return plan
 
@@ -263,7 +258,6 @@ def p_keyless_guard(orig, *a, **k):
 def install() -> None:
     mn.MergeNode.__init__ = p_merge_init  # type: ignore[method-assign]
     mn.MergeNode.generate_joins = p_generate  # type: ignore[method-assign]
-    wrap(gg, "_refresh_final_contract", p_final_contract)
     wrap(gg, "_regraft_candidate", p_regraft_candidate)
     wrap(
         gg,

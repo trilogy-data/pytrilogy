@@ -33,7 +33,6 @@ from trilogy.core.processing.grain_utility import (
     JoinProofs,
     anti_join_preserved_grain,
     calculate_joined_pregrain,
-    collect_applied_conditions,
     condition_key_grain,
     grain_satisfied_by_pregrain,
     has_condition_key_outside_grain,
@@ -44,6 +43,7 @@ from trilogy.core.processing.grain_utility import (
     rows_unique_at_outputs,
 )
 from trilogy.core.processing.join_resolution import (
+    OUTER_JOIN_TYPES,
     PlannedPairs,
     compute_outer_null_status,
     get_node_joins,
@@ -63,6 +63,8 @@ from trilogy.core.processing.nodes.base_node import (
 )
 from trilogy.core.processing.null_provenance import side_nullable
 from trilogy.core.processing.utility import (
+    applied_atoms,
+    collect_applied_conditions,
     find_nullable_concepts,
     left_deep_joins,
     padded_by,
@@ -653,11 +655,7 @@ class MergeNode(StrategyNode):
                 if not any(atom == r for r in rendered)
             ]
             for source in final_datasets:
-                applied = [
-                    atom
-                    for condition in collect_applied_conditions(source)
-                    for atom in decompose_condition(condition)
-                ]
+                applied = applied_atoms(source)
                 if any(any(atom == a for a in applied) for atom in request_atoms):
                     filtered_ids.add(source.identifier)
         # Authored coalescing (union/full) relations declare row intent: only
@@ -955,8 +953,6 @@ class MergeNode(StrategyNode):
             pregrain, grain, join_candidates, joins, final_datasets
         )
 
-        qd_joins: list[SourceJoin | UnnestJoin] = [*joins]
-
         # Preserved sides first: first-wins inside ``resolve_concept_map`` then
         # picks the non-NULL source for a shared concept. Existence-only sources
         # sort LAST: their columns are reachable only through a subselect, so a
@@ -992,9 +988,7 @@ class MergeNode(StrategyNode):
         outer_pairs: list[tuple[str, str]] = [
             (pair.left.address, pair.right.address)
             for join in joins
-            if isinstance(join, Join)
-            and join.join_type
-            in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL)
+            if isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
             for pair in join.pairs or []
             if pair.left.address != pair.right.address
         ]
@@ -1079,7 +1073,7 @@ class MergeNode(StrategyNode):
                 grain_basis, environment=self.environment, padded=padded
             )
         joined_partials = merge_partial_addresses(
-            final_datasets, qd_joins, final_output_concepts
+            final_datasets, joins, final_output_concepts
         )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
@@ -1088,7 +1082,7 @@ class MergeNode(StrategyNode):
             source_type=self.source_type,
             source_map=source_map,
             existence_source_map=node_existence_source_map,
-            joins=qd_joins,
+            joins=joins,
             grain=grain,
             # node-level nullables carry inferred nullability for concepts
             # COMPUTED at this node (e.g. a derived join key over a nullable
@@ -1103,7 +1097,7 @@ class MergeNode(StrategyNode):
                 self.partial_concepts
                 + [c for c in final_output_concepts if c.address in joined_partials]
                 + self._extent_free_partials(
-                    final_datasets, final_output_concepts, qd_joins
+                    final_datasets, final_output_concepts, joins
                 ),
                 "address",
             ),

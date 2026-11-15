@@ -60,6 +60,20 @@ def _lineage_parents(
     return frozenset(lineage_predecessors(concept_graph, concept_edges, address))
 
 
+def _parent_attrs(
+    bucket: GroupBucket,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> list[ConceptAttrs]:
+    """The lineage parents of a bucket's primaries."""
+    return [
+        concept_attrs[parent]
+        for primary in bucket.primary_members
+        for parent in _lineage_parents(concept_graph, concept_edges, primary)
+    ]
+
+
 # ----- native_grain implementations -----------------------------------
 
 
@@ -96,14 +110,9 @@ def native_grain_filter_inputs(
         for p in bucket.primary_node_ids
     ):
         return frozenset()
-    inherited: set[str] = set()
-    for primary in bucket.primary_members:
-        for parent in _lineage_parents(concept_graph, concept_edges, primary):
-            inherited |= _row_grain(concept_attrs[parent])
-            inherited.update(concept_attrs[parent].keys)
-    if inherited:
-        return frozenset(inherited)
-    return frozenset(bucket.grain_components)
+    parents = _parent_attrs(bucket, concept_graph, concept_edges, concept_attrs)
+    inherited = frozenset().union(*(_row_grain(p) | p.keys for p in parents))
+    return inherited or frozenset(bucket.grain_components)
 
 
 def native_grain_basic_inherited(
@@ -125,13 +134,9 @@ def native_grain_basic_inherited(
 
     Fall back to the declared grain when no lineage parents are present
     (e.g. a constant-folded BASIC)."""
-    inherited: set[str] = set()
-    for primary in bucket.primary_members:
-        for parent in _lineage_parents(concept_graph, concept_edges, primary):
-            inherited |= _row_grain(concept_attrs[parent])
-    if inherited:
-        return frozenset(inherited)
-    return frozenset(bucket.grain_components)
+    parents = _parent_attrs(bucket, concept_graph, concept_edges, concept_attrs)
+    inherited = frozenset().union(*(_row_grain(p) for p in parents))
+    return inherited or frozenset(bucket.grain_components)
 
 
 def _row_grain(attrs: ConceptAttrs) -> frozenset[str]:
@@ -181,11 +186,9 @@ def _lineage_parent_addrs(
     concept_attrs: dict[str, ConceptAttrs],
     address: str,
 ) -> set[str]:
-    if address not in concept_graph.nodes:
-        return set()
     return {
         concept_attrs[u].address
-        for u in lineage_predecessors(concept_graph, concept_edges, address)
+        for u in _lineage_parents(concept_graph, concept_edges, address)
     }
 
 
@@ -217,15 +220,12 @@ def can_preserve_grouping(
     )
     if address in closure:
         return True
-    col_grain = node.grain_components
     parents = _lineage_parent_addrs(
         concept_graph, concept_edges, concept_attrs, address
     )
     if parents and parents <= closure:
         return True
-    if not col_grain:
-        return node.derivation == Derivation.CONSTANT
-    return False
+    return not node.grain_components and node.derivation == Derivation.CONSTANT
 
 
 # ----- registry --------------------------------------------------------
@@ -239,40 +239,31 @@ _DEFAULT_BEHAVIOR = Behavior(
     can_preserve=can_preserve_grain_subset,
 )
 
+_GROUPING_BEHAVIOR = Behavior(
+    native_grain=native_grain_declared,
+    can_preserve=can_preserve_grouping,
+)
+_ROW_INPUT_BEHAVIOR = Behavior(
+    native_grain=native_grain_filter_inputs,
+    can_preserve=can_preserve_grain_subset,
+)
+
 GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
     Derivation.BASIC: Behavior(
         native_grain=native_grain_basic_inherited,
         can_preserve=can_preserve_grain_subset,
     ),
-    Derivation.AGGREGATE: Behavior(
-        native_grain=native_grain_declared,
-        can_preserve=can_preserve_grouping,
-    ),
-    Derivation.GROUP_TO: Behavior(
-        native_grain=native_grain_declared,
-        can_preserve=can_preserve_grouping,
-    ),
-    Derivation.WINDOW: Behavior(
-        native_grain=native_grain_declared,
-        can_preserve=can_preserve_grouping,
-    ),
-    Derivation.FILTER: Behavior(
-        native_grain=native_grain_filter_inputs,
-        can_preserve=can_preserve_grain_subset,
-    ),
-    Derivation.SUBSELECT: Behavior(
-        native_grain=native_grain_declared,
-        can_preserve=can_preserve_grain_subset,
-    ),
+    Derivation.AGGREGATE: _GROUPING_BEHAVIOR,
+    Derivation.GROUP_TO: _GROUPING_BEHAVIOR,
+    Derivation.WINDOW: _GROUPING_BEHAVIOR,
+    Derivation.FILTER: _ROW_INPUT_BEHAVIOR,
+    Derivation.SUBSELECT: _DEFAULT_BEHAVIOR,
     # UNNEST expands each source row into one row per element; every source-row
     # column rides through unchanged. Preservation is judged against the SOURCE
     # row grain: the declared grain is the element value, which FD-determines
     # nothing, so the default behavior would strip the source keys and leave a
     # sibling merge with no axis.
-    Derivation.UNNEST: Behavior(
-        native_grain=native_grain_filter_inputs,
-        can_preserve=can_preserve_grain_subset,
-    ),
+    Derivation.UNNEST: _ROW_INPUT_BEHAVIOR,
 }
 
 

@@ -30,6 +30,7 @@ from .constants import REPEAT_BLIND_AGGREGATES, DepthLabel, EdgeKind
 from .edges import (
     EdgeMap,
     edge_kind,
+    feeds_existence,
     lineage_predecessors,
     lineage_subgraph,
     lineage_successors,
@@ -37,8 +38,10 @@ from .edges import (
 from .models import ConceptAttrs, GroupBucket, RootReason, nulls_grouping_keys
 
 
-def _sig_digest(sig_repr: str) -> str:
-    """Stable across processes: group ids must not vary with hash salting."""
+def _sig_digest(parts: Collection[str]) -> str:
+    """Digest of a set of names, order-blind. Stable across processes: group
+    ids must not vary with hash salting."""
+    sig_repr = "|".join(sorted(parts)) or "none"
     return hashlib.sha256(sig_repr.encode("utf-8")).hexdigest()[:12]
 
 
@@ -109,6 +112,25 @@ def _add_member(bucket: GroupBucket, node: str, data: ConceptAttrs) -> None:
     bucket.add_member(data.address, node, data.depth_label)
 
 
+def _add_members(bucket: GroupBucket, items: Iterable[NodeItem]) -> None:
+    for node, data in items:
+        _add_member(bucket, node, data)
+
+
+ShapeKey = tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None]
+
+
+def _by_shape(items: list[NodeItem]) -> dict[ShapeKey, list[NodeItem]]:
+    """Items sharing `(label, depth_label, grain, grouping_mode)`, keys in
+    first-seen order."""
+    by_shape: dict[ShapeKey, list[NodeItem]] = defaultdict(list)
+    for node, data in items:
+        by_shape[
+            (data.label, data.depth_label, data.grain_components, data.grouping_mode)
+        ].append((node, data))
+    return by_shape
+
+
 def partition_by_depth_and_grain(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -128,24 +150,13 @@ def partition_by_depth_and_grain(
     and a GROUP BY ROLLUP). ``grouping_mode`` is ``None`` for non-
     aggregate concepts and harmlessly collapses to a single value
     there."""
-    by_key: dict[
-        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
-        GroupBucket,
-    ] = {}
-    for node, data in items:
-        depth_label = data.depth_label
-        derivation = data.derivation
-        grain = data.grain_components
-        label = data.label
-        grouping_mode = data.grouping_mode
-        key = (label, depth_label, grain, grouping_mode)
-        bucket = by_key.get(key)
-        if bucket is None:
-            bucket = _bucket_for(depth_label, derivation, grain, label=label)
-            _apply_grouping_mode(bucket, grouping_mode)
-            by_key[key] = bucket
-        _add_member(bucket, node, data)
-    return list(by_key.values())
+    buckets: list[GroupBucket] = []
+    for (label, depth_label, grain, grouping_mode), members in _by_shape(items).items():
+        bucket = _bucket_for(depth_label, members[0][1].derivation, grain, label=label)
+        _apply_grouping_mode(bucket, grouping_mode)
+        _add_members(bucket, members)
+        buckets.append(bucket)
+    return buckets
 
 
 def partition_aggregates(
@@ -225,7 +236,6 @@ AggKey = tuple[str, DepthLabel, frozenset[str], frozenset[str], frozenset[str]]
 
 def _fold_distinct_rewritable_buckets(
     entries: dict[AggKey, list[NodeItem]],
-    concept_attrs: dict[str, ConceptAttrs],
 ) -> dict[AggKey, set[str]]:
     """Fold a coarser-input-grain bucket whose every member is a
     distinct-rewritable COUNT into a sibling bucket whose input grain nests
@@ -308,21 +318,11 @@ def _lineage_layers(
     if len(members) < 2:
         return [members]
     addrs = {node for node, _ in members}
-    ancestors: dict[str, set[str]] = {}
-    for node, _ in members:
-        found: set[str] = set()
-        visited: set[str] = {node}
-        stack: list[str] = [node]
-        while stack:
-            current = stack.pop()
-            for pred in lineage_predecessors(concept_graph, concept_edges, current):
-                if pred in visited:
-                    continue
-                visited.add(pred)
-                if pred in addrs:
-                    found.add(pred)
-                stack.append(pred)
-        ancestors[node] = found
+    ancestors = {
+        node: _lineage_reach(node, lineage_predecessors, concept_graph, concept_edges)
+        & (addrs - {node})
+        for node in addrs
+    }
     if not any(ancestors.values()):
         return [members]
     # Longest-path layering, relaxation-capped so a (malformed) lineage cycle
@@ -362,7 +362,7 @@ def _partition_standard_aggregates(
             populations,
         )
         entries.setdefault(key, []).append((node, data))
-    distinct_by_key = _fold_distinct_rewritable_buckets(entries, concept_attrs)
+    distinct_by_key = _fold_distinct_rewritable_buckets(entries)
     buckets: list[GroupBucket] = []
     for key, members in entries.items():
         label, depth_label, grain, input_grain, populations = key
@@ -388,8 +388,7 @@ def _partition_standard_aggregates(
             bucket.aggregate_distinct_addrs = (
                 distinct_by_key.get(key, set()) & layer_addrs
             )
-            for node, data in layer:
-                _add_member(bucket, node, data)
+            _add_members(bucket, layer)
             buckets.append(bucket)
     return buckets
 
@@ -463,15 +462,7 @@ def _partition_grouped_aggregates(
     """ROLLUP/CUBE/GROUPING_SETS bucketing: union-find merge members at the same
     (label, depth, grain, mode) whose stop-signatures are equal or nest."""
     buckets: list[GroupBucket] = []
-    by_shape: dict[
-        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
-        list[NodeItem],
-    ] = defaultdict(list)
-    for node, data in items:
-        by_shape[
-            (data.label, data.depth_label, data.grain_components, data.grouping_mode)
-        ].append((node, data))
-    for (label, depth_label, grain, grouping_mode), members in by_shape.items():
+    for (label, depth_label, grain, grouping_mode), members in _by_shape(items).items():
         sigs = [
             _stop_signature(
                 node,
@@ -496,8 +487,9 @@ def _partition_grouped_aggregates(
             shared_sig: frozenset[str] = frozenset().union(
                 *(sigs[i] for i in member_indices)
             )
-            sig_repr = "|".join(sorted(shared_sig)) or "none"
-            _apply_grouping_mode(bucket, grouping_mode, f"sig:{_sig_digest(sig_repr)}")
+            _apply_grouping_mode(
+                bucket, grouping_mode, f"sig:{_sig_digest(shared_sig)}"
+            )
             for i in member_indices:
                 node, data = members[i]
                 if data.aggregate_input_grain:
@@ -587,26 +579,25 @@ def _relation_side_partitions(
     lineage = lineage_subgraph(concept_graph, concept_edges)
     if not any(_rooted_on_both_sides(pair, roots, lineage) for pair in relation_pairs):
         return [main_items]
-    adjacency: dict[str, set[str]] = defaultdict(set)
-    for u, v in concept_graph.edges:
-        if frozenset((u, v)) in relation_pairs:
-            continue
-        adjacency[u].add(v)
-        adjacency[v].add(u)
+    links = [
+        (u, v)
+        for u, v in concept_graph.edges
+        if frozenset((u, v)) not in relation_pairs
+    ]
     # A root the others determine sits on their entity row, so on their side,
     # key or not (`trees` binds `species` beside `tree_id`).
-    for node, key_node in _property_key_pairs(main_items, properties_only=False):
-        adjacency[node].add(key_node)
-        adjacency[key_node].add(node)
+    links += _property_key_pairs(main_items, properties_only=False)
     by_key: dict[str, list[str]] = defaultdict(list)
     for node, data in main_items:
         if data.purpose == Purpose.PROPERTY:
             for key_addr in data.keys:
                 by_key[key_addr].append(node)
     for key_mates in by_key.values():
-        for other in key_mates[1:]:
-            adjacency[key_mates[0]].add(other)
-            adjacency[other].add(key_mates[0])
+        links += [(key_mates[0], other) for other in key_mates[1:]]
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for u, v in links:
+        adjacency[u].add(v)
+        adjacency[v].add(u)
     partitions: list[list[NodeItem]] = []
     assigned: set[str] = set()
     for seed, _ in main_items:
@@ -668,10 +659,7 @@ def _rooted_on_both_sides(
     """Whether each side of a relation reads one of these roots. A side that is
     a rowset handle is a leaf no scan sources: the roots then stay one scan,
     and sourcing finds the path to the declared key."""
-    return all(
-        node in roots or (node in lineage and nx.ancestors(lineage, node) & roots)
-        for node in pair
-    )
+    return all(_side_roots(node, roots, lineage) for node in pair)
 
 
 def _is_row_stream_output(
@@ -1053,13 +1041,8 @@ def partition_roots(
     always stay in their own buckets so the existence wiring picks them
     up as side-channel sources.
     """
-    if not items:
-        return []
     buckets: list[GroupBucket] = []
     for label_value, sub_items in _split_by_label(items).items():
-        if not sub_items:
-            continue
-        addr_of = {node: data.address for node, data in sub_items}
         existence_only_nodes = [(n, d) for n, d in sub_items if d.existence_only]
         main_items = [(n, d) for n, d in sub_items if not d.existence_only]
         # Single-row roots (a grand-total precomputed value, a constant, a `<*>`
@@ -1103,66 +1086,63 @@ def partition_roots(
                 )
             )
 
-        multi = len(component_groups) > 1
-        for members in component_groups:
-            bucket = _bucket_for(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain=frozenset(),
-                label=label_value,
+        kind = "split" if len(component_groups) > 1 else None
+        buckets += [
+            _component_bucket(label_value, members, kind)
+            for members in component_groups
+        ]
+        buckets += [
+            _component_bucket(label_value, members, "global_input")
+            for members in _cosource_component_groups(
+                global_inputs,
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                output_addresses,
             )
-            bucket.reason = RootReason.ROW_STREAM
-            if multi:
-                sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
-                bucket.discriminator = f"split:{_sig_digest(sig_repr)}"
-                bucket.reason = RootReason.COMPONENT
-            for node, data in members:
-                _add_member(bucket, node, data)
-            buckets.append(bucket)
-
-        for members in _cosource_component_groups(
-            global_inputs, concept_graph, concept_edges, concept_attrs, output_addresses
-        ):
-            sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
-            bucket = _bucket_for(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain=frozenset(),
-                label=label_value,
-            )
-            bucket.discriminator = f"global_input:{_sig_digest(sig_repr)}"
-            bucket.reason = RootReason.COMPONENT
-            for node, data in members:
-                _add_member(bucket, node, data)
-            buckets.append(bucket)
-
+        ]
         if single_row_items:
-            single_row_bucket = _bucket_for(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain=frozenset(),
-                label=label_value,
-            )
             # Distinct id from the keyed `grp:root:root:∅` bucket so they stay
             # separate scans the FINAL node cross-joins.
-            single_row_bucket.discriminator = "single_row"
-            single_row_bucket.reason = RootReason.SINGLE_ROW
-            for node, data in single_row_items:
-                _add_member(single_row_bucket, node, data)
-            buckets.append(single_row_bucket)
-
-        for node, data in existence_only_nodes:
-            solo = _bucket_for(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain=frozenset(),
-                label=label_value,
+            buckets.append(
+                _root_bucket(
+                    label_value, RootReason.SINGLE_ROW, single_row_items, "single_row"
+                )
             )
-            solo.discriminator = f"existence:{addr_of[node]}"
-            solo.reason = RootReason.EXISTENCE
-            _add_member(solo, node, data)
-            buckets.append(solo)
+        buckets += [
+            _root_bucket(
+                label_value,
+                RootReason.EXISTENCE,
+                [(node, data)],
+                f"existence:{data.address}",
+            )
+            for node, data in existence_only_nodes
+        ]
     return buckets
+
+
+def _component_bucket(
+    label: str, members: list[NodeItem], kind: str | None
+) -> GroupBucket:
+    """A co-sourced scan: the label's one row stream, or under `kind` one of
+    several, told apart by its members."""
+    if kind is None:
+        return _root_bucket(label, RootReason.ROW_STREAM, members)
+    digest = _sig_digest([data.address for _, data in members])
+    return _root_bucket(label, RootReason.COMPONENT, members, f"{kind}:{digest}")
+
+
+def _root_bucket(
+    label: str,
+    reason: RootReason,
+    members: list[NodeItem],
+    discriminator: str = "",
+) -> GroupBucket:
+    bucket = _bucket_for(DepthLabel.ROOT, Derivation.ROOT, frozenset(), label=label)
+    bucket.reason = reason
+    bucket.discriminator = discriminator
+    _add_members(bucket, members)
+    return bucket
 
 
 def _stop_signature(
@@ -1209,7 +1189,6 @@ def _feeds_extra_signature_group(
     extra_gids: frozenset[str],
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
 ) -> bool:
     """True if `node` is a lineage ANCESTOR of any concept in `extra_gids`,
@@ -1219,28 +1198,10 @@ def _feeds_extra_signature_group(
     feeds a window that a second BASIC reads; a naive nest would merge both
     into one group). Walks lineage out-edges (parent -> child = input ->
     consumer)."""
-    if not extra_gids:
-        return False
     targets = {n for n, g in primary_group.items() if g in extra_gids}
-    if not targets:
-        return False
-    visited: set[str] = {node}
-    stack: list[str] = [node]
-    while stack:
-        cur = stack.pop()
-        for succ in lineage_successors(concept_graph, concept_edges, cur):
-            if succ in targets:
-                return True
-            if succ not in visited:
-                visited.add(succ)
-                stack.append(succ)
-    return False
-
-
-def _has_lineage_consumer(
-    node: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
-) -> bool:
-    return bool(lineage_successors(concept_graph, concept_edges, node))
+    return bool(targets) and not targets.isdisjoint(
+        _lineage_reach(node, lineage_successors, concept_graph, concept_edges)
+    )
 
 
 def _can_merge_nested_signatures(
@@ -1357,29 +1318,24 @@ def _partition_by_signature_and_grain(
     outputs: FINAL already relates those keys, so one projection at the union
     grain renders both without asking the upstream for a new key relation
     (a day key beside a warehouse key would force the fact that links them)."""
-    if not items:
-        return []
     buckets: list[GroupBucket] = []
     for label_value, sub_items in _split_by_label(items).items():
         n = len(sub_items)
-        if not n:
-            continue
+        nodes = [node for node, _ in sub_items]
         sigs = []
-        for node, _ in sub_items:
-            sig = set(
-                _stop_signature(
-                    node,
-                    own_derivation,
-                    concept_graph,
-                    concept_edges,
-                    concept_attrs,
-                    primary_group,
-                    ensure_assigned,
-                )
+        for node in nodes:
+            sig = _stop_signature(
+                node,
+                own_derivation,
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                primary_group,
+                ensure_assigned,
             )
             if extra_signature is not None:
-                sig |= set(extra_signature(node))
-            sigs.append(frozenset(sig))
+                sig |= extra_signature(node)
+            sigs.append(sig)
         # after the signatures: reading a stop is what assigns its group
         root_gids = (
             {
@@ -1390,14 +1346,14 @@ def _partition_by_signature_and_grain(
             if allow_signature_subset
             else set()
         )
-        grains = [sub_items[i][1].grain_components for i in range(n)]
+        grains = [data.grain_components for _, data in sub_items]
         terminal = [
             merge_terminal_siblings
             and data.grain_components <= output_addresses
-            and not _has_lineage_consumer(node, concept_graph, concept_edges)
+            and not lineage_successors(concept_graph, concept_edges, node)
             for node, data in sub_items
         ]
-        pins = [sub_items[i][1].grain_pin_anchors for i in range(n)]
+        pins = [data.grain_pin_anchors for _, data in sub_items]
         merged: list[tuple[int, int]] = []
         for i in range(n):
             for j in range(i + 1, n):
@@ -1406,8 +1362,7 @@ def _partition_by_signature_and_grain(
                 if pins[i] != pins[j]:
                     continue
                 signatures_match = sigs[i] == sigs[j] or (
-                    sub_items[i][0] in signature_exempt
-                    and sub_items[j][0] in signature_exempt
+                    nodes[i] in signature_exempt and nodes[j] in signature_exempt
                 )
                 signatures_nest = (
                     allow_signature_subset
@@ -1419,11 +1374,10 @@ def _partition_by_signature_and_grain(
                     smaller_idx = i if sigs[i] <= sigs[j] else j
                     extra = (sigs[i] | sigs[j]) - sigs[smaller_idx]
                     if _feeds_extra_signature_group(
-                        sub_items[smaller_idx][0],
+                        nodes[smaller_idx],
                         extra,
                         concept_graph,
                         concept_edges,
-                        concept_attrs,
                         primary_group,
                     ):
                         continue
@@ -1433,13 +1387,7 @@ def _partition_by_signature_and_grain(
                     or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
                 ):
                     merged.append((i, j))
-        merged = _drop_bypassed_nests(
-            merged,
-            [node for node, _ in sub_items],
-            sigs,
-            concept_graph,
-            concept_edges,
-        )
+        merged = _drop_bypassed_nests(merged, nodes, sigs, concept_graph, concept_edges)
 
         for member_indices in _components(n, merged):
             merged_grain: frozenset[str] = frozenset().union(
@@ -1457,8 +1405,7 @@ def _partition_by_signature_and_grain(
             # two disjoint sigs produce different ones. Group ids include
             # the discriminator so colliding (label, depth, grain) buckets
             # stay distinct.
-            sig_repr = "|".join(sorted(shared_sig)) or "none"
-            discriminator = f"sig:{_sig_digest(sig_repr)}"
+            discriminator = f"sig:{_sig_digest(shared_sig)}"
             if pin := pins[member_indices[0]]:
                 discriminator += f":pin:{'|'.join(sorted(pin))}"
             bucket = _bucket_for(
@@ -1468,9 +1415,7 @@ def _partition_by_signature_and_grain(
                 label=label_value,
             )
             bucket.discriminator = discriminator
-            for i in member_indices:
-                node, data = sub_items[i]
-                _add_member(bucket, node, data)
+            _add_members(bucket, [sub_items[i] for i in member_indices])
             buckets.append(bucket)
     return buckets
 
@@ -1491,20 +1436,10 @@ def partition_windows(
     over the producer's. Layering is the aggregate rule's producer/consumer
     split applied to the default depth+grain partition."""
     buckets: list[GroupBucket] = []
-    by_key: dict[
-        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
-        list[NodeItem],
-    ] = defaultdict(list)
-    for node, data in items:
-        by_key[
-            (data.label, data.depth_label, data.grain_components, data.grouping_mode)
-        ].append((node, data))
-    for (label, depth_label, grain, grouping_mode), members in by_key.items():
+    for (label, depth_label, grain, grouping_mode), members in _by_shape(items).items():
         for index, layer in enumerate(
             _lineage_layers(members, concept_graph, concept_edges)
         ):
-            if not layer:
-                continue
             bucket = _bucket_for(
                 depth_label, layer[0][1].derivation, grain, label=label
             )
@@ -1513,8 +1448,7 @@ def partition_windows(
             _apply_grouping_mode(
                 bucket, grouping_mode, *(() if index == 0 else (f"wlayer:{index}",))
             )
-            for node, data in layer:
-                _add_member(bucket, node, data)
+            _add_members(bucket, layer)
             buckets.append(bucket)
     return buckets
 
@@ -1570,13 +1504,6 @@ def partition_filters_by_signature(
     existence feeders) sources one CTE per concept plus a merge, instead of
     one feeder CTE."""
 
-    def existence_signature(node: str) -> frozenset[str]:
-        return frozenset(
-            f"exist:{concept_attrs[pred].address}"
-            for pred, _ in concept_graph.in_edges(node)
-            if edge_kind(concept_edges, pred, node) == EdgeKind.EXISTENCE
-        )
-
     # A FILTER concept that is itself a semijoin RHS (an existence SOURCE, with
     # an outgoing EXISTENCE edge: `pcid in store_buyers`) is functionally an
     # independent sub-query. Co-bucketing two of them forces one shared scan
@@ -1587,10 +1514,7 @@ def partition_filters_by_signature(
     solo_items: list[NodeItem] = []
     shared_items: list[NodeItem] = []
     for node, data in items:
-        if any(
-            edge_kind(concept_edges, node, succ) == EdgeKind.EXISTENCE
-            for succ in concept_graph.successors(node)
-        ):
+        if feeds_existence(concept_graph, concept_edges, node):
             solo_items.append((node, data))
         else:
             shared_items.append((node, data))
@@ -1615,7 +1539,9 @@ def partition_filters_by_signature(
         concept_attrs,
         primary_group,
         ensure_assigned,
-        extra_signature=existence_signature,
+        extra_signature=partial(
+            _existence_signature, concept_graph, concept_edges, concept_attrs
+        ),
         signature_exempt=output_sinks,
     )
     for node, data in solo_items:
@@ -1629,6 +1555,19 @@ def partition_filters_by_signature(
         _add_member(solo, node, data)
         buckets.append(solo)
     return buckets
+
+
+def _existence_signature(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    node: str,
+) -> frozenset[str]:
+    return frozenset(
+        f"exist:{concept_attrs[pred].address}"
+        for pred, _ in concept_graph.in_edges(node)
+        if edge_kind(concept_edges, pred, node) == EdgeKind.EXISTENCE
+    )
 
 
 def _partition_by_scope(

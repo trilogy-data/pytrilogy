@@ -12,13 +12,17 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.constants import parent_axis_keys
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
-from trilogy.core.graph_models import ReferenceGraph, concept_to_node
+from trilogy.core.graph_models import (
+    ReferenceGraph,
+    concept_to_node,
+    datasource_to_node,
+)
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
@@ -81,7 +85,7 @@ from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
-from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
+from trilogy.core.processing.v4_helper.functional_dependency import strict_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
     absorbs_null,
@@ -211,6 +215,36 @@ def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
     )
 
 
+def _usable_outputs(parents: Iterable[StrategyNode]) -> list[BuildConcept]:
+    return unique([c for parent in parents for c in parent.usable_outputs], "address")
+
+
+def _conditional(request: SourceRequest) -> BoolExpr | None:
+    return request.conditions.conditional if request.conditions is not None else None
+
+
+def _arms(datasource: BuildDatasource | BuildUnionDatasource) -> list[BuildDatasource]:
+    if isinstance(datasource, BuildUnionDatasource):
+        return datasource.children
+    return [datasource]
+
+
+def _condition_canonicals(conditions: BuildWhereClause) -> set[str]:
+    return {
+        c.canonical_address
+        for c in conditions.row_arguments
+        if c.granularity != Granularity.SINGLE_ROW
+    }
+
+
+def _grain_canonicals(grain: BuildGrain, environment: BuildEnvironment) -> set[str]:
+    return {
+        environment.concepts[c].canonical_address
+        for c in grain.components
+        if c in environment.concepts
+    }
+
+
 def _no_join_axis(request: SourceRequest) -> bool:
     """Every requested concept is single-row: a grand-total aggregate, a `<*>`
     watermark. The search drops such concepts from its terminals (they join by
@@ -234,6 +268,67 @@ def _deferred_conditions(request: SourceRequest) -> BuildWhereClause | None:
             request.deferred_conditions.conditional, request.conditions.conditional
         )
     )
+
+
+def _unconditioned(
+    request: SourceRequest,
+    outputs: list[BuildConcept],
+    depth: int | None = None,
+    require_full: bool = False,
+    complete_partials: bool = True,
+    arm_local: bool = False,
+) -> SourceRequest:
+    """A sub-request for `outputs` that drops `request.conditions` for its
+    caller to apply, one level down unless `depth` says otherwise."""
+    return SourceRequest(
+        outputs=outputs,
+        environment=request.environment,
+        graph=request.graph,
+        history=request.history,
+        deferred_conditions=_deferred_conditions(request),
+        depth=request.depth + 1 if depth is None else depth,
+        require_full=require_full,
+        complete_partials=complete_partials,
+        arm_local=arm_local,
+    )
+
+
+def _scan(
+    request: SourceRequest,
+    node: str,
+    concepts: list[BuildConcept],
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode:
+    return create_select_node(
+        node,
+        concepts,
+        g=request.graph,
+        environment=request.environment,
+        depth=request.depth + 1,
+        conditions=conditions,
+    )
+
+
+def _search_node(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    g: ReferenceGraph,
+    depth: int,
+    history: V4History,
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode | None:
+    """A full discovery for `mandatory_list`, as a source's parent."""
+    # Imported lazily: `concept_strategies_v4` imports this module's package.
+    from trilogy.core.processing.concept_strategies_v4 import search_concepts
+
+    return search_concepts(
+        mandatory_list=mandatory_list,
+        history=history,
+        environment=environment,
+        depth=depth,
+        g=g,
+        conditions=[conditions] if conditions else [],
+    ).strategy_node
 
 
 def _single_source_covers(
@@ -472,13 +567,9 @@ def scan_regroups(request: SourceRequest) -> bool:
         ]
         if datasource is None:
             continue
-        arms = (
-            datasource.children
-            if isinstance(datasource, BuildUnionDatasource)
-            else [datasource]
-        )
         if any(
-            datasource_regroups(arm, read_concepts, request.environment) for arm in arms
+            datasource_regroups(arm, read_concepts, request.environment)
+            for arm in _arms(datasource)
         ):
             return True
     return False
@@ -580,13 +671,8 @@ def _network_source(
     if (
         defer_single_scan
         and len(result.solution.sources) == 1
-        and not network.candidates[result.solution.sources[0]].is_union
-        and not any(
-            binding.injected
-            for binding in network.candidates[
-                result.solution.sources[0]
-            ].bindings.values()
-        )
+        and not (sole := network.candidates[result.solution.sources[0]]).is_union
+        and not any(binding.injected for binding in sole.bindings.values())
         and not _binds_undemanded_span_partially(network, result.solution.sources[0])
         and not _renders_merged_key_inline(
             network, result.solution, request.environment
@@ -999,8 +1085,8 @@ def _derived_connector_nodes(
     request: SourceRequest,
     plan: BridgePlan,
     datasource_parents: list[StrategyNode],
-    sides: dict[int, str] | None = None,
-    unsearched: dict[str, frozenset[str]] | None = None,
+    sides: dict[int, str],
+    unsearched: dict[str, frozenset[str]],
 ) -> list[StrategyNode]:
     """Materialize bridge concepts whose source is a *derived* connector.
 
@@ -1019,11 +1105,8 @@ def _derived_connector_nodes(
     forced = set(plan.connector_aliases)
     if not forced and {c.address for c in plan.concepts} <= covered:
         return []
-    # Imported lazily: `concept_strategies_v4` imports this module's package.
-    from trilogy.core.processing.concept_strategies_v4 import search_concepts
-
     env = request.environment
-    history = cast(V4History, request.history)
+    history = request.history
     planned: set[str] = set()
     connectors: list[StrategyNode] = []
     for concept in plan.concepts:
@@ -1087,22 +1170,16 @@ def _derived_connector_nodes(
             )
             history.connectors_in_progress.add(origin.address)
             try:
-                info = search_concepts(
-                    mandatory_list=mandatory,
-                    history=history,
-                    environment=env,
-                    depth=request.depth + 1,
-                    g=request.graph,
-                    conditions=[],
+                connector = _search_node(
+                    mandatory, env, request.graph, request.depth + 1, history
                 )
             finally:
                 history.connectors_in_progress.discard(origin.address)
-            if info.strategy_node is not None:
+            if connector is not None:
                 planned.add(origin.address)
-                connectors.append(info.strategy_node)
-                if sides is not None:
-                    sides[id(info.strategy_node)] = CONNECTOR_NODE_PREFIX + alias
-                if unsearched is not None and alias not in forced:
+                connectors.append(connector)
+                sides[id(connector)] = CONNECTOR_NODE_PREFIX + alias
+                if alias not in forced:
                     # the merged key it supplies and the keys it carries to join
                     unsearched[CONNECTOR_NODE_PREFIX + alias] = frozenset(
                         {concept.address, alias, origin.address} | grain_components
@@ -1154,26 +1231,21 @@ def _datasource_can_output(
     datasource: BuildDatasource | BuildUnionDatasource,
     address: str,
 ) -> bool:
-    if isinstance(datasource, BuildDatasource):
-        return any(concept.address == address for concept in datasource.output_concepts)
     return all(
-        any(concept.address == address for concept in child.output_concepts)
-        for child in datasource.children
+        any(concept.address == address for concept in arm.output_concepts)
+        for arm in _arms(datasource)
     )
 
 
 def _datasource_binds_canonical(
     datasource: BuildDatasource | BuildUnionDatasource, concept: BuildConcept
 ) -> bool:
-    children = (
-        [datasource] if isinstance(datasource, BuildDatasource) else datasource.children
-    )
     return all(
         any(
             bound.canonical_address == concept.canonical_address
-            for bound in child.output_concepts
+            for bound in arm.output_concepts
         )
-        for child in children
+        for arm in _arms(datasource)
     )
 
 
@@ -1537,10 +1609,7 @@ def _merge_component_sources(
     if not parents:
         return None
     outputs = output_concepts or request.outputs
-    inputs = unique(
-        [concept for parent in parents for concept in parent.usable_outputs],
-        "address",
-    )
+    inputs = _usable_outputs(parents)
     if len(parents) == 1:
         parent = parents[0]
         if request.conditions is None and {
@@ -1552,11 +1621,7 @@ def _merge_component_sources(
             input_concepts=inputs,
             environment=request.environment,
             parents=[parent],
-            conditions=(
-                request.conditions.conditional
-                if request.conditions is not None
-                else None
-            ),
+            conditions=_conditional(request),
         )
     # A summary read below the target grain (a rollup binding) is summed at
     # the merge, where the dimension supplying the coarser key has been joined.
@@ -1593,10 +1658,7 @@ def _merge_component_sources(
                 {id(old): id(new) for old, new in zip(parents, grouped)}
             )
         parents = grouped
-        inputs = unique(
-            [concept for parent in parents for concept in parent.usable_outputs],
-            "address",
-        )
+        inputs = _usable_outputs(parents)
         outputs = [c for c in outputs if c.address in {i.address for i in inputs}]
     return MergeNode(
         input_concepts=inputs,
@@ -1604,9 +1666,7 @@ def _merge_component_sources(
         environment=request.environment,
         parents=parents,
         depth=request.depth,
-        conditions=(
-            request.conditions.conditional if request.conditions is not None else None
-        ),
+        conditions=_conditional(request),
         force_group=True if rollup else None,
         rollup_concepts=rollup or partials or None,
         preserve_parents=preserve_parents,
@@ -1686,15 +1746,11 @@ def _complete_partial_requested(
     completion_partial = {c.address for c in completion.partial_concepts}
     if any(c.address in completion_partial for c in partial_requested):
         return node
-    inputs = unique(
-        [c for parent in (completion, node) for c in parent.usable_outputs],
-        "address",
-    )
     # Anchor the complete (and filtered) dimension and outer-join the bridge, so
     # the requested key is non-partial and every surviving dimension value is
     # kept.
     return MergeNode(
-        input_concepts=inputs,
+        input_concepts=_usable_outputs((completion, node)),
         output_concepts=node.output_concepts,
         environment=request.environment,
         parents=[completion, node],
@@ -1748,17 +1804,13 @@ def _finer_filter_rollup_source(
     finer = filter_finer_row_args(conditions, target_grain, environment.concepts)
     if not finer:
         return None
-    condition_canonicals = {
-        c.canonical_address
-        for c in conditions.row_arguments
-        if c.granularity != Granularity.SINGLE_ROW
-    }
+    condition_canonicals = _condition_canonicals(conditions)
     target_canonicals = {
         environment.concepts[c].canonical_address if c in environment.concepts else c
         for c in target_components
     } | {c.canonical_address for c in outputs if not c.is_aggregate}
     candidates: list[tuple[str, BuildDatasource | BuildUnionDatasource]] = [
-        (f"ds~{ds.name}", ds) for ds in request.graph.scope.datasources
+        (datasource_to_node(ds), ds) for ds in request.graph.scope.datasources
     ] + [
         (node, ds)
         for node, ds in request.graph.datasources.items()
@@ -1768,7 +1820,7 @@ def _finer_filter_rollup_source(
     for node, ds in candidates:
         if not holds_every_kept_row(ds, conditions):
             continue
-        arms = ds.children if isinstance(ds, BuildUnionDatasource) else [ds]
+        arms = _arms(ds)
         canonicals = frozenset.intersection(
             *(
                 frozenset(c.canonical_address for c in arm.output_concepts)
@@ -1872,18 +1924,11 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         return None
     outputs = request.outputs
     environment = request.environment
-    target_grain = BuildGrain.from_concepts(outputs, environment=environment)
-    target_canonicals = {
-        environment.concepts[c].canonical_address
-        for c in target_grain.components
-        if c in environment.concepts
-    }
+    target_canonicals = _grain_canonicals(
+        BuildGrain.from_concepts(outputs, environment=environment), environment
+    )
     output_canonicals = {c.canonical_address for c in outputs}
-    condition_canonicals = {
-        c.canonical_address
-        for c in conditions.row_arguments
-        if c.granularity != Granularity.SINGLE_ROW
-    }
+    condition_canonicals = _condition_canonicals(conditions)
     matches: list[BuildDatasource] = []
     for ds in request.graph.scope.datasources:
         if ds.non_partial_for is None:
@@ -1892,7 +1937,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         # addressable here. A union *member* lives in the environment but the
         # graph only carries the union node, so scanning it directly would
         # KeyError; leave it to the union planner.
-        if f"ds~{ds.name}" not in request.graph.datasources:
+        if datasource_to_node(ds) not in request.graph.datasources:
             continue
         if not condition_implies(
             conditions.conditional, ds.non_partial_for.conditional
@@ -1912,26 +1957,13 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         )
         if not residual_free and not condition_canonicals.issubset(ds_canonicals):
             continue
-        ds_grain_canonicals = {
-            environment.concepts[c].canonical_address
-            for c in ds.grain.components
-            if c in environment.concepts
-        }
-        if ds_grain_canonicals != target_canonicals:
+        if _grain_canonicals(ds.grain, environment) != target_canonicals:
             continue
         matches.append(ds)
     if not matches:
         return None
     matches.sort(key=lambda ds: (dominators(ds, matches), ds.name))
-    ds = matches[0]
-    return create_select_node(
-        f"ds~{ds.name}",
-        outputs,
-        g=request.graph,
-        environment=environment,
-        depth=request.depth + 1,
-        conditions=conditions,
-    )
+    return _scan(request, datasource_to_node(matches[0]), outputs, conditions)
 
 
 def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
@@ -1944,14 +1976,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
         return _plan_joined_filter_rollup(request, ds)
     environment = request.environment
     outputs = list(request.outputs)
-    scan = create_select_node(
-        node,
-        outputs,
-        g=request.graph,
-        environment=environment,
-        depth=request.depth + 1,
-        conditions=request.conditions,
-    )
+    scan = _scan(request, node, outputs, request.conditions)
     target_components = set(
         BuildGrain.from_concepts(outputs, environment=environment).components
     )
@@ -1963,25 +1988,12 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
     # selects exactly the surviving keys (a LEFT/FULL join would leak keys absent
     # from the filtered aggregate with a NULL count).
     key_node = plan_source(
-        SourceRequest(
-            outputs=partial_keys,
-            environment=environment,
-            graph=request.graph,
-            history=request.history,
-            conditions=None,
-            deferred_conditions=_deferred_conditions(request),
-            depth=request.depth + 1,
-            require_full=request.require_full,
-        )
+        _unconditioned(request, partial_keys, require_full=request.require_full)
     )
     if key_node is None:
         return None
-    inputs = unique(
-        [c for parent in (scan, key_node) for c in parent.usable_outputs],
-        "address",
-    )
     return MergeNode(
-        input_concepts=inputs,
+        input_concepts=_usable_outputs((scan, key_node)),
         output_concepts=outputs,
         environment=environment,
         parents=[scan, key_node],
@@ -2028,17 +2040,15 @@ def _plan_joined_filter_rollup(
     row_args = unique(row_args + gate_dims, "address")
     joined = [c for c in row_args if c.canonical_address not in bound]
     joined_addresses = {c.address for c in joined}
-    scan = create_select_node(
-        f"ds~{ds.name}",
+    scan = _scan(
+        request,
+        datasource_to_node(ds),
         unique(
             [c for c in outputs if c.address not in joined_addresses]
             + grain_keys
             + [c for c in row_args if c.address not in joined_addresses],
             "address",
         ),
-        g=request.graph,
-        environment=environment,
-        depth=request.depth + 1,
     )
     lookups: list[tuple[StrategyNode, frozenset[str]]] = []
     gates: list[tuple[StrategyNode, frozenset[str]]] = []
@@ -2050,17 +2060,12 @@ def _plan_joined_filter_rollup(
         by_keys[_join_keys(c, grain)].append(c)
     for join_keys, columns in sorted(by_keys.items(), key=lambda kv: sorted(kv[0])):
         dims = plan_source(
-            SourceRequest(
-                outputs=unique(
+            _unconditioned(
+                request,
+                unique(
                     columns + [environment.concepts[k] for k in sorted(join_keys)],
                     "address",
                 ),
-                environment=environment,
-                graph=request.graph,
-                history=request.history,
-                conditions=None,
-                deferred_conditions=_deferred_conditions(request),
-                depth=request.depth + 1,
             )
         )
         if dims is None:
@@ -2073,28 +2078,12 @@ def _plan_joined_filter_rollup(
         if gates
         else (scan, lookups)
     )
-    parents = [hub, *(spoke for spoke, _ in spokes)]
-    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
     # filtered at the summary's grain, so an atom over a stored aggregate reads
     # each summary row's value, not a re-sum of it
-    filtered = MergeNode(
-        input_concepts=rows,
-        output_concepts=rows,
-        environment=environment,
-        parents=parents,
-        depth=request.depth,
-        conditions=request.conditions.conditional if request.conditions else None,
-        planned_pairs=PlannedPairs.star(hub, spokes),
+    filtered = _star_merge(
+        hub, spokes, environment, request.depth, conditions=_conditional(request)
     )
-    return GroupNode(
-        input_concepts=rows,
-        output_concepts=outputs,
-        environment=environment,
-        parents=[filtered],
-        depth=request.depth,
-        force_group=True,
-        rollup_concepts=[c for c in outputs if c.is_aggregate],
-    )
+    return _resummed(filtered, outputs, environment, request.depth)
 
 
 def _join_keys(concept: BuildConcept, grain: set[str]) -> frozenset[str]:
@@ -2116,17 +2105,47 @@ def _merged(
     depth: int,
 ) -> StrategyNode:
     """`hub` joined to each spoke on that spoke's keys."""
-    if not spokes:
-        return hub
+    return _star_merge(hub, spokes, environment, depth) if spokes else hub
+
+
+def _star_merge(
+    hub: StrategyNode,
+    spokes: list[tuple[StrategyNode, frozenset[str]]],
+    environment: BuildEnvironment,
+    depth: int,
+    conditions: BoolExpr | None = None,
+    force_join_type: JoinType | None = None,
+) -> MergeNode:
+    """Every column of `hub` and its spokes, each joined on its own keys."""
     parents = [hub, *(spoke for spoke, _ in spokes)]
-    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
+    rows = _usable_outputs(parents)
     return MergeNode(
         input_concepts=rows,
         output_concepts=rows,
         environment=environment,
         parents=parents,
         depth=depth,
+        force_join_type=force_join_type,
+        conditions=conditions,
         planned_pairs=PlannedPairs.star(hub, spokes),
+    )
+
+
+def _resummed(
+    rows: StrategyNode,
+    outputs: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+) -> GroupNode:
+    """`rows` summed to `outputs`, every aggregate among them re-aggregated."""
+    return GroupNode(
+        input_concepts=rows.output_concepts,
+        output_concepts=outputs,
+        environment=environment,
+        parents=[rows],
+        depth=depth,
+        force_group=True,
+        rollup_concepts=[c for c in outputs if c.is_aggregate],
     )
 
 
@@ -2212,12 +2231,8 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         if not c.is_aggregate
         and c.canonical_address not in {o.canonical_address for o in ds.output_concepts}
     ]
-    scan = create_select_node(
-        f"ds~{ds.name}",
-        [c for c in scan_outputs if c not in unbound],
-        g=request.graph,
-        environment=environment,
-        depth=request.depth + 1,
+    scan = _scan(
+        request, datasource_to_node(ds), [c for c in scan_outputs if c not in unbound]
     )
     # the scan is the hub: a lookup joins it on its grain, each list's
     # pairs on that list's keys
@@ -2235,30 +2250,18 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         if pairs is None:
             return None
         spokes.append((pairs, keys))
-    parents = [scan, *(node for node, _ in spokes)]
-    rows = unique([c for parent in parents for c in parent.usable_outputs], "address")
-    joined = MergeNode(
-        input_concepts=rows,
-        output_concepts=rows,
-        environment=environment,
-        parents=parents,
-        depth=request.depth,
+    joined = _star_merge(
+        scan,
+        spokes,
+        environment,
+        request.depth,
         force_join_type=(
             JoinType.LEFT_OUTER
             if all(c.derivation == Derivation.UNNEST for c in related.values())
             else JoinType.FULL
         ),
-        planned_pairs=PlannedPairs.star(scan, spokes),
     )
-    return GroupNode(
-        input_concepts=rows,
-        output_concepts=outputs,
-        environment=environment,
-        parents=[joined],
-        depth=request.depth,
-        force_group=True,
-        rollup_concepts=[c for c in outputs if c.is_aggregate],
-    )
+    return _resummed(joined, outputs, environment, request.depth)
 
 
 def _plan_lookup(
@@ -2269,17 +2272,7 @@ def _plan_lookup(
         for c in columns
         for k in sorted(set(c.keys or ()) & grain)
     ]
-    return plan_source(
-        SourceRequest(
-            outputs=unique(columns + keys, "address"),
-            environment=request.environment,
-            graph=request.graph,
-            history=request.history,
-            conditions=None,
-            deferred_conditions=_deferred_conditions(request),
-            depth=request.depth + 1,
-        )
-    )
+    return plan_source(_unconditioned(request, unique(columns + keys, "address")))
 
 
 def _relation_pairs(
@@ -2288,27 +2281,17 @@ def _relation_pairs(
     """DISTINCT `(keys, targets)`: a list repeating an element names it once
     (`Cover.repeated_element_counts_once`). Pairs of a list declared
     `::unique` are distinct as listed (`Cover.unique_list_pairs_are_distinct`)."""
-    # Imported lazily: `concept_strategies_v4` imports this module's package.
-    from trilogy.core.processing.concept_strategies_v4 import search_concepts
-
     columns = unique(keys + targets, "address")
-    info = search_concepts(
-        mandatory_list=columns,
-        history=cast(V4History, request.history),
-        environment=request.environment,
-        depth=request.depth + 1,
-        g=request.graph,
-        conditions=[],
+    pairs = _search_node(
+        columns, request.environment, request.graph, request.depth + 1, request.history
     )
-    if info.strategy_node is None:
-        return None
-    if all(names_each_once(t, request.environment) for t in targets):
-        return info.strategy_node
+    if pairs is None or all(names_each_once(t, request.environment) for t in targets):
+        return pairs
     return GroupNode(
         input_concepts=columns,
         output_concepts=columns,
         environment=request.environment,
-        parents=[info.strategy_node],
+        parents=[pairs],
         depth=request.depth,
         force_group=True,
     )
@@ -2342,28 +2325,6 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
         allowed |= {canonical, *group}
     if len(canonicals) != 1 or any(c.address not in allowed for c in requested):
         return None
-
-    # Imported lazily: `concept_strategies_v4` imports this module's package.
-    from trilogy.core.processing.concept_strategies_v4 import search_concepts
-
-    def _v4_member_source(
-        mandatory_list: list[BuildConcept],
-        environment: BuildEnvironment,
-        g: ReferenceGraph,
-        depth: int,
-        history: V4History,
-        conditions: BuildWhereClause | None = None,
-    ) -> StrategyNode | None:
-        info = search_concepts(
-            mandatory_list=mandatory_list,
-            history=cast(V4History, history),
-            environment=environment,
-            depth=depth,
-            g=g,
-            conditions=[conditions] if conditions else [],
-        )
-        return info.strategy_node
-
     key_concept = env.concepts.get(next(iter(canonicals)))
     if key_concept is None:
         return None
@@ -2372,7 +2333,7 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
         env,
         request.depth + 1,
         g=request.graph,
-        source_concepts=_v4_member_source,
+        source_concepts=_search_node,
         history=request.history,
     )
     if axis is None or request.conditions is None:
@@ -2386,7 +2347,7 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     )
 
 
-def _terminal_components(network) -> list[set[str]]:
+def _terminal_components(network: SourceNetwork) -> list[set[str]]:
     """Terminals grouped by join-connectivity of the candidates binding them.
     Empty when some terminal has no binder at all."""
     parent: dict[str, str] = {node: node for node in network.candidates}
@@ -2505,9 +2466,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
         for members in grouped.values()
     ]
     for index, addresses in enumerate(component_addresses):
-        closure = build_fd_closure(
-            request.environment, addresses, include_empty_grain=False
-        )
+        closure = strict_fd_closure(request.environment, addresses)
         for other_index, other in enumerate(component_addresses):
             if other_index != index and (
                 closure & other or _elements_of(other, closure, request.environment)
@@ -2516,14 +2475,9 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     parents: list[StrategyNode] = []
     for index in sorted(grouped):
         component = plan_source(
-            SourceRequest(
-                outputs=grouped[index],
-                environment=request.environment,
-                graph=request.graph,
-                history=request.history,
-                conditions=None,
-                deferred_conditions=_deferred_conditions(request),
-                depth=request.depth + 1,
+            _unconditioned(
+                request,
+                grouped[index],
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
                 arm_local=request.arm_local,
@@ -2802,15 +2756,10 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
                 return merged
     if request.conditions is None:
         return _cross_component_source(request)
-    outputs = _requested_concepts(request)
     unfiltered = plan_source(
-        SourceRequest(
-            outputs=outputs,
-            environment=request.environment,
-            graph=request.graph,
-            history=request.history,
-            conditions=None,
-            deferred_conditions=_deferred_conditions(request),
+        _unconditioned(
+            request,
+            _requested_concepts(request),
             depth=request.depth,
             require_full=request.require_full,
             arm_local=request.arm_local,

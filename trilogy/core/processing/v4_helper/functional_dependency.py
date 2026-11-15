@@ -316,12 +316,7 @@ def _minimize_build_grain(
             determinants = minimized - {address}
             if not determinants:
                 continue
-            if build_fd_determines(
-                environment,
-                determinants,
-                address,
-                include_empty_grain=False,
-            ):
+            if strict_fd_determines(environment, determinants, address):
                 minimized.remove(address)
                 changed = True
                 break
@@ -350,3 +345,22 @@ def origin_relation_stored(
         for datasource in environment.datasources.values()
         if isinstance(datasource, BuildDatasource)
     )
+
+
+def strict_fd_closure(
+    environment: BuildEnvironment, determinants: Iterable[str]
+) -> frozenset[str]:
+    """`build_fd_closure` without the grainless concepts anything determines."""
+    return build_fd_closure(environment, determinants, include_empty_grain=False)
+
+
+def strict_fd_determines(
+    environment: BuildEnvironment, determinants: Iterable[str], address: str
+) -> bool:
+    return address in strict_fd_closure(environment, determinants)
+
+
+def strict_fd_determines_all(
+    environment: BuildEnvironment, determinants: Iterable[str], targets: Iterable[str]
+) -> bool:
+    return set(targets) <= strict_fd_closure(environment, determinants)

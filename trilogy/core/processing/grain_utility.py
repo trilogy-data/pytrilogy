@@ -52,10 +52,14 @@ from trilogy.core.processing.join_resolution import (
     preserved_sources,
 )
 from trilogy.core.processing.utility import (
+    applied_atoms,
     collect_applied_conditions,
+    equivalent_addresses,
     join_left_sources,
+    joined_right_ids,
     left_deep_joins,
     padded_by,
+    unpadded_join_type,
 )
 
 GrainSource = QueryDatasource | BuildDatasource
@@ -262,6 +266,10 @@ def _concept_covered_by_grain(
     )
 
 
+def _right_join_keys(join: Join) -> list[BuildConcept]:
+    return [pair.right for pair in join.pairs] if join.pairs else join.concepts or []
+
+
 def _join_right_preserves_cardinality(
     join: SourceJoin | UnnestJoin,
     environment: BuildEnvironment,
@@ -276,12 +284,9 @@ def _join_right_preserves_cardinality(
     right_grain = join.right.effective_grain
     if not right_grain.components:
         return True
-    right_keys = (
-        [pair.right for pair in join.pairs] if join.pairs else join.concepts or []
-    )
     materialized_keys = [
         _source_concept_for_address(join.right, key.address) or key
-        for key in right_keys
+        for key in _right_join_keys(join)
     ]
     coverage: set[str] = set()
     for key in materialized_keys:
@@ -370,6 +375,10 @@ def _left_join_addresses(
     }
 
 
+def _partial_addresses(source: GrainSource) -> set[str]:
+    return {concept.address for concept in source.partial_concepts}
+
+
 def _partial_lookup_keys(sources: list[GrainSource], keys: set[str]) -> set[str]:
     """The `~` keys of a side that is a lookup keyed by them (notes by
     customer): the members it lacks are the other side's own rows, not
@@ -377,7 +386,7 @@ def _partial_lookup_keys(sources: list[GrainSource], keys: set[str]) -> set[str]
     out: set[str] = set()
     for source in sources:
         grain = set(source.grain.components)
-        partial = keys & {c.address for c in source.partial_concepts}
+        partial = keys & _partial_addresses(source)
         if partial and grain and grain <= keys:
             out |= partial
     return out
@@ -389,7 +398,7 @@ def _unprovable_addresses(sources: list[GrainSource]) -> set[str]:
     bindings (a CASE/raw column that is non-null even on padded rows)."""
     out: set[str] = set()
     for source in sources:
-        out |= {c.address for c in source.partial_concepts}
+        out |= _partial_addresses(source)
         out |= opaque_binding_addresses(source)
     return out
 
@@ -446,13 +455,13 @@ def _partner_facts(
     applied: list[BoolExpr] | None = None
     for source in sources:
         identifiers.add(source.identifier)
-        atoms = _applied_atoms(source)
+        atoms = applied_atoms(source)
         applied = (
             atoms
             if applied is None
             else [a for a in applied if any(a == b for b in atoms)]
         )
-        partial |= {c.address for c in source.partial_concepts}
+        partial |= _partial_addresses(source)
         nullable |= _nullable_addresses(source)
         spans = held_region_spans(source)
         regions |= spans
@@ -470,18 +479,10 @@ def _partner_facts(
     )
 
 
-def _applied_atoms(source: GrainSource) -> list[BoolExpr]:
-    return [
-        atom
-        for condition in collect_applied_conditions(source)
-        for atom in decompose_condition(condition)
-    ]
-
-
 def _applies_all_of(source: GrainSource, partner: _PartnerFacts) -> bool:
     """The partner applied every filter `source` did, so its rows passed
     whatever narrowed `source`'s."""
-    atoms = _applied_atoms(source)
+    atoms = applied_atoms(source)
     return bool(atoms) and all(any(a == b for b in partner.applied) for a in atoms)
 
 
@@ -537,8 +538,8 @@ def _is_filter_population(
     # alone (`cust_id != 10`), or one the partner applied too (`city = 'A'`
     # on the trees beside the trees' unnested lists), filters both sides
     # alike, so its narrowness is the `~`, not the WHERE.
-    partial_keys = join_addresses & {c.address for c in source.partial_concepts}
-    if partial_keys - partner.partial and (
+    partial = _partial_addresses(source)
+    if (join_addresses & partial) - partner.partial and (
         _filters_only_keys(source, join_addresses) or _applies_all_of(source, partner)
     ):
         return False
@@ -547,7 +548,7 @@ def _is_filter_population(
         return False
     if partner.filtered_regions - held:
         return False
-    suppressed = {c.address for c in source.partial_concepts} & (
+    suppressed = partial & (
         deep_extent_free_spans(source) | deep_extent_free_carried(source)
     )
     if not (join_addresses & suppressed):
@@ -618,12 +619,7 @@ def downgrade_join_for_proofs(
         right_keys,
         _partial_lookup_keys([join.right], right_keys),
     )
-    if left_forced and right_forced:
-        join.join_type = JoinType.INNER
-    elif left_forced:
-        join.join_type = JoinType.LEFT_OUTER
-    elif right_forced:
-        join.join_type = JoinType.RIGHT_OUTER
+    join.join_type = unpadded_join_type(join.join_type, left_forced, right_forced)
 
 
 def downgrade_directional_join_for_proofs(
@@ -644,23 +640,18 @@ def downgrade_directional_join_for_proofs(
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
     right_all = _datasource_addresses(join.right)
-    if join.join_type == JoinType.LEFT_OUTER:
-        forced = _side_forced(
-            proofs,
-            or_groups,
-            right_all - left_all,
-            right_keys,
-            _unprovable_addresses([join.right]),
-        )
-    else:
-        forced = _side_forced(
-            proofs,
-            or_groups,
-            left_all - right_all,
-            left_keys,
-            _unprovable_addresses(_left_join_sources(join, final_datasets)),
-        )
-    if forced:
+    padded_only, padded_keys, padded_sources = (
+        (right_all - left_all, right_keys, [join.right])
+        if join.join_type == JoinType.LEFT_OUTER
+        else (left_all - right_all, left_keys, _left_join_sources(join, final_datasets))
+    )
+    if _side_forced(
+        proofs,
+        or_groups,
+        padded_only,
+        padded_keys,
+        _unprovable_addresses(padded_sources),
+    ):
         join.join_type = JoinType.INNER
 
 
@@ -757,27 +748,12 @@ def tighten_join_for_filtered_branch(
         )
         for identifier in left_ids
     )
-    if join.join_type == JoinType.FULL:
-        if right_filtered and left_filtered:
-            join.join_type = JoinType.INNER
-        elif right_filtered:
-            join.join_type = JoinType.RIGHT_OUTER
-        elif left_filtered:
-            join.join_type = JoinType.LEFT_OUTER
-    elif (
-        join.join_type == JoinType.LEFT_OUTER
-        and right_filtered
-        or join.join_type == JoinType.RIGHT_OUTER
-        and left_filtered
-    ):
-        join.join_type = JoinType.INNER
+    join.join_type = unpadded_join_type(join.join_type, left_filtered, right_filtered)
 
 
 def _binds_subset(source: GrainSource, address: str) -> bool:
     """`source` binds `address` as a `~` subset with no NULL key."""
-    return address in {c.address for c in source.partial_concepts} - (
-        _nullable_addresses(source)
-    )
+    return address in _partial_addresses(source) - _nullable_addresses(source)
 
 
 def narrow_subset_full_join(
@@ -839,8 +815,7 @@ def _complete_anchor(
     ):
         return None
     if not any(
-        pair.left.address in {c.address for c in pair.node.partial_concepts}
-        for pair in join.pairs
+        pair.left.address in _partial_addresses(pair.node) for pair in join.pairs
     ):
         return None
     return next(
@@ -946,16 +921,18 @@ def join_preserves_left_rows(join: Join) -> bool:
     cover adds no rows to the left stream."""
     join_type = join.join_type
     right = join.right.source if isinstance(join.right, (CTE, UnionCTE)) else join.right
-    right_keys = (
-        [pair.right for pair in join.pairs] if join.pairs else join.concepts or []
-    )
     if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
         return False
     right_grain = set(right.grain.components)
     if not right_grain:
         return True
-    coverage = {address for key in right_keys for address in key.equivalent_addresses}
-    return right_grain <= coverage
+    return right_grain <= equivalent_addresses(_right_join_keys(join))
+
+
+def _only_lookup_joins(joins: Iterable[SourceJoin | UnnestJoin]) -> bool:
+    return all(
+        isinstance(join, Join) and join_preserves_left_rows(join) for join in joins
+    )
 
 
 def unique_at_declared_grain(source: GrainSource) -> bool:
@@ -975,14 +952,9 @@ def unique_at_declared_grain(source: GrainSource) -> bool:
         return True
     if source.source_type == SourceType.UNION:
         return False
-    if any(
-        not isinstance(join, Join) or not join_preserves_left_rows(join)
-        for join in source.joins
-    ):
+    if not _only_lookup_joins(source.joins):
         return False
-    looked_up = {
-        join.right.identifier for join in source.joins if isinstance(join, Join)
-    }
+    looked_up = joined_right_ids(source.joins)
     declared = set(source.grain.components)
     return all(
         unique_at_declared_grain(sub) and set(sub.grain.components) <= declared
@@ -1019,7 +991,7 @@ def is_identity_group(
     a scalar WHERE."""
     if rollup_concepts:
         return False
-    right_ids = {join.right.identifier for join in joins if isinstance(join, Join)}
+    right_ids = joined_right_ids(joins)
     roots = [source for source in datasets if source.identifier not in right_ids]
     if len(roots) != 1:
         return False
@@ -1028,10 +1000,7 @@ def is_identity_group(
         return False
     if not set(root.grain.components) <= set(target_grain.components):
         return False
-    if any(
-        not isinstance(join, Join) or not join_preserves_left_rows(join)
-        for join in joins
-    ):
+    if not _only_lookup_joins(joins):
         return False
     supplied = {
         concept.address for source in datasets for concept in source.output_concepts
@@ -1090,11 +1059,7 @@ def grain_satisfied_by_pregrain(
 
 def nullable_spellings(nullable: Iterable[BuildConcept]) -> set[str]:
     """A key NULL on some row is NULL there under every one of its spellings."""
-    return {
-        equivalent
-        for concept in nullable
-        for equivalent in concept.equivalent_addresses
-    }
+    return equivalent_addresses(nullable)
 
 
 def determined_past_nulls(
@@ -1106,15 +1071,13 @@ def determined_past_nulls(
     """Every component is covered, or determined by covered columns non-null
     on every row (`nullable` as `nullable_spellings`)."""
     from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
+        strict_fd_determines,
     )
 
     determinants = coverage - nullable
     return all(
         component in coverage
-        or build_fd_determines(
-            environment, determinants, component, include_empty_grain=False
-        )
+        or strict_fd_determines(environment, determinants, component)
         for component in components
     )
 
@@ -1130,11 +1093,11 @@ def rows_unique_at_outputs(
     on every row. `joined` is the UNFOLDED union of the sources' grains: the
     key-hierarchy fold (`user.id` under `id`) holds only where the key is
     present, and after `users LEFT items FULL products` it is padded."""
-    projected = {
-        equivalent for concept in outputs for equivalent in concept.equivalent_addresses
-    }
     return determined_past_nulls(
-        environment, projected, nullable_spellings(nullable), joined.components
+        environment,
+        equivalent_addresses(outputs),
+        nullable_spellings(nullable),
+        joined.components,
     )
 
 

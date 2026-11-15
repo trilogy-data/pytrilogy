@@ -25,14 +25,15 @@ from trilogy.core.models.build import (
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.execute import (
-    Join,
     QueryDatasource,
     SourceJoin,
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
+    joined_right_ids,
     left_deep_joins,
+    nullable_addresses_with_pseudonyms,
 )
 
 DataSource = QueryDatasource | BuildDatasource
@@ -135,14 +136,6 @@ def rollup_padded_addresses(datasource: DataSource) -> set[str]:
     return padded
 
 
-def _leaf_null_addresses(datasource: BuildDatasource) -> set[str]:
-    out: set[str] = set()
-    for concept in datasource.nullable_concepts:
-        out.add(concept.address)
-        out.update(concept.pseudonyms)
-    return out
-
-
 def _no_leaf_addresses(datasource: BuildDatasource) -> set[str]:
     return set()
 
@@ -169,8 +162,7 @@ def _padded_addresses(
     datasource: DataSource,
     leaf_addresses: Callable[[BuildDatasource], set[str]],
     join_extends: Callable[[SourceJoin], bool],
-    memo: dict[int, frozenset[str]] | None = None,
-    chain: bool = False,
+    memo: dict[int, frozenset[str]],
 ) -> frozenset[str]:
     """Addresses this source emits NULL for because an outer join `join_extends`
     licenses padded them, or because a leaf declared them nullable.
@@ -179,7 +171,6 @@ def _padded_addresses(
     null-extends the whole accumulated left input, not just one operand. An
     address counts only when EVERY provider of it was extended (or was already
     padded inside that provider)."""
-    memo = {} if memo is None else memo
     cached = memo.get(id(datasource))
     if cached is not None:
         return cached
@@ -188,12 +179,10 @@ def _padded_addresses(
         memo[id(datasource)] = frozenset(leaf_addresses(datasource))
         return memo[id(datasource)]
     child_padded = {
-        child.identifier: _padded_addresses(
-            child, leaf_addresses, join_extends, memo, chain
-        )
+        child.identifier: _padded_addresses(child, leaf_addresses, join_extends, memo)
         for child in datasource.datasources
     }
-    right_ids = {j.right.identifier for j in datasource.joins if isinstance(j, Join)}
+    right_ids = joined_right_ids(datasource.joins)
     extended: set[str] = set()
     out: set[str] = set()
     base_ids = [i for i in child_padded if i not in right_ids]
@@ -204,12 +193,12 @@ def _padded_addresses(
         # a lookup keyed on a column already padded on its preserved side pads
         # for the same rows (a guest order's customer, then that customer's
         # address)
-        left_padded = chain and any(
+        left_padded = any(
             pair.node.identifier in extended
             or pair.left.address in child_padded.get(pair.node.identifier, frozenset())
             for pair in pairs
         )
-        right_padded = chain and any(
+        right_padded = any(
             pair.right.address in child_padded.get(right_id, frozenset())
             for pair in pairs
         )
@@ -251,10 +240,9 @@ def extent_null_addresses(
     memo = memo or ProvenanceMemo()
     return _padded_addresses(
         datasource,
-        _leaf_null_addresses,
+        nullable_addresses_with_pseudonyms,
         partial(_value_null_driven, memo=memo),
         memo.extent,
-        chain=True,
     )
 
 
@@ -271,7 +259,6 @@ def guest_padded_addresses(
         _no_leaf_addresses,
         partial(_value_null_driven, memo=memo),
         memo.guest,
-        chain=True,
     )
 
 
@@ -292,7 +279,6 @@ def span_padded_addresses(
         _no_leaf_addresses,
         partial(_span_keyed, spans=spans),
         memo.span.setdefault(spans, {}),
-        chain=True,
     )
 
 
@@ -333,9 +319,7 @@ def nulls_are_values(
     equivalent = concept.equivalent_addresses
     if isinstance(side, BuildDatasource):
         # Column-level `?` is the only value-NULL source on a physical table.
-        return any(
-            equivalent & nc.equivalent_addresses for nc in side.nullable_concepts
-        )
+        return side_nullable(concept, side)
     # A grouping-set NULL is padding too, but a twin-rollup partner pads the
     # same key, so it stays pairable here; get_join_type handles the mismatch.
     if equivalent & rollup_padded_addresses(side):

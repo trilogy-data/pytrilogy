@@ -32,7 +32,11 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
-from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel
+from .constants import (
+    FINAL_NODE_ID,
+    NESTED_DEPTHS,
+    ROW_STREAM_DERIVATIONS,
+)
 from .models import ExtentOwnership, GroupAttrs
 
 
@@ -78,7 +82,7 @@ def elect_extent_owners(
     rank = {
         gid: (
             len(nx.ancestors(group_graph, gid)),
-            attrs[gid].depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1),
+            attrs[gid].depth_label not in NESTED_DEPTHS,
             len(owned & set(attrs[gid].members)),
             len(owned),
             gid,

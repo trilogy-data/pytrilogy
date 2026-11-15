@@ -47,16 +47,12 @@ def split_existence_atoms(
             existence_atoms.append(atom)
         else:
             row_atoms.append(atom)
-    row_combined = combine_condition_atoms(row_atoms) if row_atoms else None
-    ex_combined = combine_condition_atoms(existence_atoms) if existence_atoms else None
-    return (
-        (
-            BuildWhereClause(conditional=row_combined)
-            if row_combined is not None
-            else None
-        ),
-        BuildWhereClause(conditional=ex_combined) if ex_combined is not None else None,
-    )
+    return _where_of(row_atoms), _where_of(existence_atoms)
+
+
+def _where_of(atoms: list[BoolExpr]) -> BuildWhereClause | None:
+    combined = combine_condition_atoms(atoms)
+    return BuildWhereClause(conditional=combined) if combined is not None else None
 
 
 def condition_row_args(conditions: BuildWhereClause | None) -> list[BuildConcept]:
@@ -112,6 +108,16 @@ def pairs_on_outer_relation(
     return any(outer & {o.address for o in f.output_concepts} for f in feeders)
 
 
+def _condition_inputs(
+    explicit: list[BuildConcept] | None, node: StrategyNode, sources: ConditionSources
+) -> list[BuildConcept]:
+    return unique(
+        list(explicit if explicit is not None else node.usable_outputs)
+        + sources.row_concepts,
+        "address",
+    )
+
+
 def inject_condition_at_node(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -145,15 +151,7 @@ def inject_condition_at_node(
         )
         completed = completed_by_feeders(node, sources.row_parents)
         return MergeNode(
-            input_concepts=unique(
-                list(
-                    input_concepts
-                    if input_concepts is not None
-                    else node.usable_outputs
-                )
-                + sources.row_concepts,
-                "address",
-            ),
+            input_concepts=_condition_inputs(input_concepts, node, sources),
             output_concepts=output_concepts,
             environment=environment,
             parents=[node, *sources.row_parents, *sources.existence_parents],
@@ -215,11 +213,7 @@ def inject_condition_at_node(
     combined = and_optional(
         base.conditions if combine_existing else None, condition.conditional
     )
-    input_concepts = unique(
-        list(input_concepts if input_concepts is not None else base.usable_outputs)
-        + sources.row_concepts,
-        "address",
-    )
+    input_concepts = _condition_inputs(input_concepts, base, sources)
     node_partials = (
         partial_concepts
         if partial_concepts is not None

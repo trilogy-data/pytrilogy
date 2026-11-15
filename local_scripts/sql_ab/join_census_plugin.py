@@ -47,9 +47,7 @@ def pytest_configure(config) -> None:
             }
             for gid in plan.contributors
         }
-        _state["pairings"] = [
-            [p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings
-        ]
+        _state["pairings"] = jc.pairings(plan)
         return plan
 
     jc.sb.plan_final_join = plan_final_join
