@@ -245,3 +245,21 @@ def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
                 m.setattr(join_resolution, "_score_join_candidate", blind)
                 sql, blind_rows = _rows(_executor(model, data, sizing), query)
             assert blind_rows == walked, (query, seed, sql)
+
+
+ELEMENT_ORACLE = """select e, count(distinct tree_id) from trees t
+left join enrichment using (species)
+left join lateral (select unnest(native_ecoregions) as e) on true
+where {where} group by 1"""
+
+
+@pytest.mark.parametrize("where", ["city = 'A'", "species != 'oak'"])
+@pytest.mark.parametrize("seed", CONFORMING)
+def test_a_filtered_relation_keeps_the_empty_list_group(seed, where):
+    """A tree whose species lists no ecoregion counts under a NULL one, with
+    a WHERE as without."""
+    model, value, sizing, _ = SPELLINGS["element"]
+    executor = _executor(model, random_data(seed), sizing)
+    sql, got = _rows(executor, f"select {value}, count(tree_id) as n where {where};")
+    expected = executor.execute_raw_sql(ELEMENT_ORACLE.format(where=where))
+    assert got == sorted((tuple(r) for r in expected.fetchall()), key=repr), sql

@@ -3146,6 +3146,85 @@ alike, and part 78 narrows the one that differed. The optimizer narrows
 keeps a RIGHT OUTER. Which outer join a phase can tighten still depends on
 which side the walk joined first.
 
+**The walk order decided rows after all (part 79).** Parts 77-78 measured
+the partial term against the suite's row checks, but the relation-rollup
+laws compare the plain model with the summary model *under one planner*: a
+plan both models get wrong passes. Planning each law with the term kept
+and dropped, over data that holds the model's complete bindings (trees and
+lists over the same species), gave different rows in the `element`
+spelling under a WHERE. A raw-row oracle then showed `main` itself wrong:
+`select tree_eco_region, count(tree_id) where city = 'A'` drops the trees
+whose species lists no ecoregion, which the law's own docstring says count
+under a NULL one (5 of 10 seeds).
+
+- The unnest of the trees' lists is `~tree_id` (a tree with an empty list
+  has no element row). Filtered `city = 'A'`, it joins the trees, filtered
+  alike, on `tree_id` alone. `_is_filter_population` read the unnest as
+  the WHERE's population, so `tighten_join_for_filtered_branch` made the
+  join that keeps those trees INNER. On the partial term's walk it was the
+  trees' join that was tightened, on the other walk the unnest's, so the
+  two orders lost different rows.
+- It already excused a `~` side whose filters read only the join keys
+  (`cust_id != 10`). It now excuses one whose partner applied every filter
+  it did (`_applies_all_of`): the partner's extra rows passed the same
+  filters, so the narrowness is the `~`'s, whatever the filters read.
+- `test_a_filtered_relation_keeps_the_empty_list_group` checks the
+  `element` spelling against a raw-row oracle, and
+  `test_the_walk_order_decides_no_rows` plans every relation-rollup law
+  with the partial term kept and dropped (`_score_join_candidate` blind to
+  partials) and compares rows. On `main` 7 of the 18 cases fail.
+
+**A complete right beside an unpadded complete anchor is INNER (part 80).**
+Part 78 narrowed `X FULL trees FULL enrichment` (`X` a `~?species` side) to
+LEFT OUTER on `enrichment`, because every `enrichment` row has a partner. When
+the complete anchor (`trees`) is on every stream row, padded by no earlier
+join and never NULL on the key, every stream row has a partner too, and the
+join pads nothing. `cheerful RIGHT trees LEFT enrichment` becomes
+`cheerful RIGHT trees INNER enrichment`, which is what the partial term's
+walk types as `trees INNER enrichment`.
+`test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row` adds
+the padded and unpadded cases.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): the same
+25 credential-gated failures (plus `test_eighty_three`'s order-dependent
+SQL-length budget, which passes alone and in its file under `-n 4`; its
+captured SQL does not move). The plans that move:
+
+- 100 `test_relation_reads_the_summary` cases (`element` under the city
+  and species filters), one INNER becoming LEFT OUTER and one CTE each:
+  part 79's fix;
+- 4 `test_grain_pin_unnest_merge_filter` cases, the same unnest shape;
+- 2 `test_summary_cover_laws` cases, a LEFT OUTER becoming INNER: part 80;
+- `test_unmodelled_regions` (one join mirrored) and
+  `test_union_dim_pushdown` (one INNER becoming LEFT OUTER);
+- the rest are CTE names or column order.
+
+With both parts in place, the relation-rollup laws' two walks differ in one
+family only beyond mirrored joins (`merged` × `value`, 6 queries). There the
+partial term's walk ends `(trees INNER enrichment) INNER cheerful`, while
+the other ends `cheerful LEFT trees LEFT enrichment`. Element (18 queries),
+property (6) and merged × city (6) now type the same joins from either side.
+
+**Found, not fixed: an INNER's key proof forces a later join's side.**
+`UpgradeJoinOnGuards` reads an INNER join's key predicate as a proof that the
+key is non-null on every surviving row (`_add_inner_join_key_proofs`). It
+forces a side present off that proof at *any* join in the CTE. A later outer
+join's padded rows never meet the predicate, so `a INNER b FULL c WHERE c.x > 1`
+narrows to INNER and drops every `c` row with no `a`. This is what makes the
+partial term's walk tighter in `merged` × `value`: its INNER on `cheerful` is
+forced off the `trees INNER enrichment` proof.
+
+The fix is to give each proof the index of the INNER that made it, and use
+it only at an earlier join. It is one patch, and a CTE-level test pins it.
+But it moves `tpc_h` `adhoc07`'s
+`(lineitem INNER orders) RIGHT OUTER customers` back to RIGHT OUTER. Without
+its `LIMIT 20`, the query then returns 500 more rows on TPC-H sf 0.01:
+customers with no order, from every nation, which the final
+`juicy`/`uneven` join's `is not distinct from` on `order_id` lets through.
+So the unsound INNER is masking a second bug (that final join reads a
+customer-to-order LEFT JOIN that no nation filter reaches). The two have to
+land together. The proof fix is held back until the second bug is fixed.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3190,11 +3269,16 @@ not built yet:
    outer join folds into its mirror (part 77). So no term decides rows or
    rendering in the suite, and with the partial term dropped only shape pins
    fail. A complete right beside a `~` partner narrows whichever side is
-   walked first (part 78). The partial term still decides plan quality.
-   Dropping it adds 41 CTEs in the dimension-chain oracle and 8 FULLs in
-   summary cover. It also loosens 450 INNERs in relation rollup, where the
-   optimizer narrows outer joins differently depending on which side was
-   joined first.
+   walked first (part 78). Those row checks compared two models under one
+   walk, though. Comparing the two walks over conforming data found a `~`
+   side read as the WHERE's population, which lost rows on `main` (part 79).
+   A complete anchor on every stream row now makes its join INNER (part 80).
+   The partial term still decides plan quality: dropping it adds 41 CTEs in
+   the dimension-chain oracle and 8 FULLs in summary cover. In relation
+   rollup it now loosens only `merged` × `value`, and there the kept walk's
+   INNER comes from an unsound optimizer proof (an earlier INNER forcing a
+   later join's side). That proof cannot be fixed until the `adhoc07` bug it
+   masks is fixed.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
