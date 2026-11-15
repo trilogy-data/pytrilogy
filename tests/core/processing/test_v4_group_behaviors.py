@@ -56,6 +56,7 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
     can_preserve_grouping,
     native_grain_basic_inherited,
     native_grain_declared,
+    native_grain_filter_inputs,
 )
 from trilogy.core.processing.v4_helper.group_graph import (
     Demand,
@@ -166,6 +167,7 @@ def _bucket(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=list(primaries),
+        primary_node_ids=list(primaries),
     )
 
 
@@ -690,6 +692,17 @@ class TestLineageParentAddrs:
         )
         assert _lineage_parent_addrs(cg, ce, ca, "s_channel") == {"channel_label"}
 
+    def test_labelled_only_column_reads_its_labelled_copy(self):
+        cg, ce, ca = _cg(
+            {
+                "[@condition]channel_label": {"grain": {"channel.id"}},
+                "[@condition]s_channel": {"parents": ["[@condition]channel_label"]},
+            }
+        )
+        ca["[@condition]channel_label"].address = "channel_label"
+        ca["[@condition]s_channel"].address = "s_channel"
+        assert _lineage_parent_addrs(cg, ce, ca, "s_channel") == {"channel_label"}
+
 
 # ----- can_preserve_grouping ------------------------------------------
 
@@ -915,6 +928,39 @@ class TestNativeGrainBasicInherited:
         assert native_grain_basic_inherited(bucket, cg, ce, ca) == frozenset(
             {"week_seq", "item.id"}
         )
+
+
+def test_labelled_bucket_reads_parents_by_node_id():
+    cg, ce, ca = _cg(
+        {
+            "[@condition]agg_sum": {"grain": {"week_seq"}},
+            "[@condition]round_result": {
+                "grain": {"item.id"},
+                "parents": ["[@condition]agg_sum"],
+            },
+        }
+    )
+    bucket = _bucket(Derivation.BASIC, ["round_result"], grain={"item.id"})
+    bucket.primary_node_ids = ["[@condition]round_result"]
+    assert native_grain_basic_inherited(bucket, cg, ce, ca) == {"week_seq"}
+
+
+@pytest.mark.parametrize("existence_only", [False, True])
+def test_filter_set_read_only_through_in_keeps_declared_grain(existence_only: bool):
+    cg, ce, ca = _cg(
+        {
+            "[@condition]id": {"grain": {"id"}},
+            "[@condition]visits": {
+                "derivation": Derivation.FILTER,
+                "parents": ["[@condition]id"],
+                "existence_only": existence_only,
+            },
+        }
+    )
+    bucket = _bucket(Derivation.FILTER, ["visits"])
+    bucket.primary_node_ids = ["[@condition]visits"]
+    expected = frozenset() if existence_only else frozenset({"id"})
+    assert native_grain_filter_inputs(bucket, cg, ce, ca) == expected
 
 
 # ----- registry --------------------------------------------------------
