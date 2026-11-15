@@ -504,3 +504,34 @@ def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
         ),
     ]
     assert guest_padded_addresses(merged) == set()
+
+
+def _pair(left: BuildDatasource) -> ConceptPair:
+    return ConceptPair(left=_concept(USER), right=_concept(USER), node=left)
+
+
+def test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row():
+    notes = _scan("notes", [USER], partial=[USER])
+    users = _scan("users", [USER])
+    items = _scan("items", [USER])
+    prior = [_full(notes, users)]
+
+    def onto_both() -> Join:
+        return Join(
+            right=items,
+            join_type=JoinType.FULL,
+            pairs=[_pair(notes), _pair(users)],
+        )
+
+    narrowed = onto_both()
+    narrow_subset_full_join(narrowed, {"notes", "users"}, set(), set(), prior)
+    assert narrowed.join_type == JoinType.LEFT_OUTER
+    unequated = onto_both()
+    narrow_subset_full_join(unequated, {"notes", "users"}, set(), set(), [])
+    assert unequated.join_type == JoinType.FULL
+    users_dropped = onto_both()
+    narrow_subset_full_join(users_dropped, {"notes"}, set(), set(), prior)
+    assert users_dropped.join_type == JoinType.FULL
+    no_subset_partner = Join(right=items, join_type=JoinType.FULL, pairs=[_pair(users)])
+    narrow_subset_full_join(no_subset_partner, {"users"}, set(), set(), prior)
+    assert no_subset_partner.join_type == JoinType.FULL

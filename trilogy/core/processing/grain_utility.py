@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
 from trilogy.constants import MagicConstants
@@ -27,6 +27,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import (
     CTE,
+    ConceptPair,
     Join,
     QueryDatasource,
     SourceJoin,
@@ -772,6 +773,7 @@ def narrow_subset_full_join(
     alive: set[str],
     padded: set[str],
     coalescing_keys: set[str],
+    prior: Sequence[SourceJoin | UnnestJoin] = (),
 ) -> None:
     """A FULL pads only one side when the other is `~` on every key and each
     of its rows has a partner holding the key's whole domain
@@ -779,7 +781,12 @@ def narrow_subset_full_join(
     row survives (`alive`); a `~` left source pairs on every stream row only
     when no earlier join padded it. So the narrowing does not depend on which
     side the walk joined first. A NULL key (`~?`) has no partner, and an
-    authored union/full relation is row intent: both stay FULL."""
+    authored union/full relation is row intent: both stay FULL.
+
+    A complete right beside a `~` left is not padded either when a surviving
+    left equated with that `~` one holds the key's whole domain: the FULL was
+    typed off the `~` partner, walked before the complete left
+    (`_pairs_every_right_row`)."""
     if not isinstance(join, Join) or join.join_type != JoinType.FULL:
         return
     if not join.pairs or _joins_a_coalescing_relation(join, coalescing_keys):
@@ -789,7 +796,7 @@ def narrow_subset_full_join(
         and pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
         for pair in join.pairs
-    ):
+    ) or _pairs_every_right_row(join, alive, prior):
         join.join_type = JoinType.LEFT_OUTER
     elif all(
         _binds_subset(pair.node, pair.left.address)
@@ -798,6 +805,53 @@ def narrow_subset_full_join(
         for pair in join.pairs
     ):
         join.join_type = JoinType.RIGHT_OUTER
+
+
+def _pairs_every_right_row(
+    join: Join, alive: set[str], prior: Sequence[SourceJoin | UnnestJoin]
+) -> bool:
+    """A join on one key, from a complete right onto a `~` left and a
+    surviving complete left an earlier join equated with it. Both complete
+    sides hold the key's whole domain, so every right row has a partner, and
+    the ON reads the coalesce of the lefts, which on any stream row is the
+    complete left's value or NULL beside it."""
+    if len({pair.right.address for pair in join.pairs}) != 1:
+        return False
+    address = join.pairs[0].right.address
+    if not complete_key_domain(join.right, address) or address in (
+        _nullable_addresses(join.right)
+    ):
+        return False
+    if not any(
+        pair.left.address in {c.address for c in pair.node.partial_concepts}
+        for pair in join.pairs
+    ):
+        return False
+    return any(
+        anchor.node.identifier in alive
+        and complete_key_domain(anchor.node, anchor.left.address)
+        and all(
+            other is anchor or _equated_by(prior, anchor, other) for other in join.pairs
+        )
+        for anchor in join.pairs
+    )
+
+
+def _equated_by(
+    prior: Sequence[SourceJoin | UnnestJoin], a: ConceptPair, b: ConceptPair
+) -> bool:
+    """Whether an earlier join paired the two lefts' reads directly."""
+    reads = {(a.node.identifier, a.left.address), (b.node.identifier, b.left.address)}
+    return any(
+        {
+            (pair.node.identifier, pair.left.address),
+            (j.right.identifier, pair.right.address),
+        }
+        == reads
+        for j in prior
+        if isinstance(j, Join)
+        for pair in j.pairs or []
+    )
 
 
 def narrow_join_types(
@@ -818,6 +872,7 @@ def narrow_join_types(
             preserved_sources(list(final_datasets), joins[:index]),
             padded,
             proofs.coalescing_keys,
+            joins[:index],
         )
         downgrade_join_for_proofs(join, proofs.proofs, final_datasets)
         downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
