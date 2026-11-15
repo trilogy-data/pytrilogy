@@ -2927,6 +2927,121 @@ dropped a row its RIGHT OUTER kept, so no row assertion moves either. The
 soundness laws above are the rows that differ.
 
 
+**The walk no longer reads a side's nullability (part 75).** Part 74 left
+the nullable term deciding no rows in the suite. Before moving any scorer
+term onto the plan, each of the four built-side terms was dropped and the
+whole suite captured (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`). The join counts
+below sum over the tests whose SQL moves and whose statement count is the
+same on both trees, so tests that compile a varying number of statements
+under xdist are left out (TPC-DS `test_queries`, `test_cli_consistency`).
+
+| term dropped | tests moved | INNER | LEFT | RIGHT | FULL | CTEs | tests that fail |
+|---|---|---|---|---|---|---|---|
+| nullable on the key (from `main`) | 2,425 | +508 | -311 | -176 | -16 | -3 | 3 shape pins |
+| grain size (with nullable dropped) | 1,463 | -51 | -53 | +58 | -4 | +9 | 13, incl. 7 TPC-DS SQL pins, `test_q74_stays_join_lean` |
+| hosts the region (with nullable dropped) | 717 | +5 | -347 | +288 | +57 | +3 | `test_facts_are_summed_before_they_meet` (asserts no FULL), `test_forked_full_column_set` |
+| partial on the key (with nullable dropped) | 4,098 | -879 | -2,953 | +3,596 | +250 | -6 | 12, incl. **6 `test_rule_soundness_laws` cases (wrong rows)** |
+
+So the nullable term goes and the other three stay.
+
+- **Nullable.** The SQL is tighter and shorter (21,920 characters less over
+  the moved tests). 132 tests gain an INNER and 2 lose one
+  (`test_two_member_and_intersects[join|merge]`: a lookup that was INNER
+  beside two FULL-joined probes becomes a LEFT, and the rows are the same).
+  `_score_join_candidate` no longer reads `nullables`.
+  `test_unnested_dimension_join_preserves_trees` asserted that the trees side
+  is the RIGHT of the join onto the unnested species. The trees side now seeds
+  that join, `city_trees LEFT OUTER JOIN <unnested>`. The test now asserts
+  that the trees side is the preserved one, in either direction, and the new
+  form passes on `main` too. `test_a_solid_value_null_pairing_walks_before_a_held_span`
+  seeds the solid pair from its other side, and the held span still joins
+  after it.
+- **Grain size** is a plan-quality term. Dropping it moves more joins toward
+  RIGHT and adds CTEs in TPC-DS. Part 73 found no plan stand-in for it.
+- **Hosts** is a plan-quality term. Dropping it turns 288 LEFTs into RIGHTs and
+  adds 57 FULLs.
+- **Partial** still decides rows, through a different shape from part 74's.
+  With it dropped, `where reason is null and name is null select name, note,
+  count(order_id) by cust_id` walks `notes` (`~cust_id`) before `customers`.
+  Typing gives `FULL` in both directions (`partial_domain`). Then
+  `narrow_subset_full_join` narrows a FULL only when its *right* is the `~`
+  side and its left holds the whole domain, so `customers FULL notes` becomes
+  LEFT OUTER while `notes FULL customers` stays FULL. The FULL stamps
+  `cust_id` nullable on the merge. The FINAL join then reads both sides as
+  nullable on the key, goes FULL, and keeps a customer the WHERE rejected.
+
+  Mirroring the narrowing (a `~` left source no earlier join padded, beside a
+  right with the key's whole domain, narrows to RIGHT OUTER) fixes those rows:
+  with partial dropped, every soundness case that compares rows holds again.
+  Two `test_rule_fires_and_keeps_rows` pins fail, because the rule no longer
+  fires on an already tight plan. Measured on its own
+  against this PR, the mirror moves 536 tests, removes 115 CTEs and 133,027
+  characters, and adds 243 FULL joins. The FULLs come from the stamp the
+  mirror corrects. After `species RIGHT OUTER trees`, `genus` is partial on
+  the merge (only the genera of the trees' species reach it). The FINAL join
+  between two projections of that one merge
+  (`test_partial_lookup_fallback_oracle_laws`, `test_complete_binding_lookup`)
+  then types `partial_domain` → FULL where it was `nullable` → INNER, though
+  both sides hold the same `~` binding. `_extent_free_join` already knows that
+  two projections of one binding carry no row intent, through `span_bindings`,
+  but only for extent-free spans. So the mirror waits on that rule (part 76).
+
+Suite against `main`: both trees have the same 25 credential-gated failures.
+2,430 tests move (`sqldiff`). Every moved test passes on both trees, and the
+soundness, fallback-oracle and dimension-chain laws compare their rows with
+a raw-row oracle, so the moved plans return the same rows.
+
+**Subset narrowing works in both directions (part 76).** Part 75 found two
+rules whose answer depends on which side the walk joined first. This part
+fixes both.
+
+- `narrow_subset_full_join` narrows a FULL in either direction. A `~` right
+  beside a left source whose every row survives, and which holds the key's
+  whole domain, gives LEFT OUTER as before. Now a `~` left source that no
+  earlier join padded, beside a right holding the key's whole domain, gives
+  RIGHT OUTER. Every stream row then carries that source's key, and the
+  right has a partner for each one. `narrow_join_types` tracks which sources
+  the joins so far have padded, after each join has been narrowed.
+- `_decide_join_type` drops from the partial read any `~` key that both
+  sides bind through the same leaf `~` columns (`_one_binding`). Two
+  projections of one binding cover the same subset, so the `~` carries no row
+  intent between them, and the other rules type the pair. `span_bindings` now
+  covers every `~` key a side binds, not only the extent-free spans that
+  `_extent_free_join` reads it for. Two sides whose `~` comes from different
+  leaf tables are peer facts and stay FULL.
+- `test_a_subset_full_join_narrows_whichever_side_is_joined_first` and
+  `test_two_projections_of_one_subset_binding_pair_as_complete` pin the two
+  rules. Both fail on part 75.
+
+The mirror also corrects a merge's stamps. `species RIGHT OUTER trees` keeps
+every tree and pads nothing on the trees' side, where the FULL had stamped
+`tree_id`, `species` and `dbh` nullable. So the merge's grain reduces to
+`tree_id`. In `test_class_value_beside_partial_lookups` that makes the
+SELECT computing the `fallback_class` label the same relation as the
+final's tree-grain SELECT, and the two become one shared CTE. The label was
+already computed per tree: the old plan evaluated it in the CTE that grouped
+the 7 tree rows. The class *value* is still computed once per species and
+joined back on species, which is what #972 asks for. The pin, renamed
+`test_the_class_value_is_computed_once_per_species`, now checks the CTE
+that reads the class fits, and passes on both trees. That file's plans have
+one more CTE each.
+
+Suite capture against part 75 (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): both
+trees have the same 25 credential-gated failures, and 654 tests move. Over
+the moved tests: INNER +112, LEFT -119, RIGHT -11, FULL -73, CTEs -115,
+`coalesce` -1,059, and 146,939 characters fewer. Most of it is in
+`test_partial_lookup_fallback_oracle_laws` (355 tests, -84 CTEs),
+`test_complete_binding_lookup` (192 tests, 64 LEFTs become INNER), and
+`test_global_fallback_oracle_laws` (18 tests, 36 FULLs become INNER). Every
+moved test passes on both trees, and those law suites compare their rows with
+a raw-row oracle.
+
+With the walk's partial term dropped on top of part 76, the 6 soundness
+cases from part 75 return the right rows. The order is still not neutral,
+though. In `test_derived_key_domain` and `test_total_beside_lookup_gate` (6
+statements) the other order renders a self-join of one CTE without an
+alias, and DuckDB rejects the duplicate name. So the partial term stays.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -2961,7 +3076,13 @@ not built yet:
    side: which of two lefts is kept follows the walk (part 73). The order
    decided rows in one shape, a side preserved past an INNER among the sides
    walked before it. The walk now seeds that side instead, so the nullable
-   term no longer decides rows in the suite (part 74).
+   term no longer decides rows in the suite (part 74), and the walk no longer
+   reads it (part 75). Of the three built-side terms left, grain size and
+   hosting decide only shape, and the shape they pick is the better one. The
+   partial term decided rows through subset narrowing that worked in one
+   direction only. Narrowing now works in both directions, and two
+   projections of one `~` binding pair as complete (part 76). The term still
+   decides whether one self-join renders with an alias.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

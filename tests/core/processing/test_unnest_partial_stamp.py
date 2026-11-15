@@ -110,6 +110,14 @@ def _tree_join(qds: QueryDatasource) -> SourceJoin:
     raise AssertionError("no join on species")
 
 
+def _preserved(join: SourceJoin) -> str:
+    if join.join_type == JoinType.RIGHT_OUTER:
+        return join.right.identifier
+    assert join.join_type == JoinType.LEFT_OUTER, join.join_type
+    pair = next(p for p in join.pairs if p.right.address == "local.species")
+    return pair.node.identifier
+
+
 @pytest.mark.parametrize("extra", ["", SECOND_SOURCE], ids=["one", "two"])
 def test_unnested_dimension_join_preserves_trees(extra: str):
     executor = Dialects.DUCK_DB.default_executor()
@@ -122,8 +130,6 @@ def test_unnested_dimension_join_preserves_trees(extra: str):
     assert "local.tree_eco_region" not in {c.address for c in unnest.partial_concepts}
 
     join = _tree_join(final)
-    trees = join.right.identifier
-    assert trees.startswith(("city_trees", "all_trees")), trees
-    assert join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL)
+    assert _preserved(join).startswith(("city_trees", "all_trees")), join
 
     assert executor.execute_text(QUERY)[-1].fetchall() == [(2,)]
