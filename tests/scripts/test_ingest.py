@@ -1211,6 +1211,24 @@ class TestGrainCandidateRanking:
         )
         assert result[0] == ["call_center_sk"]
 
+    def test_table_identity_beats_another_unique_id(self):
+        # sales_franchises: one supplier per franchise makes supplier_id unique
+        # too, but the table is keyed by its own franchise_id.
+        column_names = ["supplier_id", "franchise_id"]
+        sample_rows = [(10, 1), (11, 2)]
+        penalties = _grain_penalties(
+            "sales_franchises",
+            [
+                _DIALECT.make_table_column("supplier_id", "BIGINT"),
+                _DIALECT.make_table_column("franchise_id", "BIGINT"),
+            ],
+            canonicalize_names(column_names),
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["franchise_id"]
+
     def test_penalty_tiers(self):
         assert _column_grain_penalty("item_sk", DataType.INTEGER, "catalog_returns") > 0
         assert _column_grain_penalty(
@@ -1219,8 +1237,10 @@ class TestGrainCandidateRanking:
         assert _column_grain_penalty(
             "net_paid", DataType.NUMERIC, "catalog_sales"
         ) > _column_grain_penalty("returned_time_sk", DataType.INTEGER, "catalog_sales")
-        # Table's own identity and an id-named column are both non-positive.
-        assert _column_grain_penalty("item_sk", DataType.INTEGER, "item") == 0
+        # Table's own identity outranks an id-named column; both are negative.
+        assert _column_grain_penalty(
+            "item_sk", DataType.INTEGER, "item"
+        ) < _column_grain_penalty("id", DataType.STRING, "reason")
         assert _column_grain_penalty("id", DataType.STRING, "reason") < 0
         # Bare key tokens (prefix-stripped) boost equally, so the tie falls to
         # column order — `reason` stays on `sk`, not `id`.
