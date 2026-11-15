@@ -1191,3 +1191,33 @@ def test_cross_cte_null_rejection_blocked_by_coalesced_projection():
     changed, _ = rule.optimize(producer, inverse_map)
     assert not changed
     assert producer.joins[0].join_type == JoinType.LEFT_OUTER
+
+
+def test_an_inner_join_proves_nothing_about_a_later_join_padding_it():
+    """`a INNER b FULL c`: the INNER's predicate never sees the rows the FULL
+    pads onto `a`, so its proof that `a.key` is non-null forces no `a` row
+    present there; a WHERE on `c` alone keeps them (RIGHT OUTER)."""
+    key = _build_concept("KEY")
+    c_marker = _build_concept("C_MARKER")
+    a_cte = _build_cte("a_source", [key])
+    b_cte = _build_cte("b_source", [key])
+    c_cte = _build_cte("c_source", [key, c_marker])
+    cte = _build_cte("root", [key, c_marker])
+    cte.parent_ctes = [a_cte, b_cte, c_cte]
+    cte.condition = _condition_for(c_marker)
+    cte.joins = [
+        Join(
+            join_type=JoinType.INNER,
+            right=b_cte,
+            pairs=[ConceptPair(left=key, right=key, node=a_cte)],
+        ),
+        Join(
+            join_type=JoinType.FULL,
+            right=c_cte,
+            pairs=[ConceptPair(left=key, right=key, node=a_cte)],
+        ),
+    ]
+
+    UpgradeJoinOnGuards().optimize(cte, {})
+
+    assert cte.joins[1].join_type == JoinType.RIGHT_OUTER

@@ -64,8 +64,12 @@ from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 
 @dataclass
 class _ProofState:
+    """``cte_keys`` maps a (CTE, key) an INNER join's predicate proves
+    non-null to the last such join's index: it rejects the rows any join
+    before it padded, and none of the rows a later join pads."""
+
     direct: set[str]
-    cte_keys: set[tuple[str, str]] = field(default_factory=set)
+    cte_keys: dict[tuple[str, str], int] = field(default_factory=dict)
     or_groups: list[list[set[str]]] = field(default_factory=list)
 
     def direct_intersects(self, addresses: set[str]) -> bool:
@@ -81,17 +85,22 @@ class _ProofState:
             for group in self.or_groups
         )
 
-    def proves_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
-        return address in self.direct or (cte.name, address) in self.cte_keys
+    def proves_after(self, cte: CTE | UnionCTE, address: str, idx: int) -> bool:
+        return self.cte_keys.get((cte.name, address), -1) > idx
 
-    def proves_cte_present(self, cte: CTE | UnionCTE, addresses: set[str]) -> bool:
-        return any((cte.name, address) in self.cte_keys for address in addresses)
+    def proves_cte_key(self, cte: CTE | UnionCTE, address: str, idx: int) -> bool:
+        return address in self.direct or self.proves_after(cte, address, idx)
 
-    def add_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
+    def proves_cte_present(
+        self, cte: CTE | UnionCTE, addresses: set[str], idx: int
+    ) -> bool:
+        return any(self.proves_after(cte, address, idx) for address in addresses)
+
+    def add_cte_key(self, cte: CTE | UnionCTE, address: str, idx: int) -> bool:
         key = (cte.name, address)
-        if key in self.cte_keys:
+        if self.cte_keys.get(key, -1) >= idx:
             return False
-        self.cte_keys.add(key)
+        self.cte_keys[key] = idx
         return True
 
 
@@ -218,13 +227,13 @@ def _downgrade(
 
     def proves_left_key(c: CTE | UnionCTE, address: str) -> bool:
         if address in left_block:
-            return (c.name, address) in proofs.cte_keys
-        return proofs.proves_cte_key(c, address)
+            return proofs.proves_after(c, address, idx)
+        return proofs.proves_cte_key(c, address, idx)
 
     def proves_right_key(address: str) -> bool:
         if address in right_block:
-            return (join.right.name, address) in proofs.cte_keys
-        return proofs.proves_cte_key(join.right, address)
+            return proofs.proves_after(join.right, address, idx)
+        return proofs.proves_cte_key(join.right, address, idx)
 
     # A side is forced present when the WHERE references a concept that only
     # exists on it, or when every join key is proven non-null for the specific
@@ -233,7 +242,7 @@ def _downgrade(
         proofs.direct_intersects(left_only)
         or proofs.side_forced_by_or(left_only)
         or any(
-            proofs.proves_cte_present(left_cte, output_addresses(left_cte))
+            proofs.proves_cte_present(left_cte, output_addresses(left_cte), idx)
             for left_cte in left_ctes
         )
         or (bool(pairs) and all(proves_left_key(p.node, p.left.address) for p in pairs))
@@ -241,7 +250,7 @@ def _downgrade(
     right_forced = (
         proofs.direct_intersects(right_only)
         or proofs.side_forced_by_or(right_only)
-        or proofs.proves_cte_present(join.right, right_all)
+        or proofs.proves_cte_present(join.right, right_all, idx)
         or (bool(pairs) and all(proves_right_key(p.right.address) for p in pairs))
     )
 
@@ -291,7 +300,7 @@ def _lineage_proofs(cte: CTE, condition: BoolExpr, proofs: set[str]) -> set[str]
     return out
 
 
-def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
+def _add_inner_join_key_proofs(join: Join, idx: int, proofs: _ProofState) -> bool:
     """Propagate only key non-nullness proven by rendered INNER predicates."""
     changed = False
     for pairs in coalesced_key_groups(join.pairs or []):
@@ -299,14 +308,15 @@ def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
         if len(left_ctes) > 1:
             # Renders as COALESCE(left1, left2, ...) = right, which proves the
             # right key but no individual left key.
-            changed = proofs.add_cte_key(join.right, pairs[0].right.address) or changed
+            right = pairs[0].right.address
+            changed = proofs.add_cte_key(join.right, right, idx) or changed
             continue
 
         pair = pairs[0]
         if pair_matches_nulls(pair, join.modifiers):
             continue
-        changed = proofs.add_cte_key(pair.node, pair.left.address) or changed
-        changed = proofs.add_cte_key(join.right, pair.right.address) or changed
+        changed = proofs.add_cte_key(pair.node, pair.left.address, idx) or changed
+        changed = proofs.add_cte_key(join.right, pair.right.address, idx) or changed
     return changed
 
 
@@ -549,10 +559,10 @@ class UpgradeJoinOnGuards(OptimizationRule):
         while True:
             proof_changed = False
             join_changed = False
-            for join in cte.joins or []:
+            for idx, join in enumerate(cte.joins or []):
                 if isinstance(join, Join) and join.join_type == JoinType.INNER:
                     proof_changed = (
-                        _add_inner_join_key_proofs(join, proofs) or proof_changed
+                        _add_inner_join_key_proofs(join, idx, proofs) or proof_changed
                     )
 
             for idx, join in enumerate(cte.joins or []):
@@ -573,7 +583,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
                 )
                 join.join_type = target
                 if target == JoinType.INNER:
-                    _add_inner_join_key_proofs(join, proofs)
+                    _add_inner_join_key_proofs(join, idx, proofs)
                 join_changed = True
 
             if not proof_changed and not join_changed:
