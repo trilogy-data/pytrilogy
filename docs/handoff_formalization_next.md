@@ -75,7 +75,9 @@ another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
 family from 127 wrong rows to 5; 0.3.495 to 0.3.499 sweep seeds 10,000-60,000;
 area 1; 0.3.503 clears the four sweep answers 0.3.502 left, sweeps the first
-family to 90,000, and settles every pass-cap query; lesson 45).
+family to 90,000, and settles every pass-cap query; lesson 45; 0.3.504
+sweeps both families to 150,000 and fixes the five answers main gets wrong or
+raises on there; lesson 46).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -989,6 +991,50 @@ does not rewrite it; that rewrite is open.
       final branch (no wrong answer, raise or pass-cap hit).
     - The Lean toolchain is at `~/.elan` (v4.35.0 installed), so `lake build`
       runs in the cloud container even though `elan show` reports no default.
+
+46. **Lessons from the 90k-150k round (0.3.504).**
+    - Sweep `--ref origin/main` over the new range first, before touching the
+      planner: it fills main's cache for the A/B and lists the round's leads
+      (spellings: 2 wrong, 2 raising; first family: 1 wrong, of 240,000
+      queries). Then reduce each to the fewest ingredients that still fail
+      (`select tree_id, city as v0, max(height ? max(height) by city, species
+      >= 10) having max(height) by city, species < 5` raises; `city` in place
+      of `v0` plans).
+    - Read the cover before the joins when a select returns keys the WHERE
+      rejected. Print `elect_cover`'s winners per concept (patch it in a
+      scratchpad, as `strategy_builder` imports it): in spellings 103208 the
+      keys came off the filtered group, but the `by *` total came off the `?`
+      filter's row stream, and the FINAL's join onto that stream brought every
+      key back. A total is now read off a one-row group whenever the stream
+      skipped an atom that holds on an absent group
+      (`SelectGrain.total_off_row_stream_keeps_rejected`).
+    - A rename is the grain it names everywhere grains are compared, not only
+      in `at_own_grain`. `_rolls_up_from` compared raw addresses, so `by
+      species, v0` looked strictly coarser than `by city, species` and the
+      HAVING's aggregate was planned as a re-aggregate of its own twin, a
+      GroupNode that renders nothing (`Rollup.renamed_grain_same_groups`).
+    - A group that builds nothing must fail before its readers do. In 131836
+      the root row stream (row columns beside a summary-rolled `max(height) by
+      tree_form`) could not be sourced, the `?` filter was built from its other
+      parents alone, and the keyless join that followed raised before
+      `_raise_if_unbuilt_group_owed` ran, so `_search_concepts` never fell
+      back. The check now runs per reader, before it is built. The fallback
+      reads the trees; sourcing that root from the summary is a lead.
+    - The root partition splits roots whose lineage never meets into separate
+      scans, and the WHERE's columns go with only one of them. A scan-filtered
+      root (a summary-rolled aggregate the WHERE filters below its grain) must
+      share the scan that hosts the WHERE: first family 93841 read every city
+      for `min(min(height) by tree_form)` beside `max(min(height) by city)`
+      (`Rollup.split_scan_reads_every_row`). Merged, both read one filtered
+      summary scan, where main read two.
+    - `test_volatile_operand_drawn_once[SQLITE]` can fail on a rare draw: the
+      SQLite float text takes 15 digits only when `printf('%!.15e')` reads back
+      exactly, and on CI's SQLite one draw printed 17. It is unseeded, so the
+      failure is not reproducible on demand; it is a `Writings.lean` lead.
+    - Spellings 0-150,000 x 2 models (300,000 queries): main 4 wrong and 3
+      raising, the branch none; nothing broken; summary reads 53,597 on both
+      sides; scans +3; JOINs 815,939 to 816,002 (23 seeds more, 7 fewer, from
+      totals now read off their own row).
 
 ## Candidate areas
 
