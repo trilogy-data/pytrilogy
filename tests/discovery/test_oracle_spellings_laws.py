@@ -360,6 +360,12 @@ FOUND_SEEDS_501 = [
 ]  # fmt: skip
 
 
+# seeds 0.3.502 read the summary on (38477, 67126: a rolled total the plan
+# cannot place falls back alone) or would pad a NULL row on (69075, 70914,
+# 71062: a one-row total joined FULL onto empty rows)
+FOUND_SEEDS_502 = [38477, 67126, 69075, 70914, 71062]
+
+
 def _seed(seed: int):
     if seed in OPEN:
         return pytest.param(
@@ -383,6 +389,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_499,
             *FOUND_SEEDS_500,
             *FOUND_SEEDS_501,
+            *FOUND_SEEDS_502,
             *OPEN,
             8920,
         )
