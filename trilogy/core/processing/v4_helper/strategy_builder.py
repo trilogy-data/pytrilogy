@@ -2616,13 +2616,22 @@ def _widen_scan_chain(
     return True
 
 
+# Values read off the set of rows they are computed over, not one row.
+_ROW_SET_VALUES = (Derivation.WINDOW, Derivation.AGGREGATE)
+
+
 def _computes_barrier(concept: BuildConcept, available: set[str]) -> bool:
     """A projection only passes a window or aggregate through: computed there,
     it reads that node's rows (a rank over a scan's raw rows, not the
-    statement's), so it must already be a column of its inputs."""
+    statement's), so it must already be a column of its inputs. A row
+    expression over such a column (`case when s.q > 10`) is computed there."""
     if concept.address in available or concept.pseudonyms & available:
         return False
-    return lineage_crosses_row_shape_barrier(concept)
+    if concept.derivation in _ROW_SET_VALUES:
+        return True
+    return any(
+        _computes_barrier(arg, available) for arg in row_lineage_arguments(concept)
+    )
 
 
 def _widen_below(
