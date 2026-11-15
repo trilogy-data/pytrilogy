@@ -877,6 +877,24 @@ does not rewrite it; that rewrite is open.
       peel's carry demand to keys its own keys determine) was covered by
       counting a peel's short pairing as underkeyed, and was dropped.
 
+43. **Lessons from the lost-reads round (0.3.502).**
+    - A sweep's "summary reads lost" is not a cost by itself. Count the fact
+      scans and JOINs of each lost seed on both sides: of 46, 24 read the
+      summary BESIDE the same trees scan, and the newer plan was cheaper.
+      Only the seeds whose trees scans grew were real losses.
+    - Ablate per lost seed, not per change: one table (change x seed) split
+      the 46 into a planner change that cost nothing, a decomposition change,
+      and a group no single change restored, which was a gap the parser fix
+      had exposed (the opaque atom had re-sourced the total through a nested
+      search).
+    - A one-row group joined on nothing must be INNER. The keyless FULL is
+      right between two row-bearing islands, but beside a one-row total it
+      pads a NULL row whenever the rows are empty, so a summary read that
+      plans can still be a wrong answer: run the oracle on what the
+      efficiency change newly plans (3 seeds of 90,000 caught it).
+    - A sweep that reuses one executor slows ~5x by seed 20,000 (each select
+      defines concepts, lesson 41); clear it every 500 seeds.
+
 ## Candidate areas
 
 **Done in 0.3.476: a rendering evaluates its operand once (`Sharing.lean`;
@@ -1619,6 +1637,25 @@ a filter its grain does not determine. Open questions:
   raising, the branch none; nothing broken; JOINs 498,295 to 499,208 (+0.18%);
   summary reads 29,285 to 29,449 (210 gained, 46 lost). Left: no known wrong
   or raising seed in 0-90,000.
+- Done in 0.3.502, from 0.3.501's 46 lost summary reads: a total over every
+  row (a WHERE's `agg(x) by *`, or any total of a select with no WHERE) is
+  rolled up from the summary in its own one-row group
+  (`Rollup.total_gate_from_summary`; `_total_rolls_up`), cross-joined at
+  FINAL when each atom reading it reads only one-row values; a keyless join
+  onto a one-row side is INNER (`SideFacts.one_row`); a rolled total the plan
+  cannot place falls back alone (`_search_concepts`). Spellings seeds
+  0-90,000 x 2 models: summary reads 29,452 to 32,196 (none lost), JOINs
+  499,248 to 497,114, nothing wrong or raising. Left:
+  - a WHERE total beside a value at another grain in ONE atom (`max(height)
+    by * > sum(height) by city`) still reads the trees: the atom is placed on
+    the rows, and a rooted total there is outside the main lineage;
+  - a select total under a WHERE (rule 4 in `test_summary_cover_laws.py`)
+    still reads the trees; it is filtered, so it rolls up only where the
+    WHERE holds at the summary grain;
+  - 24 seeds read the summary on 0.3.500 and not since 0.3.501, all with the
+    same trees scans and as many or fewer JOINs (the summary there was read
+    beside the trees, not in place of them); 4 gate on `avg`/`count_distinct`
+    totals, which do not roll up.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
 
