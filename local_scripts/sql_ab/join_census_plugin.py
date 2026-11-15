@@ -76,8 +76,12 @@ def pytest_configure(config) -> None:
             return resolved(datasources, *a, **k)
         planned = frozenset().union(*pairs.values())
         # what resolve picks unrestricted, beside what the plan states
-        shadow = resolved(datasources, *a, **{**k, "planned_pairs": None})
         environment = k["environment"]
+        shadow = resolved(
+            datasources,
+            *a,
+            **{**k, "planned_pairs": _every_shared(datasources, environment)},
+        )
         node = jc.CURRENT_MERGE[-1] if jc.CURRENT_MERGE else None
         plan, pairings = plans.get(id(node), (None, None))
         actual = {
@@ -124,6 +128,25 @@ def pytest_configure(config) -> None:
         return resolved(datasources, *a, **k)
 
     jc.mn.get_node_joins = get_node_joins
+
+
+def _visible(datasource, roots: dict[str, str]) -> frozenset[str]:
+    return frozenset(
+        roots.get(c.address, c.address)
+        for c in datasource.output_concepts
+        if c.address not in datasource.hidden_concepts
+    )
+
+
+def _every_shared(datasources, environment) -> dict[frozenset[str], frozenset[str]]:
+    """Resolve no longer runs without a plan: pairing every two sides on every
+    class they share is the unrestricted choice."""
+    roots = environment.address_roots()
+    return {
+        frozenset({a.identifier, b.identifier}): _visible(a, roots) & _visible(b, roots)
+        for i, a in enumerate(datasources)
+        for b in datasources[i + 1 :]
+    }
 
 
 @pytest.hookimpl(hookwrapper=True)
