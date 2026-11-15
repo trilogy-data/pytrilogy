@@ -10,7 +10,12 @@ from enum import Enum
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, Derivation
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    Derivation,
+    Granularity,
+)
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
     UnresolvableQueryException,
@@ -1765,7 +1770,10 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     if (
         mandatory_list
         and candidates
-        and _output_is_rootless(mandatory_list)
+        and (
+            _output_is_rootless(mandatory_list)
+            or all(c.granularity == Granularity.SINGLE_ROW for c in atom.row_arguments)
+        )
         and all(gid not in main_lineage for gid in candidates)
     ):
         out.append(
