@@ -920,7 +920,7 @@ does not rewrite it; that rewrite is open.
       for those; the committed suites share an executor and cover it too.
     - The first full run on clean models found two wrong answers on main
       that no earlier sweep reported, each wrong on a fresh executor and on
-      both models. Both are open:
+      both models. Both are fixed in 0.3.503 (lesson 45):
       - spellings 38273: `select city, species, tree_form,
         count_distinct(tag) by species as v0 where max(height) by city,
         tree_form != 10` returns a `(B, Quercus)` row no tree has;
@@ -931,6 +931,44 @@ does not rewrite it; that rewrite is open.
     - Iterate on a slice, then confirm on the range: `--seeds @file` replays
       only the seeds the last diff named (seconds), and `show <seed>` prints
       one seed's query, oracle rows and SQL for both models.
+
+45. **Lessons from the widened-join round (0.3.503).**
+    - A join type has two authors. `get_join_type` decides each pair, then
+      `ensure_content_preservation` widens later joins to keep the rows an
+      earlier LEFT/RIGHT/FULL padded, and only then do the narrowing passes
+      run. A narrowing that turns the earlier join INNER removes the reason
+      for the widening but not the widening (spellings 38273: the
+      `(city, species)` pairs the trees hold stayed LEFT behind a gate join
+      the WHERE proved present, and a pair no tree has came back). A join
+      now remembers its own type (`own_type`) and takes it back once nothing
+      before it pads (`restore_unpadded_joins`). When a plan keeps a row it
+      should not, print the join list after each step of the merge's
+      narrowing sequence (`_cap_lookup_joins` to `narrow_keyless_joins`):
+      here the type was wrong before narrowing started.
+    - "Grand totals joined only to each other stay outer" is a rule about
+      the select's own totals. A `by *` total only the WHERE reads holds a
+      row whether or not the WHERE keeps any, so beside the select's total it
+      padded the missing group and the count's zero fill returned `(0,)`
+      (first family 5328). It is now a one-row side, never a total of the
+      select (`MergeNode._gate_sources`), and that holds for a re-sum of a
+      summary's stored counts too, which `single_row_source` does not claim
+      (first 84194, which only the wider sweep reached).
+    - Sweep the first family past 20,000. Seeds 20,000-90,000 had never run:
+      one more wrong answer (84194) and one raise on main (74021, a FINAL
+      re-applying a row atom it had no key for, after copies of the atom
+      already filtered every grouping its host skipped;
+      `_drop_covered_final_reapplies`).
+    - The pass-cap warning in a sweep's log is a fixpoint bug, not noise. 50
+      spellings queries hit `MAX_OPTIMIZATION_PASSES`; the committed suites
+      raise on it (`enforce_fixpoint_contract`) but the sweep logs it. Two
+      seeds (2936, 4849) traced to pushdown reporting a change it did not
+      make: a parenthesized conjunction is one candidate but two AND-atoms in
+      the parent's WHERE (`Fixpoint.conjunction_reported_as_new`). To find
+      them, patch `optimization._nonconvergence` and replay the range; to read
+      one, log which pushdown method returned True with the parent's WHERE
+      before and after.
+    - The Lean toolchain is at `~/.elan` (v4.35.0 installed), so `lake build`
+      runs in the cloud container even though `elan show` reports no default.
 
 ## Candidate areas
 
