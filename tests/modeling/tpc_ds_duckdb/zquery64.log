@@ -206,8 +206,8 @@ SELECT
     \"rambunctious\".\"agg_00_s3_00\" as \"agg_00_s3_00\",
     \"rambunctious\".\"agg_00_syear_00\" as \"agg_00_syear_00\"
 FROM
-    \"puzzled\"
-    INNER JOIN \"rambunctious\" on \"puzzled\".\"ss_item_sk\" = \"rambunctious\".\"agg_00_item_sk_00\" AND \"puzzled\".\"ss_store_sk\" = \"rambunctious\".\"agg_00_store_sk_00\"
+    \"rambunctious\"
+    INNER JOIN \"puzzled\" on \"rambunctious\".\"agg_00_item_sk_00\" = \"puzzled\".\"ss_item_sk\" AND \"rambunctious\".\"agg_00_store_sk_00\" = \"puzzled\".\"ss_store_sk\"
 WHERE
     \"rambunctious\".\"agg_00_cnt_00\" <= \"puzzled\".\"agg_99_cnt_99\"
 )
