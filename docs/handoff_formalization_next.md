@@ -985,10 +985,8 @@ does not rewrite it; that rewrite is open.
       spellings (3,012 queries fewer, 134 more, where a row atom copied onto
       each grouping joins its gate value there instead of once at FINAL) and
       363,034 to 359,460 on the first family (1,993 fewer, none more).
-      `--carry-state` over the first family 0-90,000 finds nothing on the
-      final branch; over the spellings it found nothing midway through the
-      round (before the FINAL re-application and containment changes) and
-      was not rerun.
+      `--carry-state` over both families, 0-90,000, finds nothing on the
+      final branch (no wrong answer, raise or pass-cap hit).
     - The Lean toolchain is at `~/.elan` (v4.35.0 installed), so `lake build`
       runs in the cloud container even though `elan show` reports no default.
 
