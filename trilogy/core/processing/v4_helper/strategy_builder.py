@@ -493,7 +493,10 @@ class _CleanFeederCache:
 
     def _build(self, group: tuple[BuildConcept, ...]) -> StrategyNode | None:
         # Imported lazily: `concept_strategies_v4` imports this module's package.
-        from trilogy.core.processing.concept_strategies_v4 import search_concepts
+        from trilogy.core.processing.concept_strategies_v4 import (
+            lineage_sourceable,
+            search_concepts,
+        )
 
         v4_history = self._history
         addresses = {concept.address for concept in group}
@@ -502,8 +505,16 @@ class _CleanFeederCache:
             # only shape the feeder's grain. A tuple must not be widened; an
             # extra column would change which rows the subselect projects. Nor
             # a filter: shown alone its predicate narrows the rows, where
-            # beside a key it is a CASE whose NULL would be a member.
-            addresses |= set(group[0].keys or set())
+            # beside a key it is a CASE whose NULL would be a member. Nor by a
+            # key no plan sources: a stored set whose inputs are unbound.
+            addresses |= {
+                key
+                for key in group[0].keys or set()
+                if key in self._environment.concepts
+                and lineage_sourceable(
+                    self._environment.concepts[key], self._environment, set()
+                )
+            }
         search = [
             self._environment.concepts[address]
             for address in sorted(addresses)

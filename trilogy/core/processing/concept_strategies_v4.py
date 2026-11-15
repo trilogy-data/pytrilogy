@@ -96,6 +96,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     strict_fd_closure,
     strict_fd_determines,
 )
+from trilogy.core.processing.v4_helper.projection import lineage_existence_parts
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
 from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
@@ -257,7 +258,7 @@ def _scan_rows_at_grain(
     )
 
 
-def _lineage_sourceable(
+def lineage_sourceable(
     concept: BuildConcept, environment: BuildEnvironment, seen: set[str]
 ) -> bool:
     """Some plan can produce `concept`: a datasource binds it, or every leaf
@@ -270,7 +271,7 @@ def _lineage_sourceable(
         return True
     seen.add(concept.address)
     return all(
-        _lineage_sourceable(
+        lineage_sourceable(
             environment.concepts.get(arg.address) or arg, environment, seen
         )
         for arg in concept.lineage.concept_arguments
@@ -396,7 +397,7 @@ def _binding_only_roots(
         ]
         if (
             concept.canonical_address in environment.materialized_canonical_concepts
-            and not all(_lineage_sourceable(arg, environment, set()) for arg in args)
+            and not all(lineage_sourceable(arg, environment, set()) for arg in args)
             and _column_reproduces(concept, environment, datasources, where)
         ):
             out.add(concept.address)
@@ -410,6 +411,12 @@ def _binding_only_roots(
                 environment.concepts.get(c.address) or c
                 for c in upstream_concepts(concept, environment)
             )
+        # a membership's set (`x ? y in big`) is off the row lineage
+        stack.extend(
+            environment.concepts[address]
+            for address in lineage_existence_parts(concept)[0]
+            if address in environment.concepts
+        )
     return out
 
 
@@ -479,7 +486,17 @@ def materialized_root_addresses(
             for arg in origin.lineage.concept_arguments:
                 if isinstance(arg, BuildConcept):
                     candidates.append(environment.concepts.get(arg.address) or arg)
-    out = _binding_only_roots(candidates, environment, datasources, where)
+    # An existence source (`y in big`) is read as a set, so only a column that
+    # is its sole source matters; the grain gates below are about row counts.
+    existence_args = [
+        environment.concepts.get(arg.address) or arg
+        for clause in conditions
+        for group in clause.existence_arguments
+        for arg in group
+    ]
+    out = _binding_only_roots(
+        candidates + existence_args, environment, datasources, where
+    )
     row_grain = _expression_reduced_grain(
         _keyed_grain(target_grain, environment), environment
     )

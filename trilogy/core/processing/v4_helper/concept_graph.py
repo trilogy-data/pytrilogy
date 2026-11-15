@@ -2698,9 +2698,11 @@ def build_concept_graph(
     # the existence-only args from the filter's lineage; here each source is
     # walked under the filter node's label and wired with an `existence` edge
     # to the filter so it lands in its own group and renders as `... IN
-    # (SELECT src FROM <cte>)`. The source is walked as written, with no
-    # materialized roots or pinned probes.
-    existence_walk = _Walk(environment, graph, edges, attrs, datasources)
+    # (SELECT src FROM <cte>)`. The source is walked as written, but a stored
+    # set (`big` bound beside unbound inputs) still reads as a root.
+    existence_walk = _Walk(
+        environment, graph, edges, attrs, datasources, materialized_roots
+    )
     for nid in list(graph.nodes):
         fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
