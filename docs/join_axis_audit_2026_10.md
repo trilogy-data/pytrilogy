@@ -3356,7 +3356,30 @@ row, beside the 25 credential-gated tests. Each fix has a test that runs
 under the default walk and under each reversed spelling
 (`flip_walk_spelling`). The five that compare rows fail on `main`.
 
-SUITE_CAPTURE
+Suite capture against `main` at `de73028` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures.
+The only other outcome change is a Rust-binary test that skips on one tree
+(listed noise). 692 tests move. The 110 whose joins or `coalesce` calls
+change add up to INNER -4, LEFT +12, RIGHT -4, FULL -4, null-safe pairs
+-12, `coalesce` +252, and no CTE. The rest are column order, CTE names and
+the listed noise.
+
+- Part 85 accounts for almost all the `coalesce`s. A column that two FULL
+  sides carry now reads both (`test_rank_beside_partial_merge` 27 tests,
+  `test_global_fallback_oracle_laws` 15, the dimension-chain oracle 14,
+  `test_padded_population_gate` 6, `test_dashboard_queries` 8).
+- Part 84 narrows the FULLs a second subset member was left with to LEFT
+  OUTER (`test_three_source_scoped_outer_join`,
+  `test_subset_rowset_anchor_rows`, `test_subset_join_between_rowsets`).
+- Part 87 leaves a few joins at the LEFT OUTER they were widened to, where
+  `main` restored an INNER typed against a pruned left. That is 8
+  `test_oracle_spellings_laws` cases, 2 `test_rule_soundness_laws` cases
+  and one 60k gate.
+- `test_two_namespace_import_merge_hidden_output`: 2 RIGHT OUTERs become
+  INNER, and 12 null-safe pairs become `=` pairs over a coalesce.
+
+Every moved test passes on both trees, and the oracle laws among them
+compare rows against raw SQL.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
