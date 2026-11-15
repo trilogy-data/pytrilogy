@@ -686,11 +686,14 @@ def _coarse_rolls_up(
 def coarser_than_rows(
     concept: BuildConcept, target: set[str], environment: BuildEnvironment
 ) -> bool:
-    """An aggregate whose grain keys do not determine the select's rows."""
+    """An aggregate grouped by a strict subset of the select's row keys that
+    does not determine them: a grain off the rows' keys (`by tree_form` beside
+    `tree_id`) has no row to join back on."""
     grain = set(concept.grain.components) if concept.grain else set()
     return (
         concept.derivation == Derivation.AGGREGATE
         and bool(grain)
+        and grain < target
         and not target <= set(strict_fd_closure(environment, grain))
     )
 
