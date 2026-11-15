@@ -2055,6 +2055,8 @@ a design decision or a bug.
     now shares the WHERE's scan, so both read one filtered summary scan.
   Spellings seeds 0-150,000 x 2 models: main 4 wrong and 3 raising, the
   branch none; nothing broken; no summary read lost; JOINs +63 of 816,002.
+  First family 0-150,000: main 1 wrong, the branch none, the same reads,
+  scans and JOINs.
 
 ## Limits
 

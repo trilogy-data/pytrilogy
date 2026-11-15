@@ -1034,7 +1034,9 @@ does not rewrite it; that rewrite is open.
     - Spellings 0-150,000 x 2 models (300,000 queries): main 4 wrong and 3
       raising, the branch none; nothing broken; summary reads 53,597 on both
       sides; scans +3; JOINs 815,939 to 816,002 (23 seeds more, 7 fewer, from
-      totals now read off their own row).
+      totals now read off their own row). The first family, 0-150,000 x 2
+      models: main 1 wrong, the branch none; summary reads, scans and JOINs
+      unchanged (598,046 on both sides).
 
 ## Candidate areas
 
