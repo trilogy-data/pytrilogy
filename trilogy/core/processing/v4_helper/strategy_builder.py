@@ -7825,6 +7825,15 @@ def build_strategy_node(
         if gid == FINAL_NODE_ID or gid in folds.inlined:
             continue
         plan_trace.set_context(gid)
+        # a reader built without a parent that owed it rows fails on the
+        # missing rows, not on the parent (a keyless join, say): raise the
+        # cause, which `_search_concepts` falls back from
+        _raise_if_unbuilt_group_owed(
+            group_graph,
+            attrs,
+            built,
+            {p: unbuilt[p] for p in group_graph.predecessors(gid) if p in unbuilt},
+        )
         a = attrs[gid]
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below. A region

@@ -1003,6 +1003,32 @@ def _selected_readers(
     }
 
 
+def _holds(
+    members: list[NodeItem],
+    concept_attrs: dict[str, ConceptAttrs],
+    test: Callable[[ConceptAttrs], bool],
+) -> bool:
+    return any(test(concept_attrs[node]) for node, _ in members)
+
+
+def _filtered_scans_with_filter_columns(
+    components: list[list[NodeItem]], concept_attrs: dict[str, ConceptAttrs]
+) -> list[list[NodeItem]]:
+    """A scan-filtered root reads the WHERE on its own scan, so it is sourced
+    with the WHERE's row columns: split from them, its scan hosts no atom and
+    reads every row (`min(min(height) by tree_form)` beside `min(min(height)
+    by city)` under `city = 'A'`)."""
+    filtered = [_holds(m, concept_attrs, lambda a: a.scan_filtered) for m in components]
+    filters = [_holds(m, concept_attrs, lambda a: a.where_row_arg) for m in components]
+    if not any(f and not w for f, w in zip(filtered, filters)):
+        return components
+    merged = [m for m, f, w in zip(components, filtered, filters) if f or w]
+    if len(merged) < 2:
+        return components
+    rest = [m for m, f, w in zip(components, filtered, filters) if not (f or w)]
+    return [[item for members in merged for item in members], *rest]
+
+
 def partition_roots(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -1086,6 +1112,9 @@ def partition_roots(
                 )
             )
 
+        component_groups = _filtered_scans_with_filter_columns(
+            component_groups, concept_attrs
+        )
         kind = "split" if len(component_groups) > 1 else None
         buckets += [
             _component_bucket(label_value, members, kind)

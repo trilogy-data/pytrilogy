@@ -333,10 +333,15 @@ FOUND_SEEDS = [
 # (5328; 84194 a re-sum of the summary's counts); a row atom copied onto every
 # grouping its host skips is not re-applied at FINAL (74021, raised)
 FOUND_SEEDS_503 = [5328, 74021, 84194]
+# seeds 0.3.504 fixed: a summary-rolled root split from the WHERE's columns read
+# every row (93841)
+FOUND_SEEDS_504 = [93841]
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
-@pytest.mark.parametrize("seed", [*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_503])
+@pytest.mark.parametrize(
+    "seed", [*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_503, *FOUND_SEEDS_504]
+)
 def test_select_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape(seed)
     try:

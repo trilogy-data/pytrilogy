@@ -751,8 +751,9 @@ def _rolls_up_from(
     drops passes the guard a summary's dropped grain does."""
     if fine.rollup_signature != coarse.rollup_signature:
         return False
-    fine_grain = set(_grain_identity(fine.grain))
-    coarse_grain = set(_grain_identity(coarse.grain))
+    # through renames: `by species, v0` with `city as v0` is `by city, species`
+    fine_grain = set(_grain_identity(fine.grain, concepts_by_address))
+    coarse_grain = set(_grain_identity(coarse.grain, concepts_by_address))
     if not fine_grain or fine_grain == coarse_grain:
         return False
     if not _grain_reaches(coarse_grain, fine_grain, concepts_by_address):
