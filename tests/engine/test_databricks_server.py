@@ -161,3 +161,17 @@ partition by sold;
     assert executor.execute_raw_sql(
         f"select sold, total from {DAILY} order by sold"
     ).fetchall() == [(date(2024, 1, 1), 10.0), (date(2024, 1, 2), 12.5)]
+
+
+def test_table_primary_keys(executor: Executor):
+    pk_table = f"trilogy_pk_{SUFFIX}"
+    executor.execute_raw_sql(
+        f"CREATE TABLE {pk_table} (a BIGINT NOT NULL, b BIGINT NOT NULL, c STRING,"
+        f" CONSTRAINT {pk_table}_pk PRIMARY KEY (b, a))"
+    )
+    try:
+        dialect = executor.generator
+        assert dialect.get_table_primary_keys(executor, pk_table) == ["b", "a"]
+        assert dialect.get_table_primary_keys(executor, SALES) == []
+    finally:
+        executor.execute_raw_sql(f"DROP TABLE IF EXISTS {pk_table}")
