@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
+    BuildParenthetical,
     BuildRowsetItem,
 )
 from trilogy.core.models.execute import (
@@ -282,6 +283,13 @@ def condition_contains_atom(atom: object, condition: object | None) -> bool:
         return False
     if condition == atom:
         return True
+    # a parenthesized conjunction is held when each of its conjuncts is
+    if isinstance(atom, BuildParenthetical):
+        return condition_contains_atom(atom.content, condition)
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        return condition_contains_atom(
+            atom.left, condition
+        ) and condition_contains_atom(atom.right, condition)
     if (
         isinstance(condition, BuildConditional)
         and condition.operator == BooleanOperator.AND

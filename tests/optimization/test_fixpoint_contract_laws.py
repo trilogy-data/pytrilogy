@@ -123,3 +123,20 @@ def test_grain_reads_determinants_once(monkeypatch: pytest.MonkeyPatch):
     )
     assert build.BuildGrain.from_concepts(concepts).components == {"local.id"}
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select tree_id, species, count_distinct(tag) by species as v0 where species in ('Acer', 'Ulmus') having (max(height) by city, species != 3 and species != 'Tilia') and min(height) by city, species = 6;",
+        "select tree_id, species, max(height) by city, species as v0 where city = 'B' having (v0 > 6 and count(tree_id) by city, species <= 6) and sum(height) by city, tree_form = 10;",
+    ],
+)
+def test_held_conjunction_is_not_pushed_again(query: str):
+    """`Fixpoint.conjunction_reported_as_new`: a parenthesized HAVING conjunction
+    whose atoms a parent already holds settles; it raised at the pass cap."""
+    from tests.discovery.test_rollup_resolution_laws import BASE, SUMMARY
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(BASE + SUMMARY)
+    assert executor.generate_sql(query)[-1]
