@@ -524,7 +524,14 @@ def materialized_root_addresses(
             out.add(concept.address)
             continue
         if not exact and _coarse_rolls_up(
-            concept, condition_only, target_grain, where, environment, datasources, unions
+            concept,
+            condition_only,
+            mandatory_list,
+            target_grain,
+            where,
+            environment,
+            datasources,
+            unions,
         ):
             out.add(concept.address)
             continue
@@ -638,24 +645,73 @@ def _total_rolls_up(
 def _coarse_rolls_up(
     concept: BuildConcept,
     condition_only: bool,
+    mandatory_list: list[BuildConcept],
     target_grain: BuildGrain,
     where: BuildWhereClause | None,
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
     unions: Sequence[BuildUnionDatasource],
 ) -> bool:
+    """An aggregate `by` keys strictly coarser than the select's rows is
+    re-aggregated from a summary at its own grain and joined back on it
+    (`Rollup.coarse_resum_joined_on_its_grain`), not computed off the rows. Not
+    under a WHERE, which filters the rows it reads, nor beside a select value
+    that reads it or an aggregate at the select's rows, which groups by it, so
+    it must ride the rows."""
     if condition_only or where is not None or not _is_rollable_aggregate(concept):
         return False
     if not isinstance(concept.lineage, BuildAggregateWrapper) or not concept.lineage.by:
         return False
-    grain = set(concept.grain.components) if concept.grain else set()
-    if not grain or not grain < set(target_grain.components):
+    target = set(target_grain.components)
+    if not coarser_than_rows(concept, target, environment):
+        return False
+    if any(
+        _reads_beside(other, concept, target, environment) for other in mandatory_list
+    ):
         return False
     keys = [environment.concepts.get(c.address) or c for c in concept.lineage.by]
     return bool(
         _rollup_sources(
-            concept, [concept, *keys], concept.grain, None, environment, datasources, unions
+            concept,
+            [concept, *keys],
+            concept.grain,
+            None,
+            environment,
+            datasources,
+            unions,
         )
+    )
+
+
+def coarser_than_rows(
+    concept: BuildConcept, target: set[str], environment: BuildEnvironment
+) -> bool:
+    """An aggregate whose grain keys do not determine the select's rows."""
+    grain = set(concept.grain.components) if concept.grain else set()
+    return (
+        concept.derivation == Derivation.AGGREGATE
+        and bool(grain)
+        and not target <= set(strict_fd_closure(environment, grain))
+    )
+
+
+def _reads_beside(
+    other: BuildConcept,
+    concept: BuildConcept,
+    target: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """`other` reads `concept`, or is an aggregate at the select's rows, which
+    a plan groups by every value the select holds, `concept` included."""
+    if other.address == concept.address or other.lineage is None:
+        return False
+    if other.derivation == Derivation.AGGREGATE and not coarser_than_rows(
+        other, target, environment
+    ):
+        return True
+    return any(
+        c.address == concept.address
+        for c in walk_lineage([other], descend=lambda c: c.address != concept.address)
     )
 
 
@@ -910,16 +966,13 @@ def coarse_rolled_roots(
     materialized_roots: frozenset[str],
     environment: BuildEnvironment,
 ) -> frozenset[str]:
-    """Aggregate roots at a grain strictly coarser than the select's rows."""
+    """Aggregate roots at a grain coarser than the select's rows
+    (`ConceptAttrs.coarse_rolled`)."""
     target = set(BuildGrain.from_concepts(mandatory_list).components)
     return frozenset(
         c.address
         for c in mandatory_list
-        if c.address in materialized_roots
-        and c.derivation == Derivation.AGGREGATE
-        and c.grain is not None
-        and c.grain.components
-        and set(c.grain.components) < target
+        if c.address in materialized_roots and coarser_than_rows(c, target, environment)
     )
 
 

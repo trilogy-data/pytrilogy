@@ -23,21 +23,27 @@ from tests.discovery.test_oracle_sweep_laws import executor, normalize
 CASES = [
     # spellings 185026, reduced: wrong rows on both models
     (
-        "select tree_id, count(tree_id) by city, tree_form as v0, tag as v1 where"
-        " not (min(height) by species != count_distinct(tag) by tree_form);",
+        (
+            "select tree_id, count(tree_id) by city, tree_form as v0, tag as v1 where"
+            " not (min(height) by species != count_distinct(tag) by tree_form);"
+        ),
         [("a4", 1, "x")],
     ),
     # spellings 177430, reduced: a CTE joined twice, invalid on both models
     (
-        "select tree_id, city as v0, max(height ? max(height) by * < 1) as v2 where"
-        " max(height) by * < 1 or species = 'Acer' having count(tree_id) by city >= 0;",
+        (
+            "select tree_id, city as v0, max(height ? max(height) by * < 1) as v2 where"
+            " max(height) by * < 1 or species = 'Acer' having count(tree_id) by city >= 0;"
+        ),
         [("a1", "A", None), ("a2", "A", None), ("b1", "B", None)],
     ),
     # spellings 172552, reduced: a group-graph cycle with the summary in scope
     (
-        "select species, sum(height ? min(height) by species - min(height) by"
-        " tree_form > 1) as v0, max(height ? sum(height) by tree_form = 3) as v1,"
-        " sum(height) by species as v2;",
+        (
+            "select species, sum(height ? min(height) by species - min(height) by"
+            " tree_form > 1) as v0, max(height ? sum(height) by tree_form = 3) as v1,"
+            " sum(height) by species as v2;"
+        ),
         [
             ("Acer", None, None, 10),
             ("Quercus", 5, None, 5),
@@ -47,8 +53,10 @@ CASES = [
     ),
     # spellings 11684, reduced: one row of NULLs on main
     (
-        "select species, tree_form, min(height) as v0 where (max(height) by species"
-        " > 8 or city = 'B') and max(height) by city > 20;",
+        (
+            "select species, tree_form, min(height) as v0 where (max(height) by species"
+            " > 8 or city = 'B') and max(height) by city > 20;"
+        ),
         [],
     ),
 ]
@@ -68,8 +76,10 @@ COARSE = [
         ],
     ),
     (
-        "select city, species, max(height) by species as v, count(tree_id) by city"
-        " as n;",
+        (
+            "select city, species, max(height) by species as v, count(tree_id) by city"
+            " as n;"
+        ),
         [
             ("A", "Acer", 7, 4),
             ("A", "Quercus", 5, 4),
