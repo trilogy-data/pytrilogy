@@ -362,19 +362,14 @@ def _paired_before(cte: CTE, target: Join, a: ConceptPair, b: ConceptPair) -> bo
     """Whether a join before ``target`` paired the two reads' left keys with a
     plain equality: on any row each is the other's value or NULL."""
     reads = {(a.node.name, a.left.address), (b.node.name, b.left.address)}
-    for j in cte.joins or []:
-        if j is target:
-            return False
-        if not isinstance(j, Join):
-            continue
-        if any(
-            not p.is_nullable
-            and {(p.node.name, p.left.address), (j.right.name, p.right.address)}
-            == reads
-            for p in j.pairs or []
-        ):
-            return True
-    return False
+    joins = cte.joins or []
+    return any(
+        not p.is_nullable
+        and {(p.node.name, p.left.address), (j.right.name, p.right.address)} == reads
+        for j in joins[: next(i for i, j in enumerate(joins) if j is target)]
+        if isinstance(j, Join)
+        for p in j.pairs or []
+    )
 
 
 def _anchors_coalesce(
