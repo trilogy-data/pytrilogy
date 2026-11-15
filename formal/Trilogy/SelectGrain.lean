@@ -1195,3 +1195,27 @@ theorem second_cross_join_multiplies :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## FINAL re-reads no column finer than its rows
+
+`select species, form, min(x) where (max(x) by species > 8 or city = 'B') and
+max(x) by city > 20`: the aggregate by species applied the OR, and FINAL
+re-applied it for the form projection. FINAL's rows are species; `city` has no
+value on them, so FINAL read it off the city gate joined FULL on nothing. With
+no species kept, that join padded a row per city and `city = 'B'` kept one of
+NULLs (`final_reads_finer_column_off_gate`). -/
+
+/-- No species kept; the gate holds cities `1` and `2`. FULL on nothing pads a
+row per city, and `city = 2` keeps one with no species. -/
+theorem final_reads_finer_column_off_gate :
+    let kept : List Int := []
+    let gate : List Int := [1, 2]
+    let full : List (Option Int × Int) :=
+      if kept.isEmpty then gate.map fun c => (none, c)
+      else kept.flatMap fun s => gate.map fun c => (some s, c)
+    full.filter (fun (_, c) => c == 2) = [(none, 2)] := by
+  decide
+
+end Trilogy.SelectGrain

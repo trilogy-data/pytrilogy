@@ -1127,3 +1127,31 @@ theorem split_groups_acyclic :
   decide
 
 end Trilogy.Rollup
+
+namespace Trilogy.Rollup
+
+/-! ## A coarser aggregate beside the summary's rows
+
+`select city, species, sum(x) by city` reads the summary's `(city, species)`
+rows and `sum(x) by city` re-summed from them, joined on `city`
+(`coarse_resum_joined_on_its_grain`). Read off the same row stream as the
+`(city, species)` keys, the stored partial is the per-species sum
+(`coarse_read_at_row_grain_misreads`). -/
+
+/-- Summary rows `(city, species, h)`. -/
+def coarseRows : List (Int × Int × Int) := [(1, 1, 3), (1, 2, 5), (2, 1, 7), (2, 3, 2)]
+
+def resumBy (city : Int) : Int :=
+  ((coarseRows.filter (·.1 == city)).map (·.2.2)).sum
+
+theorem coarse_resum_joined_on_its_grain :
+    coarseRows.map (fun (c, s, _) => (c, s, resumBy c)) =
+      [(1, 1, 8), (1, 2, 8), (2, 1, 9), (2, 3, 9)] := by
+  decide
+
+theorem coarse_read_at_row_grain_misreads :
+    coarseRows.map (fun (c, s, h) => (c, s, h)) ≠
+      coarseRows.map (fun (c, s, _) => (c, s, resumBy c)) := by
+  decide
+
+end Trilogy.Rollup

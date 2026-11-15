@@ -7,6 +7,11 @@
   `b ⋈ a` on nothing are one cross product in a merged CTE.
 - `formal/Trilogy/Rollup.lean` (`merged_groups_read_each_other`): aggregate
   groups that read each other through a re-aggregated partial split by depth.
+- `formal/Trilogy/SelectGrain.lean` (`final_reads_finer_column_off_gate`): FINAL
+  re-applies no atom over a column finer than its rows.
+- `formal/Trilogy/Rollup.lean` (`coarse_resum_joined_on_its_grain`): an
+  aggregate coarser than the select's rows re-sums the summary at its own
+  grain and joins back on it.
 
 Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
 5, NULL, 7, 2)."""
@@ -40,6 +45,39 @@ CASES = [
             ("Ulmus", None, None, None),
         ],
     ),
+    # spellings 11684, reduced: one row of NULLs on main
+    (
+        "select species, tree_form, min(height) as v0 where (max(height) by species"
+        " > 8 or city = 'B') and max(height) by city > 20;",
+        [],
+    ),
+]
+
+TREE_SCAN = 'as "trees"'
+
+# (query, rows): an aggregate coarser than the summary's grain, beside its rows
+COARSE = [
+    (
+        "select city, species, sum(height) by city as v;",
+        [
+            ("A", "Acer", 8),
+            ("A", "Quercus", 8),
+            ("A", "Ulmus", 8),
+            ("B", "Acer", 9),
+            ("B", "Tilia", 9),
+        ],
+    ),
+    (
+        "select city, species, max(height) by species as v, count(tree_id) by city"
+        " as n;",
+        [
+            ("A", "Acer", 7, 4),
+            ("A", "Quercus", 5, 4),
+            ("A", "Ulmus", None, 4),
+            ("B", "Acer", 7, 2),
+            ("B", "Tilia", 2, 2),
+        ],
+    ),
 ]
 
 
@@ -49,3 +87,13 @@ def test_sweep_210k_shape(model: str, query: str, expected: list):
     sql = executor(model).generate_sql(query)[-1]
     rows = executor(model).execute_raw_sql(sql).fetchall()
     assert normalize(rows) == normalize(expected), sql
+
+
+@pytest.mark.parametrize("query,expected", COARSE)
+def test_coarser_aggregate_reads_summary(query: str, expected: list):
+    for model in ("base", "summary"):
+        sql = executor(model).generate_sql(query)[-1]
+        rows = executor(model).execute_raw_sql(sql).fetchall()
+        assert normalize(rows) == normalize(expected), f"{model}\n{sql}"
+    assert "tree_summary" in sql, sql
+    assert TREE_SCAN not in sql, sql
