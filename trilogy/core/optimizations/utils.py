@@ -283,6 +283,8 @@ def condition_contains_atom(atom: object, condition: object | None) -> bool:
         return False
     if condition == atom:
         return True
+    if isinstance(condition, BuildParenthetical):
+        return condition_contains_atom(atom, condition.content)
     if (
         isinstance(condition, BuildConditional)
         and condition.operator == BooleanOperator.AND

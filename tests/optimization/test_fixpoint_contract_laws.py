@@ -130,11 +130,15 @@ def test_grain_reads_determinants_once(monkeypatch: pytest.MonkeyPatch):
     [
         "select tree_id, species, count_distinct(tag) by species as v0 where species in ('Acer', 'Ulmus') having (max(height) by city, species != 3 and species != 'Tilia') and min(height) by city, species = 6;",
         "select tree_id, species, max(height) by city, species as v0 where city = 'B' having (v0 > 6 and count(tree_id) by city, species <= 6) and sum(height) by city, tree_form = 10;",
+        "select city, species, tree_form, max(height) as v0 having (v0 != 8 and species != 'Tilia') and species != 'Tilia';",
+        "select tree_id, count(tree_id ? not (tag = 'x')) as v0, max(height) by tree_form as v1 where (height is not null and (city = 'B' or city in ('B')));",
+        "select tree_form, min(max(height) by tree_form) as v0, sum(max(height) by city, tree_form) as v1, count(min(height) by city, species) as v2 where count_distinct(tag) by city, tree_form - max(height) by * < 2 having (tree_form is null and tree_form = 'broadleaf') and tree_form is null;",
     ],
 )
 def test_held_conjunction_is_not_pushed_again(query: str):
-    """`Fixpoint.conjunction_reported_as_new`: a parenthesized HAVING conjunction
-    whose atoms a parent already holds settles; it raised at the pass cap."""
+    """`Fixpoint.conjunction_reported_as_new`: a parenthesized conjunction whose
+    atoms a parent holds, an atom a parent holds inside its own parentheses,
+    and a parenthesized disjunction a parent holds whole all settle."""
     from tests.discovery.test_rollup_resolution_laws import BASE, SUMMARY
 
     executor = Dialects.DUCK_DB.default_executor()

@@ -1989,6 +1989,40 @@ a design decision or a bug.
   query on either side. Of 0.3.501's 46 lost reads, 22 are regained; the other
   24 read the summary beside the same trees scan on 0.3.500, and 0.3.501's
   plan for them has as many scans and as few or fewer JOINs.
+- **A widened join outlived its padding, and a WHERE gate was taken for a
+  total of the select** (0.3.503). The four wrong or raising queries the
+  oracle sweeps left on main, and one optimizer cycle:
+  - `select city, species, tree_form, count_distinct(tag) by species as v0
+    where max(height) by city, tree_form != 10` returned a `(B, Quercus)`
+    row no tree has (spellings 38273,
+    `SelectGrain.widening_outlives_its_padding`). The species table joined
+    the per-`(city, form)` gate LEFT, and `ensure_content_preservation`
+    widened the later join to the `(city, species)` pairs to LEFT to keep
+    its padding. The WHERE proved the gate present and that join narrowed to
+    INNER, but the widening stayed. A join now keeps the type it had before
+    widening (`own_type`) and takes it back once nothing before it pads
+    (`restore_unpadded_joins`).
+  - `select count(min(height) by city, species) as v0 where
+    (count_distinct(tag) by * = 2 and sum(height) by city < 2)` returned
+    `(0,)` where the WHERE keeps no row (first family 5328, and 84194 over a
+    summary's re-summed counts; `SelectGrain.gate_total_is_no_group`). Two
+    select totals joined on nothing stay FULL, since each is the `()` group of
+    its own rows. But the `by *` gate is read before the WHERE and holds a row
+    either way: taken for a total, it padded the missing count, and the
+    count's zero fill returned 0. A total only the WHERE reads now pairs as a
+    one-row side (`SelectGrain.one_row_cross_keeps_rows`).
+  - `select tree_form, sum(min(height) by species) as v0 where species =
+    'Acer' or sum(height) by * = 5 having count(tree_id) by * < 3` raised a
+    keyless join (first family 74021). The FINAL re-applied the row atom for
+    contributors its host left unfiltered, after the atom had already been
+    copied onto each of them, and FINAL had no key for `species`. That
+    re-application is now dropped once the copies cover every contributor.
+  - A parenthesized HAVING conjunction ran the optimizer to its pass cap
+    (spellings 2936, 4849; `Fixpoint.conjunction_reported_as_new`,
+    `Fixpoint.append_held_is_identity`). Pushdown compared the candidate
+    `(a and b)` with the parent's AND-atoms one by one, never found it, and
+    reported a change each pass that appending (which dedups atoms) never
+    made. A conjunction is now held when each conjunct is.
 
 ## Limits
 
