@@ -22,37 +22,47 @@ TREE_SCAN = 'as "trees"'
 CASES = [
     # spellings 103208, reduced
     (
-        "select city, tree_form, sum(height) by * as v0, sum(height ? sum(height)"
-        " by * >= 2) as v1 where max(height) by city, species is null;",
+        (
+            "select city, tree_form, sum(height) by * as v0, sum(height ? sum(height)"
+            " by * >= 2) as v1 where max(height) by city, species is null;"
+        ),
         [("A", None, None, None)],
         None,
     ),
     # spellings 103923, reduced
     (
-        "select tree_id, city as v0, max(height ? max(height) by city, species >= 10)"
-        " as v2 having max(height) by city, species < 5;",
+        (
+            "select tree_id, city as v0, max(height ? max(height) by city, species >= 10)"
+            " as v2 having max(height) by city, species < 5;"
+        ),
         [("a1", "A", None), ("a2", "A", None), ("b2", "B", None)],
         None,
     ),
     # spellings 131836, reduced: the summary plan cannot place its rows, so the
     # trees answer
     (
-        "select tree_form, max(max(height) by tree_form) as v1, min(height ?"
-        " count(tree_id) by species > count(tree_id) by tree_form) as v2 having"
-        " count(tree_id) by tree_form > 8;",
+        (
+            "select tree_form, max(max(height) by tree_form) as v1, min(height ?"
+            " count(tree_id) by species > count(tree_id) by tree_form) as v2 having"
+            " count(tree_id) by tree_form > 8;"
+        ),
         [],
         None,
     ),
     # first family 93841: both nested aggregates roll up from one filtered scan
     (
-        "select max(min(height) by city) as v0, min(min(height) by tree_form) as v1"
-        " where city = 'A';",
+        (
+            "select max(min(height) by city) as v0, min(min(height) by tree_form) as v1"
+            " where city = 'A';"
+        ),
         [(3, 3)],
         0,
     ),
     (
-        "select max(max(height) by city) as v0, sum(sum(height) by tree_form) as v1"
-        " where city = 'B';",
+        (
+            "select max(max(height) by city) as v0, sum(sum(height) by tree_form) as v1"
+            " where city = 'B';"
+        ),
         [(7, 9)],
         0,
     ),
