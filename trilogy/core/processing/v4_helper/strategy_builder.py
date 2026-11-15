@@ -2603,7 +2603,9 @@ def _widen_scan_chain(
         ) and not _widen_inputs_below(node, concept, available, depth):
             return False
         available = renderable_addresses(node)
-    if _synthesizes_handle(concept, node, available):
+    if _synthesizes_handle(concept, node, available) or _computes_barrier(
+        concept, available
+    ):
         return False
     widen_projection(
         node,
@@ -2612,6 +2614,15 @@ def _widen_scan_chain(
         available_addresses=available,
     )
     return True
+
+
+def _computes_barrier(concept: BuildConcept, available: set[str]) -> bool:
+    """A projection only passes a window or aggregate through: computed there,
+    it reads that node's rows (a rank over a scan's raw rows, not the
+    statement's), so it must already be a column of its inputs."""
+    if concept.address in available or concept.pseudonyms & available:
+        return False
+    return lineage_crosses_row_shape_barrier(concept)
 
 
 def _widen_below(
