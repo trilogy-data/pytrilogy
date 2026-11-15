@@ -446,6 +446,8 @@ class _PartnerFacts:
     identifiers: frozenset[str] = frozenset()
     # nullable keys of a side that applied the WHERE: its NULL-keyed rows passed
     filtered_nullable: frozenset[str] = frozenset()
+    # filter atoms every source of the side applied
+    applied: tuple[BoolExpr, ...] = ()
 
 
 def _partner_facts(
@@ -457,8 +459,15 @@ def _partner_facts(
     nullable: set[str] = set()
     identifiers: set[str] = set()
     filtered_nullable: set[str] = set()
+    applied: list[BoolExpr] | None = None
     for source in sources:
         identifiers.add(source.identifier)
+        atoms = _applied_atoms(source)
+        applied = (
+            atoms
+            if applied is None
+            else [a for a in applied if any(a == b for b in atoms)]
+        )
         partial |= {c.address for c in source.partial_concepts}
         nullable |= _nullable_addresses(source)
         spans = held_region_spans(source)
@@ -473,7 +482,23 @@ def _partner_facts(
         frozenset(nullable),
         frozenset(identifiers),
         frozenset(filtered_nullable),
+        tuple(applied or ()),
     )
+
+
+def _applied_atoms(source: GrainSource) -> list[BoolExpr]:
+    return [
+        atom
+        for condition in collect_applied_conditions(source)
+        for atom in decompose_condition(condition)
+    ]
+
+
+def _applies_all_of(source: GrainSource, partner: _PartnerFacts) -> bool:
+    """The partner applied every filter `source` did, so its rows passed
+    whatever narrowed `source`'s."""
+    atoms = _applied_atoms(source)
+    return bool(atoms) and all(any(a == b for b in partner.applied) for a in atoms)
 
 
 def _reads_partner(source: GrainSource, partner: _PartnerFacts) -> bool:
@@ -525,10 +550,13 @@ def _is_filter_population(
     ):
         return False
     # A `~` side lacks members whatever the WHERE says: a WHERE on the key
-    # alone (`cust_id != 10`) filters both sides alike, so its narrowness is
-    # the `~`, not the WHERE.
+    # alone (`cust_id != 10`), or one the partner applied too (`city = 'A'`
+    # on the trees beside the trees' unnested lists), filters both sides
+    # alike, so its narrowness is the `~`, not the WHERE.
     partial_keys = join_addresses & {c.address for c in source.partial_concepts}
-    if partial_keys - partner.partial and _filters_only_keys(source, join_addresses):
+    if partial_keys - partner.partial and (
+        _filters_only_keys(source, join_addresses) or _applies_all_of(source, partner)
+    ):
         return False
     held = held_region_spans(source)
     if join_addresses & partner.regions and not join_addresses & held:
