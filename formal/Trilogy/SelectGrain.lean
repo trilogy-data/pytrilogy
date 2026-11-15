@@ -1061,3 +1061,57 @@ theorem parenthesized_conjunction_is_its_atoms (a b : Option Bool) :
     | some y => cases y <;> rfl
 
 end Trilogy.SelectGrain
+
+/-! ## A widening ends with the padding it kept
+
+`select city, species, form, count_distinct(tag) by species where max(x) by
+city, form != 10`: the species table joined the per-`(city, form)` gate on
+`form` LEFT, and the `(city, species)` pairs the trees hold joined after it
+were widened to LEFT to keep that join's padded rows. The WHERE then proved the
+gate present and its join narrowed to INNER, but the widening stayed: every
+species sharing a form with a city came back with that city, though no tree of
+the pair exists. A widening only keeps rows an earlier join padded; once none
+pads, the join takes back its own type. -/
+
+/-- Species 1 and 2 share form 1, which both cities have; species 3 has form 3,
+city 2 alone. The trees hold four `(city, species)` pairs. Kept LEFT, the
+form pairing returns five, `(2, 2)` among them; INNER returns the four
+(`widening_outlives_its_padding`). -/
+theorem widening_outlives_its_padding :
+    let forms : List (Int × Int) := [(1, 1), (2, 1), (3, 3)]
+    let gate : List (Int × Int) := [(1, 1), (2, 1), (2, 3)]
+    let trees : List (Int × Int) := [(1, 1), (1, 2), (2, 1), (2, 3)]
+    let paired := forms.flatMap fun (s, f) =>
+      (gate.filter (·.2 == f)).map fun (c, _) => (c, s)
+    paired.length = 5 ∧ paired.contains (2, 2) ∧
+      paired.filter trees.contains = [(1, 1), (2, 1), (1, 2), (2, 3)] := by
+  decide
+
+/-! ## A WHERE's total is no group of the select
+
+`select count(min(x) by city, species) as v0 where count_distinct(tag) by * =
+2 and sum(x) by city < 2`: the select's total is the `()` group of the rows
+the WHERE keeps, and no city passes, so there is no group and no row. The
+`by *` gate is a total over every row, read before the WHERE, so it holds a
+row either way. Two select totals joined on nothing stay FULL (each is the
+group of its own rows); the gate was taken for one, padded the missing count,
+and the count's zero fill returned `(0,)`. -/
+
+/-- A one-row side joined INNER on nothing keeps the other side's rows. -/
+theorem one_row_cross_keeps_rows (g : Int) (rows : List Int) :
+    (rows.flatMap fun r => [(r, g)]).length = rows.length := by
+  induction rows with
+  | nil => rfl
+  | cons _ _ ih => simp [List.flatMap_cons, ih]
+
+/-- The gate holds `2`; the WHERE keeps no row, so the count has no group. FULL
+on nothing pads the gate's row and fills the count with 0; INNER returns none
+(`gate_total_is_no_group`). -/
+theorem gate_total_is_no_group :
+    let gate : List Int := [2]
+    let counts : List Int := []
+    let full := gate.flatMap fun g =>
+      if counts.isEmpty then [(g, 0)] else counts.map fun c => (g, c)
+    let inner := gate.flatMap fun g => counts.map fun c => (g, c)
+    full = [(2, 0)] ∧ inner = [] := by
+  decide

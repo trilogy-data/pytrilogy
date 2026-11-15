@@ -328,10 +328,13 @@ FOUND_SEEDS = [
     2401, 5269, 6850, 7162, 7340, 9309, 10155, 10212, 10414, 10838,
     12056, 12179, 13153, 13548, 13709, 14382, 14551, 18367, 19430, 19682,
 ]  # fmt: skip
+# seeds 0.3.503 fixed: a `by *` gate the WHERE reads is no total of the
+# select's rows, so it does not keep a keyless join to the select's total outer
+FOUND_SEEDS_503 = [5328]
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
-@pytest.mark.parametrize("seed", [*range(SEEDS), *FOUND_SEEDS])
+@pytest.mark.parametrize("seed", [*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_503])
 def test_select_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape(seed)
     try:

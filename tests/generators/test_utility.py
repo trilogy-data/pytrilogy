@@ -1,10 +1,12 @@
 from trilogy.core.enums import JoinType
+from trilogy.core.models.execute import Join
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     JoinOrderOutput,
     SideFacts,
     ensure_content_preservation,
     resolve_join_order_v2,
+    restore_unpadded_joins,
 )
 
 Columns = dict[str, set[str]]
@@ -324,6 +326,8 @@ def test_prior_left_outer_promotes_to_left_outer():
     ensure_content_preservation(joins)
     assert join1.type == JoinType.LEFT_OUTER
     assert join2.type == JoinType.LEFT_OUTER
+    assert join1.own_type is None
+    assert join2.own_type == JoinType.INNER
 
 
 def test_prior_right_outer_promotes_to_left_outer():
@@ -568,3 +572,34 @@ def test_resolve_join_order_v2_multi_partial():
     # The dim join should have two left sources (both facts)
     dim_join = output[-1]
     assert len(dim_join.keys) == 2
+
+
+class _Node:
+    def __init__(self, identifier: str):
+        self.identifier = identifier
+
+
+def _chain(first: JoinType, second: JoinType, own: JoinType | None) -> list[Join]:
+    a, b, c = _Node("a"), _Node("b"), _Node("c")
+    return [
+        Join(left=a, right=b, join_type=first),  # type: ignore[arg-type]
+        Join(left=b, right=c, join_type=second, own_type=own),  # type: ignore[arg-type]
+    ]
+
+
+def test_a_widened_join_narrows_back_once_its_padding_is_gone():
+    joins = _chain(JoinType.INNER, JoinType.LEFT_OUTER, JoinType.INNER)
+    restore_unpadded_joins(joins)  # type: ignore[arg-type]
+    assert joins[1].join_type == JoinType.INNER
+
+
+def test_a_widened_join_stays_wide_while_its_left_is_padded():
+    joins = _chain(JoinType.LEFT_OUTER, JoinType.LEFT_OUTER, JoinType.INNER)
+    restore_unpadded_joins(joins)  # type: ignore[arg-type]
+    assert joins[1].join_type == JoinType.LEFT_OUTER
+
+
+def test_an_own_type_never_widens_a_join():
+    joins = _chain(JoinType.INNER, JoinType.INNER, JoinType.LEFT_OUTER)
+    restore_unpadded_joins(joins)  # type: ignore[arg-type]
+    assert joins[1].join_type == JoinType.INNER

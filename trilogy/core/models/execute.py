@@ -1252,6 +1252,9 @@ class Join(Generic[NodeT]):
     # are read off (no parent alias), set when a rule moves a join into it.
     condition: BoolExpr | None = None
     left_local: BuildDatasource | QueryDatasource | None = None
+    # planning only: the type the join had before an earlier join's padding
+    # widened it (`join_resolution.restore_unpadded_joins`)
+    own_type: JoinType | None = None
 
     def __post_init__(self):
         key = _node_key(self.right)
@@ -1292,6 +1295,7 @@ class Join(Generic[NodeT]):
             modifiers=self.modifiers,
             guard=_bind_guard(self.guard, node_for),
             condition=self.condition,
+            own_type=self.own_type,
         )
 
     def repoint(self, node_for: Callable[[NodeT], NodeT]) -> None:
