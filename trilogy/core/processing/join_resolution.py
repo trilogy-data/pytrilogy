@@ -156,12 +156,6 @@ def _pair_source(pair: ConceptPair) -> str:
     return pair.node.identifier
 
 
-def get_connection_keys(
-    pair_keys: Mapping[frozenset[str], frozenset[str]], left: str, right: str
-) -> set[str]:
-    return set(pair_keys.get(frozenset({left, right}), ()))
-
-
 @dataclass(frozen=True)
 class PlannedPairs:
     """A merge's join plan, pair by pair of its parents."""
@@ -337,6 +331,15 @@ class JoinFacts:
     def authored(self, keys: set[str]) -> bool:
         return bool(keys & self.authored_keys)
 
+    def paired(self, a: str, b: str) -> frozenset[str]:
+        """What the plan pairs two sides on."""
+        return self.pair_keys.get(frozenset({a, b}), frozenset())
+
+
+def _preserving(left: bool) -> JoinType:
+    """The directional join keeping the left side's rows, else the right's."""
+    return JoinType.LEFT_OUTER if left else JoinType.RIGHT_OUTER
+
 
 def _pads_for_different_members(
     left: SideFacts,
@@ -480,7 +483,13 @@ def _region_contract_join(
         keys, holder.held_spans, feeder, holder
     ) or _holds_another_family(holder.held_spans & keys, against, facts):
         return JoinType.FULL, False
-    return (JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER), False
+    return _preserving(left_holds), False
+
+
+def _bound_alike(left: SideFacts, right: SideFacts, key: str) -> bool:
+    """Both sides bind `key` through the same leaf `~` columns."""
+    bound = left.span_bindings.get(key)
+    return bool(bound) and bound == right.span_bindings.get(key)
 
 
 def _extent_free_join(
@@ -520,18 +529,14 @@ def _extent_free_join(
         # stream) would otherwise reach every merge above as a value NULL.
         if keys <= other.complete_spans and not keys & binder.nullables:
             return JoinType.INNER, None
-        return (JoinType.LEFT_OUTER if left_binds else JoinType.RIGHT_OUTER), None
+        return _preserving(left_binds), None
     # Both sides bind it. Two projections of ONE binding cover the same subset,
     # so the span carries no row intent between them and the remaining keys
     # decide the typing. PEER facts (sales and returns each referencing their
     # own slice of the group domain) each hold rows the other lacks, and
     # dropping either side's is a chasm, not an extension: their typing stands
     # whoever owns the extent.
-    if all(
-        (bound := left_facts.span_bindings.get(key))
-        and bound == right_facts.span_bindings.get(key)
-        for key in span_keys
-    ):
+    if all(_bound_alike(left_facts, right_facts, key) for key in span_keys):
         return None, keys - free
     return None, None
 
@@ -541,10 +546,7 @@ def _one_binding(left: SideFacts, right: SideFacts) -> frozenset[str]:
     projections of one binding cover the same subset, so the `~` carries no
     row intent between them and the other rules type the pair."""
     return frozenset(
-        key
-        for key in left.partials & right.partials
-        if (bound := left.span_bindings.get(key))
-        and bound == right.span_bindings.get(key)
+        key for key in left.partials & right.partials if _bound_alike(left, right, key)
     )
 
 
@@ -568,7 +570,7 @@ def _partial_domain_join(
         # address) is a value null here too
         feeder = right_facts if host == left else left_facts
         if not _unpaired_value_nulls(keys, frozenset(), feeder, facts.side(host)):
-            return JoinType.LEFT_OUTER if host == left else JoinType.RIGHT_OUTER
+            return _preserving(host == left)
     partial_keys = keys & (left_facts.partials | right_facts.partials)
     # A `~` key the node never emits (not a visible output, no grain component
     # keyed by it) licenses no extension rows here. When the pair is
@@ -587,7 +589,7 @@ def _partial_domain_join(
         if left_is_dim != right_is_dim:
             fact = right_facts if left_is_dim else left_facts
             if not keys & fact.value_nullables:
-                return JoinType.LEFT_OUTER if right_is_dim else JoinType.RIGHT_OUTER
+                return _preserving(right_is_dim)
     return JoinType.FULL
 
 
@@ -609,7 +611,7 @@ def _nullable_join(
         # (extension-family cross products). Preserve the host and let plain
         # equality drop the feeder's padding.
         if host is not None:
-            return JoinType.LEFT_OUTER if host == left else JoinType.RIGHT_OUTER
+            return _preserving(host == left)
         # A value NULL on one side (a guest order's address, grouped) names a
         # real row; the other side's padding names nothing. Keep the row. An
         # authored axis declines this like every other direction inference: the
@@ -619,7 +621,7 @@ def _nullable_join(
         if left_values != bool(
             keys & right_facts.extent_nullables
         ) and not facts.authored(keys):
-            return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
+            return _preserving(left_values)
         # Padding for different spans never pairs (`get_node_joins` drops the
         # null-safe equality), so INNER would shed both extension families.
         if _pads_for_different_members(
@@ -637,7 +639,7 @@ def _nullable_join(
         if left_value != bool(
             keys & right_facts.value_nullables
         ) and not facts.authored(keys):
-            return JoinType.LEFT_OUTER if left_value else JoinType.RIGHT_OUTER
+            return _preserving(left_value)
         return JoinType.INNER
     if left_is_nullable != right_is_nullable:
         # A nullable key weakens that side's EQUAL-domain claim to "some
@@ -660,8 +662,8 @@ def _nullable_join(
             and not keys & lookup.value_nullables
             and not facts.authored(keys)
         ):
-            return JoinType.RIGHT_OUTER if left_is_nullable else JoinType.LEFT_OUTER
-        return JoinType.LEFT_OUTER if left_is_nullable else JoinType.RIGHT_OUTER
+            return _preserving(not left_is_nullable)
+        return _preserving(left_is_nullable)
     return JoinType.INNER
 
 
@@ -782,9 +784,7 @@ def _decide_join_type(
     # sets, so the NULL groups do pair.
     left_pads = bool(all_connecting_keys & left_facts.rollup_padded)
     if left_pads != bool(all_connecting_keys & right_facts.rollup_padded):
-        return (
-            JoinType.LEFT_OUTER if left_pads else JoinType.RIGHT_OUTER
-        ), "rollup_padding"
+        return _preserving(left_pads), "rollup_padding"
     return _nullable_join(left, right, all_connecting_keys, facts, host), "nullable"
 
 
@@ -972,7 +972,7 @@ def _ranked_edges(
         (pivot, a, b)
         for pivot, holders in pivot_map.items()
         for a, b in combinations(holders, 2)
-        if pivot.key in facts.pair_keys.get(frozenset({a, b}), ())
+        if pivot.key in facts.paired(a, b)
     ]
     return sorted(
         edges, key=lambda e: (_pivot_rank(e[0], pivot_map[e[0]], facts), e[1], e[2])
@@ -987,7 +987,7 @@ def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutp
     join_types: set[JoinType] = set()
     deduped: list[tuple[str, set[str]]] = []
     for left in walked:
-        keys = get_connection_keys(facts.pair_keys, left, right)
+        keys = set(facts.paired(left, right))
         if not keys:
             continue
         # A FULL-join key must keep EVERY left source that provides it: the
@@ -1551,6 +1551,17 @@ def _sole_projected_relation(ds: DataSource) -> str | None:
     return ds.datasources[0].identifier
 
 
+def _keyless_metric_grain(ds: DataSource) -> bool:
+    """Every grain component is a metric this source emits with no keys."""
+    output_by_addr = {c.address: c for c in ds.output_concepts}
+    return all(
+        (c := output_by_addr.get(component)) is not None
+        and c.purpose == Purpose.METRIC
+        and not c.keys
+        for component in ds.grain.components
+    )
+
+
 def _row_independent(ds: DataSource) -> bool:
     """True when cross-joining this source cannot fan out row counts: no
     grain, an authored literal fan-out, or every column it exposes is
@@ -1574,13 +1585,7 @@ def _row_independent(ds: DataSource) -> bool:
     # pair on and the cross join is the plan (the `calculate_graph_relevance`
     # metric rule). A KEYED metric is a per-group aggregate with a real axis,
     # so it stays subject to the guard.
-    output_by_addr = {c.address: c for c in outputs}
-    return all(
-        (c := output_by_addr.get(component)) is not None
-        and c.purpose == Purpose.METRIC
-        and not c.keys
-        for component in ds.grain.components
-    )
+    return _keyless_metric_grain(ds)
 
 
 def _closure_keys(
@@ -1757,13 +1762,7 @@ def single_row_source(ds: DataSource) -> bool:
         ds.source_map.get(c.address) and c.address not in reaggregated for c in outputs
     ):
         return False
-    output_by_addr = {c.address: c for c in outputs}
-    if not all(
-        (c := output_by_addr.get(component)) is not None
-        and c.purpose == Purpose.METRIC
-        and not c.keys
-        for component in ds.grain.components
-    ):
+    if not _keyless_metric_grain(ds):
         return False
     if not any(get_grouped_aggregate_wrapper(c) is not None for c in outputs):
         return False
@@ -1881,27 +1880,38 @@ def _hidden_addresses(datasource: DataSource) -> set[str]:
     }
 
 
+@dataclass(frozen=True)
+class _Merge:
+    """A merge's sides as its joins are built: by node name, in the merge's
+    spelling (`canon_node`)."""
+
+    facts: JoinFacts
+    sources: dict[str, DataSource]
+    # (side, key) -> the concept the side spells the key with
+    concepts: dict[tuple[str, str], BuildConcept]
+    spellings: dict[str, str]
+    canon_node: Callable[[str], str]
+    memo: ProvenanceMemo
+
+
 def _padding_witness(
-    datasource: DataSource,
-    spans: frozenset[str],
-    spellings: dict[str, str],
-    canon_node: Callable[[str], str],
-    memo: ProvenanceMemo,
+    merge: _Merge, node: str, spans: frozenset[str]
 ) -> list[BuildConcept]:
-    """Columns of `datasource` that are NULL exactly on the rows padded for
+    """Columns of side `node` that are NULL exactly on the rows padded for
     `spans`: one per span, a KEY padded by it that carries no value NULL (the
     solid grain's, absent on a row standing in for a region's member; a
     property is NULL on a `~?` NULL member's row too) and no extent NULL (a
     key an outer join found no partner for is NULL on solid rows too). Empty
     when a span has none."""
+    datasource = merge.sources[node]
     out: list[BuildConcept] = []
     hidden = _hidden_addresses(datasource)
-    provenance = memo.of(datasource)
+    provenance = merge.memo.of(datasource)
     extent = provenance.extent
     for span in sorted(spans):
         padded: set[str] = set()
-        for spelling, named in spellings.items():
-            if canon_node(named) == span:
+        for spelling, named in merge.spellings.items():
+            if merge.canon_node(named) == span:
                 padded |= provenance.padded_by(frozenset({spelling}))
         witnesses = sorted(
             (
@@ -2047,26 +2057,17 @@ def _region_padded_sides(
 
 
 def _side_witness(
-    side: str,
-    keys: Collection[str],
-    ds_node_map: dict[str, DataSource],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
+    side: str, keys: Collection[str], merge: _Merge
 ) -> BuildConcept | None:
-    return _row_witness(
-        ds_node_map[side],
-        [
-            ds_concept_map[(side, k)]
-            for k in sorted(keys)
-            if (side, k) in ds_concept_map
-        ],
-    ) or _presence_marker(ds_node_map[side])
+    source = merge.sources[side]
+    paired = [
+        merge.concepts[(side, k)] for k in sorted(keys) if (side, k) in merge.concepts
+    ]
+    return _row_witness(source, paired) or _presence_marker(source)
 
 
 def _padding_clause(
-    padding: _MergePadding,
-    presence: set[frozenset[str]],
-    ds_node_map: dict[str, DataSource],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
+    padding: _MergePadding, presence: set[frozenset[str]], merge: _Merge
 ) -> tuple[GuardTerm, ...] | None:
     """False exactly on the padding's rows: some padded side has a row (the
     fewest whose rows cover every row any of them has, paired sides first),
@@ -2085,12 +2086,10 @@ def _padding_clause(
         terms.append((padding.host, False))
     tested: list[GuardTerm] = []
     for side, present in terms:
-        witness = _side_witness(
-            side, padding.keys.get(side, ()), ds_node_map, ds_concept_map
-        )
+        witness = _side_witness(side, padding.keys.get(side, ()), merge)
         if witness is None:
             return None
-        tested.append(GuardTerm(witness, ds_node_map[side], present))
+        tested.append(GuardTerm(witness, merge.sources[side], present))
     return tuple(tested) or None
 
 
@@ -2136,15 +2135,10 @@ def _equality_drops_padding(
 
 def _padding_guard(
     join: JoinOrderOutput,
-    facts: JoinFacts,
-    ds_node_map: dict[str, DataSource],
-    spellings: dict[str, str],
-    canon_node: Callable[[str], str],
-    memo: ProvenanceMemo,
+    merge: _Merge,
     earlier: list[_MergePadding],
     pairs: list[ConceptPair],
     presence: set[frozenset[str]],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
 ) -> JoinGuard:
     """A key NULL by absence never pairs with a value-NULL group.
 
@@ -2155,9 +2149,10 @@ def _padding_guard(
     LEFT orders`, then `orders.bucket` paired with `targets.bucket`) is the
     rows where the host has a row and the padded side none:
     `orders.customer_id is not null or customers.customer_id is null`, the
-    the second test dropped when no row lacks both sides. The
+    second test dropped when no row lacks both sides. The
     other side's NULL group is a value of rows that are not the region's,
     unless it holds the region too (`_pads_beside`)."""
+    facts = merge.facts
     clauses: list[tuple[GuardTerm, ...]] = []
     for left_node, keys in join.keys.items():
         for padded_node, other_node in (
@@ -2172,26 +2167,24 @@ def _padding_guard(
                     or key not in padded.value_nullables
                     or key not in other.value_nullables
                     or _pads_beside(other, key, spans)
-                    or _equality_drops_padding(pairs, padded, spans, canon_node)
+                    or _equality_drops_padding(pairs, padded, spans, merge.canon_node)
                 ):
                     continue
-                witnesses = _padding_witness(
-                    ds_node_map[padded_node], spans, spellings, canon_node, memo
-                )
+                witnesses = _padding_witness(merge, padded_node, spans)
                 if not witnesses:
                     logger.info(
                         f"[JOIN_RESOLUTION] no row witness to keep {padded_node}'s"
                         f" padding on {key} from pairing with {other_node}"
                     )
                 for witness in witnesses:
-                    clause = (GuardTerm(witness, ds_node_map[padded_node], True),)
+                    clause = (GuardTerm(witness, merge.sources[padded_node], True),)
                     if clause not in clauses:
                         clauses.append(clause)
     right = facts.side(join.right)
     for padding in earlier:
         absent = _absent_key_groups(pairs, padding.absent)
         if not absent or any(
-            _pads_beside(right, canon_node(group[0].right.address), padding.spans)
+            _pads_beside(right, merge.canon_node(group[0].right.address), padding.spans)
             for group in absent
         ):
             continue
@@ -2199,7 +2192,7 @@ def _padding_guard(
             # a key compared with `=` never pairs a NULL
             padding.absent.add(join.right)
             continue
-        tested = _padding_clause(padding, presence, ds_node_map, ds_concept_map)
+        tested = _padding_clause(padding, presence, merge)
         if tested is None:
             logger.info(
                 f"[JOIN_RESOLUTION] no row witness to keep {sorted(padding.padded)}'s"
@@ -2229,12 +2222,7 @@ def _padding_guards(
     joins: list[JoinOrderOutput],
     base_joins: list[SourceJoin],
     paddings: list[list[_MergePadding]],
-    facts: JoinFacts,
-    ds_node_map: dict[str, DataSource],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
-    spellings: dict[str, str],
-    canon_node: Callable[[str], str],
-    memo: ProvenanceMemo,
+    merge: _Merge,
 ) -> list[JoinGuard]:
     """Each join's guard, in join order: a join is guarded against the
     padding the joins before it added, read off the key pairs it renders."""
@@ -2242,20 +2230,7 @@ def _padding_guards(
     presence = {frozenset(joins[0].lefts)} if joins else set()
     out: list[JoinGuard] = []
     for join, base, added in zip(joins, base_joins, paddings):
-        out.append(
-            _padding_guard(
-                join,
-                facts,
-                ds_node_map,
-                spellings,
-                canon_node,
-                memo,
-                earlier,
-                base.pairs or [],
-                presence,
-                ds_concept_map,
-            )
-        )
+        out.append(_padding_guard(join, merge, earlier, base.pairs or [], presence))
         earlier += added
         presence = _presence_after(presence, join)
     return out
@@ -2298,6 +2273,174 @@ def _planned_pair_nodes(
     return out
 
 
+def _pair_modifiers(
+    merge: _Merge,
+    left: str,
+    right: str,
+    key: str,
+    keys: set[str],
+    padded_for: frozenset[str],
+) -> list[Modifier]:
+    """How `key` pairs `left` with `right`, one of the `keys` the join is on;
+    `padded_for` is the regions earlier joins padded `left` for."""
+    facts = merge.facts
+    left_facts, right_facts = facts.side(left), facts.side(right)
+    partial = [Modifier.PARTIAL] if key in left_facts.partials else []
+    # a key both sides NULL as a value too pairs its value NULLs;
+    # `_padding_guard` keeps the padding out
+    if (
+        key not in left_facts.value_nullables & right_facts.value_nullables
+        and _pads_for_different_members(
+            left_facts, right_facts, keys, facts.span_families
+        )
+    ):
+        return partial
+    if _pairs_region_padding(padded_for, right_facts, key):
+        return [Modifier.NULLABLE, *partial]
+    left_source, right_source = merge.sources[left], merge.sources[right]
+    return (
+        get_modifiers(
+            merge.concepts[(left, key)],
+            merge.concepts[(right, key)],
+            left_source,
+            right_source,
+            merge.memo,
+            anchored=any(
+                _pairs_solid(
+                    merge.concepts[(left, other)],
+                    merge.concepts[(right, other)],
+                    left_source,
+                    right_source,
+                )
+                for other in keys - {key}
+            ),
+        )
+        + partial
+    )
+
+
+def _side_facts(
+    datasource: DataSource,
+    environment: BuildEnvironment,
+    canon_node: Callable[[str], str],
+    memo: ProvenanceMemo,
+    host_canon: set[str] | None,
+    extent_free_spans: frozenset[str],
+) -> tuple[SideFacts, dict[str, BuildConcept]]:
+    """One side's facts (bar `span_padding`, which reads every side), and the
+    concept it spells each of its columns with."""
+    concepts: dict[str, BuildConcept] = {}
+    own_partials = {canon_node(c.address) for c in datasource.partial_concepts}
+    # A LEFT scoped join on a derived key has no datasource column binding
+    # to carry Modifier.PARTIAL. The merge keeps that key as a distinct
+    # output present ONLY on the partial side (the complete side outputs
+    # the canonical), so intersecting outputs with scoped_partial_derived
+    # marks exactly the partial side. Root/rowset partial keys carry
+    # partiality through the column-partial / rowset machinery and are
+    # excluded, since a rowset key also survives as a distinct output.
+    partial_nodes = own_partials | {
+        canon_node(c.address)
+        for c in datasource.output_concepts
+        if c.address in environment.scoped_partial_derived
+    }
+    provenance = memo.of(datasource)
+    nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
+    if extent_free_spans:
+        # a `?` binding's NULL is a value (an undated sale), not padding
+        value_null = {
+            c.address for c in datasource.output_concepts if provenance.values(c)
+        }
+        nullable_nodes -= {
+            canon_node(a)
+            for a in provenance.padded_by(extent_free_spans)
+            if a not in value_null
+        }
+    padded_nodes = {canon_node(a) for a in provenance.rollup}
+    partial_keys: set[str] = set()
+    nullable_keys: set[str] = set()
+    rollup_keys: set[str] = set()
+    value_keys: set[str] = set()
+    # a partial still to be re-aggregated is not a value of any key
+    # (`Rollup.partial_is_not_a_key`)
+    unfinished = (
+        {
+            c.address
+            for c in pending_rollups(datasource.rollup_concepts, datasource.grain)
+        }
+        if isinstance(datasource, QueryDatasource)
+        else set()
+    )
+    visible = [
+        c
+        for c in datasource.output_concepts
+        if c.address not in datasource.hidden_concepts
+    ]
+    for concept in visible:
+        if concept.address in unfinished:
+            continue
+        node = canon_node(concept.address)
+        concepts.setdefault(node, concept)
+        if node in partial_nodes:
+            partial_keys.add(node)
+        # the FIRST concept spelling the node decides the provenance
+        if node in nullable_nodes and node not in nullable_keys:
+            nullable_keys.add(node)
+            if provenance.values(concept):
+                value_keys.add(node)
+        if node in padded_nodes:
+            rollup_keys.add(node)
+    facts = SideFacts(
+        columns=frozenset(concepts),
+        partials=frozenset(partial_keys),
+        nullables=frozenset(nullable_keys),
+        value_nullables=frozenset(value_keys),
+        extent_nullables=frozenset(
+            nullable_keys & {canon_node(a) for a in provenance.extent}
+        ),
+        guest_padded=frozenset(
+            nullable_keys & {canon_node(a) for a in provenance.guest}
+        ),
+        rollup_padded=frozenset(rollup_keys),
+        grain=frozenset(canon_node(a) for a in datasource.grain.components),
+        determined=frozenset(
+            canon_node(a) for a in _fd_closure(environment, datasource.grain.components)
+        ),
+        # Hosting a domain requires binding it COMPLETELY: a side carrying a
+        # `~` key only partially (the fact's FK column) exposes the address
+        # but not the domain, so it can never out-host the preserved span.
+        # Own-level marks, not the deep collection: a span that completed a
+        # key against its dimension clears its own mark while the raw fact
+        # scan below it keeps one.
+        hosts=host_canon is not None
+        and host_canon
+        <= {canon_node(c.address) for c in datasource.output_concepts} - own_partials,
+        one_row=bool(concepts)
+        and all(c.granularity == Granularity.SINGLE_ROW for c in visible),
+        # A side holding a region's rows (its domain, or whatever read it)
+        # hosts that region's extension rows on the join keyed by its span,
+        # whatever columns it emits: the contract, not an inference from the
+        # bindings. Not on a span this merge is built not to extend (a rowset
+        # body whose reader holds the region): those rows are not this plan's
+        # to return.
+        held_spans=frozenset(
+            canon_node(span)
+            for span in held_region_spans(datasource)
+            if span not in extent_free_spans
+        ),
+        complete_spans=frozenset(
+            canon_node(address)
+            for address in extent_free_spans
+            if complete_key_domain(datasource, address)
+        ),
+        span_bindings={
+            canon_node(address): partial_binding_sources(datasource, address)
+            for address in extent_free_spans
+            | {c.address for c in datasource.partial_concepts}
+        },
+    )
+    return facts, concepts
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -2333,124 +2476,16 @@ def get_node_joins(
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
     sides: dict[str, SideFacts] = {}
-    # Hosting a domain requires binding it COMPLETELY: a side carrying a `~`
-    # key only partially (the fact's FK column) exposes the address but not the
-    # domain, so it can never out-host the preserved span. Own-level marks, not
-    # the deep collection: a span that completed a key against its dimension
-    # clears its own mark while the raw fact scan below it keeps one.
     host_canon = {canon_node(a) for a in host_grain} if host_grain else None
 
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
-        columns: set[str] = set()
-        partial_nodes = {canon_node(c.address) for c in datasource.partial_concepts}
-        # A LEFT scoped join on a derived key has no datasource column binding
-        # to carry Modifier.PARTIAL. The merge keeps that key as a distinct
-        # output present ONLY on the partial side (the complete side outputs
-        # the canonical), so intersecting outputs with scoped_partial_derived
-        # marks exactly the partial side. Root/rowset partial keys carry
-        # partiality through the column-partial / rowset machinery and are
-        # excluded, since a rowset key also survives as a distinct output.
-        if environment.scoped_partial_derived:
-            partial_nodes |= {
-                canon_node(c.address)
-                for c in datasource.output_concepts
-                if c.address in environment.scoped_partial_derived
-            }
-        provenance = memo.of(datasource)
-        nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
-        if extent_free_spans:
-            # a `?` binding's NULL is a value (an undated sale), not padding
-            value_null = {
-                c.address for c in datasource.output_concepts if provenance.values(c)
-            }
-            nullable_nodes -= {
-                canon_node(a)
-                for a in provenance.padded_by(extent_free_spans)
-                if a not in value_null
-            }
-        padded_nodes = {canon_node(a) for a in provenance.rollup}
-        partial_keys: set[str] = set()
-        nullable_keys: set[str] = set()
-        rollup_keys: set[str] = set()
-        value_keys: set[str] = set()
-        # a partial still to be re-aggregated is not a value of any key
-        # (`Rollup.partial_is_not_a_key`)
-        unfinished = (
-            {
-                c.address
-                for c in pending_rollups(datasource.rollup_concepts, datasource.grain)
-            }
-            if isinstance(datasource, QueryDatasource)
-            else set()
+        sides[ds_node], spelled = _side_facts(
+            datasource, environment, canon_node, memo, host_canon, extent_free_spans
         )
-        for concept in datasource.output_concepts:
-            if (
-                concept.address in datasource.hidden_concepts
-                or concept.address in unfinished
-            ):
-                continue
-            node = canon_node(concept.address)
-            columns.add(node)
+        for node, concept in spelled.items():
             ds_concept_map.setdefault((ds_node, node), concept)
-            if node in partial_nodes:
-                partial_keys.add(node)
-            # the FIRST concept spelling the node decides the provenance
-            if node in nullable_nodes and node not in nullable_keys:
-                nullable_keys.add(node)
-                if provenance.values(concept):
-                    value_keys.add(node)
-            if node in padded_nodes:
-                rollup_keys.add(node)
-        extent_addrs = {canon_node(a) for a in provenance.extent}
-        guest_addrs = {canon_node(a) for a in provenance.guest}
-        # A side holding a region's rows (its domain, or whatever read it) hosts
-        # that region's extension rows on the join keyed by its span, whatever
-        # columns it emits: the contract, not an inference from the bindings.
-        # Not on a span this merge is built not to extend (a rowset body whose
-        # reader holds the region): those rows are not this plan's to return.
-        held_spans = {
-            canon_node(span)
-            for span in held_region_spans(datasource)
-            if span not in extent_free_spans
-        }
-        hosts = host_canon is not None and host_canon <= (
-            {canon_node(c.address) for c in datasource.output_concepts}
-            - {canon_node(c.address) for c in datasource.partial_concepts}
-        )
-        sides[ds_node] = SideFacts(
-            columns=frozenset(columns),
-            partials=frozenset(partial_keys),
-            nullables=frozenset(nullable_keys),
-            value_nullables=frozenset(value_keys),
-            extent_nullables=frozenset(nullable_keys & extent_addrs),
-            guest_padded=frozenset(nullable_keys & guest_addrs),
-            rollup_padded=frozenset(rollup_keys),
-            grain=frozenset(canon_node(a) for a in datasource.grain.components),
-            determined=frozenset(
-                canon_node(a)
-                for a in _fd_closure(environment, datasource.grain.components)
-            ),
-            hosts=hosts,
-            one_row=bool(columns)
-            and all(
-                concept.granularity == Granularity.SINGLE_ROW
-                for concept in datasource.output_concepts
-                if concept.address not in datasource.hidden_concepts
-            ),
-            held_spans=frozenset(held_spans),
-            complete_spans=frozenset(
-                canon_node(address)
-                for address in extent_free_spans
-                if complete_key_domain(datasource, address)
-            ),
-            span_bindings={
-                canon_node(address): partial_binding_sources(datasource, address)
-                for address in extent_free_spans
-                | {c.address for c in datasource.partial_concepts}
-            },
-        )
 
     pair_nodes = _planned_pair_nodes(
         {node: side.columns for node, side in sides.items()}, planned_pairs, environment
@@ -2526,6 +2561,7 @@ def get_node_joins(
         span_families=span_families,
         pair_keys=pair_nodes,
     )
+    merge = _Merge(facts, ds_node_map, ds_concept_map, spellings, canon_node, memo)
     joins = resolve_join_order_v2(facts)
     paddings = _merge_paddings(joins, facts)
     # Per join, only what the joins BEFORE it padded: a join's own padding of
@@ -2544,7 +2580,7 @@ def get_node_joins(
     )
     agreement = _Agreement(strict=True)
     base_joins: list[SourceJoin] = []
-    for index, j in enumerate(joins):
+    for j, padded_sides in zip(joins, region_padded):
         base = Join(
             left=ds_node_map[j.left] if j.left else None,
             right=ds_node_map[j.right],
@@ -2557,48 +2593,13 @@ def get_node_joins(
                         left=ds_concept_map[(k, concept)],
                         right=ds_concept_map[(j.right, concept)],
                         node=ds_node_map[k],
-                        modifiers=(
-                            []
-                            # a key both sides NULL as a value too pairs its
-                            # value NULLs; `_padding_guard` keeps the padding out
-                            if concept
-                            not in facts.side(k).value_nullables
-                            & facts.side(j.right).value_nullables
-                            and _pads_for_different_members(
-                                facts.side(k),
-                                facts.side(j.right),
-                                v,
-                                facts.span_families,
-                            )
-                            else (
-                                [Modifier.NULLABLE]
-                                if _pairs_region_padding(
-                                    region_padded[index].get(k, frozenset()),
-                                    facts.side(j.right),
-                                    concept,
-                                )
-                                else get_modifiers(
-                                    ds_concept_map[(k, concept)],
-                                    ds_concept_map[(j.right, concept)],
-                                    ds_node_map[k],
-                                    ds_node_map[j.right],
-                                    memo,
-                                    anchored=any(
-                                        _pairs_solid(
-                                            ds_concept_map[(k, other)],
-                                            ds_concept_map[(j.right, other)],
-                                            ds_node_map[k],
-                                            ds_node_map[j.right],
-                                        )
-                                        for other in v - {concept}
-                                    ),
-                                )
-                            )
-                        )
-                        + (
-                            [Modifier.PARTIAL]
-                            if concept in facts.side(k).partials
-                            else []
+                        modifiers=_pair_modifiers(
+                            merge,
+                            k,
+                            j.right,
+                            concept,
+                            v,
+                            padded_sides.get(k, frozenset()),
                         ),
                     )
                     for k, v in j.keys.items()
@@ -2621,18 +2622,7 @@ def get_node_joins(
                 )
         base_joins.append(base)
     for base, guard in zip(
-        base_joins,
-        _padding_guards(
-            joins,
-            base_joins,
-            paddings,
-            facts,
-            ds_node_map,
-            ds_concept_map,
-            spellings,
-            canon_node,
-            memo,
-        ),
+        base_joins, _padding_guards(joins, base_joins, paddings, merge)
     ):
         base.guard = guard
     return base_joins
