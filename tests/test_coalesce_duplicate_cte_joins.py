@@ -15,6 +15,7 @@ def _pair(cte_name: str, left: str, right: str) -> SimpleNamespace:
         node=SimpleNamespace(name=cte_name),
         left=SimpleNamespace(address=left),
         right=SimpleNamespace(address=right),
+        modifiers=[],
     )
 
 
@@ -84,3 +85,24 @@ def test_merged_join_keeps_either_copys_padding_guard():
     merged = coalesce_duplicate_joins([a, b, _join("t", [_pair("l", "k", "k")])])
     assert merged == [a]
     assert a.guard == guard
+
+
+def test_an_outer_join_merges_into_its_mirror():
+    right_outer = _join(
+        "customers", [_pair("orders", "cid", "cid")], jointype=JoinType.RIGHT_OUTER
+    )
+    left_outer = _join(
+        "orders", [_pair("customers", "cid", "cid")], jointype=JoinType.LEFT_OUTER
+    )
+    assert coalesce_duplicate_joins([right_outer, left_outer]) == [right_outer]
+
+
+def test_outer_joins_padding_different_sides_stay_apart():
+    pads_orders = _join(
+        "orders", [_pair("customers", "cid", "cid")], jointype=JoinType.LEFT_OUTER
+    )
+    pads_customers = _join(
+        "customers", [_pair("orders", "cid", "cid")], jointype=JoinType.LEFT_OUTER
+    )
+    merged = coalesce_duplicate_joins([pads_orders, pads_customers])
+    assert merged == [pads_orders, pads_customers]
