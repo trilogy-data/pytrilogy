@@ -535,3 +535,22 @@ def test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row():
     no_subset_partner = Join(right=items, join_type=JoinType.FULL, pairs=[_pair(users)])
     narrow_subset_full_join(no_subset_partner, {"users"}, set(), set(), prior)
     assert no_subset_partner.join_type == JoinType.FULL
+
+
+def test_a_full_join_on_two_keys_is_not_narrowed_beside_a_complete_left():
+    notes = _scan("notes", [USER, KEY], partial=[USER])
+    users = _scan("users", [USER, KEY])
+    items = _scan("items", [USER, KEY])
+    join = Join(
+        right=items,
+        join_type=JoinType.FULL,
+        pairs=[
+            _pair(notes),
+            _pair(users),
+            ConceptPair(left=_concept(KEY), right=_concept(KEY), node=users),
+        ],
+    )
+    narrow_subset_full_join(
+        join, {"notes", "users"}, set(), set(), [_full(notes, users)]
+    )
+    assert join.join_type == JoinType.FULL

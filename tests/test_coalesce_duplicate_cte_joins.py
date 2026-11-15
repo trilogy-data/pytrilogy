@@ -106,3 +106,43 @@ def test_outer_joins_padding_different_sides_stay_apart():
     )
     merged = coalesce_duplicate_joins([pads_orders, pads_customers])
     assert merged == [pads_orders, pads_customers]
+
+
+def test_a_mirror_adds_its_extra_pairs_and_intersects_shared_modifiers():
+    shared = _pair("orders", "cid", "cid")
+    shared.modifiers = [Modifier.NULLABLE]
+    right_outer = _join("customers", [shared], jointype=JoinType.RIGHT_OUTER)
+    left_outer = _join(
+        "orders",
+        [_pair("customers", "cid", "cid"), _pair("customers", "reg", "reg")],
+        jointype=JoinType.LEFT_OUTER,
+    )
+    assert coalesce_duplicate_joins([right_outer, left_outer]) == [right_outer]
+    assert shared.modifiers == []
+    added = right_outer.pairs[-1]
+    assert (added.node.name, added.left.address, added.right.address) == (
+        "orders",
+        "reg",
+        "reg",
+    )
+
+
+def test_inner_joins_onto_one_right_merge_their_pairs():
+    first = _join("x", [_pair("l", "k", "k")], jointype=JoinType.INNER)
+    second = _join(
+        "x",
+        [_pair("l", "k", "k"), _pair("l", "j", "j")],
+        jointype=JoinType.INNER,
+    )
+    assert coalesce_duplicate_joins([first, second]) == [first]
+    assert {p.left.address for p in first.pairs} == {"k", "j"}
+
+
+def test_a_pair_that_orients_against_neither_right_keeps_both_joins():
+    first = _join(
+        "c", [_pair("a", "k", "k"), _pair("b", "k", "k")], jointype=JoinType.INNER
+    )
+    second = _join(
+        "a", [_pair("b", "k", "k"), _pair("c", "k", "k")], jointype=JoinType.INNER
+    )
+    assert coalesce_duplicate_joins([first, second]) == [first, second]
