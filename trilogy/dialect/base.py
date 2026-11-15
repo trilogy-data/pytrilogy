@@ -3707,12 +3707,15 @@ class BaseDialect:
             f"INSERT INTO {staged} {select}",
             self.render_partition_delete(target, staged, query.partition_by),
             f"INSERT INTO {target} SELECT * FROM {staged}",
-            f"DROP TABLE {staged}",
+            self.render_staging_drop(staged),
         ]
 
     def render_staging_create(self, target: str, staged: str) -> str:
         """An empty table shaped like the target, to stage the new rows in."""
         return f"CREATE TEMPORARY TABLE {staged} AS SELECT * FROM {target} WHERE 1=0"
+
+    def render_staging_drop(self, staged: str) -> str:
+        return f"DROP TABLE {staged}"
 
     def partition_key_match(
         self, left: str, right: str, partition_by: list[str]

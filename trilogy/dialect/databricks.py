@@ -3,9 +3,11 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from trilogy.core.enums import FunctionType, NullSort, UnnestMode
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, MapWrapper
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.dialect.base import (
     CALENDAR_PARTS,
+    INLINE_SAFE_PARAM_DATATYPES,
     BaseDialect,
     TableColumn,
     array_element_type,
@@ -281,11 +283,32 @@ class DatabricksDialect(BaseDialect):
     TRANSACTIONAL_DDL = False
     TABLE_NOT_FOUND_PATTERN = "TABLE_OR_VIEW_NOT_FOUND"
     COLUMN_NOT_FOUND_PATTERN = "UNRESOLVED_COLUMN"
+    # the driver binds a list or dict as an empty value; render it inline
+    INLINE_PARAM_DATATYPES: ClassVar[frozenset[DataType]] = (
+        INLINE_SAFE_PARAM_DATATYPES | {DataType.ARRAY, DataType.MAP, DataType.STRUCT}
+    )
 
     def render_string_literal(self, value: str) -> str:
         # Backslash escapes, and `'a''b'` is two adjacent literals that
         # concatenate to `ab`, so the quote is backslash-escaped too.
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+    def render_map_literal(
+        self,
+        e: MapWrapper[Any, Any],
+        cte: CTE | UnionCTE | None = None,
+        raise_invalid: bool = False,
+    ) -> str:
+        parts = [
+            self.render_expr(x, cte=cte, raise_invalid=raise_invalid)
+            for pair in e.items()
+            for x in pair
+        ]
+        return f"map({', '.join(parts)})"
+
+    def render_staging_drop(self, staged: str) -> str:
+        # a bare DROP TABLE refuses to resolve to a temporary table
+        return f"DROP TEMPORARY TABLE {staged}"
 
     def hash_column_value(self, column_name: str) -> str:
         return f"md5(CAST({self.safe_quote(column_name)} AS STRING))"

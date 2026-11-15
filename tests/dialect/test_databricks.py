@@ -95,3 +95,23 @@ def test_config_names_what_is_missing(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError, match="host, http_path, access_token"):
         DatabricksConfig()
+
+
+def test_complex_constants_render_inline():
+    executor = Executor(
+        dialect=Dialects.DATABRICKS,
+        engine=_MockEngine(),
+        environment=Environment(),
+    )
+    sql = executor.generate_sql(
+        "const arr <- [1, 2]; const m <- {'a': 1}; select len(arr) as n, m['a'] as a;"
+    )[-1]
+    assert "size(array(1, 2))" in sql
+    assert "try_element_at(map('a', 1), 'a')" in sql
+
+
+def test_staging_table_is_dropped_as_temporary():
+    assert (
+        DatabricksDialect().render_staging_drop("`stage`")
+        == "DROP TEMPORARY TABLE `stage`"
+    )
