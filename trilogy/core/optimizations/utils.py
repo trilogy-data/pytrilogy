@@ -249,13 +249,6 @@ def is_grouped_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
 
-def equivalent_addresses(concepts: list[BuildConcept]) -> set[str]:
-    out: set[str] = set()
-    for c in concepts:
-        out |= c.equivalent_addresses
-    return out
-
-
 def base_datasource(
     datasource: BuildDatasource | QueryDatasource,
 ) -> BuildDatasource | QueryDatasource | None:

@@ -140,6 +140,8 @@ from .edges import (
     EdgeMap,
     dependency_subgraph,
     edge_kind,
+    existence_predecessors,
+    feeds_existence,
     lineage_predecessors,
     remove_edge,
 )
@@ -147,8 +149,10 @@ from .extent_ownership import takes_a_value_on_padding
 from .final_cover import elect_cover, output_covers, record_twin_reuse
 from .functional_dependency import (
     build_fd_closure,
-    build_fd_determines,
     build_fd_determines_all,
+    strict_fd_closure,
+    strict_fd_determines,
+    strict_fd_determines_all,
 )
 from .group_graph import (
     GroupedRowMemo,
@@ -291,24 +295,6 @@ def _row_argument_addresses(atoms: Iterable[BoolExpr]) -> set[str]:
 
 def _output_addresses(nodes: Iterable[StrategyNode]) -> set[str]:
     return {output.address for node in nodes for output in node.output_concepts}
-
-
-def _existence_parents(
-    group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str
-) -> list[str]:
-    """The groups feeding `gid` a subselect, not rows."""
-    return [
-        pgid
-        for pgid in group_graph.predecessors(gid)
-        if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
-    ]
-
-
-def _feeds_existence(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
-    return any(
-        edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
-        for succ in group_graph.successors(gid)
-    )
 
 
 def _forced_dedup(
@@ -982,7 +968,7 @@ def _projects_parent_rows(
         reads.environment,
     )
     a = plan.attrs[gid]
-    if a.condition_atoms or _existence_parents(group_graph, group_edges, gid):
+    if a.condition_atoms or existence_predecessors(group_graph, group_edges, gid):
         return False
     available = reads.outputs(parents)
     outputs = satisfiable_from(
@@ -992,7 +978,7 @@ def _projects_parent_rows(
         return False
     if a.derivation == Derivation.FILTER:
         # a semijoin RHS is built as the set it feeds
-        if _feeds_existence(group_graph, group_edges, gid):
+        if feeds_existence(group_graph, group_edges, gid):
             return False
         narrows = _filter_intrinsic_pushdown_safe(
             group_graph, plan.attrs, gid, outputs, reads.mandatory_list, environment
@@ -2516,9 +2502,7 @@ def _parents_already_at_input_grain(
             component
             for component in resolved_grain
             if component not in keys
-            and not build_fd_determines(
-                environment, keys, component, include_empty_grain=False
-            )
+            and not strict_fd_determines(environment, keys, component)
         ]
         # A leftover component the stream pins to a single literal
         # (`channel = 'STORE'` under an all-channel union) can't split any
@@ -2644,8 +2628,8 @@ def _widen_determined_dedup(
     if not isinstance(node, GroupNode) or not node.parents:
         return False
     outputs = {o.address for o in node.output_concepts}
-    if not outputs <= parent_output_addresses(node) or not build_fd_determines_all(
-        environment, outputs, {concept.address}, include_empty_grain=False
+    if not outputs <= parent_output_addresses(node) or not strict_fd_determines_all(
+        environment, outputs, {concept.address}
     ):
         return False
     if not any(
@@ -2903,7 +2887,7 @@ def _project_planned_keys(
             and not _carry_needs_own_node(c)
         ]
         determined = (
-            build_fd_closure(environment, frozenset(outputs), include_empty_grain=False)
+            strict_fd_closure(environment, frozenset(outputs))
             if len(owed) > len(rendered)
             else frozenset()
         )
@@ -3966,9 +3950,7 @@ def _fd_at_grain(
     concept_keys = frozenset(concept.keys or set())
     if concept_keys and concept_keys <= grain_components:
         return True
-    return build_fd_determines(
-        environment, grain_components, concept.address, include_empty_grain=False
-    )
+    return strict_fd_determines(environment, grain_components, concept.address)
 
 
 def _rows_finer_than(
@@ -3976,8 +3958,7 @@ def _rows_finer_than(
 ) -> bool:
     rows = _resolved_grain(node)
     return bool(rows) and not (
-        rows <= grain
-        or build_fd_determines_all(environment, grain, rows, include_empty_grain=False)
+        rows <= grain or strict_fd_determines_all(environment, grain, rows)
     )
 
 
@@ -4226,9 +4207,7 @@ def _holds_statement_rows(
     an aggregate only when its grain determines the statement's."""
     if reader.derivation not in GROUPING_DERIVATIONS:
         return True
-    return build_fd_determines_all(
-        environment, reader.grain_components, required, include_empty_grain=False
-    )
+    return strict_fd_determines_all(environment, reader.grain_components, required)
 
 
 def _add_region_domain_contributors(
@@ -4667,7 +4646,7 @@ def _promote_final_aliases_to_grouping_contributors(
         members = per_group.get(src_gid)
         if not members:
             continue
-        if _existence_parents(group_graph, group_edges, src_gid):
+        if existence_predecessors(group_graph, group_edges, src_gid):
             continue
         if not all(_renamed_addresses(c) is not None for c in members):
             continue
@@ -5036,9 +5015,7 @@ def _wrap_for_grain(
                 # folds the property hierarchy only, so an enum declared `key
                 # city` that a source binds at grain(tree_id) never folds into
                 # it.
-                and build_fd_determines(
-                    environment, axis, concept.address, include_empty_grain=False
-                )
+                and strict_fd_determines(environment, axis, concept.address)
             )
             # a value at a grain the rows determine (`sum(x) by city, species`
             # beside `tree_id`): bucketed at its own grain it pairs with the
@@ -5047,8 +5024,7 @@ def _wrap_for_grain(
                 concept.is_aggregate
                 and not grain_components <= axis
                 and all(
-                    build_fd_determines(environment, axis, c, include_empty_grain=False)
-                    for c in grain_components
+                    strict_fd_determines(environment, axis, c) for c in grain_components
                 )
             )
         ):
@@ -5724,8 +5700,8 @@ def _atoms_of_groups_aggregated(
         a = attrs.get(anc)
         if a is None or a.derivation not in GROUPING_DERIVATIONS:
             continue
-        reach = set(a.output_concepts) | build_fd_closure(
-            environment, a.grain_components, include_empty_grain=False
+        reach = set(a.output_concepts) | strict_fd_closure(
+            environment, a.grain_components
         )
         if set(group.input_concepts) <= reach:
             atoms.extend(x for x in a.condition_atoms if x not in atoms)
@@ -6841,7 +6817,7 @@ def _at_declared_identity(
     keys = identity - {ALL_ROWS_ADDRESS}
     if not keys or not keys <= {o.address for o in node.usable_outputs}:
         return node
-    closure = build_fd_closure(environment, keys, include_empty_grain=False)
+    closure = strict_fd_closure(environment, keys)
     finer = _resolved_grain(node) - closure
     # a sibling the stream is built on, or built on it, holds the same rows
     exposed = set().union(
@@ -7468,7 +7444,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 mandatory_list,
                 environment,
             ),
-            existence_source=_feeds_existence(
+            existence_source=feeds_existence(
                 unfolded.group_graph, unfolded.group_edges, gid
             ),
             collapse_to_grain=all(
@@ -7555,7 +7531,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         node,
         built,
         feeder_cache,
-        preferred=_existence_parents(group_graph, group_edges, gid),
+        preferred=existence_predecessors(group_graph, group_edges, gid),
     )
     return node
 

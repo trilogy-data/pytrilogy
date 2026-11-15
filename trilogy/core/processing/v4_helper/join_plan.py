@@ -25,7 +25,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 
 from .concept_graph import _scope_and_phase, _statement_scoped_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
-from .functional_dependency import build_fd_closure, build_fd_determines_all
+from .functional_dependency import build_fd_determines_all, strict_fd_closure
 from .models import GroupAttrs, InputChannel, pairing_keys
 
 
@@ -386,9 +386,7 @@ def _member_keys(members: Iterable[str], environment: BuildEnvironment) -> set[s
 def _fd_determined(
     environment: BuildEnvironment, keys: Iterable[str], concept: BuildConcept
 ) -> bool:
-    return concept.address in build_fd_closure(
-        environment, keys, include_empty_grain=False
-    )
+    return concept.address in strict_fd_closure(environment, keys)
 
 
 def _relevant_carry_keys(
@@ -422,10 +420,7 @@ def _relevant_carry_keys(
     # (`tree_id` -> `genus` beside a value by genus): widening to it keeps them.
     # An authored relation's member pairs as authored, never as a lookup.
     relevant |= (
-        pairing_keys(
-            candidates
-            & build_fd_closure(environment, delivered, include_empty_grain=False)
-        )
+        pairing_keys(candidates & strict_fd_closure(environment, delivered))
         - environment.all_scoped_join_group_members()
     )
     # A composite grain reaches a dimension through a foreign key OFF it
@@ -685,7 +680,7 @@ def _held_columns(
         extra &= domain_spans
     # a ROOT carries exactly its carry demand beyond what it holds
     if identity and group.derivation != Derivation.ROOT:
-        closure = build_fd_closure(environment, identity, include_empty_grain=False)
+        closure = strict_fd_closure(environment, identity)
         extra |= sibling_keys & closure
     # Off a rowset boundary the rows hold the boundary's columns under its
     # handles, and nothing else: a base key there (the `id` a body selects)
@@ -772,7 +767,7 @@ def _determined(keys: Iterable[str], environment: BuildEnvironment) -> frozenset
             and c.purpose == Purpose.UNIQUE_PROPERTY
             for key in c.keys or ()
         }
-        grown = build_fd_closure(environment, seed, include_empty_grain=False)
+        grown = strict_fd_closure(environment, seed)
         if grown == closure:
             return closure
         closure = grown
@@ -952,8 +947,7 @@ def plan_final_join(
     reach = {
         gid: carries[gid]
         | (
-            members
-            & build_fd_closure(environment, identity[gid], include_empty_grain=False)
+            members & strict_fd_closure(environment, identity[gid])
             if identity[gid]
             and gid in supplying
             and attrs[gid].derivation not in (*GROUPING_DERIVATIONS, Derivation.ROOT)

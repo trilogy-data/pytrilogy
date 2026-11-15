@@ -30,6 +30,7 @@ from .constants import REPEAT_BLIND_AGGREGATES, DepthLabel, EdgeKind
 from .edges import (
     EdgeMap,
     edge_kind,
+    feeds_existence,
     lineage_predecessors,
     lineage_subgraph,
     lineage_successors,
@@ -1513,10 +1514,7 @@ def partition_filters_by_signature(
     solo_items: list[NodeItem] = []
     shared_items: list[NodeItem] = []
     for node, data in items:
-        if any(
-            edge_kind(concept_edges, node, succ) == EdgeKind.EXISTENCE
-            for succ in concept_graph.successors(node)
-        ):
+        if feeds_existence(concept_graph, concept_edges, node):
             solo_items.append((node, data))
         else:
             shared_items.append((node, data))

@@ -66,9 +66,9 @@ from .constants import (
 )
 from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
 from .functional_dependency import (
-    build_fd_determines,
     minimize_build_grain,
     origin_relation_stored,
+    strict_fd_determines,
 )
 from .models import ConceptAttrs
 from .network_build import null_sensitive
@@ -2363,15 +2363,13 @@ def _stamp_determining_key_roots(
             if root.keys & present:
                 continue
             kept = [key for key in keys if key != root.address]
-            if not kept or not build_fd_determines(
-                environment, set(kept), root.address, include_empty_grain=False
+            if not kept or not strict_fd_determines(
+                environment, set(kept), root.address
             ):
                 continue
             for key in list(kept):
                 rest = [k for k in kept if k != key]
-                if rest and build_fd_determines(
-                    environment, set(rest), root.address, include_empty_grain=False
-                ):
+                if rest and strict_fd_determines(environment, set(rest), root.address):
                     kept = rest
             root.determining_key_roots = frozenset(kept)
 

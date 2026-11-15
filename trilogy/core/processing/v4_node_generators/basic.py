@@ -14,7 +14,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import (
-    build_fd_determines,
+    strict_fd_determines,
 )
 from trilogy.core.processing.v4_helper.projection import (
     renderable_addresses,
@@ -143,10 +143,7 @@ def grain_claim_unheld(
         return False
     claimed = BuildGrain.from_concepts(outputs).components
     return not all(
-        component in claimed
-        or build_fd_determines(
-            environment, claimed, component, include_empty_grain=False
-        )
+        component in claimed or strict_fd_determines(environment, claimed, component)
         for component in parent_grain
     )
 

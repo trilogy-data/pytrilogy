@@ -45,7 +45,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.atom_contract import and_atoms, register_remover
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_nodes
+from trilogy.core.optimizations.utils import null_padded_nodes
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
@@ -54,6 +54,7 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
+    equivalent_addresses,
 )
 
 

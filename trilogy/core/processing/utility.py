@@ -172,6 +172,15 @@ def left_deep_joins(
     return out
 
 
+def equivalent_addresses(concepts: Iterable[BuildConcept]) -> set[str]:
+    """Every spelling (address and pseudonyms) of `concepts`."""
+    return {
+        equivalent
+        for concept in concepts
+        for equivalent in concept.equivalent_addresses
+    }
+
+
 def padded_by(join: SourceJoin, left: frozenset[str]) -> set[str]:
     """The sources `join` NULL-pads, `left` as from `left_deep_joins`."""
     padded = set(left) if join.join_type in PADS_LEFT_JOIN_TYPES else set()

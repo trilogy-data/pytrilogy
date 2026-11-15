@@ -56,6 +56,7 @@ from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    NESTED_DEPTHS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
@@ -76,10 +77,10 @@ from .extent_ownership import (
     elect_extent_owners,
 )
 from .functional_dependency import (
-    build_fd_closure,
-    build_fd_determines,
-    build_fd_determines_all,
     concept_attr_fd_determines,
+    strict_fd_closure,
+    strict_fd_determines,
+    strict_fd_determines_all,
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES, _lineage_reach
@@ -248,7 +249,7 @@ def _fold_rollup_key_dims(
             continue
         for node in bucket.primary_node_ids:
             attrs = concept_attrs[node]
-            if attrs.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
+            if attrs.depth_label in NESTED_DEPTHS:
                 continue
             # A pure rename is a pseudonym of its source key; the renderer
             # resolves it to the rolled-up key column directly, so it neither
@@ -648,9 +649,7 @@ def _grain_determines(
     """Every key of `targets` is a function of `determinants` together."""
     if not determinants or not targets:
         return False
-    return build_fd_determines_all(
-        environment, determinants, targets, include_empty_grain=False
-    )
+    return strict_fd_determines_all(environment, determinants, targets)
 
 
 def _offered_at_grain(
@@ -661,7 +660,7 @@ def _offered_at_grain(
     `tree_id` holds one row per tree, #972); FINAL reads it off the rows."""
     if fact.derivation != Derivation.BASIC or not fact.grain:
         return offered
-    determined = build_fd_closure(environment, fact.grain, include_empty_grain=False)
+    determined = strict_fd_closure(environment, fact.grain)
     if not all(_declared_at(environment, determined, addr) for addr in fact.primary):
         return offered
     return offered & (fact.primary | determined)
@@ -767,9 +766,7 @@ def _source_asked_root_keys(
             and concept.derivation == Derivation.ROOT
             # a table beside the outputs that binds it widens to it in place
             and not any(key in t and outputs <= t for t in tables)
-            and build_fd_determines(
-                environment, outputs, key, include_empty_grain=False
-            )
+            and strict_fd_determines(environment, outputs, key)
         )
         if missing:
             root.output_concepts = (*root.output_concepts, *missing)
@@ -1727,8 +1724,8 @@ def _widen_mixed_scalar_basic_to_final_spine(
         return
     mandatory_addresses = {c.address for c in mandatory_list}
     extra_keys = spine - mandatory_addresses
-    if extra_keys and not build_fd_determines_all(
-        environment, mandatory_addresses, extra_keys, include_empty_grain=False
+    if extra_keys and not strict_fd_determines_all(
+        environment, mandatory_addresses, extra_keys
     ):
         return
     for gid in candidates:
@@ -2355,9 +2352,7 @@ def _concept_sets(
             # excluded: a scan that absorbs one would drop the rowset's
             # internal filter.
             for member in scan_advertisable_members:
-                if member not in cap and build_fd_determines(
-                    environment, cap, member, include_empty_grain=False
-                ):
+                if member not in cap and strict_fd_determines(environment, cap, member):
                     cap.add(member)
             # a dim peel's keys identify its rows, the axis it joins back on;
             # a region's span rides the scan as the axis the region's rows do
@@ -2426,12 +2421,7 @@ def _concept_sets(
                         pointwise
                         and (addr not in concept_attrs or addr in region_join_keys)
                         and bool(fact.native_grain)
-                        and build_fd_determines(
-                            environment,
-                            fact.native_grain,
-                            addr,
-                            include_empty_grain=False,
-                        )
+                        and strict_fd_determines(environment, fact.native_grain, addr)
                     )
                 ):
                     cap.add(addr)

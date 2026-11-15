@@ -49,8 +49,8 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeMap, edge_kind
-from .functional_dependency import build_fd_determines
+from .edges import EdgeMap, edge_kind, feeds_existence
+from .functional_dependency import build_fd_determines, strict_fd_determines
 from .group_rules import overlap_components
 from .keyspace import null_rejected
 from .models import ConceptAttrs, GroupBucket, RootReason
@@ -77,16 +77,7 @@ def _needs_pristine_scan(
     # the SELECT's common root. Otherwise the fact columns that exist only
     # to define the set sit in the shared root and drag the SELECT's
     # dimension projection onto the fact instead of its own dim tables.
-    return _defines_existence_set(concept_graph, concept_edges, n)
-
-
-def _defines_existence_set(
-    concept_graph: nx.DiGraph, concept_edges: EdgeMap, n: str
-) -> bool:
-    return any(
-        edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
-        for succ in concept_graph.successors(n)
-    )
+    return feeds_existence(concept_graph, concept_edges, n)
 
 
 def _constrains_scanned_output(
@@ -184,7 +175,7 @@ def _d1_calc_subgraph(
             if stage_of[n] != stage:
                 continue
             roots = _lineage_roots(concept_graph, concept_edges, concept_attrs, [n])
-            if _defines_existence_set(concept_graph, concept_edges, n):
+            if feeds_existence(concept_graph, concept_edges, n):
                 set_roots.append(roots)
             else:
                 rest.append(roots)
@@ -450,7 +441,7 @@ def _reaches_existence_set(
         if cur in seen:
             continue
         seen.add(cur)
-        if _defines_existence_set(concept_graph, concept_edges, cur):
+        if feeds_existence(concept_graph, concept_edges, cur):
             return True
         stack.extend(n for n in concept_graph.successors(cur) if n in d1_subgraph)
     return False
@@ -469,8 +460,7 @@ def _finest_determining_key(
         k
         for k in determiners
         if all(
-            other == k
-            or build_fd_determines(environment, {other}, k, include_empty_grain=False)
+            other == k or strict_fd_determines(environment, {other}, k)
             for other in determiners
         )
     ]
@@ -493,9 +483,7 @@ def _composite_determining_grain(
         grain
         for grain in grains
         if address not in grain
-        and build_fd_determines(
-            environment, set(grain), address, include_empty_grain=False
-        )
+        and strict_fd_determines(environment, set(grain), address)
     ]
     if not determining:
         return None
@@ -505,9 +493,7 @@ def _composite_determining_grain(
     # keyed by an unrelated grouping key reads the fact again to pair them.
     for key in sorted(chosen):
         rest = chosen - {key}
-        if len(rest) > 1 and build_fd_determines(
-            environment, rest, address, include_empty_grain=False
-        ):
+        if len(rest) > 1 and strict_fd_determines(environment, rest, address):
             chosen = rest
     return frozenset(chosen)
 
@@ -664,11 +650,7 @@ def _entity_key(
 ) -> str | None:
     if addr in keys:
         return addr
-    determiners = [
-        k
-        for k in keys
-        if build_fd_determines(environment, {k}, addr, include_empty_grain=False)
-    ]
+    determiners = [k for k in keys if strict_fd_determines(environment, {k}, addr)]
     return _finest_determining_key(determiners, environment) if determiners else None
 
 
@@ -854,7 +836,7 @@ def _preaggregate_filter_allows_dimension_member(
     return (
         key is not None
         and all(key in b.grain_components for b in grouping_buckets)
-        and build_fd_determines(environment, {key}, address, include_empty_grain=False)
+        and strict_fd_determines(environment, {key}, address)
     )
 
 
@@ -878,7 +860,7 @@ def _peel_skips_row_filter(
         for component in grain - {ALL_ROWS_ADDRESS}
     }
     return any(
-        not build_fd_determines(environment, {key}, arg, include_empty_grain=False)
+        not strict_fd_determines(environment, {key}, arg)
         for arg in pre_aggregate_filter_args | finer
     )
 
@@ -966,8 +948,7 @@ def _peels_a_cluster(
 ) -> bool:
     """`key` determines some other member of the bucket, but not all of them."""
     determined = sum(
-        build_fd_determines(environment, set(key), other, include_empty_grain=False)
-        for other in members - key
+        strict_fd_determines(environment, set(key), other) for other in members - key
     )
     return 0 < determined < len(members - key)
 
@@ -1089,10 +1070,7 @@ def _split_root_dimension_clusters(
             # (dual-scope: outputs recompute over admitted rows). d1 population
             # buckets are exempt; the WHERE never narrows them.
             if addr not in output_addresses and not all(
-                grain
-                and build_fd_determines(
-                    environment, grain, addr, include_empty_grain=False
-                )
+                grain and strict_fd_determines(environment, grain, addr)
                 for grain in d0_grouping_grains
             ):
                 continue

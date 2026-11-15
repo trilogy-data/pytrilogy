@@ -45,7 +45,13 @@ from trilogy.core.processing.discovery_utility import (
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import computed_origin_relation_members
-from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
+from .constants import (
+    FINAL_NODE_ID,
+    GROUPING_DERIVATIONS,
+    NESTED_DEPTHS,
+    DepthLabel,
+    EdgeKind,
+)
 from .edges import (
     EdgeMap,
     edge_kind,
@@ -53,7 +59,7 @@ from .edges import (
     lineage_subgraph,
     subgraph_of_kinds,
 )
-from .functional_dependency import build_fd_determines_all
+from .functional_dependency import build_fd_determines_all, strict_fd_determines_all
 from .models import (
     ConceptAttrs,
     ConceptSets,
@@ -75,9 +81,6 @@ _EMITS_GROUP_BY: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
 }
-
-# condition-phase groups: reached through the WHERE, never a select output
-_NESTED_DEPTHS = (DepthLabel.D1, DepthLabel.ROOT_D1)
 
 
 class PlacementReason(Enum):
@@ -367,7 +370,7 @@ def _producer_groups(
     for addr in row_inputs:
         producers = [gid for gid in buckets if addr in group_outputs[gid]]
         main_producers = [
-            gid for gid in producers if buckets[gid].depth_label not in _NESTED_DEPTHS
+            gid for gid in producers if buckets[gid].depth_label not in NESTED_DEPTHS
         ]
         producer_groups.update(main_producers or producers)
     return producer_groups
@@ -541,7 +544,7 @@ def _rows_filtered_by(
         result = any(filtered) and all(
             ok
             or buckets[p].derivation in _EMITS_GROUP_BY
-            or buckets[p].depth_label in _NESTED_DEPTHS
+            or buckets[p].depth_label in NESTED_DEPTHS
             for p, ok in zip(preds, filtered)
         )
     memo[gid] = result
@@ -659,7 +662,7 @@ def _uncovered_exposing_output_contributor(
     for gid, b in buckets.items():
         if gid in covered:
             continue
-        if b.depth_label in _NESTED_DEPTHS:
+        if b.depth_label in NESTED_DEPTHS:
             continue
         members = set(b.primary_members) | carried[gid]
         if not (members & mandatory_addrs):
@@ -978,7 +981,7 @@ def _hosts_carrying_condition_grain(
         set(b.grain_components)
         for b in buckets.values()
         if b.derivation in _EMITS_GROUP_BY
-        and b.depth_label in _NESTED_DEPTHS
+        and b.depth_label in NESTED_DEPTHS
         and b.grain_components
         and row_inputs & set(b.primary_members)
     ]
@@ -1070,7 +1073,7 @@ def _conjunction_recompute_placements(
             if (
                 bucket is not None
                 and bucket.derivation in _EMITS_GROUP_BY
-                and bucket.depth_label not in _NESTED_DEPTHS
+                and bucket.depth_label not in NESTED_DEPTHS
             ):
                 hosts.add(gid)
     if not hosts:
@@ -1141,7 +1144,7 @@ def _uncovered_grouping_placements(
                 gid in placement.group_ids
                 or gid not in scope.main_lineage
                 or bucket.derivation not in _EMITS_GROUP_BY
-                or bucket.depth_label in _NESTED_DEPTHS
+                or bucket.depth_label in NESTED_DEPTHS
                 or row_inputs & set(bucket.primary_members)
             ):
                 continue
@@ -1230,7 +1233,7 @@ def _staged_precondition_placements(
                 gid
                 for gid, b in buckets.items()
                 if b.derivation in CROSS_ROW_DERIVATIONS
-                and b.depth_label in _NESTED_DEPTHS
+                and b.depth_label in NESTED_DEPTHS
                 and stage_addrs & set(b.primary_members)
             )
             for host in hosts:
@@ -1846,7 +1849,7 @@ def plan_condition_placements(
     d1_root_ids = {
         gid for gid, b in buckets.items() if b.depth_label == DepthLabel.ROOT_D1
     }
-    nested_ids = {gid for gid, b in buckets.items() if b.depth_label in _NESTED_DEPTHS}
+    nested_ids = {gid for gid, b in buckets.items() if b.depth_label in NESTED_DEPTHS}
     lineage_only = lineage_subgraph(group_graph, group_edges)
     main_lineage = (
         main_lineage_groups(lineage_only, buckets, mandatory_list)
@@ -2040,9 +2043,7 @@ def _pin_input_placements(
         for gid, anchors in hosts.items():
             if gid in placement.group_ids:
                 continue
-            if build_fd_determines_all(
-                scope.environment, anchors, row_inputs, include_empty_grain=False
-            ) or (
+            if strict_fd_determines_all(scope.environment, anchors, row_inputs) or (
                 not row_inputs & scope.group_members[gid]
                 and any(
                     h not in scope.pin_sealed_relatable

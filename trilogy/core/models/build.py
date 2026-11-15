@@ -484,17 +484,12 @@ def concepts_to_build_grain_concepts(
     # customer.id -> order.id), or a key a table binds beside its grain.
     if environment is not None:
         from trilogy.core.processing.v4_helper.functional_dependency import (
-            build_fd_determines,
+            strict_fd_determines,
         )
 
         reduced = set(final)
         for addr in sorted(final):
-            if build_fd_determines(
-                environment,
-                reduced - {addr} - padded,
-                addr,
-                include_empty_grain=False,
-            ):
+            if strict_fd_determines(environment, reduced - {addr} - padded, addr):
                 reduced.discard(addr)
         final = reduced
 

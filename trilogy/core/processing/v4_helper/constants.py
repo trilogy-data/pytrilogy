@@ -108,3 +108,6 @@ ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS: set[Derivation] = {
 }
 
 FINAL_NODE_ID = "__final__"
+
+# condition-phase groups: reached through the WHERE, never a select output
+NESTED_DEPTHS = (DepthLabel.D1, DepthLabel.ROOT_D1)

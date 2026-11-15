@@ -81,7 +81,7 @@ from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
-from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
+from trilogy.core.processing.v4_helper.functional_dependency import strict_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
     absorbs_null,
@@ -2462,9 +2462,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
         for members in grouped.values()
     ]
     for index, addresses in enumerate(component_addresses):
-        closure = build_fd_closure(
-            request.environment, addresses, include_empty_grain=False
-        )
+        closure = strict_fd_closure(request.environment, addresses)
         for other_index, other in enumerate(component_addresses):
             if other_index != index and (
                 closure & other or _elements_of(other, closure, request.environment)

@@ -85,13 +85,6 @@ def nonempty(key: str):
 
 
 # ---- stage 2: group graph ---------------------------------------------------
-def p_final_contract(
-    orig, group_graph, attrs, mandatory_list, environment, *rest, **kw
-):
-    r = orig(group_graph, attrs, mandatory_list, environment, *rest, **kw)
-    return r
-
-
 def p_regraft_candidate(orig, *a, **k):
     r = orig(*a, **k)
     if r is not None:
@@ -265,7 +258,6 @@ def p_keyless_guard(orig, *a, **k):
 def install() -> None:
     mn.MergeNode.__init__ = p_merge_init  # type: ignore[method-assign]
     mn.MergeNode.generate_joins = p_generate  # type: ignore[method-assign]
-    wrap(gg, "_refresh_final_contract", p_final_contract)
     wrap(gg, "_regraft_candidate", p_regraft_candidate)
     wrap(
         gg,

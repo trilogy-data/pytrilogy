@@ -54,6 +54,7 @@ from trilogy.core.processing.join_resolution import (
 from trilogy.core.processing.utility import (
     applied_atoms,
     collect_applied_conditions,
+    equivalent_addresses,
     join_left_sources,
     joined_right_ids,
     left_deep_joins,
@@ -163,14 +164,6 @@ def _source_concept_for_address(
         ),
         None,
     )
-
-
-def _equivalent_addresses(concepts: Iterable[BuildConcept]) -> set[str]:
-    return {
-        equivalent
-        for concept in concepts
-        for equivalent in concept.equivalent_addresses
-    }
 
 
 def _concept_coverage_addresses(
@@ -933,7 +926,7 @@ def join_preserves_left_rows(join: Join) -> bool:
     right_grain = set(right.grain.components)
     if not right_grain:
         return True
-    return right_grain <= _equivalent_addresses(_right_join_keys(join))
+    return right_grain <= equivalent_addresses(_right_join_keys(join))
 
 
 def _only_lookup_joins(joins: Iterable[SourceJoin | UnnestJoin]) -> bool:
@@ -1066,7 +1059,7 @@ def grain_satisfied_by_pregrain(
 
 def nullable_spellings(nullable: Iterable[BuildConcept]) -> set[str]:
     """A key NULL on some row is NULL there under every one of its spellings."""
-    return _equivalent_addresses(nullable)
+    return equivalent_addresses(nullable)
 
 
 def determined_past_nulls(
@@ -1078,15 +1071,13 @@ def determined_past_nulls(
     """Every component is covered, or determined by covered columns non-null
     on every row (`nullable` as `nullable_spellings`)."""
     from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
+        strict_fd_determines,
     )
 
     determinants = coverage - nullable
     return all(
         component in coverage
-        or build_fd_determines(
-            environment, determinants, component, include_empty_grain=False
-        )
+        or strict_fd_determines(environment, determinants, component)
         for component in components
     )
 
@@ -1104,7 +1095,7 @@ def rows_unique_at_outputs(
     present, and after `users LEFT items FULL products` it is padded."""
     return determined_past_nulls(
         environment,
-        _equivalent_addresses(outputs),
+        equivalent_addresses(outputs),
         nullable_spellings(nullable),
         joined.components,
     )

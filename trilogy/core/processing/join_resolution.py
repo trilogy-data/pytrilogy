@@ -672,10 +672,10 @@ def _fd_closure(
 ) -> frozenset[str]:
     # local import: v4_helper's package init imports this module
     from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_closure,
+        strict_fd_closure,
     )
 
-    return build_fd_closure(environment, determinants, include_empty_grain=False)
+    return strict_fd_closure(environment, determinants)
 
 
 def _dimension_of(lookup: SideFacts, fact: SideFacts) -> bool:
