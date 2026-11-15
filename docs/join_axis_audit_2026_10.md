@@ -3204,26 +3204,57 @@ family only beyond mirrored joins (`merged` × `value`, 6 queries). There the
 partial term's walk ends `(trees INNER enrichment) INNER cheerful`, while
 the other ends `cheerful LEFT trees LEFT enrichment`. Element (18 queries),
 property (6) and merged × city (6) now type the same joins from either side.
+After parts 81-82 the `merged` × `value` gap is one join: the kept walk's
+INNER on `cheerful` was the unsound proof's, and it is now a RIGHT OUTER.
 
-**Found, not fixed: an INNER's key proof forces a later join's side.**
-`UpgradeJoinOnGuards` reads an INNER join's key predicate as a proof that the
+**An INNER's key proof forces only the joins before it (part 81).**
+`UpgradeJoinOnGuards` read an INNER join's key predicate as a proof that the
 key is non-null on every surviving row (`_add_inner_join_key_proofs`). It
-forces a side present off that proof at *any* join in the CTE. A later outer
+forced a side present off that proof at *any* join in the CTE. A later outer
 join's padded rows never meet the predicate, so `a INNER b FULL c WHERE c.x > 1`
-narrows to INNER and drops every `c` row with no `a`. This is what makes the
-partial term's walk tighter in `merged` × `value`: its INNER on `cheerful` is
-forced off the `trees INNER enrichment` proof.
+narrowed to INNER and dropped every `c` row with no `a`. This is what made
+the partial term's walk tighter in `merged` × `value`: its INNER on
+`cheerful` was forced off the `trees INNER enrichment` proof.
 
-The fix is to give each proof the index of the INNER that made it, and use
-it only at an earlier join. It is one patch, and a CTE-level test pins it.
-But it moves `tpc_h` `adhoc07`'s
-`(lineitem INNER orders) RIGHT OUTER customers` back to RIGHT OUTER. Without
-its `LIMIT 20`, the query then returns 500 more rows on TPC-H sf 0.01:
-customers with no order, from every nation, which the final
-`juicy`/`uneven` join's `is not distinct from` on `order_id` lets through.
-So the unsound INNER is masking a second bug (that final join reads a
-customer-to-order LEFT JOIN that no nation filter reaches). The two have to
-land together. The proof fix is held back until the second bug is fixed.
+- Each proof now carries the index of the last INNER that made it
+  (`_ProofState.cte_keys`), and forces a side only at a join before that
+  INNER, whose padded rows the INNER does reject.
+- `test_an_inner_join_proves_nothing_about_a_later_join_padding_it` pins
+  it at the CTE level.
+
+On its own, part 81 exposed a second bug. In `tpc_h` `adhoc07`,
+`(lineitem INNER orders) RIGHT OUTER customers` stops being narrowed to
+INNER. Without its `LIMIT 20`, the query then returns 500 more rows on TPC-H
+sf 0.01: customers with no order, from every nation.
+
+**Padding pairs null-safe only where a solid key or the same filters say
+which row is which (part 82).** adhoc07 sums by `order_id`, so the Indonesian
+customers with no order collapse into one NULL-`order_id` group. The FINAL
+reads `order.customer.id` back off a lookup (`customers LEFT JOIN orders`,
+no nation filter) on `order_id` alone. Both sides' NULLs are orders padding,
+so `get_modifiers` paired them null-safe ("the padding shares provenance"),
+and the one NULL group matched every customer with no order, of any nation.
+`main` returned the right rows only because the unsound INNER of part 81
+dropped that group first.
+
+- A padded NULL names no member. Pairing two sides' padding with
+  `IS NOT DISTINCT FROM` matches the right rows only when another key of
+  the join pairs non-NULL on both sides and says which padded row is which,
+  or when both sides' rows passed the same filters (`_same_filters`, over
+  `collect_applied_conditions`, now in `processing.utility`). An example of
+  the first: customer 3's no-order row beside its own, joined on
+  `customer_id` too, in `test_alias_of_row_value_is_not_the_pinned_read`.
+  Otherwise the key pairs with `=`.
+- With `=` on that join, the cross-CTE proof makes the lookup's
+  customers-to-orders join INNER, and `questionable`'s join stays INNER, now
+  earned by a later rejection. adhoc07 returns `main`'s 666 rows, and its
+  INNER pin holds.
+- `test_adhoc07_rows_are_the_nations_orders` checks adhoc07 without its
+  LIMIT against raw SQL on `dbgen(sf=0.01)`. It fails with part 81 alone.
+- Not decided here: `select order.id, order.customer.id` with the same
+  WHERE and no aggregate returns the 24 Indonesian customers with no order,
+  as `(NULL, customer)` rows. The summed query drops them, on `main` and
+  here alike.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -3275,10 +3306,12 @@ not built yet:
    A complete anchor on every stream row now makes its join INNER (part 80).
    The partial term still decides plan quality: dropping it adds 41 CTEs in
    the dimension-chain oracle and 8 FULLs in summary cover. In relation
-   rollup it now loosens only `merged` × `value`, and there the kept walk's
-   INNER comes from an unsound optimizer proof (an earlier INNER forcing a
-   later join's side). That proof cannot be fixed until the `adhoc07` bug it
-   masks is fixed.
+   rollup the two walks now differ by one join, in `merged` × `value`
+   only: one INNER on the kept walk against a LEFT OUTER on the other. That
+   INNER had come from an unsound optimizer proof, an earlier INNER forcing
+   a later join's side (part 81). The proof's fix exposed a padded NULL
+   paired null-safe across sides that had passed different filters, which
+   `main`'s unsound INNER had hidden (part 82).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
