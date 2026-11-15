@@ -74,7 +74,8 @@ summary's own grain reads it; area 1), and the oracle sweeps (0.3.490 to
 another plan, and A/B'd against main for the summary reads and joins they
 cost; 0.3.493 adds a second family of spellings; 0.3.494 takes that
 family from 127 wrong rows to 5; 0.3.495 to 0.3.499 sweep seeds 10,000-60,000;
-area 1).
+area 1; 0.3.503 clears the four sweep answers 0.3.502 left, sweeps the first
+family to 90,000, and settles every pass-cap query; lesson 45).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -959,14 +960,35 @@ does not rewrite it; that rewrite is open.
       already filtered every grouping its host skipped;
       `_drop_covered_final_reapplies`).
     - The pass-cap warning in a sweep's log is a fixpoint bug, not noise. 50
-      spellings queries hit `MAX_OPTIMIZATION_PASSES`; the committed suites
-      raise on it (`enforce_fixpoint_contract`) but the sweep logs it. Two
-      seeds (2936, 4849) traced to pushdown reporting a change it did not
-      make: a parenthesized conjunction is one candidate but two AND-atoms in
-      the parent's WHERE (`Fixpoint.conjunction_reported_as_new`). To find
-      them, patch `optimization._nonconvergence` and replay the range; to read
-      one, log which pushdown method returned True with the parent's WHERE
-      before and after.
+      spellings queries hit `MAX_OPTIMIZATION_PASSES` on main; the committed
+      suites raise on it (`enforce_fixpoint_contract`) but the sweep only
+      logs it. Each traced to pushdown reporting a change it did not make,
+      because `condition_contains_atom` matched only a bare AND-atom: a
+      parenthesized conjunction is one candidate but two atoms in the
+      parent's WHERE (2936, 4849, 89184), and a parent's own parentheses hid
+      an atom it held (62992) (`Fixpoint.conjunction_reported_as_new`). None
+      is left over seeds 0-90,000. To find them, patch
+      `optimization._nonconvergence` and replay the range; to read one, log
+      which pushdown method returned True with the parent's WHERE before and
+      after.
+    - Unwrapping a candidate's parentheses before comparing it whole broke
+      convergence on ~150 queries main planned fine: a parenthesized OR the
+      parent held as one atom was no longer found. Re-scan the whole range
+      after a containment change, not only the seeds it was made for.
+    - Never move the sweep's worktree (`git checkout`) while a sweep reads
+      it, and never start a sweep with a trailing `&` in a foreground
+      command: the orphan keeps running, and two sweeps writing one log and
+      one cache lose both results.
+    - Totals over both families, seeds 0-90,000 x 2 models (360,000
+      queries): main has 5 wrong answers and 2 raises, the branch none; no
+      summary read or fact scan lost; JOINs 497,108 to 491,749 on the
+      spellings (3,012 queries fewer, 134 more, where a row atom copied onto
+      each grouping joins its gate value there instead of once at FINAL) and
+      363,034 to 359,460 on the first family (1,993 fewer, none more).
+      `--carry-state` over the first family 0-90,000 finds nothing on the
+      final branch; over the spellings it found nothing midway through the
+      round (before the FINAL re-application and containment changes) and
+      was not rerun.
     - The Lean toolchain is at `~/.elan` (v4.35.0 installed), so `lake build`
       runs in the cloud container even though `elan show` reports no default.
 

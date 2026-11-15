@@ -2022,7 +2022,12 @@ a design decision or a bug.
     `Fixpoint.append_held_is_identity`). Pushdown compared the candidate
     `(a and b)` with the parent's AND-atoms one by one, never found it, and
     reported a change each pass that appending (which dedups atoms) never
-    made. A conjunction is now held when each conjunct is.
+    made. A conjunction is now held when each conjunct is, and so is an
+    atom inside the parent's own parentheses (62992, 89184). No spellings
+    query reaches the pass cap over seeds 0-90,000 (50 on main).
+  Over seeds 0-90,000 x 2 models of both families, main returns 5 wrong
+  answers and 2 raises, the branch none, with no summary read or scan lost
+  and 8,933 fewer JOINs.
 
 ## Limits
 
