@@ -50,6 +50,7 @@ class Dialects(Enum):
     SNOWFLAKE = "snowflake"
     DATAFRAME = "dataframe"
     CLICKHOUSE = "clickhouse"
+    DATABRICKS = "databricks"
 
     @classmethod
     def _missing_(cls, value):
@@ -115,6 +116,20 @@ class Dialects(Enum):
                     "SnowflakeConfig must be provided for Snowflake dialect"
                 )
             return _engine_factory(conf, SnowflakeConfig)
+        elif self == Dialects.DATABRICKS:
+            import importlib
+
+            from trilogy.dialect.config import DatabricksConfig
+
+            if not conf:
+                raise ValueError(
+                    "DatabricksConfig must be provided for Databricks dialect"
+                )
+            if importlib.util.find_spec("databricks.sqlalchemy") is None:
+                raise ImportError(
+                    "Databricks driver not installed. python -m pip install pytrilogy[databricks]"
+                )
+            return _engine_factory(conf, DatabricksConfig)
         elif self == Dialects.POSTGRES:
             logger.warn(
                 "WARN: Using experimental postgres dialect. Most functionality will not work."

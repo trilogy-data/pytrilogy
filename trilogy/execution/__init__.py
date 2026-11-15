@@ -1,5 +1,6 @@
 from trilogy.dialect.config import (
     BigQueryConfig,
+    DatabricksConfig,
     DialectConfig,
     DuckDBConfig,
     PostgresConfig,
@@ -10,6 +11,7 @@ from trilogy.dialect.config import (
 
 __all__ = [
     "BigQueryConfig",
+    "DatabricksConfig",
     "DialectConfig",
     "DuckDBConfig",
     "PostgresConfig",

@@ -11,6 +11,7 @@ from trilogy.constants import REMOTE_PREFIXES, logger
 from trilogy.core.exceptions import ConfigurationException
 from trilogy.dialect import (
     BigQueryConfig,
+    DatabricksConfig,
     DialectConfig,
     DuckDBConfig,
     MySQLConfig,
@@ -435,6 +436,10 @@ def load_config_file(
         elif engine == Dialects.SNOWFLAKE:
             engine_config = (
                 SnowflakeConfig(**engine_config_raw) if engine_config_raw else None
+            )
+        elif engine == Dialects.DATABRICKS:
+            engine_config = (
+                DatabricksConfig(**engine_config_raw) if engine_config_raw else None
             )
         elif engine == Dialects.SQL_SERVER:
             engine_config = (

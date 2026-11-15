@@ -1,5 +1,6 @@
 from .config import (
     BigQueryConfig,
+    DatabricksConfig,
     DialectConfig,
     DuckDBConfig,
     MySQLConfig,
@@ -13,6 +14,8 @@ from .config import (
 __all__ = [
     "BigQueryConfig",
     "BigqueryDialect",
+    "DatabricksConfig",
+    "DatabricksDialect",
     "DialectConfig",
     "DuckDBConfig",
     "DuckDBDialect",
@@ -32,6 +35,7 @@ __all__ = [
 
 _dialect_imports: dict[str, tuple[str, str]] = {
     "BigqueryDialect": (".bigquery", "BigqueryDialect"),
+    "DatabricksDialect": (".databricks", "DatabricksDialect"),
     "DuckDBDialect": (".duckdb", "DuckDBDialect"),
     "MySQLDialect": (".mysql", "MySQLDialect"),
     "PostgresDialect": (".postgres", "PostgresDialect"),

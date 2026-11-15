@@ -66,6 +66,14 @@ DIALECT_CONNECTION_HINTS: dict[Dialects, list[tuple[str, str, bool]]] = {
         ("database", '"my_database"', False),
         ("schema", '"public"', False),
     ],
+    Dialects.DATABRICKS: [
+        # Unset, these read DATABRICKS_HOST / DATABRICKS_HTTP_PATH / DATABRICKS_TOKEN.
+        ("host", '"adb-1234567890123456.7.azuredatabricks.net"', False),
+        ("http_path", '"/sql/1.0/warehouses/abcdef1234567890"', False),
+        ("access_token", '"${env:DATABRICKS_TOKEN}"', False),
+        ("catalog", '"main"', False),
+        ("schema", '"default"', False),
+    ],
     Dialects.POSTGRES: [
         ("host", '"localhost"', True),
         ("port", "5432", True),

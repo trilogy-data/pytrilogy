@@ -141,7 +141,9 @@ def _restore_global_config():
 
 
 def load_secret(key: str) -> str | None:
-    """Load a secret from .env.secrets file in the current working directory."""
+    """A secret from the environment, else .env.secrets in the working directory."""
+    if os.getenv(key):
+        return os.getenv(key)
     secrets_path = Path.cwd() / ".env.secrets"
 
     if secrets_path.exists():

@@ -44,6 +44,10 @@ def get_dialect_class(dialect: Dialects) -> type[BaseDialect]:
         from trilogy.dialect.snowflake import SnowflakeDialect
 
         return SnowflakeDialect
+    elif dialect == Dialects.DATABRICKS:
+        from trilogy.dialect.databricks import DatabricksDialect
+
+        return DatabricksDialect
     elif dialect == Dialects.DATAFRAME:
         from trilogy.dialect.dataframe import DataframeDialect
 

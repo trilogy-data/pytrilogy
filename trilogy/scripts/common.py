@@ -559,6 +559,7 @@ def _file_connection_params(stored: DialectConfig) -> dict[str, Any]:
     at the end of get_dialect_config is too late to save them.
     """
     from trilogy.dialect.config import (
+        DatabricksConfig,
         MySQLConfig,
         PostgresConfig,
         PrestoConfig,
@@ -599,6 +600,14 @@ def _file_connection_params(stored: DialectConfig) -> dict[str, Any]:
             "username": stored.username,
             "password": stored.password,
             "database": stored.database,
+            "schema": stored.schema,
+        }
+    if isinstance(stored, DatabricksConfig):
+        return {
+            "host": stored.host,
+            "http_path": stored.http_path,
+            "access_token": stored.access_token,
+            "catalog": stored.catalog,
             "schema": stored.schema,
         }
     return {}
@@ -687,6 +696,20 @@ def get_dialect_config(
             "Snowflake",
         )
         conf = SnowflakeConfig(**conn_dict)
+    elif edialect == Dialects.DATABRICKS:
+        from trilogy.dialect.config import DatabricksConfig
+
+        conn_dict = seed_conn_dict(
+            conn_dict, runtime_config.engine_config, DatabricksConfig
+        )
+        # host, http_path and access_token may come from DATABRICKS_* instead
+        conn_dict = validate_required_connection_params(
+            conn_dict,
+            [],
+            ["host", "http_path", "access_token", "catalog", "schema"],
+            "Databricks",
+        )
+        conf = DatabricksConfig(**conn_dict)
     elif edialect == Dialects.SQL_SERVER:
         from trilogy.dialect.config import SQLServerConfig
 

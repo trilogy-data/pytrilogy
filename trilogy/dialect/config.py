@@ -400,6 +400,61 @@ class SnowflakeConfig(DialectConfig):
         return f"snowflake://{self.username}:{self.password}@{self.account}"
 
 
+class DatabricksConfig(DialectConfig):
+    """A Databricks SQL warehouse. Unset connection fields fall back to the
+    environment variables the Databricks CLI and SDKs read."""
+
+    def __init__(
+        self,
+        host: str | None = None,
+        http_path: str | None = None,
+        access_token: str | None = None,
+        catalog: str | None = None,
+        schema: str | None = None,
+        retry_config: RetryConfig | None = None,
+    ):
+        import os
+
+        super().__init__(retry_config=retry_config)
+        self.host = host or os.environ.get("DATABRICKS_HOST")
+        self.http_path = http_path or os.environ.get("DATABRICKS_HTTP_PATH")
+        self.access_token = access_token or os.environ.get("DATABRICKS_TOKEN")
+        self.catalog = catalog
+        self.schema = schema
+        missing = [
+            name
+            for name, value in (
+                ("host", self.host),
+                ("http_path", self.http_path),
+                ("access_token", self.access_token),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"DatabricksConfig requires {', '.join(missing)} (or "
+                "DATABRICKS_HOST / DATABRICKS_HTTP_PATH / DATABRICKS_TOKEN)"
+            )
+
+    def connection_string(self) -> str:
+        from sqlalchemy import URL
+
+        assert self.host is not None and self.http_path is not None
+        host = self.host.removeprefix("https://").rstrip("/")
+        query = {"http_path": self.http_path}
+        if self.catalog:
+            query["catalog"] = self.catalog
+        if self.schema:
+            query["schema"] = self.schema
+        return URL.create(
+            "databricks",
+            username="token",
+            password=self.access_token,
+            host=host,
+            query=query,
+        ).render_as_string(hide_password=False)
+
+
 class PrestoConfig(DialectConfig):
     def __init__(
         self,
