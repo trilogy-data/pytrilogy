@@ -45,6 +45,7 @@ from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
+    decompose_condition,
     is_scalar_condition,
 )
 from trilogy.core.processing.join_key_groups import axis_member_keys
@@ -57,6 +58,7 @@ from trilogy.core.processing.null_provenance import (
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
+    collect_applied_conditions,
     join_left_sources,
     left_deep_joins,
     padded_by,
@@ -1151,20 +1153,51 @@ def get_modifiers(
     left: DataSource | None,
     right: DataSource | None,
     memo: ProvenanceMemo | None = None,
+    anchored: bool = True,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL.
 
     Asymmetric padding is the exception: when one side's NULLs are outer-join
     extension (absence) and the other's are values, they name nothing in
     common and null-safe equality cross-joins them. Both sides extended is the
-    ordinary case again: the padding shares provenance, so those rows pair."""
+    ordinary case again: the padding shares provenance, so those rows pair,
+    as long as a solid key of the join says which padded row is which
+    (`anchored`) or both sides' rows passed the same filters."""
     if not (side_nullable(left_concept, left) and side_nullable(right_concept, right)):
         return []
     assert left is not None and right is not None
     memo = memo or ProvenanceMemo()
-    if memo.of(left).values(left_concept) != memo.of(right).values(right_concept):
+    values = memo.of(left).values(left_concept)
+    if values != memo.of(right).values(right_concept):
+        return []
+    if not values and not anchored and not _same_filters(left, right):
         return []
     return [Modifier.NULLABLE]
+
+
+def _pairs_solid(
+    left_concept: BuildConcept,
+    right_concept: BuildConcept,
+    left: DataSource,
+    right: DataSource,
+) -> bool:
+    return not side_nullable(left_concept, left) and not side_nullable(
+        right_concept, right
+    )
+
+
+def _same_filters(left: DataSource, right: DataSource) -> bool:
+    """Whether both sides' rows passed the same filters. A padded NULL names
+    no member, so a pairing on it does not restrict either side: a lookup
+    that skipped the WHERE pairs every padded row it has (each customer with
+    no order, of any nation) with the other side's."""
+    lefts, rights = (
+        [a for c in collect_applied_conditions(s) for a in decompose_condition(c)]
+        for s in (left, right)
+    )
+    return all(any(a == b for b in rights) for a in lefts) and all(
+        any(a == b for b in lefts) for a in rights
+    )
 
 
 def preserved_sources(
@@ -2507,6 +2540,15 @@ def get_node_joins(
                                     ds_node_map[k],
                                     ds_node_map[j.right],
                                     memo,
+                                    anchored=any(
+                                        _pairs_solid(
+                                            ds_concept_map[(k, other)],
+                                            ds_concept_map[(j.right, other)],
+                                            ds_node_map[k],
+                                            ds_node_map[j.right],
+                                        )
+                                        for other in v - {concept}
+                                    ),
                                 )
                             )
                         )

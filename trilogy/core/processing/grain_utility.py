@@ -52,6 +52,7 @@ from trilogy.core.processing.join_resolution import (
     preserved_sources,
 )
 from trilogy.core.processing.utility import (
+    collect_applied_conditions,
     join_left_sources,
     left_deep_joins,
     padded_by,
@@ -415,23 +416,6 @@ class JoinProofs:
     or_groups: list[list[set[str]]] = field(default_factory=list)
     filtered_ids: set[str] = field(default_factory=set)
     coalescing_keys: set[str] = field(default_factory=set)
-
-
-def collect_applied_conditions(source: GrainSource) -> list[BoolExpr]:
-    """The filter conditions every row of a parent branch passed: applied
-    anywhere within its tree, but not under a side a join there pads, whose
-    padded rows passed nothing."""
-    out: list[BoolExpr] = []
-    if isinstance(source, QueryDatasource):
-        if source.condition is not None:
-            out.append(source.condition)
-        padded: set[str] = set()
-        for join, left in left_deep_joins(source.joins):
-            padded |= padded_by(join, left)
-        for parent in source.datasources:
-            if parent.identifier not in padded:
-                out.extend(collect_applied_conditions(parent))
-    return out
 
 
 @dataclass(frozen=True)
