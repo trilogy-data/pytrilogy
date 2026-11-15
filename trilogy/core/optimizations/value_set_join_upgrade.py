@@ -54,11 +54,18 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
 )
-from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
+from trilogy.core.processing.join_resolution import (
+    DIRECTIONAL_OUTER_JOIN_TYPES,
+    OUTER_JOIN_TYPES,
+)
 from trilogy.core.processing.null_provenance import (
     guest_padded_addresses,
     nulls_are_values,
     padding_sources,
+)
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    PADS_RIGHT_JOIN_TYPES,
 )
 
 
@@ -80,6 +87,15 @@ def _on_keys(concept: BuildConcept, keys: set[str]) -> bool:
         return False
     args = concept.lineage.concept_arguments
     return bool(args) and all(_on_keys(arg, keys) for arg in args)
+
+
+def _spelled_among(concept: BuildConcept, concepts: list[BuildConcept]) -> bool:
+    keys = concept.all_spellings
+    return any(other.all_spellings & keys for other in concepts)
+
+
+def _grain_addresses(cte: CTE) -> set[str]:
+    return set(cte.grain.components) if cte.grain else set()
 
 
 def _row_limited(
@@ -136,18 +152,16 @@ def _complete_distinct(
     """
     if not isinstance(side_cte, CTE):
         return False
-    if _row_limited(side_cte):
+    if _row_limited(side_cte) or _declared_partial(concept, side_cte):
         return False
-    keys = concept.all_spellings
-    partial_addrs: set[str] = set()
-    for partial in side_cte.partial_concepts:
-        partial_addrs |= partial.all_spellings
-    if partial_addrs & keys:
+    return _on_complete_grain(concept, side_cte)
+
+
+def _on_complete_grain(concept: BuildConcept, side_cte: CTE) -> bool:
+    """The key is on the grain of a GROUP BY or of an authoritative scan."""
+    if not (side_cte.group_to_grain or _authoritative_scan(side_cte)):
         return False
-    if side_cte.group_to_grain or _authoritative_scan(side_cte):
-        grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
-        return bool(grain_addrs & keys)
-    return False
+    return bool(_grain_addresses(side_cte) & concept.all_spellings)
 
 
 def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
@@ -311,19 +325,12 @@ def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
             break
         if not isinstance(j, Join):
             continue
-        left_names = {p.node.name for p in j.pairs or [] if p.node is not None}
-        right_name = j.right.name if j.right is not None else None
-        if j.join_type is JoinType.LEFT_OUTER and right_name:
-            extended.add(right_name)
-        elif j.join_type is JoinType.RIGHT_OUTER:
-            extended |= joined | left_names
-        elif j.join_type is JoinType.FULL:
-            extended |= joined | left_names
-            if right_name:
-                extended.add(right_name)
-        joined |= left_names
-        if right_name:
-            joined.add(right_name)
+        joined |= {p.node.name for p in j.pairs or []}
+        if j.join_type in PADS_LEFT_JOIN_TYPES:
+            extended |= joined
+        if j.join_type in PADS_RIGHT_JOIN_TYPES:
+            extended.add(j.right.name)
+        joined.add(j.right.name)
     return member in extended
 
 
@@ -354,13 +361,9 @@ def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPai
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """True when ``side_cte`` can emit NULL for ``concept`` (a ROLLUP/CUBE/
     GROUPING SETS key carries NULL at its subtotal rows)."""
-    if not isinstance(side_cte, CTE):
-        return False
-    keys = concept.all_spellings
-    nullable_addrs: set[str] = set()
-    for nc in side_cte.nullable_concepts:
-        nullable_addrs |= nc.all_spellings
-    return bool(nullable_addrs & keys)
+    return isinstance(side_cte, CTE) and _spelled_among(
+        concept, side_cte.nullable_concepts
+    )
 
 
 def _identity(address: str) -> str:
@@ -406,17 +409,21 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
     if not padded:
         return False
     keys = pair.left.all_spellings | pair.right.all_spellings
-    left_pad = (
-        padding_sources(pair.node.source, keys, _identity)
-        if isinstance(pair.node, CTE)
-        else set()
+    return _key_padding_sources(pair.node, keys) != _key_padding_sources(
+        right_cte, keys
     )
-    right_pad = (
-        padding_sources(right_cte.source, keys, _identity)
-        if isinstance(right_cte, CTE)
-        else set()
+
+
+def _key_padding_sources(side: CTE | UnionCTE, keys: set[str]) -> set[str]:
+    if not isinstance(side, CTE):
+        return set()
+    return padding_sources(side.source, keys, _identity)
+
+
+def _same_filter_chain(left_cte: CTE | UnionCTE, right_cte: CTE | UnionCTE) -> bool:
+    return _filters_equivalent(
+        _accumulate_filter(left_cte), _accumulate_filter(right_cte)
     )
-    return left_pad != right_pad
 
 
 def _pair_key_sets_equivalent(
@@ -431,10 +438,7 @@ def _pair_key_sets_equivalent(
         return False
     if not _complete_distinct(right_concept, right_cte):
         return False
-    return _filters_equivalent(
-        _accumulate_filter(left_cte),
-        _accumulate_filter(right_cte),
-    )
+    return _same_filter_chain(left_cte, right_cte)
 
 
 _COMPLETENESS_TRANSFERRING = (Derivation.BASIC, Derivation.ROWSET)
@@ -460,10 +464,8 @@ def _complete_values(
     if not _own_coverage_partial(concept, side_cte, graph):
         # Scan evidence is trusted here because every caller of this path is
         # declaration-gated.
-        if side_cte.group_to_grain or _authoritative_scan(side_cte):
-            grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
-            if grain_addrs & keys:
-                return True
+        if _on_complete_grain(concept, side_cte):
+            return True
         # A non-partial binding on an authoritative scan carries the full
         # value set even off the grain; grain membership only matters for
         # distinctness, which value completeness does not need.
@@ -490,8 +492,8 @@ def _complete_values(
         # the boundary; the wrapper's grain is the renamed parent grain, so
         # grain membership at matching arity carries the parent's grain
         # completeness through the rename.
-        grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
-        parent_grain = set(parent.grain.components) if parent.grain else set()
+        grain_addrs = _grain_addresses(side_cte)
+        parent_grain = _grain_addresses(parent)
         if (
             grain_addrs & keys
             and parent.group_to_grain
@@ -558,25 +560,23 @@ def _joined_complete(concept: BuildConcept, side_cte: CTE, graph: DomainGraph) -
 
 def _keeps_rows_of(join: Join, source: CTE, graph: DomainGraph) -> bool:
     on_right = join.right is source
-    preserved = (
-        (JoinType.RIGHT_OUTER, JoinType.FULL)
-        if on_right
-        else (JoinType.LEFT_OUTER, JoinType.FULL)
-    )
+    # a join padding the other side keeps every row of this one
+    preserved = PADS_LEFT_JOIN_TYPES if on_right else PADS_RIGHT_JOIN_TYPES
     if join.join_type in preserved:
         return True
     return bool(join.pairs) and all(
-        (
-            _pair_side_fully_matches(
-                pair.right, join.right, pair.left, pair.node, graph
-            )
-            if on_right
-            else _pair_side_fully_matches(
-                pair.left, pair.node, pair.right, join.right, graph
-            )
-        )
+        _pair_side_fully_matches(*_subset_first(pair, join.right, on_right), graph)
         for pair in join.pairs
     )
+
+
+def _subset_first(
+    pair: ConceptPair, right_cte: CTE | UnionCTE, right_is_subset: bool
+) -> tuple[BuildConcept, CTE | UnionCTE, BuildConcept, CTE | UnionCTE]:
+    """The pair's two reads as (sub_concept, sub_cte, sup_concept, sup_cte)."""
+    if right_is_subset:
+        return pair.right, right_cte, pair.left, pair.node
+    return pair.left, pair.node, pair.right, right_cte
 
 
 def _unnested_parent(side_cte: CTE) -> list[CTE]:
@@ -631,13 +631,9 @@ def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """The side marks the key partial: a subset domain declaration (a `~`
     binding, `merge a into ~b`, or a scoped subset join) propagated up the
     CTE chain via ``partial_concepts``."""
-    if not isinstance(side_cte, CTE):
-        return False
-    keys = concept.all_spellings
-    partial_addrs: set[str] = set()
-    for partial in side_cte.partial_concepts:
-        partial_addrs |= partial.all_spellings
-    return bool(partial_addrs & keys)
+    return isinstance(side_cte, CTE) and _spelled_among(
+        concept, side_cte.partial_concepts
+    )
 
 
 def _proven_subset_of(
@@ -908,30 +904,25 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             & self.equal_join_keys
         )
 
+    def _pair_values_equal(self, pair: ConceptPair, right_cte: CTE | UnionCTE) -> bool:
+        if _pair_key_sets_equivalent(pair.left, pair.node, pair.right, right_cte):
+            return True
+        # An EQUAL declaration collapses two concepts into one value
+        # space, so both sides carrying every value plus equivalent
+        # filters is exactly the no-unmatched-rows proof.
+        if not self._pair_equal_declared(pair):
+            return False
+        graph = self.domain_graph
+        return (
+            _complete_values(pair.left, pair.node, graph)
+            and _complete_values(pair.right, right_cte, graph)
+            and _same_filter_chain(pair.node, right_cte)
+        )
+
     def _upgrade_to_inner(
         self, cte: CTE, join: Join, right_cte: CTE | UnionCTE
     ) -> bool:
         assert join.pairs
-
-        def pair_equal(pair) -> bool:
-            equal_declared = self._pair_equal_declared(pair)
-            if _pair_key_sets_equivalent(pair.left, pair.node, pair.right, right_cte):
-                return True
-            # An EQUAL declaration collapses two concepts into one value
-            # space, so both sides carrying every value plus equivalent
-            # filters is exactly the no-unmatched-rows proof.
-            if not equal_declared:
-                return False
-            graph = self.domain_graph
-            return (
-                _complete_values(pair.left, pair.node, graph)
-                and _complete_values(pair.right, right_cte, graph)
-                and _filters_equivalent(
-                    _accumulate_filter(pair.node),
-                    _accumulate_filter(right_cte),
-                )
-            )
-
         # A chain member null-extended by an earlier outer join carries rows
         # where its key is absent; equality never matches them, so this join's
         # preservation is load-bearing regardless of value-set equivalence.
@@ -941,7 +932,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 (
                     read
                     for read in _equated_reads(cte, join, pair)
-                    if pair_equal(read)
+                    if self._pair_values_equal(read, right_cte)
                     and not _null_extended_before(cte, join, read.node.name)
                 ),
                 None,
@@ -984,6 +975,37 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         )
         return True
 
+    def _side_fully_matches(
+        self,
+        cte: CTE,
+        join: Join,
+        right_cte: CTE | UnionCTE,
+        right_is_subset: bool,
+        graph_proof_only: bool,
+    ) -> bool:
+        """Every row of one side of `join` finds a partner on the other, its
+        NULL-key rows included, so preserving it keeps nothing."""
+        for pair in join.pairs or []:
+            sub, sub_cte, sup, sup_cte = _subset_first(pair, right_cte, right_is_subset)
+            if not _pair_side_fully_matches(
+                sub,
+                sub_cte,
+                sup,
+                sup_cte,
+                self.domain_graph,
+                graph_proof_only=graph_proof_only,
+            ):
+                return False
+            if not (
+                pair.is_nullable
+                and not _unpaired_guest_padding(sub, sub_cte, sup, sup_cte)
+                or not _key_nullable(sub, sub_cte)
+            ):
+                return False
+            if not right_is_subset and _null_extended_before(cte, join, sub_cte.name):
+                return False
+        return True
+
     def _narrow_directionally(
         self,
         cte: CTE,
@@ -1008,60 +1030,17 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         join's preservation is load-bearing for exactly those rows
         (``_null_extended_before``)."""
         assert join.pairs
-
-        def right_matches_left() -> bool:
-            return all(
-                _pair_side_fully_matches(
-                    pair.right,
-                    right_cte,
-                    pair.left,
-                    pair.node,
-                    self.domain_graph,
-                    graph_proof_only=graph_proof_only,
-                )
-                and (
-                    pair.is_nullable
-                    and not _unpaired_guest_padding(
-                        pair.right, right_cte, pair.left, pair.node
-                    )
-                    or not _key_nullable(pair.right, right_cte)
-                )
-                for pair in join.pairs or []
-            )
-
-        def left_matches_right() -> bool:
-            return all(
-                _pair_side_fully_matches(
-                    pair.left,
-                    pair.node,
-                    pair.right,
-                    right_cte,
-                    self.domain_graph,
-                    graph_proof_only=graph_proof_only,
-                )
-                and (
-                    pair.is_nullable
-                    and not _unpaired_guest_padding(
-                        pair.left, pair.node, pair.right, right_cte
-                    )
-                    or not _key_nullable(pair.left, pair.node)
-                )
-                and not _null_extended_before(cte, join, pair.node.name)
-                for pair in join.pairs or []
-            )
-
         original = join.join_type
         target: JoinType | None = None
-        if join.join_type == JoinType.FULL:
-            if right_matches_left():
+        if original == JoinType.FULL:
+            if self._side_fully_matches(cte, join, right_cte, True, graph_proof_only):
                 target = JoinType.LEFT_OUTER
-            elif left_matches_right():
+            elif self._side_fully_matches(
+                cte, join, right_cte, False, graph_proof_only
+            ):
                 target = JoinType.RIGHT_OUTER
-        elif (
-            join.join_type == JoinType.LEFT_OUTER
-            and left_matches_right()
-            or join.join_type == JoinType.RIGHT_OUTER
-            and right_matches_left()
+        elif original in DIRECTIONAL_OUTER_JOIN_TYPES and self._side_fully_matches(
+            cte, join, right_cte, original == JoinType.RIGHT_OUTER, graph_proof_only
         ):
             target = JoinType.INNER
         if target is None:

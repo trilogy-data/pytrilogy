@@ -34,6 +34,7 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.processing.aggregate_rollup import sourced_arguments
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 
@@ -150,6 +151,11 @@ PADS_RIGHT_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.FULL)
 PADS_LEFT_JOIN_TYPES = (JoinType.RIGHT_OUTER, JoinType.FULL)
 
 
+def joined_right_ids(joins: Iterable[SourceJoin | UnnestJoin]) -> set[str]:
+    """Identifiers of the sources joined in as a right side."""
+    return {join.right.identifier for join in joins if isinstance(join, Join)}
+
+
 def left_deep_joins(
     joins: list[SourceJoin | UnnestJoin], base_ids: Collection[str] = ()
 ) -> list[tuple[SourceJoin, frozenset[str]]]:
@@ -174,6 +180,25 @@ def padded_by(join: SourceJoin, left: frozenset[str]) -> set[str]:
     return padded
 
 
+def unpadded_join_type(
+    current: JoinType, left_present: bool, right_present: bool
+) -> JoinType:
+    """An outer `current` once a side every surviving row has a match on is
+    no longer padded: a FULL keeps the other side's padding, a LEFT/RIGHT
+    whose padded side is present is INNER."""
+    pads_left = current in PADS_LEFT_JOIN_TYPES and not left_present
+    pads_right = current in PADS_RIGHT_JOIN_TYPES and not right_present
+    if pads_left and pads_right:
+        return JoinType.FULL
+    if pads_right:
+        return JoinType.LEFT_OUTER
+    if pads_left:
+        return JoinType.RIGHT_OUTER
+    if current in PADS_LEFT_JOIN_TYPES or current in PADS_RIGHT_JOIN_TYPES:
+        return JoinType.INNER
+    return current
+
+
 def collect_applied_conditions(
     source: BuildDatasource | QueryDatasource,
 ) -> list[BoolExpr]:
@@ -190,6 +215,28 @@ def collect_applied_conditions(
         for parent in source.datasources:
             if parent.identifier not in padded:
                 out.extend(collect_applied_conditions(parent))
+    return out
+
+
+def applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:
+    """The AND atoms of `collect_applied_conditions`."""
+    return [
+        atom
+        for condition in collect_applied_conditions(source)
+        for atom in decompose_condition(condition)
+    ]
+
+
+def nullable_addresses_with_pseudonyms(
+    datasource: BuildDatasource | QueryDatasource,
+) -> set[str]:
+    """Nullable address sets include each concept's pseudonyms, so a NULLABLE
+    modifier sitting on the pre-merge address is still found when looked up
+    under the merged target address."""
+    out: set[str] = set()
+    for concept in datasource.nullable_concepts:
+        out.add(concept.address)
+        out.update(concept.pseudonyms)
     return out
 
 
@@ -217,23 +264,13 @@ def find_nullable_concepts(
     ]
     datasource_map = {i: x for x, i in typed_idents}
 
-    # Nullable address sets include each concept's pseudonyms, so a NULLABLE
-    # modifier sitting on the pre-merge address is still found when looked up
-    # under the merged target address.
-    def _expanded_nullable_addrs(ds) -> set[str]:
-        out: set[str] = set()
-        for c in ds.nullable_concepts:
-            out.add(c.address)
-            out.update(c.pseudonyms)
-        return out
-
     nullable_addrs: dict[str, set[str]] = {
-        i: _expanded_nullable_addrs(x) for x, i in typed_idents
+        i: nullable_addresses_with_pseudonyms(x) for x, i in typed_idents
     }
     output_addrs: dict[str, set[str]] = {
         i: {c.address for c in x.output_concepts} for x, i in typed_idents
     }
-    right_ids = {j.right.identifier for j in joins if isinstance(j, Join)}
+    right_ids = joined_right_ids(joins)
     base_ids = [i for _, i in typed_idents if i not in right_ids]
     # Only an outer join introduces NULLs: it pads the extended side. A join
     # keyed on a nullable column leaves the other side's columns as they are,

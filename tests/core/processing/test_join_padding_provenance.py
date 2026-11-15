@@ -178,20 +178,22 @@ def test_an_authored_axis_keeps_its_typing_over_an_extent_null():
 USER, ORDER, CANON = "local.user_id", "local.order_id", "other.user_id"
 
 
+def _pair(left, key: str = USER) -> ConceptPair:
+    return ConceptPair(left=_concept(key), right=_concept(key), node=left)
+
+
+def _keyed(left, right, join_type: JoinType, key: str = USER) -> Join:
+    """`left` joined to `right` on `key`, read off `left`."""
+    return Join(left=left, right=right, join_type=join_type, pairs=[_pair(left, key)])
+
+
 def _extended_for(span: str) -> QueryDatasource:
     """`users LEFT JOIN orders` keyed on `span`: `order_id` is padding."""
     users = _qds([span], [], grain={span})
     orders = _qds([span, ORDER], [], grain={ORDER})
     merged = _qds([span, ORDER], [ORDER], parents=[users, orders])
     merged.source_map = {span: {users}, ORDER: {orders}}
-    merged.joins = [
-        Join(
-            left=users,
-            right=orders,
-            join_type=JoinType.LEFT_OUTER,
-            pairs=[ConceptPair(left=_concept(span), right=_concept(span), node=users)],
-        )
-    ]
+    merged.joins = [_keyed(users, orders, JoinType.LEFT_OUTER, span)]
     return merged
 
 
@@ -356,32 +358,14 @@ def test_complete_key_domain_is_an_unfiltered_scan_kept_whole():
     # the scan on the dropped side of a LEFT join is not kept whole
     orders = _scan("orders", [USER, ORDER], partial=[USER])
     merged = _qds([USER, ORDER], [], parents=[orders, items])
-    merged.joins = [
-        Join(
-            left=orders,
-            right=items,
-            join_type=JoinType.LEFT_OUTER,
-            pairs=[
-                ConceptPair(
-                    left=_concept(USER),
-                    right=_concept(USER),
-                    node=orders,
-                )
-            ],
-        )
-    ]
+    merged.joins = [_keyed(orders, items, JoinType.LEFT_OUTER)]
     assert not complete_key_domain(merged, USER)
     merged.joins[0].join_type = JoinType.RIGHT_OUTER
     assert complete_key_domain(merged, USER)
 
 
 def _full(left: BuildDatasource, right: BuildDatasource) -> Join:
-    return Join(
-        left=left,
-        right=right,
-        join_type=JoinType.FULL,
-        pairs=[ConceptPair(left=_concept(USER), right=_concept(USER), node=left)],
-    )
+    return _keyed(left, right, JoinType.FULL)
 
 
 def test_a_subset_full_join_narrows_whichever_side_is_joined_first():
@@ -398,20 +382,22 @@ def test_a_subset_full_join_narrows_whichever_side_is_joined_first():
     assert padded.join_type == JoinType.FULL
 
 
+def _subset_bound(binding: str) -> SideFacts:
+    return SideFacts(
+        columns=frozenset({"c~k"}),
+        partials=frozenset({"c~k"}),
+        span_bindings={"c~k": frozenset({binding})},
+    )
+
+
+def _typed_bindings(left: str, right: str) -> JoinType:
+    sides = {"ds~a": _subset_bound(left), "ds~b": _subset_bound(right)}
+    return get_join_type("ds~a", "ds~b", {"c~k"}, JoinFacts(sides=sides))
+
+
 def test_two_projections_of_one_subset_binding_pair_as_complete():
-    def side(binding: str) -> SideFacts:
-        return SideFacts(
-            columns=frozenset({"c~k"}),
-            partials=frozenset({"c~k"}),
-            span_bindings={"c~k": frozenset({binding})},
-        )
-
-    def typed(left: str, right: str) -> JoinType:
-        facts = JoinFacts(sides={"ds~a": side(left), "ds~b": side(right)})
-        return get_join_type("ds~a", "ds~b", {"c~k"}, facts)
-
-    assert typed("fits", "fits") == JoinType.INNER
-    assert typed("fits", "other_fits") == JoinType.FULL
+    assert _typed_bindings("fits", "fits") == JoinType.INNER
+    assert _typed_bindings("fits", "other_fits") == JoinType.FULL
 
 
 def test_host_preserves_over_a_partial_feeder_whose_value_null_pairs():
@@ -455,20 +441,7 @@ def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
     items = _scan("items", [USER, attr])
     merged = _qds([USER, ORDER, attr], [USER, attr], parents=[sales, items])
     merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items}}
-    merged.joins = [
-        Join(
-            left=sales,
-            right=items,
-            join_type=JoinType.LEFT_OUTER,
-            pairs=[
-                ConceptPair(
-                    left=_concept(USER),
-                    right=_concept(USER),
-                    node=sales,
-                )
-            ],
-        )
-    ]
+    merged.joins = [_keyed(sales, items, JoinType.LEFT_OUTER)]
     assert guest_padded_addresses(merged) == {attr}
     grouped = _qds([attr], [attr], parents=[merged])
     grouped.source_map = {attr: {merged}}
@@ -490,24 +463,17 @@ def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
     )
     merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items, lookup}}
     merged.joins = [
-        Join(
-            left=sales,
-            right=items,
-            join_type=JoinType.LEFT_OUTER,
-            pairs=[ConceptPair(left=_concept(USER), right=_concept(USER), node=sales)],
-        ),
-        Join(
-            left=items,
-            right=lookup,
-            join_type=JoinType.RIGHT_OUTER,
-            pairs=[ConceptPair(left=_concept(attr), right=_concept(attr), node=items)],
-        ),
+        _keyed(sales, items, JoinType.LEFT_OUTER),
+        _keyed(items, lookup, JoinType.RIGHT_OUTER, attr),
     ]
     assert guest_padded_addresses(merged) == set()
 
 
-def _pair(left: BuildDatasource) -> ConceptPair:
-    return ConceptPair(left=_concept(USER), right=_concept(USER), node=left)
+def _onto(right: BuildDatasource, *lefts: BuildDatasource) -> Join:
+    """A FULL join of `right` onto every one of `lefts`."""
+    return Join(
+        right=right, join_type=JoinType.FULL, pairs=[_pair(left) for left in lefts]
+    )
 
 
 def test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row():
@@ -515,27 +481,19 @@ def test_a_full_join_beside_a_surviving_complete_left_pads_no_right_row():
     users = _scan("users", [USER])
     items = _scan("items", [USER])
     prior = [_full(notes, users)]
-
-    def onto_both() -> Join:
-        return Join(
-            right=items,
-            join_type=JoinType.FULL,
-            pairs=[_pair(notes), _pair(users)],
-        )
-
-    padded = onto_both()
+    padded = _onto(items, notes, users)
     narrow_subset_full_join(padded, {"notes", "users"}, {"users"}, set(), prior)
     assert padded.join_type == JoinType.LEFT_OUTER
-    on_every_row = onto_both()
+    on_every_row = _onto(items, notes, users)
     narrow_subset_full_join(on_every_row, {"notes", "users"}, set(), set(), prior)
     assert on_every_row.join_type == JoinType.INNER
-    unequated = onto_both()
+    unequated = _onto(items, notes, users)
     narrow_subset_full_join(unequated, {"notes", "users"}, set(), set(), [])
     assert unequated.join_type == JoinType.FULL
-    users_dropped = onto_both()
+    users_dropped = _onto(items, notes, users)
     narrow_subset_full_join(users_dropped, {"notes"}, set(), set(), prior)
     assert users_dropped.join_type == JoinType.FULL
-    no_subset_partner = Join(right=items, join_type=JoinType.FULL, pairs=[_pair(users)])
+    no_subset_partner = _onto(items, users)
     narrow_subset_full_join(no_subset_partner, {"users"}, set(), set(), prior)
     assert no_subset_partner.join_type == JoinType.FULL
 
@@ -550,7 +508,7 @@ def test_a_full_join_on_two_keys_is_not_narrowed_beside_a_complete_left():
         pairs=[
             _pair(notes),
             _pair(users),
-            ConceptPair(left=_concept(KEY), right=_concept(KEY), node=users),
+            _pair(users, KEY),
         ],
     )
     narrow_subset_full_join(

@@ -262,6 +262,104 @@ def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | N
     return concept
 
 
+def _concepts_at(
+    environment: BuildEnvironment, addresses: Iterable[str]
+) -> list[BuildConcept]:
+    """The concept of each address that resolves (`_concept_at`), in order."""
+    return [
+        concept
+        for address in addresses
+        if (concept := _concept_at(environment, address)) is not None
+    ]
+
+
+def _grain_components(concept: BuildConcept) -> frozenset[str]:
+    return frozenset(concept.grain.components) if concept.grain else frozenset()
+
+
+def _renamed_addresses(concept: BuildConcept) -> set[str] | None:
+    """What a rename (an ALIAS) renames; None for anything else."""
+    lineage = concept.lineage
+    if isinstance(lineage, BuildFunction) and lineage.operator == FunctionType.ALIAS:
+        return {a.address for a in lineage.concept_arguments}
+    return None
+
+
+def _row_argument_addresses(atoms: Iterable[BoolExpr]) -> set[str]:
+    return {arg.address for atom in atoms for arg in atom.row_arguments}
+
+
+def _output_addresses(nodes: Iterable[StrategyNode]) -> set[str]:
+    return {output.address for node in nodes for output in node.output_concepts}
+
+
+def _existence_parents(
+    group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str
+) -> list[str]:
+    """The groups feeding `gid` a subselect, not rows."""
+    return [
+        pgid
+        for pgid in group_graph.predecessors(gid)
+        if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
+    ]
+
+
+def _feeds_existence(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    return any(
+        edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+        for succ in group_graph.successors(gid)
+    )
+
+
+def _forced_dedup(
+    node: StrategyNode,
+    outputs: list[BuildConcept],
+    environment: BuildEnvironment,
+    partial_within: Collection[str] | None = None,
+) -> GroupNode:
+    """`node`'s rows, once per tuple of `outputs`. With `partial_within`, only
+    what lies in it stays marked partial."""
+    return GroupNode(
+        output_concepts=outputs,
+        input_concepts=outputs,
+        environment=environment,
+        parents=[node],
+        partial_concepts=[
+            c
+            for c in node.partial_concepts
+            if partial_within is None or c.address in partial_within
+        ],
+        preexisting_conditions=node.preexisting_conditions,
+        force_group=True,
+    )
+
+
+def _dedup_to_mandatory(
+    node: StrategyNode, mandatory_addresses: set[str], environment: BuildEnvironment
+) -> GroupNode:
+    """`node` collapsed to the requested outputs it holds; to all of its
+    outputs when it holds none."""
+    targets = [
+        o for o in node.output_concepts if o.address in mandatory_addresses
+    ] or list(node.output_concepts)
+    return _forced_dedup(node, targets, environment)
+
+
+def _projection_over(
+    node: StrategyNode, concepts: list[BuildConcept], environment: BuildEnvironment
+) -> SelectNode:
+    """A projection of `node`'s rows, widened with `concepts`."""
+    projected = SelectNode(
+        output_concepts=list(node.output_concepts),
+        input_concepts=list(node.output_concepts),
+        environment=environment,
+        parents=[node],
+        partial_concepts=list(node.partial_concepts),
+    )
+    widen_projection(projected, concepts)
+    return projected
+
+
 def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     """AND-combine a list of condition atoms into a single BuildWhereClause."""
     if not atoms:
@@ -601,10 +699,6 @@ def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
     }
 
 
-def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
-    return set(_leaf_datasources(node))
-
-
 def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
     """Whether some proper subset of the subtree's scans could bind every
     address by column: a re-slice can only prune a join when one exists."""
@@ -637,9 +731,7 @@ def _attach_existence_to_node(
     earlier pass found no provider, and a later one may."""
     if not arg_groups:
         return
-    existing_parent_outputs = {
-        output.address for parent in node.parents for output in parent.output_concepts
-    }
+    existing_parent_outputs = _output_addresses(node.parents)
     existing_concepts = {concept.address for concept in node.existence_concepts}
     # a row parent supplying the set's address (`dx ? x in dx` reads dx on
     # the row) does not wire it: only a set listed here or on that parent
@@ -750,6 +842,15 @@ def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
     return a.output_concepts or a.members
 
 
+@dataclass(frozen=True)
+class _Plan:
+    """A group graph with its edges and attrs."""
+
+    group_graph: nx.DiGraph
+    group_edges: EdgeMap
+    attrs: dict[str, GroupAttrs]
+
+
 @dataclass
 class _PlannedReads:
     """The fold read off stage-2 facts: what each group renders, and the
@@ -766,8 +867,20 @@ class _PlannedReads:
     # a ROOT's scan verdict: the search behind it is asked once per plan
     scans: dict[str, bool]
     # the plan before any fold, which a ROOT's build reads its readers off
-    readers: "_Plan"
+    readers: _Plan
     arms_delivered: bool
+    mandatory_list: list[BuildConcept]
+
+    def over(
+        self, rendered: dict[str, frozenset[str]], before: list[str]
+    ) -> "_PlannedReads":
+        """These reads once the plan renders `rendered`, the groups of `before`
+        still in it decided. The scan verdicts stay shared."""
+        return dc_replace(
+            self,
+            rendered=rendered,
+            decided={gid for gid in before if gid in self.attrs},
+        )
 
     def has(self, gid: str) -> bool:
         return gid in self.rendered
@@ -793,11 +906,7 @@ class _PlannedReads:
     def _scan(self, group: GroupAttrs, arm_local: bool) -> bool:
         return scan_regroups(
             SourceRequest(
-                outputs=[
-                    c
-                    for a in _select_addresses(group)
-                    if (c := _concept_at(self.environment, a)) is not None
-                ],
+                outputs=_concepts_at(self.environment, _select_addresses(group)),
                 environment=self.environment,
                 graph=self.g,
                 history=self.history,
@@ -806,20 +915,16 @@ class _PlannedReads:
             )
         )
 
-    def regroups(
-        self,
-        outputs: list[BuildConcept],
-        gids: list[str],
-        environment: BuildEnvironment,
-    ) -> bool:
+    def regroups(self, outputs: list[BuildConcept], gids: list[str]) -> bool:
         from trilogy.core.processing.v4_node_generators.basic import (  # cycle
             grain_claim_unheld,
         )
 
         if len(gids) != 1:
             return False
+        environment = self.environment
         held = self.rendered[gids[0]]
-        concepts = [c for a in sorted(held) if (c := _concept_at(environment, a))]
+        concepts = _concepts_at(environment, sorted(held))
         grain = set(
             BuildGrain.from_concepts(concepts, environment=environment).components
         )
@@ -865,64 +970,45 @@ _BARRIER_DERIVATIONS = {*GROUPING_DERIVATIONS, Derivation.ROWSET}
 
 
 def _projects_parent_rows(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    parents: list[str],
-    reads: "_PlannedReads",
-    environment: BuildEnvironment,
-    mandatory_list: list[BuildConcept],
+    plan: _Plan, reads: _PlannedReads, gid: str, parents: list[str]
 ) -> bool:
     """Whether `gid`'s node would project its parents' rows as they stand: no
     WHERE, no regroup, no subselect. Read off the graph and what `reads` says
     of the parents, the way its generator would, so the answer needs no node
     of `gid`'s own."""
-    a = attrs[gid]
-    if a.condition_atoms or any(
-        edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
-        for pgid in group_graph.predecessors(gid)
-    ):
+    group_graph, group_edges, environment = (
+        plan.group_graph,
+        plan.group_edges,
+        reads.environment,
+    )
+    a = plan.attrs[gid]
+    if a.condition_atoms or _existence_parents(group_graph, group_edges, gid):
         return False
     available = reads.outputs(parents)
     outputs = satisfiable_from(
-        [
-            c
-            for addr in _select_addresses(a)
-            if (c := _concept_at(environment, addr)) is not None
-        ],
-        available,
+        _concepts_at(environment, _select_addresses(a)), available
     )
     if _lineage_existence_arg_groups(outputs):
         return False
     if a.derivation == Derivation.FILTER:
         # a semijoin RHS is built as the set it feeds
-        if any(
-            edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
-            for succ in group_graph.successors(gid)
-        ):
+        if _feeds_existence(group_graph, group_edges, gid):
             return False
         narrows = _filter_intrinsic_pushdown_safe(
-            group_graph, attrs, gid, outputs, mandatory_list, environment
+            group_graph, plan.attrs, gid, outputs, reads.mandatory_list, environment
         )
         return filter_row_predicate(outputs, available, narrows) is None
-    return not reads.regroups(outputs, parents, environment)
+    return not reads.regroups(outputs, parents)
 
 
 def _aggregate_inlines(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    reads: "_PlannedReads",
-    consumer: str,
-    gid: str,
-    environment: BuildEnvironment,
-    mandatory_list: list[BuildConcept],
+    plan: _Plan, reads: _PlannedReads, consumer: str, gid: str
 ) -> bool:
     """Whether aggregate `consumer` computes its row-preserving input `gid`
     inline, reading `gid`'s parents in its place. Decided from the graph and
     those parents' nodes and never from a node of `gid`'s own, so a group
     every reader inlines is not built (`_inlined_by_every_reader`)."""
+    attrs, environment = plan.attrs, reads.environment
     a = attrs[gid]
     members = set(a.primary_members)
     if (
@@ -932,16 +1018,12 @@ def _aggregate_inlines(
         # this aggregate forces the other grouping branch to retain the
         # projection, then rejoin it. Row-preserving consumers can still
         # inline independently and fold later.
-        or _provider_feeds_other_grouping(group_graph, attrs, gid, consumer)
+        or _provider_feeds_other_grouping(plan.group_graph, attrs, gid, consumer)
         or _group_filter_has_existence(attrs, environment, gid)
     ):
         return False
     if not members <= _aggregate_row_preserving_input_addresses(
-        [
-            concept
-            for addr in attrs[consumer].primary_members
-            if (concept := _concept_at(environment, addr)) is not None
-        ],
+        _concepts_at(environment, attrs[consumer].primary_members),
         environment.partial_sources,
     ):
         return False
@@ -959,52 +1041,31 @@ def _aggregate_inlines(
     if reads.twin_emits(attrs, members, skip=gid):
         return False
     parents = [
-        pgid for pgid in row_parents(group_graph, group_edges, gid) if reads.has(pgid)
+        pgid
+        for pgid in row_parents(plan.group_graph, plan.group_edges, gid)
+        if reads.has(pgid)
     ]
     if not parents or any(reads.barrier(pgid) for pgid in parents):
         return False
-    return _projects_parent_rows(
-        group_graph,
-        group_edges,
-        attrs,
-        gid,
-        parents,
-        reads,
-        environment,
-        mandatory_list,
-    ) and _group_renderable_from(attrs, environment, gid, reads.outputs(parents))
+    return _projects_parent_rows(plan, reads, gid, parents) and _group_renderable_from(
+        attrs, environment, gid, reads.outputs(parents)
+    )
 
 
-def _aggregate_input_groups(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    reads: "_PlannedReads",
-    gid: str,
-    environment: BuildEnvironment,
-    mandatory_list: list[BuildConcept],
-) -> list[str]:
+def _aggregate_input_groups(plan: _Plan, reads: _PlannedReads, gid: str) -> list[str]:
     """The groups aggregate `gid` reads: in place of each input it computes
     inline, that input's own parents; to a fixed point, since those may be
     inlined too."""
+    group_graph, group_edges = plan.group_graph, plan.group_edges
     candidates = [
         pgid
-        for pgid in read_row_parents(group_graph, group_edges, attrs, gid)
+        for pgid in read_row_parents(group_graph, group_edges, plan.attrs, gid)
         if reads.has(pgid)
     ]
     while True:
         expanded: list[str] = []
         for pgid in candidates:
-            if _aggregate_inlines(
-                group_graph,
-                group_edges,
-                attrs,
-                reads,
-                gid,
-                pgid,
-                environment,
-                mandatory_list,
-            ):
+            if _aggregate_inlines(plan, reads, gid, pgid):
                 expanded.extend(
                     fgid
                     for fgid in row_parents(group_graph, group_edges, pgid)
@@ -1055,18 +1116,10 @@ def _readers(group_graph: nx.DiGraph, gid: str) -> list[str]:
     return [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]
 
 
-def _reader_inlines(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    reads: "_PlannedReads",
-    reader: str,
-    gid: str,
-    environment: BuildEnvironment,
-    mandatory_list: list[BuildConcept],
-) -> bool:
+def _reader_inlines(plan: _Plan, reads: _PlannedReads, reader: str, gid: str) -> bool:
     """Whether `reader` computes `gid` inline: an aggregate that does, or an
     input its own aggregates inline, and `gid` with it."""
+    group_graph, group_edges, attrs = plan.group_graph, plan.group_edges, plan.attrs
     if edge_kind(group_edges, gid, reader) == EdgeKind.EXISTENCE:
         return False
     above = (
@@ -1076,16 +1129,7 @@ def _reader_inlines(
     )
     if not above or not all(
         attrs[aggregate].derivation == Derivation.AGGREGATE
-        and _aggregate_inlines(
-            group_graph,
-            group_edges,
-            attrs,
-            reads,
-            aggregate,
-            gid,
-            environment,
-            mandatory_list,
-        )
+        and _aggregate_inlines(plan, reads, aggregate, gid)
         for aggregate in above
     ):
         return False
@@ -1097,27 +1141,14 @@ def _reader_inlines(
         for pgid in row_parents(group_graph, group_edges, reader)
     ):
         return False
-    return _inlined_by_every_reader(
-        *_folded(group_graph, group_edges, attrs, gid),
-        reads,
-        reader,
-        environment,
-        mandatory_list,
-    )
+    return _inlined_by_every_reader(_folded(plan, gid), reads, reader)
 
 
-def _inlined_by_every_reader(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    reads: "_PlannedReads",
-    gid: str,
-    environment: BuildEnvironment,
-    mandatory_list: list[BuildConcept],
-) -> bool:
+def _inlined_by_every_reader(plan: _Plan, reads: _PlannedReads, gid: str) -> bool:
     """Whether no node of `gid`'s own would ever be read: every group reading
     it computes it inline (`_reader_inlines`), and the FINAL takes what it
     exposes from those readers or from its parents."""
+    group_graph, group_edges, attrs = plan.group_graph, plan.group_edges, plan.attrs
     a = attrs[gid]
     readers = _readers(group_graph, gid)
     if not readers:
@@ -1127,11 +1158,9 @@ def _inlined_by_every_reader(
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     if gid in {*ownership.owner_by_span.values(), *ownership.carried.values()}:
         return False
-    final_reads = {c.address for c in mandatory_list} | {
-        arg.address
-        for atom in attrs[FINAL_NODE_ID].condition_atoms
-        for arg in atom.row_arguments
-    }
+    final_reads = {c.address for c in reads.mandatory_list} | _row_argument_addresses(
+        attrs[FINAL_NODE_ID].condition_atoms
+    )
     # its rows are its parents' rows, so what it passes through they carry
     carried: set[str] = set().union(
         *(attrs[r].output_concepts for r in readers),
@@ -1139,19 +1168,7 @@ def _inlined_by_every_reader(
     )
     if not set(a.output_concepts) & final_reads <= carried:
         return False
-    if not all(
-        _reader_inlines(
-            group_graph,
-            group_edges,
-            attrs,
-            reads,
-            reader,
-            gid,
-            environment,
-            mandatory_list,
-        )
-        for reader in readers
-    ):
+    if not all(_reader_inlines(plan, reads, reader, gid) for reader in readers):
         return False
     # a condition-phase twin built between here and a reader would veto the
     # reader's fold, unless it is folded too: a reader folded with `gid`, or a
@@ -1160,12 +1177,7 @@ def _inlined_by_every_reader(
     twins = [t for t in _condition_twins(attrs, gid) if t not in folded]
     if twins and a.depth_label == DepthLabel.D1:
         return False
-    return all(
-        _inlined_by_every_reader(
-            group_graph, group_edges, attrs, reads, twin, environment, mandatory_list
-        )
-        for twin in twins
-    )
+    return all(_inlined_by_every_reader(plan, reads, twin) for twin in twins)
 
 
 def _read_parents_in_place(
@@ -1219,20 +1231,15 @@ def _rewired_feed(
     return own
 
 
-def _folded(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
-    """The group graph as it would stand with `gid` folded; the plan's own is
-    left as it is. A fold rewrites only its readers' attrs."""
-    graph, edges = group_graph.copy(), dict(group_edges)
-    folded = dict(attrs)
-    for reader in _readers(group_graph, gid):
-        folded[reader] = dc_replace(attrs[reader])
+def _folded(plan: _Plan, gid: str) -> _Plan:
+    """The plan as it would stand with `gid` folded; the plan's own is left as
+    it is. A fold rewrites only its readers' attrs."""
+    graph, edges = plan.group_graph.copy(), dict(plan.group_edges)
+    folded = dict(plan.attrs)
+    for reader in _readers(plan.group_graph, gid):
+        folded[reader] = dc_replace(plan.attrs[reader])
     _read_parents_in_place(graph, edges, folded, gid)
-    return graph, edges, folded
+    return _Plan(graph, edges, folded)
 
 
 def _fold_into_readers(
@@ -1431,11 +1438,9 @@ def _parent_nodes_for(
             and bool(_relation_mates(address, environment) & needed)
             for address in parent_outputs - slice_addresses
         )
-        slice_demand = slice_addresses | {
-            arg.address
-            for atom in attrs[pgid].condition_atoms
-            for arg in atom.row_arguments
-        }
+        slice_demand = slice_addresses | _row_argument_addresses(
+            attrs[pgid].condition_atoms
+        )
         if not (carries_wrong_side or _strict_leaf_subset_binds(node, slice_demand)):
             return node.copy()
         # A conditioned scan outputs its WHERE's arguments beyond what it was
@@ -1459,11 +1464,7 @@ def _parent_nodes_for(
         )
         if asked == request:
             return node.copy()
-        outputs = [
-            c
-            for address in sorted(slice_addresses)
-            if (c := _concept_at(environment, address)) is not None
-        ]
+        outputs = _concepts_at(environment, sorted(slice_addresses))
         with under_span_scope(environment, request.scope):
             sliced = build_node(
                 derivation=Derivation.ROOT,
@@ -1498,7 +1499,7 @@ def _parent_nodes_for(
         _wire_existence(sliced, built, feeder_cache)
         if not (
             carries_wrong_side
-            or _leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)
+            or set(_leaf_datasources(sliced)) < set(_leaf_datasources(node))
         ):
             return node.copy()
         return sliced
@@ -2007,10 +2008,6 @@ def _row_content(arg: BuildConcept) -> BuildConcept:
     return arg
 
 
-def _row_content_derivation(arg: BuildConcept) -> Derivation:
-    return _row_content(arg).derivation
-
-
 def _aggregate_inputs_are_row_preserving(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
@@ -2052,14 +2049,12 @@ def _aggregate_inputs_are_row_preserving(
     # domain, but a DERIVED key (BASIC over row columns) is computed per scan
     # row, so its rows also arrive at line grain.
     if all(
-        _row_content_derivation(arg) == Derivation.ROOT
+        _row_content(arg).derivation == Derivation.ROOT
         or _row_content(arg).purpose == Purpose.KEY
         for arg in row_preserving_inputs
     ):
         return False
-    available = {
-        output.address for parent in parents for output in parent.output_concepts
-    }
+    available = _output_addresses(parents)
     return all(concept_satisfiable(arg, available) for arg in row_preserving_inputs)
 
 
@@ -2825,9 +2820,8 @@ def _owed_keys(
         if k in held
         or not (
             (c := environment.concepts.get(k)) is not None
-            and isinstance(c.lineage, BuildFunction)
-            and c.lineage.operator == FunctionType.ALIAS
-            and {a.address for a in c.lineage.concept_arguments} <= held
+            and (renamed := _renamed_addresses(c)) is not None
+            and renamed <= held
         )
     )
 
@@ -2846,10 +2840,7 @@ def _carry_planned_keys(
     if len(parents) <= 1:
         return
     if sides is None:
-        sides = [
-            frozenset({gid}) if (gid := _origin_group(p, origin)) else frozenset()
-            for p in parents
-        ]
+        sides = [_origin_singleton(p, origin) or frozenset() for p in parents]
     crossing = plan.across(sides)
     for parent, members in zip(parents, sides):
         owed = (
@@ -2946,22 +2937,11 @@ def _project_planned_keys(
                 parents=[parent, *producers_used],
                 # each producer looks its value up on its own grain
                 planned_pairs=PlannedPairs.star(
-                    parent,
-                    [
-                        (p, frozenset(p.resolve().grain.components))
-                        for p in producers_used
-                    ],
+                    parent, [(p, _resolved_grain(p)) for p in producers_used]
                 ),
             )
         if rendered:
-            node = SelectNode(
-                output_concepts=list(node.output_concepts),
-                input_concepts=list(node.output_concepts),
-                environment=environment,
-                parents=[node],
-                partial_concepts=list(node.partial_concepts),
-            )
-            widen_projection(node, rendered)
+            node = _projection_over(node, rendered, environment)
         if gid is not None:
             origin[id(node)] = gid
         out.append(node)
@@ -3736,17 +3716,7 @@ def _hold_lookup_sides(
         if wanted - determined - supplied:
             continue
         concepts = [c for address, c in exposed.items() if address in determined]
-        held[idx] = GroupNode(
-            output_concepts=concepts,
-            input_concepts=concepts,
-            environment=environment,
-            parents=[parent],
-            partial_concepts=[
-                c for c in parent.partial_concepts if c.address in determined
-            ],
-            preexisting_conditions=parent.preexisting_conditions,
-            force_group=True,
-        )
+        held[idx] = _forced_dedup(parent, concepts, environment, determined)
     return held
 
 
@@ -3771,15 +3741,7 @@ def _merge_plan(
     if any(m is None for m in member_sets):
         return None
     sides = [gid for m in member_sets if m is not None for gid in sorted(m)]
-    wanted = needed or set()
-    cover = {
-        gid: [
-            c
-            for address in attrs[gid].output_concepts
-            if address in wanted and (c := _concept_at(environment, address))
-        ]
-        for gid in sides
-    }
+    cover = _side_cover(attrs, sides, needed or set(), environment)
     return plan_final_join(
         group_graph,
         attrs,
@@ -3791,6 +3753,21 @@ def _merge_plan(
         contracted={gid: carry_demands.get(gid, frozenset()) for gid in sides},
         extras=bridges if len(sides) == len(parents) else (),
     )
+
+
+def _side_cover(
+    attrs: dict[str, GroupAttrs],
+    sides: Iterable[str],
+    wanted: set[str],
+    environment: BuildEnvironment,
+) -> dict[str, list[BuildConcept]]:
+    """What each side of a merge outputs of `wanted`."""
+    return {
+        side: _concepts_at(
+            environment, (a for a in attrs[side].output_concepts if a in wanted)
+        )
+        for side in sides
+    }
 
 
 def _merge_sides(
@@ -3846,15 +3823,7 @@ def _plan_group_bridges(
         )
         if len(sides) < 2:
             continue
-        wanted = set(attrs[gid].input_concepts)
-        cover = {
-            side: [
-                c
-                for address in attrs[side].output_concepts
-                if address in wanted and (c := _concept_at(environment, address))
-            ]
-            for side in sides
-        }
+        cover = _side_cover(attrs, sides, set(attrs[gid].input_concepts), environment)
         demands = _input_contract_carry_demands(attrs[gid])
         attrs[gid].bridges = tuple(
             elect_bridges(
@@ -3991,9 +3960,7 @@ def _fd_at_grain(
 ) -> bool:
     if concept.address in grain_components:
         return True
-    concept_grain = (
-        frozenset(concept.grain.components) if concept.grain else frozenset()
-    )
+    concept_grain = _grain_components(concept)
     if concept_grain and concept_grain <= grain_components:
         return True
     concept_keys = frozenset(concept.keys or set())
@@ -4007,7 +3974,7 @@ def _fd_at_grain(
 def _rows_finer_than(
     node: StrategyNode, grain: frozenset[str], environment: BuildEnvironment
 ) -> bool:
-    rows = frozenset(node.resolve().grain.components)
+    rows = _resolved_grain(node)
     return bool(rows) and not (
         rows <= grain
         or build_fd_determines_all(environment, grain, rows, include_empty_grain=False)
@@ -4104,11 +4071,7 @@ def _satisfy_parent_projection_contract(
             )
         }
         non_fd_needed = parent_needed - fd_candidates
-        concepts = [
-            c
-            for addr in sorted(fd_needed)
-            if (c := _concept_at(environment, addr)) is not None
-        ]
+        concepts = _concepts_at(environment, sorted(fd_needed))
         if non_fd_needed:
             projected.append(parent)
             continue
@@ -4149,11 +4112,7 @@ def _satisfy_parent_projection_contract(
         ):
             projected.append(parent)
             continue
-        concepts.extend(
-            c
-            for addr in sorted(carry)
-            if (c := _concept_at(environment, addr)) is not None
-        )
+        concepts.extend(_concepts_at(environment, sorted(carry)))
         # When the dimension's projected grain (fd_needed) shares NO key with the
         # barrier sibling, the post-projection merge has nothing to join on and
         # cross-joins ON 1=1: the bridge between the two is a projection-grain
@@ -4182,11 +4141,9 @@ def _satisfy_parent_projection_contract(
             # applied at the scan, never as a column here. Grouping on it would
             # fail input validation; keep only real outputs.
             parent_outputs = {o.address for o in parent.usable_outputs}
-            grain_concepts = [
-                c
-                for addr in sorted((fd_needed | join_keys | carry) & parent_outputs)
-                if (c := _concept_at(environment, addr)) is not None
-            ]
+            grain_concepts = _concepts_at(
+                environment, sorted((fd_needed | join_keys | carry) & parent_outputs)
+            )
             projected.append(
                 GroupNode(
                     output_concepts=grain_concepts,
@@ -4329,29 +4286,16 @@ def _project_final_contributors(
     """Wrap each contributor in one projection of the columns the FINAL
     election hosted on it beyond what its build renders."""
     for gid, concepts in projections.items():
-        if not concepts:
-            continue
-        base = built[gid]
-        projected = SelectNode(
-            output_concepts=list(base.output_concepts),
-            input_concepts=list(base.output_concepts),
-            environment=environment,
-            parents=[base],
-            partial_concepts=list(base.partial_concepts),
-        )
-        widen_projection(projected, concepts)
-        built[gid] = projected
+        if concepts:
+            built[gid] = _projection_over(built[gid], concepts, environment)
 
 
 def _renders_rename_of_member(concept: BuildConcept, domain: GroupAttrs) -> bool:
     """`concept` renames a member of `domain` its rows can render: it outputs
     the rename itself or every argument of it."""
-    if not (
-        isinstance(concept.lineage, BuildFunction)
-        and concept.lineage.operator == FunctionType.ALIAS
-    ):
+    args = _renamed_addresses(concept)
+    if args is None:
         return False
-    args = {a.address for a in concept.lineage.concept_arguments}
     held = {*domain.output_concepts, *domain.members}
     return args <= set(domain.primary_members) and (
         concept.address in held or args <= held
@@ -4440,13 +4384,7 @@ def _add_partial_completion_contributors(
 
 
 def _fold_descendant_contributors(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    per_group: dict[str, list[BuildConcept]],
-    passthroughs: dict[str, list[BuildConcept]],
-    rendered: dict[str, frozenset[str]],
-    environment: BuildEnvironment,
+    plan: _Plan, cover: "_FinalCover", environment: BuildEnvironment
 ) -> None:
     """Reroute FINAL to read a contributor's columns *through* a basic
     descendant instead of merging the two.
@@ -4467,6 +4405,9 @@ def _fold_descendant_contributors(
     B's parents carry S's columns is read off what they render
     (`renders.parents_render`). A basic built off aggregates alone holds one
     row per their grain, not S's rows, so it passes nothing through."""
+    group_graph, group_edges, attrs = plan.group_graph, plan.group_edges, plan.attrs
+    per_group, rendered = cover.per_group, cover.rendered
+    passthroughs = cover.passthroughs
     grouped: GroupedRowMemo = {}
     for b_gid in list(per_group.keys()):
         if b_gid not in per_group or attrs[b_gid].derivation not in (
@@ -4573,12 +4514,8 @@ def _element_filters(
 
 
 def _fold_into_argument_unnests(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    per_group: dict[str, list[BuildConcept]],
-    passthroughs: dict[str, list[BuildConcept]],
-    rendered: dict[str, frozenset[str]],
+    plan: _Plan,
+    cover: "_FinalCover",
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> None:
@@ -4591,9 +4528,12 @@ def _fold_into_argument_unnests(
     A WHERE that can keep a row with no element (`e > 1 or city = 'B'`) also
     keeps the rows the expansion drops (an empty list): the contributor stays,
     and the unnest joins beside it on the keys of its rows."""
+    group_graph, group_edges, attrs = plan.group_graph, plan.group_edges, plan.attrs
+    per_group, rendered = cover.per_group, cover.rendered
+    passthroughs = cover.passthroughs
     covered = {c.address for c in mandatory_list}
     atoms = attrs[FINAL_NODE_ID].condition_atoms
-    args = {arg.address for atom in atoms for arg in atom.row_arguments} - covered
+    args = _row_argument_addresses(atoms) - covered
     if not args:
         return
     non_null = set().union(*(gather_non_null_proofs(atom) for atom in atoms))
@@ -4666,19 +4606,18 @@ def _hosts_rename(
 
 
 def _promote_final_aliases_to_grouping_contributors(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    per_group: dict[str, list[BuildConcept]],
-    projections: dict[str, list[BuildConcept]],
+    plan: _Plan,
+    cover: "_FinalCover",
     mandatory_list: list[BuildConcept],
-    rendered: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> None:
     """Host a FINAL rename on a grouping contributor that renders what it
     renames, decided off what each contributor renders (`renders.renders`)
     and the concepts the cover gave it. A hosted rename is owed in
     `projections`."""
+    group_graph, group_edges, attrs = plan.group_graph, plan.group_edges, plan.attrs
+    per_group, rendered = cover.per_group, cover.rendered
+    projections = cover.projections
 
     def has_grouping_output(gid: str) -> bool:
         return _renders_grouping_rows(rendered[gid], environment)
@@ -4728,16 +4667,9 @@ def _promote_final_aliases_to_grouping_contributors(
         members = per_group.get(src_gid)
         if not members:
             continue
-        if any(
-            edge_kind(group_edges, pgid, src_gid) == EdgeKind.EXISTENCE
-            for pgid in group_graph.predecessors(src_gid)
-        ):
+        if _existence_parents(group_graph, group_edges, src_gid):
             continue
-        if not all(
-            isinstance(c.lineage, BuildFunction)
-            and c.lineage.operator == FunctionType.ALIAS
-            for c in members
-        ):
+        if not all(_renamed_addresses(c) is not None for c in members):
             continue
         for gid in list(per_group):
             if gid == src_gid:
@@ -4797,9 +4729,7 @@ def _projection_root_concepts(
     addresses: set[str] = set()
     for concept in concepts:
         addresses.add(concept.address)
-        grain_components = (
-            frozenset(concept.grain.components) if concept.grain else frozenset()
-        )
+        grain_components = _grain_components(concept)
         addresses.update(grain_components)
         # A property's keys identify the row it belongs to (address.city ->
         # address.id), so the dim scan needs them. But a self-grained identifier
@@ -5002,15 +4932,7 @@ def _distinct_projection(
     grain = set(node.grain.components) if node.grain else set()
     if not outputs or (grain and grain <= {c.address for c in outputs}):
         return node
-    return GroupNode(
-        output_concepts=outputs,
-        input_concepts=outputs,
-        environment=environment,
-        parents=[node],
-        partial_concepts=list(node.partial_concepts),
-        preexisting_conditions=node.preexisting_conditions,
-        force_group=True,
-    )
+    return _forced_dedup(node, outputs, environment)
 
 
 def _wrap_for_grain(
@@ -5063,17 +4985,7 @@ def _wrap_for_grain(
         distinct_outputs = list(distinct_by_addr.values())
         if any(o.address not in parent_usable for o in distinct_outputs):
             return [parent_node]
-        return [
-            GroupNode(
-                output_concepts=distinct_outputs,
-                input_concepts=distinct_outputs,
-                environment=environment,
-                parents=[parent_node],
-                partial_concepts=list(parent_node.partial_concepts),
-                preexisting_conditions=parent_node.preexisting_conditions,
-                force_group=True,
-            )
-        ]
+        return [_forced_dedup(parent_node, distinct_outputs, environment)]
 
     parent_grain = parent_node.grain or parent_node.resolve().grain
     parent_grain_components = frozenset(parent_grain.components)
@@ -5086,9 +4998,7 @@ def _wrap_for_grain(
     parent_outputs = {o.address for o in parent_node.usable_outputs}
     by_grain: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
     for concept in needed_concepts:
-        grain_components = (
-            frozenset(concept.grain.components) if concept.grain else frozenset()
-        )
+        grain_components = _grain_components(concept)
         # A dimension reached *through* the merge grain key (its `keys` are the
         # merge grain) is functionally determined by it and already lives in
         # this parent at that grain, e.g. `order.customer.id` (keys={order.id})
@@ -5153,9 +5063,7 @@ def _wrap_for_grain(
         if not grain_comps <= parent_outputs:
             wraps.append(parent_node)
             continue
-        grain_concepts = [
-            c for a in grain_comps if (c := _concept_at(environment, a)) is not None
-        ]
+        grain_concepts = _concepts_at(environment, grain_comps)
         # Dedup by address, keep concept order stable.
         outputs_by_addr: dict[str, BuildConcept] = {}
         for c in concepts + grain_concepts:
@@ -5315,12 +5223,9 @@ def _final_gate_keys(
     is folded into a sibling only if that sibling holds it too, else the gate
     pairs short of its grain (`SelectGrain.gate_paired_short_of_its_grain`)."""
     return _gate_grain_keys(
-        [
-            c
-            for atom in attrs[FINAL_NODE_ID].condition_atoms
-            for arg in atom.row_arguments
-            if (c := _concept_at(environment, arg.address)) is not None
-        ]
+        _concepts_at(
+            environment, _row_argument_addresses(attrs[FINAL_NODE_ID].condition_atoms)
+        )
     )
 
 
@@ -5492,13 +5397,12 @@ def _final_extra_sides(
         {},
         carried,
     )
-    args = [c for addr in extras.arg_producers if (c := _concept_at(environment, addr))]
+    args = _concepts_at(environment, extras.arg_producers)
     absent = _gate_grain_keys(
         [
             c
             for atom in attrs[FINAL_NODE_ID].condition_atoms
-            for addr in args_holding_on_absent(atom)
-            if (c := _concept_at(environment, addr)) is not None
+            for c in _concepts_at(environment, args_holding_on_absent(atom))
         ]
     )
     for address in sorted(_gate_grain_keys(args) - available):
@@ -5524,7 +5428,7 @@ def _join_gate_hosts(
 ) -> list[StrategyNode]:
     """`parents` plus the row stream the plan elected for each gate key none
     of them carries (a key pinned to columns their rows lack)."""
-    carried = {o.address for p in parents for o in p.output_concepts}
+    carried = _output_addresses(parents)
     for address in sorted(gate_keys - carried):
         host = extras.gate_hosts.get(address)
         if host and (node := _planned_side(built, host)) not in parents:
@@ -5581,9 +5485,7 @@ def _region_paired_args(
     missing = filter_only - available
     if not spans:
         return missing
-    grain = _gate_grain_keys(
-        [c for a in missing if (c := _concept_at(environment, a)) is not None]
-    )
+    grain = _gate_grain_keys(_concepts_at(environment, missing))
     return missing | (grain - available)
 
 
@@ -5846,7 +5748,7 @@ def _aggregate_input_rows(
             for p in group_graph.predecessors(gid)
         )
     )
-    outputs = [c for addr in a.output_concepts if (c := _concept_at(environment, addr))]
+    outputs = _concepts_at(environment, a.output_concepts)
     primary = set(a.primary_members)
     scalar = _aggregate_scalar_inputs(
         outputs, primary, frozenset(), frozenset(), environment
@@ -5888,27 +5790,28 @@ def _push_row_condition_before_group(
             f"but the contributor built {type(current).__name__}. This is a "
             "planner bug."
         )
-    parent_output_by_addr = {
-        output.address: output
-        for parent in current.parents
-        for output in parent.output_concepts
-    }
-    if any(
-        arg.address not in parent_output_by_addr for arg in condition_row_args(where)
-    ):
+    held = _output_addresses(current.parents)
+    if any(arg.address not in held for arg in condition_row_args(where)):
         return False
-    parent_outputs = list(parent_output_by_addr.values())
-    current.parents = [
-        SelectNode(
-            input_concepts=parent_outputs,
-            output_concepts=parent_outputs,
-            environment=environment,
-            parents=list(current.parents),
-            conditions=where.conditional,
-        )
-    ]
+    current.parents = [_filtered_rows(list(current.parents), where, environment)]
     current.rebuild_cache()
     return True
+
+
+def _filtered_rows(
+    parents: list[StrategyNode], where: BuildWhereClause, environment: BuildEnvironment
+) -> SelectNode:
+    """`parents`' rows under `where`, with every column they output."""
+    outputs = list(
+        {o.address: o for parent in parents for o in parent.output_concepts}.values()
+    )
+    return SelectNode(
+        input_concepts=outputs,
+        output_concepts=outputs,
+        environment=environment,
+        parents=parents,
+        conditions=where.conditional,
+    )
 
 
 def _clear_groupmate_completed_partials(
@@ -6154,11 +6057,7 @@ def _assemble_sole_contributor(
     if final_conditions is not None and not final_already_applied:
         sole_avail = cover.holds(gid)
         # a gate's producer pairs on its grain, which the dedup would strip
-        missing = [
-            c
-            for addr in filter_only_addrs - sole_avail
-            if (c := _concept_at(environment, addr)) is not None
-        ]
+        missing = _concepts_at(environment, filter_only_addrs - sole_avail)
         gate_paired_feeders = bool(
             _gate_grain_keys(missing) & {o.address for o in sole_node.output_concepts}
         )
@@ -6187,19 +6086,8 @@ def _assemble_sole_contributor(
         # wave the dedup through. Collapse explicitly to the requested
         # outputs after the filter.
         if conditioned is not sole_node and final_contract.deduplicate_to_grain:
-            targets = [
-                o
-                for o in conditioned.output_concepts
-                if o.address in mandatory_addresses
-            ] or list(conditioned.output_concepts)
-            final_node: StrategyNode = GroupNode(
-                output_concepts=targets,
-                input_concepts=targets,
-                environment=environment,
-                parents=[conditioned],
-                partial_concepts=list(conditioned.partial_concepts),
-                preexisting_conditions=conditioned.preexisting_conditions,
-                force_group=True,
+            final_node: StrategyNode = _dedup_to_mandatory(
+                conditioned, mandatory_addresses, environment
             )
         else:
             final_node = _group_to_grain_if_required(
@@ -6491,34 +6379,11 @@ def _elect_final_cover(
     _add_partial_completion_contributors(
         groups, cover.per_group, attrs, rendered, environment
     )
-    _fold_descendant_contributors(
-        group_graph,
-        group_edges,
-        attrs,
-        cover.per_group,
-        cover.passthroughs,
-        rendered,
-        environment,
-    )
-    _fold_into_argument_unnests(
-        group_graph,
-        group_edges,
-        attrs,
-        cover.per_group,
-        cover.passthroughs,
-        rendered,
-        mandatory_list,
-        environment,
-    )
+    plan = _Plan(group_graph, group_edges, attrs)
+    _fold_descendant_contributors(plan, cover, environment)
+    _fold_into_argument_unnests(plan, cover, mandatory_list, environment)
     _promote_final_aliases_to_grouping_contributors(
-        group_graph,
-        group_edges,
-        attrs,
-        cover.per_group,
-        cover.projections,
-        mandatory_list,
-        rendered,
-        environment,
+        plan, cover, mandatory_list, environment
     )
     # last: the promotion above drops a contributor left with no concepts,
     # which is all a row-only domain ever has
@@ -6563,10 +6428,10 @@ def _assemble_final_node(
     # Row-args a FINAL-deferred filter needs that aren't user outputs (a global
     # aggregate compared against a per-key one). Their producing groups get
     # cross-joined in as hidden inputs below, else the WHERE dangles.
-    filter_only_addrs: set[str] = set()
-    for atom in attrs[FINAL_NODE_ID].condition_atoms:
-        filter_only_addrs |= {a.address for a in atom.row_arguments}
-    filter_only_addrs -= mandatory_addresses
+    filter_only_addrs = (
+        _row_argument_addresses(attrs[FINAL_NODE_ID].condition_atoms)
+        - mandatory_addresses
+    )
 
     apply_final_conditions = partial(
         _apply_final_conditions,
@@ -6777,10 +6642,7 @@ def _assemble_final_node(
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
-    available: set[str] = set()
-    for p in parents:
-        for o in p.output_concepts:
-            available.add(o.address)
+    available = _output_addresses(parents)
     # A mandatory concept a parent computes only under a pseudonym alias (`merge
     # derived_measure into measure`: the parent outputs the derivation, the user
     # wrote the merge target) is covered but not address-available. It must ride
@@ -6836,9 +6698,9 @@ def _assemble_final_node(
             if not relation & mandatory_addresses & coalescing_addrs:
                 continue
             axis_mates.extend(
-                c
-                for addr in sorted((relation - mandatory_addresses) & available)
-                if (c := _concept_at(environment, addr)) is not None
+                _concepts_at(
+                    environment, sorted((relation - mandatory_addresses) & available)
+                )
             )
     # A region's rows join back on its spans, from the domain or from whatever
     # read it. One the statement never names still has to be an output of this
@@ -6941,18 +6803,7 @@ def _assemble_final_node(
     # the same story: the in-place narrowing would take it off the merge that
     # hosts by it.
     if (axis_mates or region_keys) and final_contract.deduplicate_to_grain:
-        targets = [
-            o for o in merged.output_concepts if o.address in mandatory_addresses
-        ] or list(merged.output_concepts)
-        return GroupNode(
-            output_concepts=targets,
-            input_concepts=targets,
-            environment=environment,
-            parents=[merged],
-            partial_concepts=list(merged.partial_concepts),
-            preexisting_conditions=merged.preexisting_conditions,
-            force_group=True,
-        )
+        return _dedup_to_mandatory(merged, mandatory_addresses, environment)
     # Dedup the assembled merge to the requested output grain (as the
     # single-contributor path above does). A contributor left whole at a
     # finer row grain (a root scan kept at {store, wh, product} to preserve a
@@ -7005,15 +6856,7 @@ def _at_declared_identity(
     if not finer & exposed or not set(group.output_concepts) <= closure:
         return node
     kept = [o for o in node.usable_outputs if o.address in closure]
-    return GroupNode(
-        output_concepts=kept,
-        input_concepts=kept,
-        environment=environment,
-        parents=[node],
-        partial_concepts=[c for c in node.partial_concepts if c.address in closure],
-        preexisting_conditions=node.preexisting_conditions,
-        force_group=True,
-    )
+    return _forced_dedup(node, kept, environment, closure)
 
 
 def _origin_singleton(
@@ -7163,15 +7006,6 @@ class _FoldPlan:
         return set().union(*(self.rendered[gid] for gid in gids))
 
 
-@dataclass(frozen=True)
-class _Plan:
-    """A group graph with its edges and attrs."""
-
-    group_graph: nx.DiGraph
-    group_edges: EdgeMap
-    attrs: dict[str, GroupAttrs]
-
-
 @dataclass
 class _GroupBuild:
     """What every group of one `build_strategy_node` call reads and fills."""
@@ -7264,9 +7098,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             *(addr for addr in select_addrs if addr in primary),
             *(addr for addr in select_addrs if addr not in primary),
         )
-    outputs = [
-        c for addr in select_addrs if (c := _concept_at(environment, addr)) is not None
-    ]
+    outputs = _concepts_at(environment, select_addrs)
     if not outputs:
         ctx.unbuilt[gid] = outputs
         return None
@@ -7457,20 +7289,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         and derivation in (*AGGREGATING_DERIVATIONS, Derivation.WINDOW)
         and parents
     ):
-        parent_output_by_addr = {
-            output.address: output
-            for parent in parents
-            for output in parent.output_concepts
-        }
-        parent_outputs = list(parent_output_by_addr.values())
-        wrapper = SelectNode(
-            input_concepts=parent_outputs,
-            output_concepts=parent_outputs,
-            environment=environment,
-            parents=parents,
-            conditions=injected.conditional,
-        )
-        parents = [wrapper]
+        parents = [_filtered_rows(parents, injected, environment)]
         condition_for_generator = None
     if derivation == Derivation.AGGREGATE and parents:
         parents = _project_basic_aggregate_inputs(
@@ -7649,9 +7468,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 mandatory_list,
                 environment,
             ),
-            existence_source=any(
-                edge_kind(unfolded.group_edges, gid, succ) == EdgeKind.EXISTENCE
-                for succ in unfolded.group_graph.successors(gid)
+            existence_source=_feeds_existence(
+                unfolded.group_graph, unfolded.group_edges, gid
             ),
             collapse_to_grain=all(
                 unfolded.attrs[succ].derivation != Derivation.AGGREGATE
@@ -7737,11 +7555,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         node,
         built,
         feeder_cache,
-        preferred=[
-            pgid
-            for pgid in group_graph.predecessors(gid)
-            if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
-        ],
+        preferred=_existence_parents(group_graph, group_edges, gid),
     )
     return node
 
@@ -7879,11 +7693,7 @@ def _group_demand(
     environment: BuildEnvironment,
 ) -> set[str]:
     """`_group_needed` as the build of `gid` will compute it."""
-    outputs = [
-        c
-        for addr in _select_addresses(attrs[gid])
-        if (c := _concept_at(environment, addr)) is not None
-    ]
+    outputs = _concepts_at(environment, _select_addresses(attrs[gid]))
     outputs, atoms = _group_outputs_and_atoms(attrs, gid, outputs, environment)
     return _group_needed(
         group_graph, group_edges, attrs, gid, outputs, _wrap_atoms(atoms), environment
@@ -7909,27 +7719,27 @@ def _inlined_groups(
     graph, edges = group_graph.copy(), dict(group_edges)
     planned = {gid: dc_replace(a) for gid, a in attrs.items()}
     rendered = renders(graph, edges, planned, environment)
-    scans: dict[str, bool] = {}
+    base = _PlannedReads(
+        graph,
+        edges,
+        planned,
+        rendered,
+        set(),
+        environment,
+        g,
+        history,
+        {},
+        readers,
+        arms_delivered,
+        mandatory_list,
+    )
+    plan = _Plan(graph, edges, planned)
     inlined: set[str] = set()
     for idx, gid in enumerate(order):
         if gid == FINAL_NODE_ID:
             continue
-        reads = _PlannedReads(
-            graph,
-            edges,
-            planned,
-            rendered,
-            {other for other in order[:idx] if other in planned},
-            environment,
-            g,
-            history,
-            scans,
-            readers,
-            arms_delivered,
-        )
-        if _inlined_by_every_reader(
-            graph, edges, planned, reads, gid, environment, mandatory_list
-        ):
+        reads = base.over(rendered, order[:idx])
+        if _inlined_by_every_reader(plan, reads, gid):
             inlined.add(gid)
             _read_parents_in_place(graph, edges, planned, gid)
             rendered = renders(graph, edges, planned, environment)
@@ -7937,22 +7747,8 @@ def _inlined_groups(
     for idx, gid in enumerate(order):
         if gid not in planned or planned[gid].derivation != Derivation.AGGREGATE:
             continue
-        reads = _PlannedReads(
-            graph,
-            edges,
-            planned,
-            rendered,
-            {other for other in order[:idx] if other in planned},
-            environment,
-            g,
-            history,
-            scans,
-            readers,
-            arms_delivered,
-        )
-        aggregate_inputs[gid] = _aggregate_input_groups(
-            graph, edges, planned, reads, gid, environment, mandatory_list
-        )
+        reads = base.over(rendered, order[:idx])
+        aggregate_inputs[gid] = _aggregate_input_groups(plan, reads, gid)
         _raise_if_inlined_input_is_unreadable(reads, gid, aggregate_inputs[gid])
     return _FoldPlan(inlined, aggregate_inputs, rendered)
 

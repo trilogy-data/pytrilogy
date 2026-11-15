@@ -23,7 +23,7 @@ pass's inputs.
 """
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from trilogy.core import graph as nx
@@ -69,9 +69,8 @@ def _needs_pristine_scan(
 ) -> bool:
     """The calc reads a row POPULATION, so its scan must not see the
     SELECT-side WHERE atoms."""
-    if concept_attrs[n].derivation == Derivation.UNNEST:
-        return _defines_existence_set(concept_graph, concept_edges, n)
-    if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+    derivation = concept_attrs[n].derivation
+    if derivation in ROW_SHAPE_BARRIER_DERIVATIONS and derivation != Derivation.UNNEST:
         return True
     # An existence source (a semijoin RHS, `x in <set>`) is a separate
     # discovery: its defining lineage must source from a private root, not
@@ -244,6 +243,16 @@ def _root_join_axis(attrs: ConceptAttrs) -> set[str]:
     return axis
 
 
+def _axis_and_addresses(roots: Iterable[ConceptAttrs]) -> tuple[set[str], set[str]]:
+    """The join axis of a set of roots, and every address they answer for."""
+    axis: set[str] = set()
+    addresses: set[str] = set()
+    for attrs in roots:
+        axis |= _root_join_axis(attrs)
+        addresses |= {attrs.address, *attrs.pseudonyms}
+    return axis, addresses
+
+
 def _condition_exclusive_root(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -314,22 +323,18 @@ def _split_strands_condition_scan(
     split), the axes must be disjoint, and no chain of bound datasource
     columns may relate the two sides: two star-schema dimensions share no key
     either, but still meet over the fact table."""
-    condition_axis: set[str] = set()
-    condition_addresses: set[str] = set()
-    for node in split_roots:
-        attrs = concept_attrs[node]
-        condition_axis |= _root_join_axis(attrs)
-        condition_addresses |= {attrs.address, *attrs.pseudonyms}
-    select_axis: set[str] = set()
-    select_addresses: set[str] = set()
-    for node in concept_graph.nodes:
-        attrs = concept_attrs[node]
-        if attrs.derivation != Derivation.ROOT or attrs.depth_label == DepthLabel.D1:
-            continue
-        if _condition_exclusive_root(concept_graph, concept_edges, d1_subgraph, node):
-            continue
-        select_axis |= _root_join_axis(attrs)
-        select_addresses |= {attrs.address, *attrs.pseudonyms}
+    condition_axis, condition_addresses = _axis_and_addresses(
+        concept_attrs[node] for node in split_roots
+    )
+    select_axis, select_addresses = _axis_and_addresses(
+        attrs
+        for node in concept_graph.nodes
+        if (attrs := concept_attrs[node]).derivation == Derivation.ROOT
+        and attrs.depth_label != DepthLabel.D1
+        and not _condition_exclusive_root(
+            concept_graph, concept_edges, d1_subgraph, node
+        )
+    )
     if not condition_axis or not select_axis:
         return False
     if not condition_axis.isdisjoint(select_axis):
@@ -407,25 +412,12 @@ def _prune_existence_exclusive_roots(
         successors = list(concept_graph.successors(root))
         if not successors or not all(s in d1_subgraph for s in successors):
             continue
-        stack = [
+        lineage = [
             s
             for s in successors
             if edge_kind(concept_edges, root, s) == EdgeKind.LINEAGE
         ]
-        seen: set[str] = set()
-        feeds_existence_source = False
-        while stack and not feeds_existence_source:
-            cur = stack.pop()
-            if cur in seen:
-                continue
-            seen.add(cur)
-            for nxt in concept_graph.successors(cur):
-                if edge_kind(concept_edges, cur, nxt) == EdgeKind.EXISTENCE:
-                    feeds_existence_source = True
-                    break
-                if nxt in d1_subgraph:
-                    stack.append(nxt)
-        if feeds_existence_source:
+        if _reaches_existence_set(concept_graph, concept_edges, d1_subgraph, lineage):
             exclusive_addrs.add(concept_attrs[root].address)
     if not exclusive_addrs:
         return
@@ -442,6 +434,26 @@ def _prune_existence_exclusive_roots(
                 if address in exclusive_addrs
             }
         )
+
+
+def _reaches_existence_set(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    d1_subgraph: set[str],
+    seeds: list[str],
+) -> bool:
+    """Some seed, or a condition node downstream of one, defines a semijoin set."""
+    stack = list(seeds)
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        if _defines_existence_set(concept_graph, concept_edges, cur):
+            return True
+        stack.extend(n for n in concept_graph.successors(cur) if n in d1_subgraph)
+    return False
 
 
 def _finest_determining_key(
@@ -500,13 +512,6 @@ def _composite_determining_grain(
     return frozenset(chosen)
 
 
-def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
-    """The arg's address plus every address reachable through its lineage: a
-    derived filter arg (``label <- concat(name, '-', variant)``) needs its
-    ROOT inputs co-located wherever the filter is evaluated."""
-    return {concept.address for concept in walk_lineage([arg])}
-
-
 def _filter_args(
     conditions: list[BuildWhereClause],
 ) -> tuple[frozenset[str], frozenset[str]]:
@@ -515,7 +520,8 @@ def _filter_args(
 
     A pre-aggregate filter narrows the rows feeding an aggregate, so its args
     stay on the fact scan, expanded through their lineage closure so the host
-    can render a derived arg; peeled to a dim join it would apply after the
+    can render a derived arg (``label <- concat(name, '-', variant)`` needs its
+    ROOT inputs wherever the filter is evaluated); peeled to a dim join it would apply after the
     aggregate (wrong sums). A post-aggregate (HAVING-style) arg filters the
     OUTPUT, so peeling it to a dim scan semijoined on the entity key is
     faithful; a filter-only one peels only beside an output of its cluster.
@@ -524,11 +530,11 @@ def _filter_args(
     for atom in _atoms(conditions):
         for arg in atom.row_arguments:
             if arg.derivation != Derivation.AGGREGATE:
-                pre |= _row_arg_lineage_closure(arg)
+                pre |= {concept.address for concept in walk_lineage([arg])}
     post = {
         arg.address
         for clause in conditions
-        if _post_aggregate(clause)
+        if any(a.derivation == Derivation.AGGREGATE for a in clause.concept_arguments)
         for arg in clause.row_arguments
     }
     return frozenset(pre), frozenset(post)
@@ -542,12 +548,6 @@ def _atoms(
         for clause in conditions
         for atom in decompose_condition(clause.conditional)
     ]
-
-
-def _post_aggregate(
-    atom: BuildSubselectComparison | BoolExpr | BuildWhereClause,
-) -> bool:
-    return any(arg.derivation == Derivation.AGGREGATE for arg in atom.concept_arguments)
 
 
 def _pre_aggregate_atom_mates(

@@ -183,7 +183,7 @@ class _HeldKeys:
         the spans of the regions its rows pair with, and its grain when it
         groups."""
         grain = (
-            sorted(g for g in self.grain_components if g != ALL_ROWS_ADDRESS)
+            sorted(pairing_keys(self.grain_components))
             if self.derivation in GROUPING_DERIVATIONS
             else []
         )

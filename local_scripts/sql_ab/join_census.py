@@ -129,12 +129,14 @@ def p_cover(orig, group_graph, group_edges, attrs, groups, *a, **k):
     return r
 
 
+def pairings(plan) -> list[list]:
+    return [[p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings]
+
+
 def p_plan(orig, *a, **k):
     plan = orig(*a, **k)
     REC["final.plan_keys"] = sorted(plan.join_keys)
-    REC["final.plan_pairings"] = [
-        [p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings
-    ]
+    REC["final.plan_pairings"] = pairings(plan)
     REC["final.plan_carry"] = {g: sorted(v) for g, v in plan.carry_demands.items()}
     return plan
 

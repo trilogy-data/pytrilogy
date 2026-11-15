@@ -137,11 +137,15 @@ def executor():
     executor.close()
 
 
+def _float_rows(executor, query: str) -> list[tuple]:
+    return [tuple(as_float(v) for v in r) for r in fetch_rows(executor, query)]
+
+
 @pytest.mark.parametrize("columns,where", CASES)
 def test_each_tree_once(executor, columns: list[str], where: str) -> None:
     query = f"select {', '.join(columns)}{where};"
     sql = executor.generate_sql(query)[-1]
-    rows = sorted(tuple(as_float(v) for v in r) for r in fetch_rows(executor, query))
+    rows = sorted(_float_rows(executor, query))
     trees = KEPT if where else list(ROWS)
     assert rows == _expected(trees, columns), sql
     assert widest_cte(executor, sql)[0] <= TREES, sql
@@ -164,9 +168,7 @@ def test_rare_reads_the_kept_trees(executor) -> None:
 )
 def test_a_total_over_the_predictions(executor, query: str, expected) -> None:
     sql = executor.generate_sql(query)[-1]
-    assert [tuple(as_float(v) for v in r) for r in fetch_rows(executor, query)] == (
-        expected
-    ), sql
+    assert _float_rows(executor, query) == expected, sql
     assert widest_cte(executor, sql)[0] <= TREES, sql
 
 
@@ -215,8 +217,7 @@ def test_a_where_gates_a_total(query: str, expected, peeled: bool) -> None:
     executor = executor_for(GATE)
     try:
         sql = executor.generate_sql(query)[-1]
-        rows = [tuple(as_float(v) for v in r) for r in fetch_rows(executor, query)]
-        assert sorted(rows) == expected, sql
+        assert sorted(_float_rows(executor, query)) == expected, sql
         if peeled:
             assert widest_cte(executor, sql)[0] <= 3, sql
     finally:

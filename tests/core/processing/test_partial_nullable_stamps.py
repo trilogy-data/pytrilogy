@@ -70,28 +70,26 @@ def _scan(qds: QueryDatasource, table: str) -> QueryDatasource:
     raise AssertionError(f"no scan of {table}")
 
 
-def test_scan_stamps_only_projected_columns():
+def _sales_scan(query: str) -> QueryDatasource:
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(MODEL)
-    scan = _scan(_final(executor, "select sale_id, amount;"), "sales")
+    return _scan(_final(executor, query), "sales")
+
+
+def test_scan_stamps_only_projected_columns():
+    scan = _sales_scan("select sale_id, amount;")
     assert {c.address for c in scan.partial_concepts} == set()
     assert {c.address for c in scan.nullable_concepts} == set()
 
 
 def test_scan_stamps_projected_partial_and_nullable():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
-    scan = _scan(_final(executor, "select sale_id, product_id, note;"), "sales")
+    scan = _sales_scan("select sale_id, product_id, note;")
     assert {c.address for c in scan.partial_concepts} == {"local.product_id"}
     assert {c.address for c in scan.nullable_concepts} == {"local.note"}
 
 
 def test_scan_condition_proof_strips_nullable():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
-    scan = _scan(
-        _final(executor, "where note is not null select sale_id, note;"), "sales"
-    )
+    scan = _sales_scan("where note is not null select sale_id, note;")
     assert {c.address for c in scan.nullable_concepts} == set()
 
 

@@ -45,7 +45,6 @@ from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
-    decompose_condition,
     is_scalar_condition,
 )
 from trilogy.core.processing.join_key_groups import axis_member_keys
@@ -58,8 +57,9 @@ from trilogy.core.processing.null_provenance import (
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
-    collect_applied_conditions,
+    applied_atoms,
     join_left_sources,
+    joined_right_ids,
     left_deep_joins,
     padded_by,
 )
@@ -1219,10 +1219,7 @@ def _same_filters(left: DataSource, right: DataSource) -> bool:
     no member, so a pairing on it does not restrict either side: a lookup
     that skipped the WHERE pairs every padded row it has (each customer with
     no order, of any nation) with the other side's."""
-    lefts, rights = (
-        [a for c in collect_applied_conditions(s) for a in decompose_condition(c)]
-        for s in (left, right)
-    )
+    lefts, rights = applied_atoms(left), applied_atoms(right)
     return all(any(a == b for b in rights) for a in lefts) and all(
         any(a == b for b in lefts) for a in rights
     )
@@ -1234,7 +1231,7 @@ def preserved_sources(
     """Identifiers of the sources whose every row survives the join tree.
     Joins are left-deep: a join that does not preserve its left side drops
     rows of everything joined so far, and an UNNEST can drop rows too."""
-    right_ids = {join.right.identifier for join in joins if isinstance(join, Join)}
+    right_ids = joined_right_ids(joins)
     alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
     for join in joins:
         if not isinstance(join, Join):
