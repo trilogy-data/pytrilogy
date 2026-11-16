@@ -1604,7 +1604,10 @@ def _drop_finer_passengers(
     parents supplying everything it would, adds only its multiplicity: a
     re-sum of the summary's `count(tree_id)` by `(city, species)` joined to
     the trees counts each partial once per tree. Never beside a region's rows:
-    the scan may be what pairs a member the others lack."""
+    the scan may be what pairs a member the others lack. A scan the WHERE
+    filters is a passenger too when a root beside it applies the same atoms:
+    the rows it keeps are the keys the other already kept
+    (`Rollup.filtered_passenger_multiplies`)."""
     if any(region_reads(p) for p in parents):
         return parents
     kept = list(parents)
@@ -1613,17 +1616,41 @@ def _drop_finer_passengers(
         if (
             gid is None
             or attrs[gid].derivation != Derivation.ROOT
-            or attrs[gid].condition_atoms
-            or parent.conditions is not None
             or not _rows_finer_than(parent, input_grain, environment)
         ):
             continue
         others = [p for p in kept if p is not parent]
+        if not _filter_applied_beside(parent, gid, others, attrs, origin):
+            continue
         supplied = {o.address for p in others for o in p.usable_outputs}
         own = {o.address for o in parent.usable_outputs} & needed
         if others and own <= supplied:
             kept = others
     return kept
+
+
+def _filter_applied_beside(
+    parent: StrategyNode,
+    gid: str,
+    others: list[StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    origin: dict[int, str],
+) -> bool:
+    """`parent`'s row filter, if any, is applied by a root among `others`."""
+    atoms = attrs[gid].condition_atoms
+    if not atoms and parent.conditions is None:
+        return True
+    if not atoms:
+        return False
+    for other in others:
+        ogid = _origin_group(other, origin)
+        if (
+            ogid is not None
+            and attrs[ogid].derivation == Derivation.ROOT
+            and all(atom in attrs[ogid].condition_atoms for atom in atoms)
+        ):
+            return True
+    return False
 
 
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:

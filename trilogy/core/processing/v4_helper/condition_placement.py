@@ -254,6 +254,8 @@ def _entity_peels_beside_row_stream(
     buckets: dict[str, GroupBucket],
     group_members: dict[str, set[str]],
     main_lineage: set[str],
+    row_inputs: set[str],
+    environment: BuildEnvironment,
 ) -> list[str]:
     """Entity peels that can host a row atom held only by a row stream FINAL
     never merges. The stream carries no output, so an atom elected onto it
@@ -265,8 +267,9 @@ def _entity_peels_beside_row_stream(
         for gid in candidates
         if gid in buckets and buckets[gid].reason is RootReason.ROW_STREAM
     ]
-    if not streams or any(gid in main_lineage for gid in streams):
+    if not streams:
         return []
+    merged = any(gid in main_lineage for gid in streams)
     return [
         gid
         for gid in sorted(main_lineage)
@@ -274,6 +277,12 @@ def _entity_peels_beside_row_stream(
         and gid in buckets
         and buckets[gid].anchor_keys
         and any(buckets[gid].anchor_keys <= group_members[s] for s in streams)
+        and (
+            not merged
+            or strict_fd_determines_all(
+                environment, buckets[gid].anchor_keys, row_inputs
+            )
+        )
     ]
 
 
@@ -1494,7 +1503,12 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     row_inputs = {c.address for c in atom.row_arguments}
     candidates = _candidate_groups(atom, row_inputs, scope)
     candidates += _entity_peels_beside_row_stream(
-        candidates, buckets, scope.group_members, main_lineage
+        candidates,
+        buckets,
+        scope.group_members,
+        main_lineage,
+        row_inputs,
+        scope.environment,
     )
     # A presence probe's null test is only meaningful ABOVE the merge
     # that null-extends it: hosting it at the member's own rowset

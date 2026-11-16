@@ -79,7 +79,10 @@ family to 90,000, and settles every pass-cap query; lesson 45; 0.3.504
 sweeps both families to 150,000 and fixes the five answers main gets wrong or
 raises on there; lesson 46; 0.3.506 sweeps both families to 210,000,
 fixes the four answers main gets wrong, raises on or cannot run, and reads
-an aggregate coarser than the rows off the summary; lesson 47).
+an aggregate coarser than the rows off the summary; lesson 47; 0.3.507 sweeps
+both families to 270,000, fixes the four answers main gets wrong or cannot
+run there, and reads the coarse aggregate under a WHERE of its own keys;
+lesson 48).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -1067,6 +1070,54 @@ does not rewrite it; that rewrite is open.
       and 2 invalid, the branch none; nothing broken; summary reads 75,087 to
       75,842; scans -542; JOINs -2,008. The first family 0-210,000: nothing
       wrong on either side; summary reads +425, scans -401, JOINs -3,319.
+
+48. **Lessons from the 210k-270k round (0.3.507).**
+    - Three of the four leads were one WHERE on `tree_form`, an enrichment
+      column `species` determines, beside a summary read. Reduce by dropping
+      one select item at a time: 262499 needed all three of `count(tree_id)`,
+      `count(tree_id) by city` and the nested `sum(min(...))`, and only then
+      did the trees ride under the re-sum.
+    - A passenger can carry the WHERE. `_drop_finer_passengers` kept any scan
+      the WHERE filtered, so the summary's `(city, species)` counts re-summed
+      by city were joined to the kept trees and each repeated once per tree
+      (262499, 267243; `Rollup.filtered_passenger_multiplies`). A filtered scan
+      is a passenger too when a root beside it applies the same atoms: a key
+      predicate on the summary keeps the keys a kept tree has
+      (`Rollup.key_filter_is_semijoin`).
+    - A peel needs a gate, not just a reader of the stream. `v0` peeled onto
+      the summary at `species` left the WHERE on the row stream, and the
+      stream reached FINAL only through `v1`'s group, whose `species` a FULL
+      join inside its `?` filter padded; the join to the peel came out FULL,
+      then LEFT, and every species returned (237480;
+      `SelectGrain.unfiltered_peel_keeps_rejected`).
+      `_entity_peels_beside_row_stream` now hands the atom to a peel whose
+      keys determine it even when the stream is merged. It costs a JOIN where
+      FINAL already joined the peel INNER to a filtered side (the enrichment
+      join inside the peel's scan); the alternative, typing the join toward
+      the side that applied the WHERE, needs SideFacts to know which sides
+      did, and is the lead to take if the cost matters.
+    - An atom-only column is no column of a peel. Carrying the atom, the
+      peel's group read `tree_form`, and the join plan paired it on
+      `tree_form` with an aggregate by it; the GroupNode cannot be widened
+      past its keys, so FINAL elected no bridge and raised a keyless join
+      (228287, 232921, raised only once the peel carried the atom).
+      `_peel_atom_columns` keeps them out of what a peel holds.
+    - A merged CTE can hold a cycle, not only a mirror. Two plans each joined
+      `wakeful` from their own side (`abundant`, `uneven`); merged, `wakeful`
+      was referenced twice (243699, invalid on the base model). Over INNER
+      joins the pairs are one conjunction (`rejoined_cte_is_one_conjunction`):
+      `_fold_inner_rejoins` moves the second pairing onto the join that brings
+      in the later side.
+    - The coarse rollup under a WHERE: the narrow form is right and the wide
+      one is not. A WHERE of columns the aggregate's keys determine keeps whole
+      groups, so the unfiltered re-sum is exact
+      (`Rollup.group_filter_commutes_with_resum`). A WHERE finer than its keys
+      (`species = 'Acer'` beside `by city`) must filter the summary's rows
+      before the re-sum; the coarse bucket is a separate `dim:` peel with no
+      filter columns, so it read every species. That wide form is the lead:
+      it needs the coarse bucket to scan the summary at its own grain with the
+      WHERE applied, then group.
+    - SUMMARY_PLACEHOLDER
 
 ## Candidate areas
 
