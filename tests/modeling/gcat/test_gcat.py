@@ -120,9 +120,12 @@ count(launch_tag) as launches;""")
     sql = base.generate_sql(queries[-1])
     # The asymmetric-nullable rule promotes the launch_info join to FULL; the
     # downgrade pass then sees the `vehicle.name like '%Falcon%'` filter on
-    # the left and demotes it to LEFT OUTER (which preserves the same Falcon
-    # launches at lower cost). Accept either shape — both keep every match.
-    assert "FULL JOIN" in sql[0] or "LEFT OUTER JOIN" in sql[0], sql[0]
+    # the vehicles and demotes it to the outer join preserving them (LEFT, or
+    # RIGHT when the vehicles are walked last). Accept any of these shapes:
+    # each keeps every match.
+    assert any(
+        join in sql[0] for join in ("FULL JOIN", "LEFT OUTER JOIN", "RIGHT OUTER JOIN")
+    ), sql[0]
 
 
 def test_date_filter():
@@ -496,8 +499,12 @@ LIMIT 1
     # through the `launch_info` fact (FK merges `FirstAgency: ~org.code`,
     # `LV_Type: ~vehicle.name`). The planner must discover that bridge and join on
     # the real FK keys rather than cross-joining ON 1=1 (which inflated the count).
-    assert re.search(r'"org_organizations"\."Code" = "\w+"\."org_code"', sql), sql
-    assert re.search(r'"\w+"\."vehicle_name" = "vehicle_lv_info"\."LV_Name"', sql), sql
+    assert re.search(r'"org_organizations"\."Code" = "\w+"\."org_code"', sql) or (
+        re.search(r'"\w+"\."org_code" = "org_organizations"\."Code"', sql)
+    ), sql
+    assert re.search(r'"\w+"\."vehicle_name" = "vehicle_lv_info"\."LV_Name"', sql) or (
+        re.search(r'"vehicle_lv_info"\."LV_Name" = "\w+"\."vehicle_name"', sql)
+    ), sql
 
 
 def test_join_discovery_two():

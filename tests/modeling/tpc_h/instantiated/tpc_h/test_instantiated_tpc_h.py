@@ -15,8 +15,13 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
     results = engine.generate_sql(text)[-1]
+    # the orders' customer lookup is INNER, written from either side
     assert re.search(
         r'INNER JOIN "(\w+)" on "order_orders"\."o_custkey" = "\1"\."order_customer_id"',
+        results,
+    ) or re.search(
+        r'"(\w+)"\s+INNER JOIN "memory"\."orders" as "order_orders" on '
+        r'"\1"\."order_customer_id" = "order_orders"\."o_custkey"',
         results,
     ), results
 

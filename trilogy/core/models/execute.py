@@ -2394,7 +2394,8 @@ def _null_extended_sides(join: SourceJoin) -> list[str]:
     if join.join_type == JoinType.RIGHT_OUTER:
         return left
     if join.join_type == JoinType.FULL:
-        return left + right
+        # pads both sides, so `a FULL JOIN b` and `b FULL JOIN a` are one
+        return sorted({*left, *right})
     return []
 
 
@@ -2491,7 +2492,8 @@ def _null_extended_names(join: Join) -> list[str]:
     if join.join_type == JoinType.RIGHT_OUTER:
         return left
     if join.join_type == JoinType.FULL:
-        return left + right
+        # pads both sides, so `a FULL JOIN b` and `b FULL JOIN a` are one
+        return sorted({*left, *right})
     return []
 
 

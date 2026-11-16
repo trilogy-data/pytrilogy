@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from trilogy import Dialects
@@ -198,9 +199,10 @@ select
     # join applies the filter transitively (execution A/B'd 2026-07-28). The
     # direct filter on the aggregate branch is the correctness carrier.
     assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
-    assert (
-        'INNER JOIN "quizzical" on "wakeful"."species" = "quizzical"."species"'
-        in generated
+    assert re.search(
+        r'INNER JOIN "(quizzical|wakeful)" on "(wakeful|quizzical)"\."species" = '
+        r'"\1"\."species"',
+        generated,
     ), generated
 
 

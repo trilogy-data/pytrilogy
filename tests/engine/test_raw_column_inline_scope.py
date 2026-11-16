@@ -96,7 +96,7 @@ def _sql_and_rows(executor: Executor) -> tuple[str, list[tuple]]:
 def test_raw_column_reference_folds_into_an_inner_joined_consumer():
     sql, rows = _sql_and_rows(_executor())
     assert "WITH" not in sql, sql
-    assert 'FROM\n    "returns"' in sql, sql
+    assert 'INNER JOIN "returns"' in sql or 'FROM\n    "returns"' in sql, sql
     assert "r_returned_at IS NOT NULL as" in sql, sql
     assert rows == [(1, True, "ann"), (3, False, "bob")]
 

@@ -97,6 +97,12 @@ def test_an_outer_join_merges_into_its_mirror():
     assert coalesce_duplicate_joins([right_outer, left_outer]) == [right_outer]
 
 
+def test_a_full_join_merges_into_its_mirror():
+    ss_first = _join("sr", [_pair("ss", "k", "k")], jointype=JoinType.FULL)
+    sr_first = _join("ss", [_pair("sr", "k", "k")], jointype=JoinType.FULL)
+    assert coalesce_duplicate_joins([ss_first, sr_first]) == [ss_first]
+
+
 def test_outer_joins_padding_different_sides_stay_apart():
     pads_orders = _join(
         "orders", [_pair("customers", "cid", "cid")], jointype=JoinType.LEFT_OUTER

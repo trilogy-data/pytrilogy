@@ -833,7 +833,10 @@ def ensure_content_preservation(
     joins: list[JoinOrderOutput],
     authored_axis_keys: frozenset[str] = frozenset(),
     demanded_domains: frozenset[str] = frozenset(),
+    grains: Mapping[str, frozenset[str]] | None = None,
 ) -> None:
+    """`grains` is each side's grain: a right its join's keys identify is a
+    lookup, whose unmatched rows are its domain's, not an axis's content."""
     for idx, review_join in enumerate(joins):
         predecessors = joins[:idx]
         if review_join.type == JoinType.FULL:
@@ -841,17 +844,24 @@ def ensure_content_preservation(
         has_prior_left = False
         has_prior_right = False
         review_keys: set[str] = set().union(*review_join.keys.values())
+        right_grain = (grains or {}).get(review_join.right, frozenset())
+        lookup_off_axis = bool(
+            right_grain
+            and right_grain <= review_keys
+            and not review_keys & authored_axis_keys
+        )
         for pred in predecessors:
             on_pred_right = pred.right in review_join.lefts
             on_pred_left = any(x in review_join.lefts for x in pred.lefts)
             # A prior FULL padded rows into the accumulated stream, so this
             # join preserves its LEFT stream. It preserves its RIGHT relation
-            # too when both are keyed on an AUTHORED axis (row intent for both
+            # too when the FULL is an AUTHORED axis (row intent for both
             # sides' content), or when this join is keyed ON the FULL's own
             # spine (coalesced across both families) and the spine is a domain
-            # this merge demands. A join keyed OFF the axis or the spine hangs
-            # off one family (a sale's date beside customers merged across
-            # channels): only get_join_type can license preserving it.
+            # this merge demands. A join keyed OFF the spine hangs off one
+            # family: only get_join_type can license preserving it. Nor is a
+            # lookup off the axis the axis's content: a date no sale fell on
+            # is no customer's row, however the customers were merged.
             if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
                 pred_keys: set[str] = set().union(*pred.keys.values())
@@ -859,7 +869,7 @@ def ensure_content_preservation(
                     review_keys
                     and review_keys <= pred_keys
                     and review_keys <= demanded_domains
-                ) or (pred_keys & review_keys & authored_axis_keys):
+                ) or (pred_keys & authored_axis_keys and not lookup_off_axis):
                     has_prior_right = True
                 continue
             # Either way the padded relation is in the ACCUMULATED stream,
@@ -1097,7 +1107,12 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     seed = _preserved_past_inner(output)
     if seed is not None:
         output = _walk(facts, anchor_sources, seed)
-    ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
+    ensure_content_preservation(
+        output,
+        facts.axis_keys,
+        facts.demanded_domains,
+        {node: side.grain for node, side in facts.sides.items()},
+    )
     restore_full_join_providers(output)
     return output
 
