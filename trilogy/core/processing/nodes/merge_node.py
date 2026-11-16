@@ -282,6 +282,38 @@ def _planned_source_pairs(
     return out
 
 
+def _full_join_concepts(
+    joins: list[SourceJoin | UnnestJoin],
+    sources: list[QueryDatasource | BuildDatasource],
+) -> list[BuildConcept]:
+    """What a FULL join's rows read off every source supplying it: its keys,
+    and each column its right shares with a source joined before. A FULL pads
+    either side, so one provider's column is NULL on the rows only the other
+    holds (a product no filtered aggregate kept), whichever the walk joined
+    first."""
+    by_id = {source.identifier: source for source in sources}
+    out: list[BuildConcept] = []
+    for join, left in left_deep_joins(joins):
+        if join.join_type != JoinType.FULL:
+            continue
+        out += join.input_concepts
+        held = {
+            c.address
+            for identifier in left
+            if identifier in by_id
+            for c in _visible_outputs(by_id[identifier])
+        }
+        out += [c for c in _visible_outputs(join.right) if c.address in held]
+    return out
+
+
+def _visible_outputs(
+    source: QueryDatasource | BuildDatasource,
+) -> list[BuildConcept]:
+    hidden = source.hidden_concepts if isinstance(source, QueryDatasource) else set()
+    return [c for c in source.output_concepts if c.address not in hidden]
+
+
 def _cap_lookup_joins(
     joins: list[SourceJoin | UnnestJoin], lookups: Collection[str]
 ) -> None:
@@ -930,10 +962,7 @@ class MergeNode(StrategyNode):
         # FULL JOINs only: both sides may be NULL, so source_map needs every
         # input supplying the address. For LEFT/RIGHT the preserved-side
         # ordering above suffices.
-        full_join_concepts = []
-        for join in joins:
-            if isinstance(join, Join) and join.join_type == JoinType.FULL:
-                full_join_concepts += join.input_concepts
+        full_join_concepts = _full_join_concepts(joins, final_datasets)
         joined = calculate_joined_pregrain(
             join_candidates, joins, grain, self.environment
         )

@@ -134,6 +134,7 @@ def find_fanout_joins(
         if _collapses_duplicates(cte):
             continue
         base = _driving(cte)
+        stream = cte_true_grain(base, environment) if base is not None else set()
         for join in cte.joins or []:
             if not isinstance(join, Join) or not join.pairs:
                 continue
@@ -145,6 +146,14 @@ def find_fanout_joins(
             keys = {pair.right.address for pair in join.pairs}
             true_grain = cte_true_grain(right, environment)
             if true_grain and not unique_per(true_grain, keys, environment):
+                # a stream unique per its own keys is the lookup: each right
+                # row meets at most one of its rows, whichever side is first
+                if stream and unique_per(
+                    stream, {pair.left.address for pair in join.pairs}, environment
+                ):
+                    stream = set(true_grain)
+                    continue
+                stream |= true_grain
                 violations.append(
                     FanoutViolation(
                         consumer=cte.name,
