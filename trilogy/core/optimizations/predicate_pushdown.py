@@ -89,19 +89,12 @@ def _promotion_would_cycle(
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
     """True if ``consumer`` references ``union`` on the nullable side of an
     outer join; pushing predicates into the union branches there changes
-    which rows survive the join."""
+    which rows survive the join. That side is the right of a LEFT/FULL, and
+    of a RIGHT/FULL everything before it, the FROM base included
+    (`null_padded_nodes`)."""
     if not isinstance(consumer, CTE):
         return True
-    for j in consumer.joins:
-        if not isinstance(j, Join) or j.join_type == JoinType.INNER:
-            continue
-        if isinstance(j.right, UnionCTE) and j.right.name == union.name:
-            return True
-        if j.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
-            isinstance(j.left, UnionCTE) and j.left.name == union.name
-        ):
-            return True
-    return False
+    return any(node.name == union.name for node in null_padded_nodes(consumer))
 
 
 def _branch_constraint_implies(branch: CTE | UnionCTE, condition) -> bool:

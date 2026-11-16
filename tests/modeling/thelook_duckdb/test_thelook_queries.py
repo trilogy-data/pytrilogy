@@ -8,6 +8,7 @@ member of each `~` dimension, with the extension families never
 cross-pairing.
 """
 
+import re
 from pathlib import Path
 
 from tests.modeling._benchmark_artifacts import record_timing, write_query_log
@@ -167,8 +168,8 @@ def test_adhoc01_unpinned_span(engine: Executor):
 def test_one(engine):
     query = run_query(engine, 1)
     assert "FULL" not in query, query
-    for table in ('"users" as', '"products" as', '"order_items" as'):
-        assert query.count(table) == 1, query
+    for table in ("users", "products", "order_items"):
+        assert len(re.findall(rf'(?:FROM|JOIN)\s+"{table}"', query)) == 1, query
 
 
 def test_two(engine):

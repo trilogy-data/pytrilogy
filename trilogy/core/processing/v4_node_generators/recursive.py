@@ -52,7 +52,10 @@ def gen_recursive(
     gate = BuildComparison(
         left=GATING_CONCEPT, right=True, operator=ComparisonOperator.IS
     )
-    walk_outputs = [recursive, *arguments]
+    # The recursive arm rebinds the next argument to each ancestor's edge, so
+    # on a finished walk it is the root's (NULL), never the seed row's: the
+    # walk carries its seed and its value, and the seed row the rest.
+    walk_outputs = [recursive, *arguments[:1]]
     # A WHERE hosted here filters the FINISHED walk, never its edge set: the
     # parent stays unfiltered so every walk reaches its terminal row.
     walk_conditions = conditions.conditional if conditions else None
@@ -83,9 +86,8 @@ def gen_recursive(
     if not joined_back:
         return walk
     # The atom reads columns of the seed row the walk does not carry: join the
-    # walk back to its parent on the seed row (the edge it walked) and filter
-    # there.
-    edge = frozenset(c.address for c in arguments)
+    # walk back to its parent on the seed row and filter there.
+    edge = frozenset(c.address for c in arguments[:1])
     return MergeNode(
         input_concepts=walk_outputs,
         output_concepts=walk_outputs,

@@ -1403,6 +1403,10 @@ def test_consumer_outer_joins_union_helper(test_environment, test_environment_gr
     right_outer = Join(right=other_cte, join_type=JoinType.RIGHT_OUTER, left=union)
     assert _consumer_outer_joins_union(_consumer([right_outer]), union) is True
 
+    # Union as the FROM base of a RIGHT_OUTER with no explicit left → nullable.
+    right_outer_base = Join(right=other_cte, join_type=JoinType.RIGHT_OUTER)
+    assert _consumer_outer_joins_union(_consumer([right_outer_base]), union) is True
+
     # FULL on either side → always nullable.
     full_left = Join(right=other_cte, join_type=JoinType.FULL, left=union)
     assert _consumer_outer_joins_union(_consumer([full_left]), union) is True
