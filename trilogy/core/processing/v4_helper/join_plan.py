@@ -1121,7 +1121,7 @@ def _underkeyed_blends(
         if not any(
             not b <= p.keys and b <= _determined(a, environment)
             for a, b in ((left, right), (right, left))
-        ):
+        ) and not _pinned_finer(plan, p, environment):
             continue
         if not any(
             _bridges_on_identity(plan, extra, p.left)
@@ -1130,6 +1130,20 @@ def _underkeyed_blends(
         ):
             count += 1
     return count
+
+
+def _pinned_finer(plan: JoinPlan, p: Pairing, environment: BuildEnvironment) -> bool:
+    """Another supplier's rows determine both sides of blend `p` (`tree_id`
+    beside a value by species and one by city, tree_form): each merged row has
+    one partner on each side, and the shared keys alone pair it with every
+    side row that shares them."""
+    both = plan.identity[p.left] | plan.identity[p.right]
+    return not both <= p.keys and any(
+        gid not in (p.left, p.right)
+        and plan.identity[gid]
+        and both <= _determined(plan.identity[gid], environment)
+        for gid in plan.suppliers
+    )
 
 
 def _bridges_on_identity(plan: JoinPlan, bridge: str, side: str) -> bool:
