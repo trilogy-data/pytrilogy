@@ -82,7 +82,8 @@ fixes the four answers main gets wrong, raises on or cannot run, and reads
 an aggregate coarser than the rows off the summary; lesson 47; 0.3.508 sweeps
 both families to 270,000, fixes the four answers main gets wrong or cannot
 run there, and reads the coarse aggregate under a WHERE of its own keys;
-lesson 48).
+lesson 48; 0.3.509 sweeps both families to 330,000 and fixes the three
+answers main gets wrong or raises on there; lesson 49).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -1132,6 +1133,49 @@ does not rewrite it; that rewrite is open.
       `max(height) by city` and its row keys each scan the trees where main
       shared one scan. The lead is to let a coarse aggregate that still scans
       join the row stream's scan instead of opening its own.
+
+49. **Lessons from the 270k-330k round (0.3.509).**
+    - Two of the three leads raised a keyless join; reduce those by dropping
+      select items until the raise stops, then by dropping HAVING atoms. All
+      three kept a `tree_form` beside `species`, the enrichment lookup that
+      earlier rounds kept finding.
+    - A lookup is covered. `_uncovered_exposing_output_contributor` sends
+      FINAL to re-apply the WHERE when the keys are split over two WHERE
+      aggregates (`split_keys_pair_unkept`), but it asked that every
+      mandatory column be a covered member, and `tree_form` was no group's
+      member. The branch was skipped and the fallback read the dim peel as
+      pinned, so `(A, Acer)` came back off the unfiltered
+      `min(height) by city, species` (304584;
+      `SelectGrain.lookup_beside_split_keys_pairs_unkept`). A column a host's
+      grain determines adds no tuple (`lookup_adds_no_tuple`), so it now
+      counts. The same rule drops FINAL's second copy of a WHERE that the
+      group below already applied when the select carried a lookup: 9,059
+      spellings queries lost that JOIN. 270 gained one: the split-keys gate
+      now joins at FINAL, and the HAVING aggregates go LEFT behind it
+      (4554).
+    - A side connects islands only on its planned keys.
+      `_join_elected_bridges` built islands from every column a parent or a
+      bridge exposed. A `?` filter bridge, planned on `tree_id, species`,
+      also exposed `city` and `tree_form`; joined first, it merged the
+      islands, the root-stream bridge planned on `(city, tree_form)` was
+      skipped as redundant, and the merge raised (310634). A `dim:species`
+      ROOT contributor resourced as a `(species, tree_form)` projection did
+      the same from the parent side (273853, summary model only). The merge
+      pairs a side only on the keys its plan gives it
+      (`keyed_lookup_keeps_rows`); a column it merely exposes joins nothing
+      and, read as a key, fans the rows out (`exposed_column_joins_nothing`).
+      `_planned_side_keys` limits a parent's island to `plan.keys_for` over
+      the groups `side_members` says it holds; a parent no group owns keeps
+      every column.
+    - Ablate before you write it up: removing any one of the three changes
+      fails two of the eight reduced cases, so none is a passenger.
+    - The A/B over 0-330,000 of both families x 2 models (1,320,000 queries).
+      Spellings: main 2 wrong and 3 raise, the branch none; nothing broken;
+      summary reads +1 and scans +3 (the queries that raised now run), JOINs
+      -14,476, CTEs -1,311. First
+      family: nothing wrong on either side; summary reads and scans
+      unchanged, JOINs -15,703 (11,108 queries lost a JOIN, 19 gained one),
+      CTEs -1,505. Both families' JOINs are the dropped second WHERE above.
 
 ## Candidate areas
 

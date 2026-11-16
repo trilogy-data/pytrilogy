@@ -1254,3 +1254,76 @@ theorem rejoined_cte_is_one_conjunction (rows : List (Int × Int × Int)) :
   simp [List.filter_filter, Bool.and_comm]
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A lookup of a split key is no key of its own
+
+`select city, species, form where max(x) by species - min(x) by city, species
+< 1 having ...`: each WHERE aggregate keeps its own key, and the select's rows
+are the kept `(city, species)` tuples. `form` is a function of `species`, so it
+adds no tuple: the select still pairs keys split over two branches, and a
+FINAL that skipped the WHERE for it read a pair the WHERE dropped
+(`lookup_beside_split_keys_pairs_unkept`). -/
+
+/-- **A lookup adds no tuple** (`lookup_adds_no_tuple`): a row's `(a, b, f b)`
+is kept exactly when its `(a, b)` is, with the looked-up value fixed by `b`. -/
+theorem lookup_adds_no_tuple (a b : α → Key) (f : Key → Key) (rows : List α)
+    (x y z : Key) :
+    (x, y, z) ∈ dedup (rows.map fun r => (a r, b r, f (b r))) ↔
+      z = f y ∧ (x, y) ∈ dedup (rows.map fun r => (a r, b r)) := by
+  simp only [mem_dedup, List.mem_map, Prod.mk.injEq]
+  constructor
+  · rintro ⟨r, hr, h1, h2, h3⟩
+    subst h1 h2 h3
+    exact ⟨rfl, r, hr, rfl, rfl⟩
+  · rintro ⟨rfl, r, hr, h1, h2⟩
+    subst h1 h2
+    exact ⟨r, hr, rfl, rfl, rfl⟩
+
+/-- Rows `(city, species)` `[(0, 1), (0, 2), (1, 1)]` with `(0, 1)` dropped by
+the WHERE and `form` a function of species: two kept tuples, but cities 0 and
+1 and species 1 and 2 are all kept, so paired off the unfiltered rows, with or
+without the lookup, `(0, 1)` comes back. -/
+theorem lookup_beside_split_keys_pairs_unkept :
+    let rows : List (Int × Int) := [(0, 1), (0, 2), (1, 1)]
+    let p : Int × Int → Bool := fun r => r != (0, 1)
+    let city : Int × Int → Key := fun r => [r.1]
+    let species : Int × Int → Key := fun r => [r.2]
+    let form : Key → Key := fun s => s.map (· % 2)
+    let kept := dedup ((rows.filter p).map fun r => (city r, species r, form (species r)))
+    let paired := dedup ((rows.filter fun r =>
+      (keptKeys city p rows).contains (city r) &&
+        (keptKeys species p rows).contains (species r)).map fun r =>
+          (city r, species r, form (species r)))
+    kept.length = 2 ∧ paired.length = 3 := by
+  decide
+
+/-! ## A column a side exposes is no key it is joined on
+
+A merge joins each side on the keys its plan pairs it on. A filtered row
+stream elected to bridge `v0`'s `tree_id` and a `by species` gate also exposes
+`city`, but is paired on neither `city` nor `tree_form`; read as joining the
+`by city` groups, it left the row stream that pairs them unjoined, and they
+met on nothing (`exposed_column_joins_nothing`). Keyed on `city`, a lookup of
+the groups keeps the stream's rows (`keyed_lookup_keeps_rows`). -/
+
+/-- **A lookup on a key the right side is unique on keeps the left's rows.** -/
+theorem keyed_lookup_keeps_rows (rows : List (Int × Int)) (g : Int → Int) :
+    (rows.flatMap fun r => ([r.1].map fun c => (r, c, g c)).filter
+      fun t => t.2.1 == t.1.1).length = rows.length := by
+  induction rows with
+  | nil => rfl
+  | cons r rs ih => simp_all [List.flatMap_cons]
+
+/-- Five trees in two cities and a `by city` group of two rows: joined on
+nothing, ten rows; keyed on `city`, five. -/
+theorem exposed_column_joins_nothing :
+    let trees : List (Int × Int) := [(1, 0), (2, 0), (3, 0), (4, 1), (5, 1)]
+    let groups : List (Int × Int) := [(0, 5), (1, 7)]
+    (trees.flatMap fun t => groups.map (t, ·)).length = 10 ∧
+      ((trees.flatMap fun t => groups.map (t, ·)).filter
+        fun p => p.1.2 == p.2.1).length = 5 := by
+  decide
+
+end Trilogy.SelectGrain

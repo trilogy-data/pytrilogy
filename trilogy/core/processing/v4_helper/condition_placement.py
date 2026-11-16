@@ -675,7 +675,15 @@ def _uncovered_exposing_output_contributor(
     # branches (`city` off one, `tree_form` off another) are paired by a row
     # stream the atom never filtered (`SelectGrain.split_keys_pair_unkept`).
     all_collapsing = bool(chosen_groups) and len(collapsing_hosts) == len(chosen_groups)
-    if all_collapsing and mandatory_addrs <= (covered_members | regrouped):
+    # a lookup a host's grain determines (`tree_form` of `species`) adds no rows
+    looked_up = mandatory_addrs - covered_members - regrouped
+    if all_collapsing and (
+        not looked_up
+        or any(
+            build_fd_determines_all(environment, host.grain_components, looked_up)
+            for host in collapsing_hosts
+        )
+    ):
         keys = mandatory_addrs & set().union(
             *(buckets[gid].grain_components for gid in covered if gid in buckets)
         )

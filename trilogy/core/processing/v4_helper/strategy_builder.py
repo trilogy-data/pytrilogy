@@ -3742,6 +3742,7 @@ def _pre_merge_parents(
             parents,
             [(_planned_side(built, gid), plan.keys_for(gid)) for gid in plan.extras],
             environment,
+            planned=_planned_side_keys(parents, origin, plan) if origin else (),
         )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
@@ -5207,6 +5208,7 @@ def _join_elected_bridges(
     bridges: Sequence[tuple[StrategyNode, frozenset[str]]],
     environment: BuildEnvironment,
     keying: frozenset[int] = frozenset(),
+    planned: Sequence[frozenset[str] | None] = (),
 ) -> list[StrategyNode]:
     """Join the bridges the join plan elected (`join_plan.elect_bridges`),
     each with the keys the plan pairs it on, so the merge below joins on an
@@ -5219,11 +5221,19 @@ def _join_elected_bridges(
     no longer joins two islands as built (a member widened to its key pairs
     directly) is not joined. A keying bridge (`JoinPlan.keying`) joins
     whatever the islands: it holds the key one side's grain determines and
-    the other side's is grouped by."""
+    the other side's is grouped by.
+
+    `planned` is, per parent, the keys the plan pairs its side on (None for
+    rows no planned group holds): the merge pairs on nothing else, so a
+    column a side merely exposes (`tree_form` a peel carries for the WHERE)
+    connects no island."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
+    for index, keys in enumerate(planned):
+        if keys is not None:
+            outputs[index] &= keys
     for bridge, keys in bridges:
         islands = _pairing_islands(outputs)
         if any(bridge is parent for parent in parents):
@@ -5248,6 +5258,10 @@ def _join_elected_bridges(
                 environment,
             )
         exposed = _pairing_addresses(bridge, environment)
+        # the merge pairs a bridge only on its planned keys: a column it
+        # merely exposes beside them connects no island
+        if keys:
+            exposed &= keys
         touched = [
             island
             for island in islands
@@ -5258,6 +5272,21 @@ def _join_elected_bridges(
         parents.append(bridge)
         outputs.append(exposed)
     return parents
+
+
+def _planned_side_keys(
+    parents: list[StrategyNode], origin: dict[int, str], plan: JoinPlan
+) -> list[frozenset[str] | None]:
+    """Per parent, the keys `plan` pairs the groups it holds on."""
+    out: list[frozenset[str] | None] = []
+    for parent in parents:
+        side = side_members(parent, origin)
+        out.append(
+            None
+            if side is None
+            else frozenset().union(*(plan.keys_for(gid) for gid in side))
+        )
+    return out
 
 
 def _sole_partners(plan: JoinPlan, contributors: Sequence[str]) -> frozenset[str]:
@@ -6724,6 +6753,7 @@ def _assemble_final_node(
             id(_planned_side(built, gid))
             for gid in bridged.keying | _sole_partners(plan, contributing)
         ),
+        _planned_side_keys(parents, origin, plan),
     )
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
