@@ -962,27 +962,27 @@ def _score_join_candidate(
     facts: JoinFacts,
     multi_partial: bool,
     anchor_sources: frozenset[str],
-) -> tuple[int, tuple[int, str]]:
+) -> tuple[bool, bool, int, bool, bool, str]:
     side = facts.side(x)
-    base = 1
-    # A query-scoped LEFT anchor must seed the join base: a right is typed
-    # against the lefts in walk order, so each co-anchored optional source
-    # dedups against the anchor (LEFT_OUTER), not the other optional (FULL).
-    # The boost dominates the multi_partial bump so the anchor always outranks.
-    if x in anchor_sources:
-        base += 10
     is_partial = root in side.partials
-    if multi_partial and is_partial:
-        base += 2
-    elif is_partial:
-        base -= 1
-    # the side holding the region's rows seeds the tree: its feeders hang
-    # LEFT off it instead of meeting FULL before it arrives
-    if side.hosts and not is_partial:
-        base += 3
-    # below the facts, the plan's order: finer rows first where it states one
     rank, name = facts.rank(x)
-    return (base, (-rank, name))
+    return (
+        # A query-scoped LEFT anchor must seed the join base: a right is typed
+        # against the lefts in walk order, so each co-anchored optional source
+        # dedups against the anchor (LEFT_OUTER), not the other optional (FULL).
+        x in anchor_sources,
+        # a lone `~` binding of the key joins after its complete holders
+        not is_partial or multi_partial,
+        # below the facts, the plan's order
+        -rank,
+        # between sides the plan ranks alike, the one holding the merge's rows
+        # seeds the tree: its feeders hang LEFT off it instead of meeting FULL
+        # before it arrives
+        side.hosts and not is_partial,
+        # several `~` bindings of the key meet each other first
+        multi_partial and is_partial,
+        name,
+    )
 
 
 class _Pivot(NamedTuple):

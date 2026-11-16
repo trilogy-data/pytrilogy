@@ -134,16 +134,16 @@ class JoinPlan:
     @property
     def precedence(self) -> tuple[str, ...]:
         """The order resolve joins the contributors in when nothing else
-        decides: the suppliers before the sides joined to pair or filter
-        them, a row stream before the lookups its pairings identify, and
-        finer rows first."""
+        decides: a row stream before the lookups its pairings identify (a
+        bridge holding the rows included), the suppliers before the sides
+        joined to pair or filter them, and finer rows first."""
         looked_up = self.looked_up
         return tuple(
             sorted(
                 self.contributors,
                 key=lambda gid: (
-                    gid not in self.suppliers,
                     gid in looked_up,
+                    gid not in self.suppliers,
                     -len(self.identity.get(gid, ())),
                 ),
             )

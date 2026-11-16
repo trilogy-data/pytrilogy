@@ -48,9 +48,7 @@ SCORE_TERMS = (
     "multi_partial",
     "partial",
     "hosts",
-    "nullable",
-    "grain",
-    "name",
+    "rank",
 )
 
 
@@ -99,57 +97,34 @@ def _solid_nullable(pivot_map, facts):
     return out
 
 
-def _paired(facts: jr.JoinFacts, x: str) -> int:
-    return len(
-        frozenset().union(*(k for pair, k in facts.pair_keys.items() if x in pair))
-    )
-
-
 # stand-in name -> (term it replaces, the side fact read in its place)
 STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str, str], Any]]] = {
     "hosts=held_any": ("hosts", lambda f, x, r: bool(f.side(x).held_spans)),
     "hosts=held_root": ("hosts", lambda f, x, r: r in f.side(x).held_spans),
-    "grain=paired": ("grain", lambda f, x, r: _paired(f, x)),
-    "grain=determined": ("grain", lambda f, x, r: len(f.side(x).determined)),
-    "nullable=value": ("nullable", lambda f, x, r: r in f.side(x).value_nullables),
 }
 
 
 def _scorer(
     off: frozenset[str], stand_in: str | None = None
-) -> Callable[..., tuple[int, int, str]]:
+) -> Callable[..., tuple[bool, bool, int, bool, bool, str]]:
     """`_score_join_candidate` with the terms in `off` held constant, and the
     term `stand_in` replaces reading its fact instead."""
-    term, read = STAND_INS[stand_in] if stand_in else ("", None)
+    read = STAND_INS[stand_in][1] if stand_in else None
 
     def score(x, *, root, facts, multi_partial, anchor_sources):
         side = facts.side(x)
         if read is not None:
-            side = jr.replace(
-                side,
-                **{
-                    "hosts": {"hosts": bool(read(facts, x, root))},
-                    "nullable": {
-                        "nullables": side.nullables - {root}
-                        | ({root} if read(facts, x, root) else set())
-                    },
-                    "grain": {"grain": frozenset(range(read(facts, x, root)))},
-                }[term],
-            )
-        base = 1
-        if x in anchor_sources and "anchor" not in off:
-            base += 10
+            side = jr.replace(side, hosts=bool(read(facts, x, root)))
         is_partial = root in side.partials
-        if multi_partial and is_partial:
-            base += 0 if "multi_partial" in off else 2
-        elif is_partial:
-            base -= 0 if "partial" in off else 1
-        if side.hosts and not is_partial and "hosts" not in off:
-            base += 3
-        if root in side.nullables and "nullable" not in off:
-            base += 1
-        grain = 0 if "grain" in off else len(side.grain)
-        return (base, grain, "" if "name" in off else x)
+        rank, name = facts.rank(x)
+        return (
+            x in anchor_sources and "anchor" not in off,
+            "partial" in off or not is_partial or multi_partial,
+            0 if "rank" in off else -rank,
+            side.hosts and not is_partial and "hosts" not in off,
+            multi_partial and is_partial and "multi_partial" not in off,
+            name,
+        )
 
     return score
 
