@@ -6309,6 +6309,7 @@ def _planned_join(
         "planned_pairs": PlannedPairs(
             {key: side for key, side in sides.items() if side is not None},
             plan.pair_keys(),
+            order=plan.precedence,
         ),
     }
 

@@ -293,7 +293,12 @@ def _joint_plan(searches: Sequence[SourcedScans]) -> PlannedPairs:
                 for pair, pairs in search.plan.keys.items()
             }
         )
-    return PlannedPairs(sides, keys)
+    order = tuple(
+        f"{index}:{name}"
+        for index, search in enumerate(searches)
+        for name in search.plan.order
+    )
+    return PlannedPairs(sides, keys, order=order)
 
 
 def _source_concepts_via_graph(
