@@ -12,8 +12,8 @@ SELECT
     \"user_product_sales\".\"sale_line_count\" as \"sale_line_count\"
 FROM
     \"user_product_sales\"
-    INNER JOIN \"users\" as \"user_users\" on \"user_product_sales\".\"user_id\" = \"user_users\".\"id\"
     INNER JOIN \"products\" as \"product_products\" on \"user_product_sales\".\"product_id\" = \"product_products\".\"id\"
+    INNER JOIN \"users\" as \"user_users\" on \"user_product_sales\".\"user_id\" = \"user_users\".\"id\"
 ORDER BY 
     \"user_users\".\"id\" asc,
     \"product_products\".\"id\" asc"""

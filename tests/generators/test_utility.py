@@ -153,10 +153,7 @@ def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
     planned = resolve_join_order_v2(
         JoinFacts(
             sides={
-                "ds~a": SideFacts(
-                    columns=frozenset({"c~k", "c~p"}),
-                    grain=frozenset({"c~g1", "c~g2"}),
-                ),
+                "ds~a": SideFacts(columns=frozenset({"c~k", "c~p"})),
                 "ds~b": SideFacts(columns=frozenset({"c~k"})),
                 "ds~c": SideFacts(
                     columns=frozenset({"c~k", "c~p"}), nullables=frozenset({"c~k"})
@@ -168,6 +165,7 @@ def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
                 frozenset({"ds~a", "ds~b"}): frozenset({"c~k"}),
                 frozenset({"ds~b", "ds~c"}): frozenset({"c~k"}),
             },
+            side_ranks={"ds~a": 0, "ds~b": 1, "ds~c": 2},
         )
     )
     assert [(j.right, j.redundant) for j in planned] == [

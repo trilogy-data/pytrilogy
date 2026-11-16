@@ -128,7 +128,7 @@ FIRES = {
     ),
     UpgradeOuterFromKeySetEquivalence: (
         SPLIT,
-        "where returned is null select reason, name;",
+        "where note is null select region, count(order_id) -> n;",
     ),
 }
 

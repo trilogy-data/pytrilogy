@@ -113,7 +113,7 @@ class TestRecursive:
         assert info.strategy_node is not None
         assert _find(info.strategy_node, RecursiveNode)
 
-    def test_a_walk_joined_back_pairs_on_the_edge_it_walked(self):
+    def test_a_walk_joined_back_pairs_on_its_seed(self):
         env, benv = _build(RECURSIVE_MODEL)
         parent = _search(env, benv, ["local.id", "local.parent", "local.label"])
         assert parent.strategy_node is not None
@@ -130,7 +130,7 @@ class TestRecursive:
         )
         assert isinstance(node, MergeNode) and node.planned_pairs is not None
         walk, seed = (node.planned_pairs.sides[id(p)] for p in node.parents)
-        assert node.planned_pairs.between(walk, seed) == {"local.id", "local.parent"}
+        assert node.planned_pairs.between(walk, seed) == {"local.id"}
 
     def test_recursive_with_enrichment(self):
         """Pulling a property of the recursion key forces an enrichment join

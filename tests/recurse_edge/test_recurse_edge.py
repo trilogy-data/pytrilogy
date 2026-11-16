@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects, Environment
 
 HERE = Path(__file__).parent
@@ -85,6 +86,17 @@ def test_self_imported_tree(outputs: str, expected: list[tuple]):
         run(f"import process; select {outputs}, sum(mem) -> m order by {first} asc;")
         == expected
     )
+
+
+@pytest.mark.parametrize("walk", WALKS)
+def test_a_finished_walk_carries_no_edge_of_its_seed(monkeypatch, walk):
+    """The recursive arm rebinds the walk's next edge to each ancestor's, so
+    a finished walk holds the root's (NULL): joined back on it, only roots
+    keep their measure."""
+    flip_walk_spelling(monkeypatch, walk)
+    assert run(
+        "import process; select app.pid, sum(mem) -> m order by app.pid asc;"
+    ) == [(1, 16), (4, 10)]
 
 
 def test_self_import_completes_namespace():

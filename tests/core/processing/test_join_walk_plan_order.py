@@ -5,6 +5,7 @@ from trilogy.core.processing.join_resolution import (
     PlannedPairs,
     SideFacts,
     resolve_join_order_v2,
+    scan_precedence,
 )
 from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
 
@@ -37,6 +38,47 @@ def test_a_final_plan_states_row_streams_before_their_lookups_and_bridges():
     )
     assert plan.looked_up == frozenset({"bridge", "dims", "totals"})
     assert plan.precedence == ("facts", "totals", "dims", "bridge")
+
+
+def test_a_scan_plan_states_rows_before_their_lookups_finer_first():
+    keys = {
+        frozenset({"sales", "item"}): frozenset({"item.id"}),
+        frozenset({"sales", "date"}): frozenset({"date.id"}),
+        frozenset({"sales", "returns"}): frozenset({"item.id", "order.id"}),
+        frozenset({"returns", "item"}): frozenset({"item.id"}),
+    }
+    grains = {
+        "date": frozenset({"date.id"}),
+        "item": frozenset({"item.id"}),
+        "returns": frozenset({"item.id", "order.id", "return.line"}),
+        "sales": frozenset({"item.id", "order.id", "sale.line", "date.id"}),
+        "connector": frozenset(),
+    }
+    assert scan_precedence(keys, grains) == (
+        "sales",
+        "returns",
+        "connector",
+        "date",
+        "item",
+    )
+
+
+def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
+    keys = {
+        frozenset({"returns", "sales"}): frozenset({"item", "order"}),
+        frozenset({"sales", "items"}): frozenset({"item"}),
+        frozenset({"returns", "items"}): frozenset({"item"}),
+        # a group split into projections pairs with itself: no lookup
+        frozenset({"sales"}): frozenset({"item", "order"}),
+    }
+    grains = {
+        "items": frozenset({"item"}),
+        "returns": frozenset({"item", "order"}),
+        "sales": frozenset({"item", "order"}),
+    }
+    partials = {"returns": frozenset({"item", "order"})}
+    assert scan_precedence(keys, grains, partials) == ("sales", "items", "returns")
+    assert scan_precedence(keys, grains) == ("returns", "sales", "items")
 
 
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:

@@ -528,12 +528,19 @@ LIMIT 1
     # but the launch CTE is null-extended by the earlier LEFT join in the same
     # chain (orgs without launches carry NULL vehicle keys) — the FULL is
     # load-bearing for those rows and must not narrow
-    pattern = (
+    lv_full = (
         r'FULL JOIN "lv_info" as "vehicle_lv_info" on '
         r'"(\w+)"\."vehicle_name" = "vehicle_lv_info"\."LV_Name" AND '
         r'"\1"\."vehicle_variant" = "vehicle_lv_info"\."LV_Variant"'
     )
-    assert re.search(pattern, sql[0]), sql[0]
+    # or walked from the vehicle domain: every vehicle is the base's row, the
+    # launches hang LEFT off it, and the organizations pad FULL beside them
+    lv_based = (
+        r'FROM\s+"lv_info" as "vehicle_lv_info"\s+'
+        r'LEFT OUTER JOIN "\w+" on [^\n]*\s+'
+        r'FULL JOIN "organizations" as "org_organizations"'
+    )
+    assert re.search(lv_full, sql[0]) or re.search(lv_based, sql[0]), sql[0]
 
 
 def test_should_group(gcat_env: Executor):

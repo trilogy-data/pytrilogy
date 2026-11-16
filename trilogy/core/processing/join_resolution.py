@@ -25,6 +25,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFunction,
     BuildGrain,
+    BuildUnionDatasource,
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import (
@@ -200,6 +201,32 @@ class PlannedPairs:
             order=("hub",),
         )
 
+    @classmethod
+    def over_scans(
+        cls,
+        sides: Mapping[int, frozenset[str]],
+        keys: Mapping[frozenset[str], frozenset[str]],
+        datasources: Mapping[str, BuildDatasource | BuildUnionDatasource],
+        grain_paired: frozenset[str] = frozenset(),
+    ) -> PlannedPairs:
+        """A plan between datasource scans, stating `scan_precedence` over
+        each scan's declared grain. A side no datasource names (a derived
+        connector, whose rows are its subplan's) states none."""
+        named = sorted(
+            name for name in frozenset().union(*sides.values()) if name in datasources
+        )
+        grains = {name: frozenset(datasources[name].grain.components) for name in named}
+        partials = {
+            name: frozenset(c.address for c in datasources[name].partial_concepts)
+            for name in named
+        }
+        return cls(
+            sides,
+            keys,
+            grain_paired=grain_paired,
+            order=scan_precedence(keys, grains, partials),
+        )
+
     def rank(self, groups: frozenset[str]) -> int:
         """Where a side holding `groups` comes in the plan's order: the join
         walk breaks the ties its facts leave on it before any spelling."""
@@ -248,6 +275,39 @@ class PlannedPairs:
                 for b in right
             )
         )
+
+
+def scan_precedence(
+    keys: Mapping[frozenset[str], frozenset[str]],
+    grains: Mapping[str, frozenset[str]],
+    partials: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[str, ...]:
+    """The order a merge of scans joins them in when nothing else decides,
+    as `JoinPlan.precedence` states it for groups: a scan of rows before the
+    lookups its pairings identify (a scan whose grain lies inside the keys
+    it pairs on), a scan binding its pairing keys completely before one
+    binding them as a subset (`~`), finer rows first. A scan of no declared
+    grain is stated with the coarsest."""
+    partials = partials or {}
+    looked_up: set[str] = set()
+    paired: dict[str, set[str]] = defaultdict(set)
+    for pair, pairs in keys.items():
+        if len(pair) != 2:
+            continue
+        for side in pair:
+            paired[side] |= pairs
+            if grains.get(side) and grains[side] <= pairs:
+                looked_up.add(side)
+    return tuple(
+        sorted(
+            sorted(grains),
+            key=lambda s: (
+                s in looked_up,
+                bool(partials.get(s, frozenset()) & paired[s]),
+                -len(grains[s]),
+            ),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -902,7 +962,7 @@ def _score_join_candidate(
     facts: JoinFacts,
     multi_partial: bool,
     anchor_sources: frozenset[str],
-) -> tuple[int, int, tuple[int, str]]:
+) -> tuple[int, tuple[int, str]]:
     side = facts.side(x)
     base = 1
     # A query-scoped LEFT anchor must seed the join base: a right is typed
@@ -920,8 +980,9 @@ def _score_join_candidate(
     # LEFT off it instead of meeting FULL before it arrives
     if side.hosts and not is_partial:
         base += 3
+    # below the facts, the plan's order: finer rows first where it states one
     rank, name = facts.rank(x)
-    return (base, len(side.grain), (-rank, name))
+    return (base, (-rank, name))
 
 
 class _Pivot(NamedTuple):
@@ -1281,18 +1342,38 @@ def preserved_sources(
 ) -> set[str]:
     """Identifiers of the sources whose every row survives the join tree.
     Joins are left-deep: a join that does not preserve its left side drops
-    rows of everything joined so far, and an UNNEST can drop rows too."""
+    rows of everything joined so far, and an UNNEST can drop rows too. A
+    right the join does not preserve keeps every row all the same when each
+    has a partner (`_partners_every_right_row`)."""
     right_ids = joined_right_ids(joins)
     alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
     for join in joins:
         if not isinstance(join, Join):
             alive = set()
             continue
+        right_kept = join.join_type in PADS_LEFT_JOIN_TYPES or (
+            _partners_every_right_row(join, alive)
+        )
         if join.join_type not in PADS_RIGHT_JOIN_TYPES:
             alive = set()
-        if join.join_type in PADS_LEFT_JOIN_TYPES:
+        if right_kept:
             alive.add(join.right.identifier)
     return alive
+
+
+def _partners_every_right_row(join: Join, alive: set[str]) -> bool:
+    """A join on one key from a left whose every row survives and which holds
+    the key's whole domain: every right row with a key has a partner, so only
+    a NULL key on the right drops one (`trees LEFT JOIN ~species`)."""
+    pairs = join.pairs or []
+    if len(pairs) != 1:
+        return False
+    pair = pairs[0]
+    return (
+        pair.node.identifier in alive
+        and complete_key_domain(pair.node, pair.left.address)
+        and all(c.address != pair.right.address for c in join.right.nullable_concepts)
+    )
 
 
 def merge_partial_addresses(
