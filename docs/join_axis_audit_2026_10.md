@@ -3527,6 +3527,137 @@ lowering message). `test_merged_unnest_bridge_row_projection` pins the
 three rows the data conforms on and accepts ecoregion 600's row either way,
 as part 83 found the EQUAL declaration licenses.
 
+**Scan plans state their order (parts 92-93).** After part 88, the two
+plans that still stated no order were both plans between datasource scans:
+a ROOT's source plan (`_bridge_plan`) and the select search's scans
+(`_graph_join_plan`). Their sides ranked alike, so the scan's name decided.
+Both now state `scan_precedence`, the scan analogue of
+`JoinPlan.precedence`, through `PlannedPairs.over_scans`:
+
+- a scan of rows comes before the lookups its pairings identify (a scan
+  whose declared grain lies inside the keys some pairing joins it on);
+- a scan binding its pairing keys completely comes before one binding them
+  as a subset (`~`);
+- finer declared grain comes first;
+- a derived connector, whose rows are its subplan's, states nothing and
+  comes after.
+
+Each term reads the datasource's declaration (grain, `~` bindings), which
+source planning chose. They are facts of the plan, not of a built node.
+
+The subset term is not optional. Without it, `_q83_with_sales_measure`
+walked from the returns union (two lookups of the same grain, so the name
+decided) and paired the item lookup on the returns' `~` item key. That
+join stayed LEFT with a coalesced key, and the return-date pin no longer
+pushed into the union arms. This is the loss part 88's first cut hit. With
+the sales scan stated first the plan is `main`'s again.
+
+In the corpus (205 statements) 35 move, all orientation. `order_items`
+now leads and `products` hangs off it (thelook q01-q05), and TPC-DS q17
+joins `store_returns` straight after `catalog_sales`, ahead of the sale it
+returns. No statement changes its join or CTE count.
+
+**The stated order replaces the scorer's built grain (part 94).** Below the
+fact terms (anchor, partial, hosting), `_score_join_candidate` ranked two
+candidates by the size of each side's *resolved* grain, a built-node read,
+and only then by the plan's order. Every plan that orders its sides already
+states finer rows first (`JoinPlan.precedence`, `scan_precedence`; a star
+states its hub). So the grain term is gone and the plan's order follows the
+fact terms directly. With the order stated above it, the grain term moved
+one corpus statement (an orientation of `_q04_agent_rowset_union_join`'s
+FULL chain). Dropping it then moved none. One unit test pinned the grain
+term as the walk's seed. It now states that preference as the plan's order.
+
+What is left of the scorer is the three fact terms and the plan's order.
+Sides a plan ranks alike (a star's spokes) fall to the name, as before.
+
+**A finished walk carries no next edge (part 95).** The stated order found
+a row bug in `recurse_edge`, under the self-imported tree:
+
+    auto app_pid <- recurse_edge(pid, parent.pid);
+    select app.pid, sum(mem) -> m;
+
+The walk output both arguments, `pid` and `parent.pid`. Its recursive arm
+rebinds the next argument to each ancestor's edge, though, so on a finished
+(terminal) row `parent.pid` is the root's parent, which is always NULL. It
+is never the seed row's parent. The per-group merge pairs the walk back to
+the process scan on both, as the plan says the two share them. Walked from
+the walk, pair reduction dropped `parent.pid` (the scan's grain `pid`
+determines it), and the rows were right. Walked from the scan, the walk is
+the right side, `parent.pid` is in its grain, and the join kept
+`parent_pid IS NOT DISTINCT FROM parent_pid`. Only roots matched, so the
+totals fell from `(1, 16), (4, 10)` to `(1, 10), (4, 7)`.
+
+**Fix:** a walk carries its value and its seed, not the next argument
+(`gen_recursive`). A reader of `parent.pid` reads it off the seed row, and a
+walk joined back to its parent pairs on the seed alone.
+`test_a_finished_walk_carries_no_edge_of_its_seed` runs every walk.
+
+**No pushdown into the FROM base of a RIGHT join (part 96).** Under the
+stated order TPC-DS q78 returned an extra row. Its merge now reads
+`returns RIGHT OUTER JOIN sales`, the mirror of `main`'s `sales LEFT OUTER
+JOIN returns`. Predicate pushdown then pushed `is_returned is null` into
+the returns union's arms, where it reads `true is null` and empties them.
+`_consumer_outer_joins_union` decides whether a consumer NULL-pads a union.
+It checked a RIGHT join's explicit `left` only, and a join off the FROM
+base has none. It now reads `null_padded_nodes`, which names the FROM base
+and every side before a RIGHT or FULL. The unit test gains that case and
+fails without the fix. q78 matches `main`'s rows again.
+
+**A right that every left row partners keeps all its rows (part 97).** The
+stated order moved no rows in the partial-lookup shapes
+(`test_complete_binding_lookup`, the partial-lookup fallback oracle), but
+it made their plans worse. It added FULL joins and null-safe pairs a level
+up. The chain is `trees` (complete `species`), `enrichment` (`~species`,
+`?genus`) and `genus_fits` (`~genus`). Walked from `trees`, the scan merge
+reads `trees LEFT enrichment`, then `enrichment FULL genus_fits`. The
+subset narrowing (`narrow_subset_full_join`) narrows a FULL onto a `~`
+right only when its left source keeps every row (`preserved_sources`), and
+it counted the right of a LEFT as dropped. So the FULL stayed. It padded
+`tid` and `species`, the merge resolved at grain `(genus, species, tid)`
+with `species` nullable, and the per-species readers above it joined FULL
+on a null-safe key. Walked from `enrichment` (as on `main`), the later
+RIGHT join to `trees` forced the narrowing instead.
+
+**Root cause:** a right a join does not preserve still keeps every row
+when each row has a partner. A join on one key from a surviving left that
+holds the key's whole domain (`complete_key_domain`) partners every right
+row whose key is not NULL.
+
+**Fix:** `preserved_sources` counts such a right as kept
+(`_partners_every_right_row`). Both walks now resolve that merge at grain
+`tid` with both lookups LEFT.
+
+Suite capture against `main` at `ee74856` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures.
+The only other outcome change is the Rust-binary test's skip (listed
+noise). One law moved to a new shape: the key-set upgrade's firing case
+in `test_rule_soundness_laws` is now narrowed at resolve (part 97), so the
+rule never runs on it, and the law reads another shape the rule still
+narrows. Read over each test's distinct statements, with pytest's temp
+paths normalized, 1,563 tests change joins, CTEs or `coalesce` calls.
+Together they add up to CTEs -185, FULL -177, RIGHT -909, LEFT +747,
+INNER +177, null-safe pairs -10 and `coalesce` -332. Most RIGHTs become
+LEFTs: the fact now leads and its lookups hang off it.
+
+- The partial-lookup fallback oracle and `test_complete_binding_lookup`
+  turn their RIGHT joins into LEFT (387 and 192) and change no counts
+  otherwise.
+- The global-fallback oracle loses 113 FULLs and the relation-rollup laws
+  150 CTEs. Each case checks its rows against raw SQL, and they hold.
+- In the corpus 35 statements move, all orientation.
+
+The suite run with the stated order reversed (`WALK_FLIP=key,side`) fails
+35 tests beside the 25 credential-gated ones, and none on rows. 12 are the
+walk's own unit tests, which pin the order. Six TPC-DS benchmarks check
+their rows first, which hold, and then fail their generated-SQL size
+budget (q04, q11, q35, q69, q74) or a table pin (q10). The other 17 pin
+shape: a join or CTE count, a LEFT where the reversed walk renders the
+mirrored RIGHT, or that an optimizer rule fired (the semi-join and
+existence-fold pins, two `test_rule_soundness_laws` firing cases). Part
+88's reversal failed 20. The extra 15 are the scan plans, which state an
+order now and so have one to reverse.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3594,10 +3725,16 @@ not built yet:
    family (part 89), a FULL written from the other side did not fold into
    its mirror (part 90), and an INNER read one key's two spellings as two
    keys (part 91).
-   What is left of the walk's rank is the resolve facts above the tie: the
-   solid and region terms, the scorer's anchor, partial and hosting terms,
-   and grain size. Plans that state no order (a ROOT's source plan, the
-   select search's scans) still fall to a name.
+   Scan plans now state an order too (parts 92-93): rows before the
+   lookups they pair with, a complete binding before a `~` one, finer
+   grain first. With every ordered plan stating finer rows first, the
+   scorer's resolved-grain term is gone (part 94). The new order found a
+   recursive walk carrying an edge it had rebound (part 95), a pushdown
+   into the padded FROM base of a RIGHT join (part 96), and a subset
+   narrowing that counted a fully partnered right as dropped (part 97). What is left of the walk's rank is the resolve facts above
+   the tie: the solid and region terms, and the scorer's anchor, partial
+   and hosting terms. Only sides a plan ranks alike (a star's spokes) fall
+   to a name.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is
