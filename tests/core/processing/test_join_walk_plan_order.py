@@ -40,6 +40,26 @@ def test_a_final_plan_states_row_streams_before_their_lookups_and_bridges():
     assert plan.precedence == ("facts", "totals", "dims", "bridge")
 
 
+def test_a_bridge_holding_the_rows_comes_before_the_suppliers_it_looks_up():
+    plan = JoinPlan(
+        contributors=("by_id", "by_gh", "rows"),
+        pins={},
+        identity={
+            "by_id": frozenset({"id"}),
+            "by_gh": frozenset({"g", "h"}),
+            "rows": frozenset(),
+        },
+        carry_demands={},
+        pairings=(
+            Pairing("by_id", "rows", frozenset({"id"}), PairingKind.LOOKUP),
+            Pairing("by_gh", "rows", frozenset({"g", "h"}), PairingKind.LOOKUP),
+        ),
+        suppliers=frozenset({"by_id", "by_gh"}),
+    )
+    assert plan.looked_up == frozenset({"by_id", "by_gh"})
+    assert plan.precedence == ("rows", "by_gh", "by_id")
+
+
 def test_a_scan_plan_states_rows_before_their_lookups_finer_first():
     keys = {
         frozenset({"sales", "item"}): frozenset({"item.id"}),
@@ -122,3 +142,27 @@ def test_keys_alike_rank_by_where_the_plan_puts_their_holders():
     joins = resolve_join_order_v2(facts)
     assert joins[0].keys == {"ds~first": {"c~long_key"}}
     assert joins[1].keys == {"ds~second": {"c~k"}}
+
+
+def _hosted_star(ranks: dict[str, int]) -> JoinFacts:
+    facts = _star_facts(ranks)
+    return JoinFacts(
+        sides={
+            **facts.sides,
+            "ds~c": SideFacts(columns=frozenset({"c~k"}), hosts=True),
+        },
+        pair_keys=facts.pair_keys,
+        side_ranks=ranks,
+    )
+
+
+@pytest.mark.parametrize(
+    "ranks,seed",
+    [
+        ({"ds~a": 0, "ds~b": 1, "ds~c": 2}, "ds~a"),
+        ({"ds~a": 0, "ds~b": 0, "ds~c": 0}, "ds~c"),
+    ],
+)
+def test_hosting_breaks_only_ties_the_plan_leaves(ranks, seed):
+    joins = resolve_join_order_v2(_hosted_star(ranks))
+    assert joins[0].lefts.pop() == seed

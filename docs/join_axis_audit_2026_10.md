@@ -3658,6 +3658,88 @@ existence-fold pins, two `test_rule_soundness_laws` firing cases). Part
 88's reversal failed 20. The extra 15 are the scan plans, which state an
 order now and so have one to reverse.
 
+**Which scorer terms still decide (census).** With the grain term gone,
+the rank census (`rank_census_plugin.py`, its scorer replica brought up to
+date) replayed every resolve over three or more sides, 15,326 merges in
+the suite. Holding one scorer term constant moves the anchor term's order
+in 120, the partial term's in 510, the several-`~` term's in 31, the
+hosting term's in 985, and the plan's order in 671. All four built-side
+terms still decide. A second replay put the plan's order *above* the
+built terms (anchor kept on top). That moves 1,021 merges, but none of
+the 520 the hosting term decides in `test_rollup_resolution_laws`. There,
+every side hosting or not ranks alike in the plan (projections of one
+split group, held at one rank), and hosting only breaks that tie.
+
+**A row stream leads its lookups, bridge or not (part 98).** Most of the
+other disagreements were one FINAL shape. In
+
+    auto s <- count(id) by g, h; select id, s, count(id) as m;
+
+the plan's contributors are `s` (identity `g, h`), `m` (identity `id`)
+and the ROOT bridge that pairs them, which holds the rows at `id`. Both
+aggregates are suppliers and both are looked up: the bridge's pairings
+identify their rows. `JoinPlan.precedence` put suppliers first, so the
+bridge holding the rows came last. Below that, it ranked `s` before `m`
+because two identity keys outnumber one, though `g, h` is no finer than
+`id`. The hosting term (+3) overrode that order and seeded the walk on
+the bridge. The plan now states a row stream before the lookups its
+pairings identify ahead of the supplier term: whoever holds the rows the
+others are looked up on comes first, supplier or bridge. On its own the
+swap moves no SQL (hosting already chose that seed). It makes the plan
+agree with hosting in the window-group, fixed-aggregate, fixed-value
+lifecycle and rank-beside-partial laws. Over the census's 16 heaviest
+files, ranking the order above hosting then moves 30 merges, down from
+several hundred.
+
+**The plan's order outranks hosting (part 99).** `_score_join_candidate`
+now ranks, in order:
+
+1. the authored anchor (a statement fact);
+2. a lone `~` binding of the root key after its complete holders;
+3. the plan's order;
+4. hosting, which only breaks ties among sides the plan ranks alike;
+5. the several-`~` bump (several `~` bindings of the key meet first);
+6. the name.
+
+The several-`~` bump moved below hosting with it. Hosting (+3) had
+always outranked it (+2). Left above the order, it seeded
+`test_multi_fact_preaggregation`'s two `~cust_id` aggregates ahead of the
+customer domain, so the facts met FULL before the domain arrived. Below
+hosting, the domain seeds again and both facts hang LEFT off it. It was
+the one regression the first cut found.
+
+What was tried and left out: stating the plan's order in *tiers*, so that
+groups whose precedence terms tie share a rank and hosting, not a
+spelling, breaks the tie. Over the top-moving files that cost INNER
+-174, LEFT +217 and `coalesce` +244. Group plans and scan plans each
+account for about half, and it lost the q64 semi-join probe. The
+positional order inside a tie is the cover's contributor order for a
+group plan and the datasource name for a scan plan. It is still a
+spelling, but it orients the walk better than the identifier the scorer
+would fall to. Until a fact replaces it, the tie order stays positional.
+
+Suite capture against `main` at `8072ea0` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated
+failures, and the only other outcome change is the Rust-binary test's skip
+(listed noise). 41 tests change joins, CTEs or `coalesce` calls. Together
+they add up to FULL -12, null-safe pairs -6, `coalesce` -4, INNER +8,
+LEFT -15 and RIGHT +25.
+
+- The partial-key assembly and predrop-chain FULLs become LEFT joins off
+  the side holding the rows.
+- The padded-population gate and partial-lookup oracle cases gain an
+  INNER join where a LEFT join had stood, and drop a null-safe pair.
+- `test_derived_key_domain` mirrors about a dozen LEFT joins to RIGHT,
+  the same rows from the other end.
+- The CTE count rises by 14 in the tally, but none of it is in a shipped
+  plan. The predrop-chain cells compile each query optimized and
+  unoptimized, and the two compiles now differ. The rest is the CLI
+  consistency and validation tests, which are listed noise.
+
+Every moved test passes, and the oracle laws among them compare rows
+against raw SQL. In the corpus (205 statements) one statement moves
+(hackernews `adhoc03`, orientation only).
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3731,10 +3813,15 @@ not built yet:
    scorer's resolved-grain term is gone (part 94). The new order found a
    recursive walk carrying an edge it had rebound (part 95), a pushdown
    into the padded FROM base of a RIGHT join (part 96), and a subset
-   narrowing that counted a fully partnered right as dropped (part 97). What is left of the walk's rank is the resolve facts above
-   the tie: the solid and region terms, and the scorer's anchor, partial
-   and hosting terms. Only sides a plan ranks alike (a star's spokes) fall
-   to a name.
+   narrowing that counted a fully partnered right as dropped (part 97).
+   A row stream now leads the lookups its pairings identify even as a
+   bridge (part 98), and the plan's order outranks hosting, which breaks
+   only ties the plan leaves (part 99). What is left of the walk's rank
+   above the stated order: the solid and region terms, the authored
+   anchor, and a lone `~` binding's penalty. Below it are hosting and the
+   several-`~` bump. Ties the plan's terms leave are still broken by the
+   position the plan lists them in (cover order, scan name), and stating
+   them as ties costs plan quality (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

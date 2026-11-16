@@ -64,8 +64,8 @@ def flipped_edges(pivot_map, facts):
 
 
 def flipped_score(x, **kwargs):
-    base, rank = _score(x, **kwargs)
-    return (base, _Rev(rank))
+    anchor, complete, rank, hosts, multi, name = _score(x, **kwargs)
+    return (anchor, complete, _Rev(rank), hosts, multi, _Rev(name))
 
 
 def flipped_keyless(facts, ds):
