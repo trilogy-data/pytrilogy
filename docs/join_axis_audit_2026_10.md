@@ -3381,6 +3381,152 @@ the listed noise.
 Every moved test passes on both trees, and the oracle laws among them
 compare rows against raw SQL.
 
+**The plan states the walk's tie order (part 88).** With parts 84-87 the
+spelling ties decide no rows, so the plan can own them. `PlannedPairs`
+carries an `order`: the groups in the order resolve joins them when no fact
+decides. `MergeNode` reads each joined source's place in it
+(`_planned_source_ranks`), and `JoinFacts.side_ranks` hands it to the walk.
+Below the fact terms, the walk now breaks ties on that order instead of a
+spelling:
+
+- `_pivot_rank`: the key whose holders the plan puts first ranks first, in
+  place of the key's length and name.
+- `_ranked_edges` and `_pivot_map`: a key's holders and its pairings are in
+  the plan's order, not sorted by datasource name.
+- `_score_join_candidate`: of two sides scored alike, the one the plan puts
+  first is picked, in place of the larger name.
+- `_keyless_order` and a keyless join's left: the plan's order, in place of
+  the first column no other side holds.
+
+A name is still the last term, and decides only between two sides the plan
+ranks alike, or two keys with the same holders, which pair the same sides
+either way.
+
+What the plan states:
+
+- A star (`PlannedPairs.star`) states its hub first: each spoke hangs off the
+  hub's rows. Stars are the planned-key projection, an unnest's element
+  filters, the partial-completion and finer-filter rollups, the source
+  plan's star merge, a recursive walk's join-back and the presence probe.
+- A group-graph plan (the FINAL merge and every per-group merge,
+  `_planned_join`) states `JoinPlan.precedence`. Suppliers come before the
+  sides joined to pair or filter them. A row stream comes before the
+  contributors its pairings look up (`JoinPlan.looked_up`: a contributor
+  whose identity a pairing's keys cover). Finer identity comes first.
+- Separate searches in one merge (`_joint_plan`) keep each search's order,
+  in search order.
+- Every other plan states none. Its sides rank alike and the name decides,
+  as on `main`.
+
+The first cut stated the parents' own order for every plan. That moved more
+than half the corpus, and lost plan quality where the spelling had happened
+to be good: `_q83_with_sales_measure` lost its predicate pushdown into the
+union arms. The parents' order is no more a fact than a name. The cut above
+states an order only where the plan knows one.
+
+**An authored axis preserves only the joins keyed on it (part 89).** The
+order the plan states found one more order-dependent row bug, which part
+83's flip reached only in the corpus, where no test compares rows:
+
+    merge store.customer.sk into web.billing_customer.sk;
+    where web.sale_date.year = 2002
+    select web.billing_customer.id as cid, sum(web.profit) as val;
+
+The scan merge joins `web_sales` to `customer` and to `date`. The merged
+customer key is a coalescing axis, so the customer join is FULL. When the
+walk joined the customer first, `ensure_content_preservation` read that
+earlier FULL as an authored axis and widened the date lookup to FULL too.
+The WHERE on `year` then narrowed it to RIGHT OUTER. So every 2002 date with
+no web sale became a row with a NULL customer, and the totals gained a
+`(NULL, NULL)` customer. Walked the default way, the date joins first and
+nothing widens it. On `main` the reversed key spelling
+(`WALK_FLIP=key`) renders that RIGHT OUTER in `_q04_agent_rowset_union_join`.
+
+**Root cause:** an authored FULL declares row intent for the axis's content
+on both sides. A date that one channel's rows look up by its own key is not
+that content: its unmatched rows are the date domain's. Only
+`get_join_type` can license preserving them.
+
+**Fix:** an earlier FULL on an authored axis no longer widens a later join
+to preserve its right when that right is a lookup (its grain is inside the
+join's keys) keyed off the axis. A fact joined after the axis still is
+widened: the first cut, which widened only joins keyed on the axis, lost
+the b-side totals in `test_property_hop_alignment_matrix`, where each
+family's facts hang off its own customer key.
+`test_axis_preserves_only_its_own_joins` checks the rows under the default
+walk and each reversed order. It fails on `main` under the reversed keys.
+
+**A FULL folds into its mirror (part 90).** Part 77 folds an outer join into
+its mirror when both NULL-extend the same CTEs. It keyed a FULL's padded
+sides as `left + right`, though, so `ss FULL JOIN sr` and `sr FULL JOIN ss`
+never matched. Both QueryDatasource identities used the same order-bound
+list (`_null_extended_sides`, `_null_extended_names`). The two arms of
+`test_union_arms_having_on_union_join_key` each build the merge of `a` and
+`b`. Under the stated order the second arm walks it the other way round, the
+copies land in one CTE, and it rendered `"abundant" FULL JOIN "cheerful"
+FULL JOIN "abundant"`, which DuckDB rejects. Two `test_multiway_matrix`
+cases did the same. A FULL pads both sides, so its padded set is now
+order-free in both helpers. `test_a_full_join_merges_into_its_mirror` pins
+it, and fails on `main`.
+
+**One key read off several sides stays one key at INNER (part 91).** The
+suite run with the stated order reversed found one more, in
+`test_store_and_web_or_catalog_with_property_and_aggregate`: `store AND (web
+OR catalog)` over three `union` members of the customer axis. Walked from
+the catalog, the merge is `catalog FULL web FULL store`, and store's join
+reads the key off whichever of web and catalog the first FULL kept:
+`coalesce(c.ck, w.wk) = s.sk`. The WHERE forces store, and its OR forces web
+or catalog, so the optimizer narrowed store's join to INNER. That is right.
+
+**Root cause:** an outer join groups a key's pairs by the right column and
+coalesces the lefts. An INNER join, in the renderer and in the upgrade's
+key proofs (`coalesced_key_groups`), grouped them by the left column too.
+`c.ck` and `w.wk` are two spellings of one key, so the INNER rendered
+`c.ck = s.sk AND w.wk = s.sk`, which demands both channels. The proof then
+read each as proven and narrowed `catalog FULL web` to INNER as well. The
+query returned no customers. The default walk joins store first, so its
+web and catalog joins each read one left and stay LEFT.
+
+**Fix:** pairs of one right key read off different sides are one coalesced
+group however each side spells it. Two columns of one side are still two
+keys. The renderer and the upgrade read the same grouping, so an INNER
+renders `coalesce(c.ck, w.wk) = s.sk` and proves only the right key.
+`test_or_of_members_survives_any_walk` runs it under every walk. It fails
+under the reversed order without the fix.
+
+Suite capture against `main` at `b29a609` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures.
+The only other outcome change is the Rust-binary test's skip (listed noise).
+Read over each test's distinct statements (the TPC-DS benchmark harness
+re-generates a statement a timing-dependent number of times), 863 tests
+change joins, CTEs or `coalesce` calls. Together they add up to CTEs -81,
+FULL -95, RIGHT -104, LEFT +86, INNER +51, null-safe pairs +24 and
+`coalesce` -144.
+
+- The relation-rollup walk-order laws lose 18 CTEs and their FULLs in each
+  property case: the two copies of a FULL merge now fold (part 90).
+- The dimension-chain oracle nets about 20 fewer CTEs over 336 seeds. A
+  handful gain two, more lose two.
+- In the corpus (`corpus_sql`, 205 statements) 89 statements move. Three
+  change join counts: q97 trades a FULL for a LEFT in each spelling, and
+  `_q04_agent_rowset_union_join` gains one CTE, which the HAVING semijoins
+  read in place of a wider one.
+- Every moved test passes on both trees, and the oracle laws among them
+  compare rows against raw SQL.
+
+The suite run with the stated order reversed (`WALK_FLIP=key,side`) fails
+20 tests beside the 25 credential-gated ones, and none on rows. 11 are the
+walk's own unit tests, which pin the order. The other 9 pin shape: a join
+or table count, a rendered join, or that an optimizer rule fired (each
+`test_rule_soundness_laws` case checks its rows first, and they hold).
+
+The shape pins the stated order moved now read either orientation of the
+same join (`test_adhoc07`, gcat's `test_join` and `test_join_discovery`, the
+landmark merge, the raw-column fold, the BigQuery merged key, the MySQL
+lowering message). `test_merged_unnest_bridge_row_projection` pins the
+three rows the data conforms on and accepts ecoregion 600's row either way,
+as part 83 found the EQUAL declaration licenses.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3440,8 +3586,18 @@ not built yet:
    decided rows too. With each spelling reversed, four planner bugs
    surfaced, and each is fixed (parts 84-87). The flipped suite now differs
    only in shape, apart from one test whose data breaks a declared EQUAL
-   merge. So the plan can state those ties without moving rows. What
-   order it should state is the next step.
+   merge. So the plan can state those ties without moving rows. It now
+   does (part 88). A star states its hub first. A group-graph plan states
+   its suppliers first, then row streams before the lookups they pair with,
+   then finer rows first. Stating the order, and reversing it, found three
+   more order bugs: an authored axis's FULL widened a lookup hanging off one
+   family (part 89), a FULL written from the other side did not fold into
+   its mirror (part 90), and an INNER read one key's two spellings as two
+   keys (part 91).
+   What is left of the walk's rank is the resolve facts above the tie: the
+   solid and region terms, the scorer's anchor, partial and hosting terms,
+   and grain size. Plans that state no order (a ROOT's source plan, the
+   select search's scans) still fall to a name.
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

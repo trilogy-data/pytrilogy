@@ -132,6 +132,35 @@ class JoinPlan:
         return [gid for gid in self.contributors if gid not in self.suppliers]
 
     @property
+    def precedence(self) -> tuple[str, ...]:
+        """The order resolve joins the contributors in when nothing else
+        decides: the suppliers before the sides joined to pair or filter
+        them, a row stream before the lookups its pairings identify, and
+        finer rows first."""
+        looked_up = self.looked_up
+        return tuple(
+            sorted(
+                self.contributors,
+                key=lambda gid: (
+                    gid not in self.suppliers,
+                    gid in looked_up,
+                    -len(self.identity.get(gid, ())),
+                ),
+            )
+        )
+
+    @property
+    def looked_up(self) -> frozenset[str]:
+        """Contributors some pairing's keys identify the rows of."""
+        return frozenset(
+            gid
+            for p in self.pairings
+            if p.left != p.right
+            for gid in (p.left, p.right)
+            if self.identity.get(gid) and self.identity[gid] <= p.keys | p.implied
+        )
+
+    @property
     def join_keys(self) -> frozenset[str]:
         return frozenset().union(*(p.keys for p in self.pairings))
 

@@ -46,14 +46,14 @@ def test_shared_key_full_join_lowers_to_spine():
 
 
 def test_unlowerable_shape_raises_with_remediation():
-    # q97's FULL join reads its keys off two relations (the item dimension
-    # and the store channel's customer), so no single spine replaces them.
+    # q97's FULL joins read their keys off several relations, or bind
+    # several keys on one join, so no single spine replaces them.
     env, statements = _statements("query97-one.preql")
 
     with pytest.raises(UnsupportedFullJoinError) as excinfo:
         _sql(MySQLDialect(), env, statements)
 
     message = str(excinfo.value)
-    assert "more than one relation" in message, message
+    assert "Cannot lower the FULL JOIN" in message, message
     assert "To resolve:" in message, message
     assert "native FULL JOIN support" in message, message

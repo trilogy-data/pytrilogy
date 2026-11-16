@@ -36,6 +36,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import BoolExpr, BuildFunction, BuildParenthetical
 from trilogy.core.models.execute import (
     CTE,
+    ConceptPair,
     Join,
     UnionCTE,
     coalesced_key_groups,
@@ -285,10 +286,14 @@ def _lineage_proofs(cte: CTE, condition: BoolExpr, proofs: set[str]) -> set[str]
     return out
 
 
+def _cte_side(pair: ConceptPair) -> str:
+    return pair.node.name
+
+
 def _add_inner_join_key_proofs(join: Join, idx: int, proofs: _ProofState) -> bool:
     """Propagate only key non-nullness proven by rendered INNER predicates."""
     changed = False
-    for pairs in coalesced_key_groups(join.pairs or []):
+    for pairs in coalesced_key_groups(join.pairs or [], _cte_side):
         left_ctes = {p.node.name for p in pairs}
         if len(left_ctes) > 1:
             # Renders as COALESCE(left1, left2, ...) = right, which proves the
@@ -346,7 +351,7 @@ def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
         harvest_left = join.join_type in (JoinType.INNER, JoinType.RIGHT_OUTER)
         if not harvest_right and not harvest_left:
             continue
-        for pairs in coalesced_key_groups(join.pairs or []):
+        for pairs in coalesced_key_groups(join.pairs or [], _cte_side):
             if any(pair_matches_nulls(p, join.modifiers) for p in pairs):
                 continue
             first = pairs[0]

@@ -7,7 +7,11 @@ with a redundant measure column as a join key; 25GiB OOM at sf=1)."""
 from types import SimpleNamespace
 
 from trilogy.core.enums import JoinType, Modifier
-from trilogy.core.models.execute import Join, coalesce_duplicate_joins
+from trilogy.core.models.execute import (
+    Join,
+    coalesce_duplicate_joins,
+    coalesced_key_groups,
+)
 
 
 def _pair(cte_name: str, left: str, right: str) -> SimpleNamespace:
@@ -97,6 +101,12 @@ def test_an_outer_join_merges_into_its_mirror():
     assert coalesce_duplicate_joins([right_outer, left_outer]) == [right_outer]
 
 
+def test_a_full_join_merges_into_its_mirror():
+    ss_first = _join("sr", [_pair("ss", "k", "k")], jointype=JoinType.FULL)
+    sr_first = _join("ss", [_pair("sr", "k", "k")], jointype=JoinType.FULL)
+    assert coalesce_duplicate_joins([ss_first, sr_first]) == [ss_first]
+
+
 def test_outer_joins_padding_different_sides_stay_apart():
     pads_orders = _join(
         "orders", [_pair("customers", "cid", "cid")], jointype=JoinType.LEFT_OUTER
@@ -146,6 +156,19 @@ def test_a_pair_that_orients_against_neither_right_keeps_both_joins():
         "a", [_pair("b", "k", "k"), _pair("c", "k", "k")], jointype=JoinType.INNER
     )
     assert coalesce_duplicate_joins([first, second]) == [first, second]
+
+
+def test_one_key_read_off_two_sides_is_one_group_however_spelled():
+    catalog = _pair("catalog", "ck", "sk")
+    web = _pair("web", "wk", "sk")
+    own = _pair("web", "region", "region")
+    second = _pair("web", "wk2", "region")
+    groups = coalesced_key_groups([catalog, web, own, second], lambda p: p.node.name)
+    assert groups == [
+        [catalog, web],
+        [own],
+        [second],
+    ]
 
 
 def _keys(join: Join) -> set[tuple[str, str, str]]:

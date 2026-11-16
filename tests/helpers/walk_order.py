@@ -1,9 +1,10 @@
-"""The join walk with its spelling tie-breaks reversed.
+"""The join walk with its order tie-breaks reversed.
 
-Below the plan's facts the walk breaks ties on spellings: a key's length and
-name, and a side's name. Neither is a fact about rows, so a plan walked the
-other way round must return the same rows. `flip_walk_spelling` reverses
-them; every other term of the rank and the scorer stays.
+Below the plan's facts the walk breaks ties on the order the plan states
+(`PlannedPairs.ranked`): which key's holders it puts first, and which side.
+That order is no fact about rows, so a plan walked the other way round must
+return the same rows. `flip_walk_spelling` reverses it; every other term of
+the rank and the scorer stays.
 """
 
 from __future__ import annotations
@@ -56,20 +57,20 @@ def flipped_edges(pivot_map, facts):
         edges,
         key=lambda e: (
             jr._pivot_rank(e[0], pivot_map[e[0]], facts),
-            _Rev(e[1]),
-            _Rev(e[2]),
+            _Rev(facts.rank(e[1])),
+            _Rev(facts.rank(e[2])),
         ),
     )
 
 
 def flipped_score(x, **kwargs):
-    base, grain, name = _score(x, **kwargs)
-    return (base, grain, _Rev(name))
+    base, grain, rank = _score(x, **kwargs)
+    return (base, grain, _Rev(rank))
 
 
 def flipped_keyless(facts, ds):
-    none, own, name = _keyless(facts, ds)
-    return (none, _Rev(own), _Rev(name))
+    none, rank = _keyless(facts, ds)
+    return (none, _Rev(rank))
 
 
 KEY_FLIPS = {"_pivot_rank": flipped_rank, "_ranked_edges": flipped_edges}

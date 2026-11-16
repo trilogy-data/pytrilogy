@@ -33,6 +33,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
     UnnestJoin,
     _datasource_column_for_concept,
+    coalesced_key_groups,
     pair_modifiers,
 )
 
@@ -253,6 +254,10 @@ def _render_guard(
     return clauses
 
 
+def _cte_side(pair: ConceptPair) -> str:
+    return pair.node.name
+
+
 def _build_joinkeys(
     join: Join,
     consumer: CTE | UnionCTE,
@@ -302,13 +307,10 @@ def _build_joinkeys(
                     )
                 )
                 continue
-        # Sub-group by left address: same left concept from different CTEs
-        # can be COALESCE'd; different left concepts are separate AND conditions.
-        left_addr_groups: dict[str, list] = {}
-        for pair in pairs:
-            left_addr_groups.setdefault(pair.left.address, []).append(pair)
-
-        for sub_pairs in left_addr_groups.values():
+        # One key read off several CTEs is COALESCE'd, however each spells it
+        # (`coalesced_key_groups`); different left concepts of one CTE are
+        # separate AND conditions.
+        for sub_pairs in coalesced_key_groups(pairs, _cte_side):
             left_renders = [
                 _render_left_concept(
                     p, join, consumer, quote_character, render_expr_func, use_map

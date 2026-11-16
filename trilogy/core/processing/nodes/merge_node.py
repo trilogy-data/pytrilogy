@@ -282,6 +282,17 @@ def _planned_source_pairs(
     return out
 
 
+def _planned_source_ranks(
+    merged: Iterable[str],
+    held: dict[str, frozenset[str] | None],
+    planned: PlannedPairs | None,
+) -> dict[str, int]:
+    """Where each merged source comes in the plan's order, by identifier."""
+    if planned is None:
+        return {}
+    return {key: planned.rank(held[key] or frozenset()) for key in merged}
+
+
 def _full_join_concepts(
     joins: list[SourceJoin | UnnestJoin],
     sources: list[QueryDatasource | BuildDatasource],
@@ -467,6 +478,7 @@ class MergeNode(StrategyNode):
         grain: BuildGrain,
         environment: BuildEnvironment,
         planned_pairs: dict[frozenset[str], frozenset[str]] | None = None,
+        side_ranks: dict[str, int] | None = None,
     ) -> list[SourceJoin | UnnestJoin]:
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
@@ -545,6 +557,7 @@ class MergeNode(StrategyNode):
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
                     planned_pairs=planned_pairs,
+                    side_ranks=side_ranks or {},
                 )
         elif final_joins:
             logger.info(
@@ -847,15 +860,16 @@ class MergeNode(StrategyNode):
         existence_final = [
             x for x in final_datasets if self._existence_only(x, merge_output_addresses)
         ]
-        planned_pairs = _planned_source_pairs(
-            {
-                k: v
-                for k, v in merged.items()
-                if all(v is not x for x in existence_final)
-            },
-            held,
-            self.planned_pairs,
-        )
+        joined_sources = {
+            k: v for k, v in merged.items() if all(v is not x for x in existence_final)
+        }
+        planned_pairs = _planned_source_pairs(joined_sources, held, self.planned_pairs)
+        side_ranks = {
+            merged[k].identifier: rank
+            for k, rank in _planned_source_ranks(
+                joined_sources, held, self.planned_pairs
+            ).items()
+        }
         # ``force_group is True`` means this merge exists to regroup its finer
         # parent to the output grain; returning a parent that merely covers the
         # output columns would drop that group. ``preserve_parents`` marks a
@@ -941,6 +955,7 @@ class MergeNode(StrategyNode):
                 grain,
                 self.environment,
                 planned_pairs,
+                side_ranks,
             )
         else:
             joins = []
