@@ -79,7 +79,7 @@ family to 90,000, and settles every pass-cap query; lesson 45; 0.3.504
 sweeps both families to 150,000 and fixes the five answers main gets wrong or
 raises on there; lesson 46; 0.3.506 sweeps both families to 210,000,
 fixes the four answers main gets wrong, raises on or cannot run, and reads
-an aggregate coarser than the rows off the summary; lesson 47; 0.3.507 sweeps
+an aggregate coarser than the rows off the summary; lesson 47; 0.3.508 sweeps
 both families to 270,000, fixes the four answers main gets wrong or cannot
 run there, and reads the coarse aggregate under a WHERE of its own keys;
 lesson 48).
@@ -1071,7 +1071,7 @@ does not rewrite it; that rewrite is open.
       75,842; scans -542; JOINs -2,008. The first family 0-210,000: nothing
       wrong on either side; summary reads +425, scans -401, JOINs -3,319.
 
-48. **Lessons from the 210k-270k round (0.3.507).**
+48. **Lessons from the 210k-270k round (0.3.508).**
     - Three of the four leads were one WHERE on `tree_form`, an enrichment
       column `species` determines, beside a summary read. Reduce by dropping
       one select item at a time: 262499 needed all three of `count(tree_id)`,

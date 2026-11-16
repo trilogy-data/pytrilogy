@@ -1,4 +1,4 @@
-"""The reduced shapes of the 210,000-270,000 sweep (0.3.507).
+"""The reduced shapes of the 210,000-270,000 sweep (0.3.508).
 
 - `formal/Trilogy/Rollup.lean` (`filtered_passenger_multiplies`,
   `key_filter_is_semijoin`): a re-sum of the summary's partials beside a row
