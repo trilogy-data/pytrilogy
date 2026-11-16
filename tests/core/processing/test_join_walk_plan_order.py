@@ -68,6 +68,8 @@ def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
         frozenset({"returns", "sales"}): frozenset({"item", "order"}),
         frozenset({"sales", "items"}): frozenset({"item"}),
         frozenset({"returns", "items"}): frozenset({"item"}),
+        # a group split into projections pairs with itself: no lookup
+        frozenset({"sales"}): frozenset({"item", "order"}),
     }
     grains = {
         "items": frozenset({"item"}),
