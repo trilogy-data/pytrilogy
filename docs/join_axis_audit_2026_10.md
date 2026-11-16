@@ -3494,7 +3494,32 @@ renders `coalesce(c.ck, w.wk) = s.sk` and proves only the right key.
 `test_or_of_members_survives_any_walk` runs it under every walk. It fails
 under the reversed order without the fix.
 
-MEASUREMENTS_PLACEHOLDER
+Suite capture against `main` at `b29a609` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated failures.
+The only other outcome change is the Rust-binary test's skip (listed noise).
+Read over each test's distinct statements (the TPC-DS benchmark harness
+re-generates a statement a timing-dependent number of times), 863 tests
+change joins, CTEs or `coalesce` calls. Together they add up to CTEs -81,
+FULL -95, RIGHT -104, LEFT +86, INNER +51, null-safe pairs +24 and
+`coalesce` -144.
+
+- The relation-rollup walk-order laws lose 18 CTEs and their FULLs in each
+  property case: the two copies of a FULL merge now fold (part 90).
+- The dimension-chain oracle nets about 20 fewer CTEs over 336 seeds. A
+  handful gain two, more lose two.
+- In the corpus (`corpus_sql`, 205 statements) 89 statements move. Three
+  change join counts: q97 trades a FULL for a LEFT in each spelling, and
+  `_q04_agent_rowset_union_join` gains one CTE, which the HAVING semijoins
+  read in place of a wider one.
+- Every moved test passes on both trees, and the oracle laws among them
+  compare rows against raw SQL.
+
+The shape pins the stated order moved now read either orientation of the
+same join (`test_adhoc07`, gcat's `test_join` and `test_join_discovery`, the
+landmark merge, the raw-column fold, the BigQuery merged key, the MySQL
+lowering message). `test_merged_unnest_bridge_row_projection` pins the
+three rows the data conforms on and accepts ecoregion 600's row either way,
+as part 83 found the EQUAL declaration licenses.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
