@@ -95,6 +95,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_closure,
     strict_fd_closure,
     strict_fd_determines,
+    strict_fd_determines_all,
 )
 from trilogy.core.processing.v4_helper.projection import lineage_existence_parts
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
@@ -674,8 +675,12 @@ def _coarse_rolls_up(
     (`Rollup.coarse_resum_joined_on_its_grain`), not computed off the rows. Not
     under a WHERE, which filters the rows it reads, nor beside a select value
     that reads it or an aggregate at the select's rows, which groups by it, so
-    it must ride the rows."""
-    if condition_only or where is not None or not _is_rollable_aggregate(concept):
+    it must ride the rows. A WHERE of columns the aggregate's own keys
+    determine keeps or drops whole groups, so the unfiltered re-sum is the
+    filtered one (`Rollup.group_filter_commutes_with_resum`)."""
+    if condition_only or not _is_rollable_aggregate(concept):
+        return False
+    if where is not None and not _filters_whole_groups(where, concept, environment):
         return False
     if not isinstance(concept.lineage, BuildAggregateWrapper) or not concept.lineage.by:
         return False
@@ -692,10 +697,31 @@ def _coarse_rolls_up(
             concept,
             [concept, *keys],
             concept.grain,
-            None,
+            where,
             environment,
             datasources,
             unions,
+        )
+    )
+
+
+def _filters_whole_groups(
+    where: BuildWhereClause, concept: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    """Every value the WHERE reads is a column, or a scalar of columns, that
+    `concept`'s grain determines."""
+    grain = concept.grain.components if concept.grain else set()
+    lineage = walk_lineage(get_concept_row_arguments(where.conditional))
+    return (
+        bool(grain)
+        and all(
+            c.derivation in (Derivation.ROOT, Derivation.BASIC, Derivation.CONSTANT)
+            for c in lineage
+        )
+        and strict_fd_determines_all(
+            environment,
+            grain,
+            [c.address for c in lineage if c.derivation == Derivation.ROOT],
         )
     )
 
