@@ -1080,3 +1080,78 @@ theorem Rollup.split_scan_reads_every_row :
 
 end Rollup
 end Trilogy
+
+namespace Trilogy.Rollup
+
+/-! ## Groups merged across a re-aggregation must not read each other
+
+A group computes its members in one pass, so it reads every input of each.
+`min(x) by form`, re-aggregated from `min(x) by species`, shares a group with
+`sum(x) by form`; `max(x ? sum(x) by form = 3)` by species shares one with
+`min(x) by species`. Each member's lineage is acyclic, but the two groups read
+each other (`merged_groups_read_each_other`). Split by depth, the groups are
+acyclic again (`split_groups_acyclic`). -/
+
+/-- Members: 0 `min by species`, 1 the filtered `max`, 2 `min by form`,
+3 `sum by form`, 4 the filter. Each pair is (input, reader). -/
+def memberEdges : List (Nat × Nat) := [(0, 2), (3, 4), (4, 1)]
+
+/-- The group edges a partition of the members induces. -/
+def groupEdges (group : Nat → Nat) : List (Nat × Nat) :=
+  (memberEdges.map fun (a, b) => (group a, group b)).filter fun (a, b) => a ≠ b
+
+/-- `g` reads `h` within two steps of `groupEdges`. -/
+def reads (edges : List (Nat × Nat)) (g h : Nat) : Bool :=
+  edges.contains (h, g) || edges.any fun (a, b) => b == g && edges.contains (h, a)
+
+/-- Members 0 and 1 in group 0, 2 and 3 in group 1, the filter in group 2. -/
+def merged : Nat → Nat
+  | 0 | 1 => 0
+  | 2 | 3 => 1
+  | _ => 2
+
+/-- Group 0 split by depth: member 1 reads the filter, member 0 reads rows. -/
+def split : Nat → Nat
+  | 0 => 0
+  | 1 => 3
+  | 2 | 3 => 1
+  | _ => 2
+
+theorem merged_groups_read_each_other :
+    reads (groupEdges merged) 0 1 ∧ reads (groupEdges merged) 1 0 := by
+  decide
+
+theorem split_groups_acyclic :
+    (List.range 4).all fun g => (List.range 4).all fun h =>
+      !(reads (groupEdges split) g h && reads (groupEdges split) h g) := by
+  decide
+
+end Trilogy.Rollup
+
+namespace Trilogy.Rollup
+
+/-! ## A coarser aggregate beside the summary's rows
+
+`select city, species, sum(x) by city` reads the summary's `(city, species)`
+rows and `sum(x) by city` re-summed from them, joined on `city`
+(`coarse_resum_joined_on_its_grain`). Read off the same row stream as the
+`(city, species)` keys, the stored partial is the per-species sum
+(`coarse_read_at_row_grain_misreads`). -/
+
+/-- Summary rows `(city, species, h)`. -/
+def coarseRows : List (Int × Int × Int) := [(1, 1, 3), (1, 2, 5), (2, 1, 7), (2, 3, 2)]
+
+def resumBy (city : Int) : Int :=
+  ((coarseRows.filter (·.1 == city)).map (·.2.2)).sum
+
+theorem coarse_resum_joined_on_its_grain :
+    coarseRows.map (fun (c, s, _) => (c, s, resumBy c)) =
+      [(1, 1, 8), (1, 2, 8), (2, 1, 9), (2, 3, 9)] := by
+  decide
+
+theorem coarse_read_at_row_grain_misreads :
+    coarseRows.map (fun (c, s, h) => (c, s, h)) ≠
+      coarseRows.map (fun (c, s, _) => (c, s, resumBy c)) := by
+  decide
+
+end Trilogy.Rollup

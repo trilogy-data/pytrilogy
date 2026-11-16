@@ -1140,3 +1140,82 @@ theorem total_off_row_stream_keeps_rejected :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A join key read off several sides is their coalesce
+
+Several left sides of one key render `coalesce(r.k, a.k) = g.k`. Pruning
+`r.k` because `r`'s other pairs imply it leaves `a.k`, which a padded `a`
+holds NULL: the gate `g` misses every row `a` did not match, and a WHERE that
+NULL lets hold (`not (x != y)`) keeps them (`pruned_coalesce_member_pads_gate`).
+The key read off the side nothing pads is the coalesce wherever it is present
+(`coalesce_unpadded_member`). -/
+
+/-- `coalesce` of a present value and anything is that value. -/
+theorem coalesce_unpadded_member (r : Int) (a : Option Int) :
+    (some r).or a = some r := rfl
+
+/-- Two rows of form `1`; the side `a` matched only the second. The gate holds
+form `1`. Keyed on the coalesce both rows find it; keyed on `a.k` alone the
+first row reads NULL, and `not (NULL != y)` keeps it. -/
+theorem pruned_coalesce_member_pads_gate :
+    let rows : List (Int × Option Int) := [(1, none), (1, some 1)]
+    let gate : Int → Option Int := fun k => if k = 1 then some 7 else none
+    let read (k : Option Int) : Option Int := k.bind gate
+    rows.map (fun (r, a) => read ((some r).or a)) = [some 7, some 7] ∧
+      rows.map (fun (_, a) => read a) = [none, some 7] := by
+  decide
+
+/-! ## A cross product is one relation whichever side it starts from
+
+Two plans for one merge may join two one-row CTEs `a ⋈ b` and `b ⋈ a`, both on
+nothing. Merged into one CTE, keeping both joins references a CTE twice: an
+invalid statement, or with aliases a second cross product
+(`mirrored_cross_join_is_one`, `second_cross_join_multiplies`). -/
+
+theorem mirrored_cross_join_is_one (a b : List Int) (x y : Int) :
+    (x, y) ∈ (a.flatMap fun x => b.map fun y => (x, y)) ↔
+      (y, x) ∈ (b.flatMap fun y => a.map fun x => (y, x)) := by
+  simp only [List.mem_flatMap, List.mem_map, Prod.mk.injEq]
+  constructor
+  · rintro ⟨x', hx, y', hy, h1, h2⟩
+    subst h1 h2
+    exact ⟨y', hy, x', hx, rfl, rfl⟩
+  · rintro ⟨y', hy, x', hx, h1, h2⟩
+    subst h1 h2
+    exact ⟨x', hx, y', hy, rfl, rfl⟩
+
+theorem second_cross_join_multiplies :
+    let a : List Int := [1]
+    let b : List Int := [2, 3]
+    (a.flatMap fun x => b.map fun y => (x, y)).length = 2 ∧
+      ((a.flatMap fun x => b.map fun y => (x, y)).flatMap fun p =>
+        b.map fun z => (p, z)).length = 4 := by
+  decide
+
+end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## FINAL re-reads no column finer than its rows
+
+`select species, form, min(x) where (max(x) by species > 8 or city = 'B') and
+max(x) by city > 20`: the aggregate by species applied the OR, and FINAL
+re-applied it for the form projection. FINAL's rows are species; `city` has no
+value on them, so FINAL read it off the city gate joined FULL on nothing. With
+no species kept, that join padded a row per city and `city = 'B'` kept one of
+NULLs (`final_reads_finer_column_off_gate`). -/
+
+/-- No species kept; the gate holds cities `1` and `2`. FULL on nothing pads a
+row per city, and `city = 2` keeps one with no species. -/
+theorem final_reads_finer_column_off_gate :
+    let kept : List Int := []
+    let gate : List Int := [1, 2]
+    let full : List (Option Int × Int) :=
+      if kept.isEmpty then gate.map fun c => (none, c)
+      else kept.flatMap fun s => gate.map fun c => (some s, c)
+    full.filter (fun (_, c) => c == 2) = [(none, 2)] := by
+  decide
+
+end Trilogy.SelectGrain

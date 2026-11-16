@@ -2398,6 +2398,20 @@ def _null_extended_sides(join: SourceJoin) -> list[str]:
     return []
 
 
+def _is_cross_join(join: Join | UnnestJoin) -> bool:
+    """A keyless INNER join between two named CTEs: `a JOIN b on 1=1` and
+    `b JOIN a on 1=1` are one cross product."""
+    return (
+        isinstance(join, Join)
+        and join.join_type == JoinType.INNER
+        and join.condition is None
+        and not join.pairs
+        and not join.concepts
+        and not join.guard
+        and join.left is not None
+    )
+
+
 def coalesce_duplicate_joins(
     joins: list[Join | UnnestJoin],
 ) -> list[Join | UnnestJoin]:
@@ -2417,8 +2431,15 @@ def coalesce_duplicate_joins(
     QueryDatasource identity."""
     merged: dict[tuple[JoinType, str | None, str], Join] = {}
     mirrored: dict[tuple[frozenset[str], tuple[str, ...]], Join] = {}
+    crossed: set[frozenset[str]] = set()
     out: list[Join | UnnestJoin] = []
     for join in joins:
+        if _is_cross_join(join):
+            assert isinstance(join, Join) and join.left is not None
+            sides = frozenset({join.left.name, join.right.name})
+            if sides in crossed:
+                continue
+            crossed.add(sides)
         if not isinstance(join, Join) or join.condition is not None or not join.pairs:
             out.append(join)
             continue

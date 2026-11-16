@@ -371,6 +371,10 @@ FOUND_SEEDS_503 = [38273]
 # the keys with it (103208, 109374); a rename made a twin a finer partial
 # (103923); a reader built without its unbuilt row parent (131836)
 FOUND_SEEDS_504 = [103208, 103923, 109374, 131836]
+# seeds 0.3.506 fixed: FINAL re-read a column finer than its rows (11684);
+# groups that read each other (172552); a mirrored cross join (177430); a
+# pruned coalesce member left a padded key (185026)
+FOUND_SEEDS_506 = [11684, 172552, 177430, 185026]
 
 
 def _seed(seed: int):
@@ -399,6 +403,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_502,
             *FOUND_SEEDS_503,
             *FOUND_SEEDS_504,
+            *FOUND_SEEDS_506,
             *OPEN,
             8920,
         )

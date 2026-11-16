@@ -39,6 +39,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
     SourceJoin,
     UnnestJoin,
+    coalesced_key_groups,
     preserved_key_pairs,
 )
 from trilogy.core.models.keyspace import Keyspace
@@ -1388,6 +1389,30 @@ class _Agreement:
         )
 
 
+def _whole_coalesce_groups(
+    pairs: list[ConceptPair], kept: list[ConceptPair]
+) -> list[ConceptPair]:
+    """`kept` with every pair of a key group it keeps any of: an outer join
+    renders the group `coalesce(a.k, b.k) = c.k`, and dropping `a.k` alone
+    leaves `b.k`, which a padded `b` holds NULL on every row it missed
+    (`prune_outer_join_pairs` then keeps the side nothing pads)."""
+    kept_ids = {id(pair) for pair in kept}
+    restore = {
+        id(pair)
+        for group in coalesced_key_groups(pairs)
+        if any(id(p) in kept_ids for p in group)
+        for pair in group
+    }
+    seen: set[tuple[str, str]] = set()
+    out: list[ConceptPair] = []
+    for pair in pairs:
+        key = (pair.right.address, pair.node.identifier)
+        if (id(pair) in kept_ids or id(pair) in restore) and key not in seen:
+            seen.add(key)
+            out.append(pair)
+    return out
+
+
 def _aggregate_beside_its_grain(pair: ConceptPair, pairs: list[ConceptPair]) -> bool:
     """An aggregate paired with itself beside every key of its grain: the
     grain's pairs decide it, NULL groups included, where its own `=` would drop
@@ -1512,7 +1537,7 @@ def reduce_concept_pairs(
         grain_pairs = [
             x for x in final if x.right.address in right_source.grain.components
         ]
-        return [
+        final = [
             x
             for x in final
             if x.right.address in right_source.grain.components
@@ -1526,8 +1551,7 @@ def reduce_concept_pairs(
                 for component in right_source.grain.components
             )
         ]
-
-    return final
+    return _whole_coalesce_groups(pairs, final) if is_outer else final
 
 
 def _sole_projected_relation(ds: DataSource) -> str | None:

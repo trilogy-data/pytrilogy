@@ -540,6 +540,18 @@ def materialized_root_addresses(
         ):
             out.add(concept.address)
             continue
+        if not exact and _coarse_rolls_up(
+            concept,
+            condition_only,
+            mandatory_list,
+            target_grain,
+            where,
+            environment,
+            datasources,
+            unions,
+        ):
+            out.add(concept.address)
+            continue
         # A rolled root joins the target-grain scan, so an aggregate at another
         # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
@@ -644,6 +656,82 @@ def _total_rolls_up(
         _rollup_sources(
             concept, [concept], concept.grain, None, environment, datasources, unions
         )
+    )
+
+
+def _coarse_rolls_up(
+    concept: BuildConcept,
+    condition_only: bool,
+    mandatory_list: list[BuildConcept],
+    target_grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
+) -> bool:
+    """An aggregate `by` keys strictly coarser than the select's rows is
+    re-aggregated from a summary at its own grain and joined back on it
+    (`Rollup.coarse_resum_joined_on_its_grain`), not computed off the rows. Not
+    under a WHERE, which filters the rows it reads, nor beside a select value
+    that reads it or an aggregate at the select's rows, which groups by it, so
+    it must ride the rows."""
+    if condition_only or where is not None or not _is_rollable_aggregate(concept):
+        return False
+    if not isinstance(concept.lineage, BuildAggregateWrapper) or not concept.lineage.by:
+        return False
+    target = set(target_grain.components)
+    if not coarser_than_rows(concept, target, environment):
+        return False
+    if any(
+        _reads_beside(other, concept, target, environment) for other in mandatory_list
+    ):
+        return False
+    keys = [environment.concepts.get(c.address) or c for c in concept.lineage.by]
+    return bool(
+        _rollup_sources(
+            concept,
+            [concept, *keys],
+            concept.grain,
+            None,
+            environment,
+            datasources,
+            unions,
+        )
+    )
+
+
+def coarser_than_rows(
+    concept: BuildConcept, target: set[str], environment: BuildEnvironment
+) -> bool:
+    """An aggregate grouped by a strict subset of the select's row keys that
+    does not determine them: a grain off the rows' keys (`by tree_form` beside
+    `tree_id`) has no row to join back on."""
+    grain = set(concept.grain.components) if concept.grain else set()
+    return (
+        concept.derivation == Derivation.AGGREGATE
+        and bool(grain)
+        and grain < target
+        and not target <= set(strict_fd_closure(environment, grain))
+    )
+
+
+def _reads_beside(
+    other: BuildConcept,
+    concept: BuildConcept,
+    target: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """`other` reads `concept`, or is an aggregate at the select's rows, which
+    a plan groups by every value the select holds, `concept` included."""
+    if other.address == concept.address or other.lineage is None:
+        return False
+    if other.derivation == Derivation.AGGREGATE and not coarser_than_rows(
+        other, target, environment
+    ):
+        return True
+    return any(
+        c.address == concept.address
+        for c in walk_lineage([other], descend=lambda c: c.address != concept.address)
     )
 
 
@@ -890,6 +978,40 @@ def scan_filtered_roots(
         if concept.address in materialized_roots
         and concept.derivation == Derivation.AGGREGATE
         and filter_finer_row_args(where, concept.grain, environment.concepts)
+    )
+
+
+def coarse_rolled_roots(
+    mandatory_list: list[BuildConcept],
+    materialized_roots: frozenset[str],
+    conditions: list[BuildWhereClause],
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource],
+) -> frozenset[str]:
+    """The roots `materialized_root_addresses` took by `_coarse_rolls_up` alone
+    (`ConceptAttrs.coarse_rolled`); a root it took by an exact or total read
+    keeps its own bucket."""
+    target_grain = BuildGrain.from_concepts(mandatory_list)
+    where = combine_where_clauses(conditions)
+    return frozenset(
+        c.address
+        for c in mandatory_list
+        if c.address in materialized_roots
+        and not _exactly_materialized(
+            c, target_grain, where, environment, datasources, unions
+        )
+        and not _total_rolls_up(c, False, where, environment, datasources, unions)
+        and _coarse_rolls_up(
+            c,
+            False,
+            mandatory_list,
+            target_grain,
+            where,
+            environment,
+            datasources,
+            unions,
+        )
     )
 
 
@@ -1340,6 +1462,18 @@ def _build_from_graph_traced(
         datasources=g.scope.datasources,
         scan_filtered_roots=scan_filtered_roots(
             mandatory_list, materialized_roots, conditions, environment
+        ),
+        coarse_rolled_roots=coarse_rolled_roots(
+            mandatory_list,
+            materialized_roots,
+            conditions,
+            environment,
+            g.scope.datasources,
+            [
+                ds
+                for ds in g.datasources.values()
+                if isinstance(ds, BuildUnionDatasource)
+            ],
         ),
     )
     if plan_trace.active():
