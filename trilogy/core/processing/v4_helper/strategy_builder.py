@@ -1384,15 +1384,19 @@ def _parent_nodes_for(
             "planner bug."
         )
 
-    def provides(pgid: str, node: StrategyNode, spelled: bool = False) -> set[str]:
+    # a needed address no candidate outputs under its own name is provided
+    # by its merged spelling (`src_label` for `source_label`)
+    spelled_only = needed - {
+        o.address for _, node in candidates for o in node.output_concepts
+    }
+
+    def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
             return set(attrs[pgid].primary_members) & needed
-        # `spelled`: a merged derivation provides what it is merged into
-        # (`src_label` for `source_label`); only a direct output covers it
         return {
             address
             for o in node.output_concepts
-            for address in ((o.address, *o.pseudonyms) if spelled else (o.address,))
+            for address in (o.address, *(set(o.pseudonyms) & spelled_only))
             if address in needed
         }
 
@@ -1510,7 +1514,7 @@ def _parent_nodes_for(
 
     parents: list[ParentBuild] = []
     for pgid, node in candidates:
-        my_provides = provides(pgid, node, spelled=True)
+        my_provides = provides(pgid, node)
         covered_by_descendant = any(
             other_pgid != pgid
             and _may_cover(
