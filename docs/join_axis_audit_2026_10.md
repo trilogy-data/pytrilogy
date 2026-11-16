@@ -3469,6 +3469,31 @@ cases did the same. A FULL pads both sides, so its padded set is now
 order-free in both helpers. `test_a_full_join_merges_into_its_mirror` pins
 it, and fails on `main`.
 
+**One key read off several sides stays one key at INNER (part 91).** The
+suite run with the stated order reversed found one more, in
+`test_store_and_web_or_catalog_with_property_and_aggregate`: `store AND (web
+OR catalog)` over three `union` members of the customer axis. Walked from
+the catalog, the merge is `catalog FULL web FULL store`, and store's join
+reads the key off whichever of web and catalog the first FULL kept:
+`coalesce(c.ck, w.wk) = s.sk`. The WHERE forces store, and its OR forces web
+or catalog, so the optimizer narrowed store's join to INNER. That is right.
+
+**Root cause:** an outer join groups a key's pairs by the right column and
+coalesces the lefts. An INNER join, in the renderer and in the upgrade's
+key proofs (`coalesced_key_groups`), grouped them by the left column too.
+`c.ck` and `w.wk` are two spellings of one key, so the INNER rendered
+`c.ck = s.sk AND w.wk = s.sk`, which demands both channels. The proof then
+read each as proven and narrowed `catalog FULL web` to INNER as well. The
+query returned no customers. The default walk joins store first, so its
+web and catalog joins each read one left and stay LEFT.
+
+**Fix:** pairs of one right key read off different sides are one coalesced
+group however each side spells it. Two columns of one side are still two
+keys. The renderer and the upgrade read the same grouping, so an INNER
+renders `coalesce(c.ck, w.wk) = s.sk` and proves only the right key.
+`test_or_of_members_survives_any_walk` runs it under every walk. It fails
+under the reversed order without the fix.
+
 MEASUREMENTS_PLACEHOLDER
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
@@ -3533,10 +3558,11 @@ not built yet:
    merge. So the plan can state those ties without moving rows. It now
    does (part 88). A star states its hub first. A group-graph plan states
    its suppliers first, then row streams before the lookups they pair with,
-   then finer rows first. Stating the order found two more order bugs: an
-   authored axis's FULL widened a lookup hanging off one family (part 89),
-   and a FULL written from the other side did not fold into its mirror
-   (part 90).
+   then finer rows first. Stating the order, and reversing it, found three
+   more order bugs: an authored axis's FULL widened a lookup hanging off one
+   family (part 89), a FULL written from the other side did not fold into
+   its mirror (part 90), and an INNER read one key's two spellings as two
+   keys (part 91).
    What is left of the walk's rank is the resolve facts above the tie: the
    solid and region terms, the scorer's anchor, partial and hosting terms,
    and grain size. Plans that state no order (a ROOT's source plan, the

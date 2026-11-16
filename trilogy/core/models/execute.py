@@ -1188,19 +1188,20 @@ def coalesced_key_groups(
     """Pairs by the key they equate: several left sides of one key render
     `coalesce(a.k, b.k) = c.k`, any one of which may be the padded NULL. The
     sides may spell it differently (`c.ck`, `w.wk` beside `s.sk`, members of
-    one `union` relation); two columns of ONE side are two keys."""
-    by_right: dict[str, list[PairT]] = {}
+    one `union` relation) when each side spells it once; a side equating two
+    of its columns to the key holds two keys."""
+    by_right: dict[str, dict[str, list[PairT]]] = {}
     for pair in pairs:
-        by_right.setdefault(pair.right.address, []).append(pair)
+        by_right.setdefault(pair.right.address, {}).setdefault(
+            pair.left.address, []
+        ).append(pair)
     groups: list[list[PairT]] = []
-    for group in by_right.values():
-        if len({side(pair) for pair in group}) > 1:
-            groups.append(group)
-            continue
-        by_left: dict[str, list[PairT]] = {}
-        for pair in group:
-            by_left.setdefault(pair.left.address, []).append(pair)
-        groups.extend(by_left.values())
+    for by_left in by_right.values():
+        sides = [side(pair) for group in by_left.values() for pair in group]
+        if len(by_left) > 1 and len(sides) == len(set(sides)):
+            groups.append([pair for group in by_left.values() for pair in group])
+        else:
+            groups.extend(by_left.values())
     return groups
 
 
