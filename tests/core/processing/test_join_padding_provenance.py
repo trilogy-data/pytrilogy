@@ -29,6 +29,7 @@ from trilogy.core.processing.join_resolution import (
     _span_spellings,
     complete_key_domain,
     get_join_type,
+    preserved_sources,
 )
 from trilogy.core.processing.null_provenance import (
     guest_padded_addresses,
@@ -362,6 +363,19 @@ def test_complete_key_domain_is_an_unfiltered_scan_kept_whole():
     assert not complete_key_domain(merged, USER)
     merged.joins[0].join_type = JoinType.RIGHT_OUTER
     assert complete_key_domain(merged, USER)
+
+
+def test_a_subset_right_every_left_row_partners_keeps_all_its_rows():
+    users, notes = _scan("users", [USER]), _scan("notes", [USER], partial=[USER])
+    assert preserved_sources(
+        [users, notes], [_keyed(users, notes, JoinType.LEFT_OUTER)]
+    ) == {"users", "notes"}
+    assert preserved_sources(
+        [users, notes], [_keyed(users, notes, JoinType.INNER)]
+    ) == {"notes"}
+    assert preserved_sources(
+        [notes, users], [_keyed(notes, users, JoinType.LEFT_OUTER)]
+    ) == {"notes"}
 
 
 def _full(left: BuildDatasource, right: BuildDatasource) -> Join:
