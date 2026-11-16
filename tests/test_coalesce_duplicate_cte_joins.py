@@ -169,3 +169,34 @@ def test_one_key_read_off_two_sides_is_one_group_however_spelled():
         [own],
         [second],
     ]
+
+
+def _keys(join: Join) -> set[tuple[str, str, str]]:
+    assert join.pairs is not None
+    return {(p.node.name, p.left.address, p.right.address) for p in join.pairs}
+
+
+def test_an_inner_rejoin_folds_onto_the_join_of_its_later_side():
+    to_w = _join("w", [_pair("a", "k", "k")], jointype=JoinType.INNER)
+    to_u = _join("u", [_pair("a", "k", "k")], jointype=JoinType.INNER)
+    u_to_w = _join("w", [_pair("u", "uk", "wk")], jointype=JoinType.INNER)
+    merged = coalesce_duplicate_joins([to_w, to_u, u_to_w])
+    assert merged == [to_w, to_u]
+    assert _keys(to_u) == {("a", "k", "k"), ("w", "wk", "uk")}
+
+
+def test_an_inner_rejoin_keeps_its_orientation_onto_its_own_right():
+    to_u = _join("u", [_pair("a", "k", "k")], jointype=JoinType.INNER)
+    to_w = _join("w", [_pair("a", "k", "k")], jointype=JoinType.INNER)
+    u_to_w = _join("w", [_pair("u", "uk", "wk")], jointype=JoinType.INNER)
+    merged = coalesce_duplicate_joins([to_u, to_w, u_to_w])
+    assert merged == [to_u, to_w]
+    assert _keys(to_w) == {("a", "k", "k"), ("u", "uk", "wk")}
+
+
+def test_an_inner_rejoin_stays_when_the_later_join_pads():
+    to_w = _join("w", [_pair("a", "k", "k")], jointype=JoinType.INNER)
+    to_u = _join("u", [_pair("a", "k", "k")], jointype=JoinType.LEFT_OUTER)
+    u_to_w = _join("w", [_pair("u", "uk", "wk")], jointype=JoinType.INNER)
+    merged = coalesce_duplicate_joins([to_w, to_u, u_to_w])
+    assert merged == [to_w, to_u, u_to_w]

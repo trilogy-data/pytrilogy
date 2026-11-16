@@ -1154,4 +1154,56 @@ theorem coarse_read_at_row_grain_misreads :
       coarseRows.map (fun (c, s, _) => (c, s, resumBy c)) := by
   decide
 
+/-! ## A filtered scan beside a filtered summary adds only multiplicity
+
+`select city, tree_form, count(tree_id) as v0, count(tree_id) by city as v1
+where tree_form = 'broadleaf'`: `v1` re-sums the summary's `(city, species)`
+counts, which the WHERE filters through `species` (`tree_form` is a function
+of it). The trees the WHERE kept were joined in beside them, supplying
+nothing: each partial repeated once per kept tree, city A counted 5 for 3
+(`filtered_passenger_multiplies`). A key predicate applied to the summary
+already keeps exactly the keys a kept tree has (`key_filter_is_semijoin`),
+so the scan is a passenger and is dropped. -/
+
+/-- A predicate of the key keeps the summary rows a kept row's key names,
+whenever every summary key has a row. -/
+theorem key_filter_is_semijoin {κ : Type} [DecidableEq κ] (summary : List (κ × Int)) (rows : List κ)
+    (p : κ → Bool) (hcov : ∀ s ∈ summary, s.1 ∈ rows) :
+    summary.filter (fun s => (rows.filter p).contains s.1) =
+      summary.filter (fun s => p s.1) := by
+  apply List.filter_congr
+  intro s hs
+  have h := hcov s hs
+  cases hp : p s.1 <;> simp [h, hp]
+
+/-- Summary rows `(city, species, n)`, species 1 rejected; the kept trees.
+Re-summed alone city 0 holds 2, joined to its trees 4. -/
+theorem filtered_passenger_multiplies :
+    let summary : List (Nat × Nat × Nat) := [(0, 0, 2), (0, 1, 1), (1, 0, 1)]
+    let kept := summary.filter (·.2.1 == 0)
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (1, 0)]
+    ((kept.filter (·.1 == 0)).map (·.2.2)).sum = 2 ∧
+      (((kept.filter (·.1 == 0)).flatMap fun s =>
+        (trees.filter (· == (s.1, s.2.1))).map fun _ => s.2.2)).sum = 4 := by
+  decide
+
+/-! ## A filter of the aggregate's own keys commutes with its re-sum
+
+`select city, species, sum(x) by city where city = 'A'`: the WHERE keeps or
+drops whole cities, so `sum(x) by city` over the kept rows is the unfiltered
+re-sum of the summary at every kept city (`group_filter_commutes_with_resum`),
+and the coarse rollup reads the summary under it. A WHERE finer than the
+aggregate's keys (`species = 'Acer'` beside `by city`) changes the sum and
+keeps the trees. -/
+
+theorem group_filter_commutes_with_resum {α κ : Type} [DecidableEq κ] (g : α → κ)
+    (p : κ → Bool) (v : α → Int) (rows : List α) (k : κ) (hk : p k = true) :
+    (((rows.filter fun r => p (g r)).filter fun r => g r == k).map v).sum =
+      ((rows.filter fun r => g r == k).map v).sum := by
+  rw [List.filter_filter]
+  congr 2
+  apply List.filter_congr
+  intro r _
+  by_cases h : g r = k <;> simp [h, hk]
+
 end Trilogy.Rollup

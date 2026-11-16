@@ -1219,3 +1219,38 @@ theorem final_reads_finer_column_off_gate :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A peel the WHERE's atom is a function of carries the atom
+
+`select species, sum(x) by species as v0, sum(x ? (min(x) by form < 10 or
+max(x) by form != 6)) as v1 where form is null`: `v0` is peeled onto the
+summary at `species`, which determines `form`, and the WHERE was left on the
+row stream. The stream reached FINAL only through `v1`'s group, joined outer,
+so the unfiltered peel kept every species (`unfiltered_peel_keeps_rejected`).
+The atom is a function of the peel's key, so the peel applies it and keeps
+exactly the species a kept row has (`Rollup.key_filter_is_semijoin`). -/
+
+/-- Species `1..4` with `v0`; only species 3 has `form` NULL. Joined LEFT from
+the peel all four return; the peel filtered by the atom keeps species 3. -/
+theorem unfiltered_peel_keeps_rejected :
+    let peel : List (Nat × Option Int) := [(1, some 10), (2, some 5), (3, none), (4, some 2)]
+    let formNull : Nat → Bool := (· == 3)
+    peel.length = 4 ∧ (peel.filter (formNull ·.1)).map (·.1) = [3] := by
+  decide
+
+/-! ## One CTE joined from two sides is one conjunction
+
+Two plans merged into one CTE each paired `w` with their own side (`a JOIN w`,
+`u JOIN w`); rendered, `w` is referenced twice and the statement is invalid.
+Over INNER joins the pairs are one conjunction wherever they are written, so
+the second pairing moves onto the join that brings in `u`
+(`rejoined_cte_is_one_conjunction`). -/
+
+theorem rejoined_cte_is_one_conjunction (rows : List (Int × Int × Int)) :
+    (rows.filter fun r => r.1 == r.2.2).filter (fun r => r.2.1 == r.2.2) =
+      rows.filter fun r => r.1 == r.2.2 && r.2.1 == r.2.2 := by
+  simp [List.filter_filter, Bool.and_comm]
+
+end Trilogy.SelectGrain

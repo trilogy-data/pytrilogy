@@ -2499,7 +2499,72 @@ def coalesce_duplicate_joins(
                 existing.pairs.append(pair)
                 seen.add(pair_key)
         _absorb_join(existing, join)
+    return _fold_inner_rejoins(out)
+
+
+def _fold_inner_rejoins(joins: list[Join | UnnestJoin]) -> list[Join | UnnestJoin]:
+    """An INNER join to a CTE an earlier join already brought in, from a
+    different left (two merged plans each paired `w` with their own side:
+    `a JOIN w`, `u JOIN w`), is a cycle: rendered, `w` appears twice. Over
+    INNER joins the pairs are one conjunction, so each moves onto the INNER
+    join that introduced the later of its two sides, where both are in scope.
+    Left as is when that join pads (its ON would filter what it preserves)."""
+    introduced: dict[str, int] = {}
+    out: list[Join | UnnestJoin] = []
+    for join in joins:
+        if (
+            isinstance(join, Join)
+            and join.right.name in introduced
+            and join.join_type == JoinType.INNER
+            and join.condition is None
+            and join.pairs
+            and not join.guard
+            and _fold_pairs(out, introduced, join)
+        ):
+            continue
+        if isinstance(join, Join):
+            introduced.setdefault(join.right.name, len(out))
+        out.append(join)
     return out
+
+
+def _fold_pairs(
+    out: list[Join | UnnestJoin], introduced: dict[str, int], join: Join
+) -> bool:
+    moves: list[tuple[Join, ConceptPair]] = []
+    for pair in join.pairs:
+        # the base is in scope before any join: index -1
+        node_at = introduced.get(pair.node.name, -1)
+        right_at = introduced[join.right.name]
+        target = out[max(node_at, right_at)]
+        if (
+            not isinstance(target, Join)
+            or target.join_type != JoinType.INNER
+            or target.condition is not None
+        ):
+            return False
+        if target.right.name == join.right.name:
+            moves.append((target, pair))
+        else:
+            moves.append(
+                (
+                    target,
+                    ConceptPair(
+                        left=pair.right,
+                        right=pair.left,
+                        modifiers=pair.modifiers,
+                        node=join.right,
+                    ),
+                )
+            )
+    for target, pair in moves:
+        assert target.pairs is not None
+        if _pair_norm(target.right.name, pair) not in {
+            _pair_norm(target.right.name, p) for p in target.pairs
+        }:
+            target.pairs.append(pair)
+        _absorb_join(target, join)
+    return True
 
 
 def _null_extended_names(join: Join) -> list[str]:

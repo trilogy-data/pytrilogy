@@ -254,9 +254,12 @@ def _entity_peels_beside_row_stream(
     buckets: dict[str, GroupBucket],
     group_members: dict[str, set[str]],
     main_lineage: set[str],
+    row_inputs: set[str],
+    environment: BuildEnvironment,
 ) -> list[str]:
     """Entity peels that can host a row atom held only by a row stream FINAL
-    never merges. The stream carries no output, so an atom elected onto it
+    never merges, and aggregate peels the atom is a function of beside one
+    it does. The stream carries no output, so an atom elected onto it
     alone is dropped; a peel re-plans its rows from the datasources and,
     joined through the stream's copy of its key, keeps only the entities with
     a qualifying row."""
@@ -265,8 +268,9 @@ def _entity_peels_beside_row_stream(
         for gid in candidates
         if gid in buckets and buckets[gid].reason is RootReason.ROW_STREAM
     ]
-    if not streams or any(gid in main_lineage for gid in streams):
+    if not streams:
         return []
+    merged = any(gid in main_lineage for gid in streams)
     return [
         gid
         for gid in sorted(main_lineage)
@@ -274,7 +278,27 @@ def _entity_peels_beside_row_stream(
         and gid in buckets
         and buckets[gid].anchor_keys
         and any(buckets[gid].anchor_keys <= group_members[s] for s in streams)
+        and (not merged or _aggregate_peel_of(gid, buckets, row_inputs, environment))
     ]
+
+
+def _aggregate_peel_of(
+    gid: str,
+    buckets: dict[str, GroupBucket],
+    row_inputs: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A peel of aggregates holds one row per group of the rows it summarizes,
+    so it hosts its keys as the stream does and is joined preserved: when its
+    keys determine the atom, it applies the atom itself
+    (`SelectGrain.unfiltered_peel_keeps_rejected`). A peel of plain columns is
+    a lookup the stream's rows gate."""
+    bucket = buckets[gid]
+    return any(
+        (c := environment.concepts.get(a)) is not None
+        and c.derivation == Derivation.AGGREGATE
+        for a in bucket.primary_members
+    ) and strict_fd_determines_all(environment, bucket.anchor_keys, row_inputs)
 
 
 def _nested_scope_chain(
@@ -1494,7 +1518,12 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     row_inputs = {c.address for c in atom.row_arguments}
     candidates = _candidate_groups(atom, row_inputs, scope)
     candidates += _entity_peels_beside_row_stream(
-        candidates, buckets, scope.group_members, main_lineage
+        candidates,
+        buckets,
+        scope.group_members,
+        main_lineage,
+        row_inputs,
+        scope.environment,
     )
     # A presence probe's null test is only meaningful ABOVE the merge
     # that null-extends it: hosting it at the member's own rowset

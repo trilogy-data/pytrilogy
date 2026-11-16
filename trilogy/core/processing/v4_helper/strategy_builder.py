@@ -1384,10 +1384,21 @@ def _parent_nodes_for(
             "planner bug."
         )
 
+    # a needed address no candidate outputs under its own name is provided
+    # by its merged spelling (`src_label` for `source_label`)
+    spelled_only = needed - {
+        o.address for _, node in candidates for o in node.output_concepts
+    }
+
     def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
             return set(attrs[pgid].primary_members) & needed
-        return {o.address for o in node.output_concepts} & needed
+        return {
+            address
+            for o in node.output_concepts
+            for address in (o.address, *(set(o.pseudonyms) & spelled_only))
+            if address in needed
+        }
 
     consumer = attrs[gid]
     # an unnest repeats its parent's rows, and its readers pair with it on
@@ -1604,7 +1615,10 @@ def _drop_finer_passengers(
     parents supplying everything it would, adds only its multiplicity: a
     re-sum of the summary's `count(tree_id)` by `(city, species)` joined to
     the trees counts each partial once per tree. Never beside a region's rows:
-    the scan may be what pairs a member the others lack."""
+    the scan may be what pairs a member the others lack. A scan the WHERE
+    filters is a passenger too when a root beside it applies the same atoms:
+    the rows it keeps are the keys the other already kept
+    (`Rollup.filtered_passenger_multiplies`)."""
     if any(region_reads(p) for p in parents):
         return parents
     kept = list(parents)
@@ -1613,17 +1627,41 @@ def _drop_finer_passengers(
         if (
             gid is None
             or attrs[gid].derivation != Derivation.ROOT
-            or attrs[gid].condition_atoms
-            or parent.conditions is not None
             or not _rows_finer_than(parent, input_grain, environment)
         ):
             continue
         others = [p for p in kept if p is not parent]
+        if not _filter_applied_beside(parent, gid, others, attrs, origin):
+            continue
         supplied = {o.address for p in others for o in p.usable_outputs}
         own = {o.address for o in parent.usable_outputs} & needed
         if others and own <= supplied:
             kept = others
     return kept
+
+
+def _filter_applied_beside(
+    parent: StrategyNode,
+    gid: str,
+    others: list[StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    origin: dict[int, str],
+) -> bool:
+    """`parent`'s row filter, if any, is applied by a root among `others`."""
+    atoms = attrs[gid].condition_atoms
+    if not atoms and parent.conditions is None:
+        return True
+    if not atoms:
+        return False
+    for other in others:
+        ogid = _origin_group(other, origin)
+        if (
+            ogid is not None
+            and attrs[ogid].derivation == Derivation.ROOT
+            and all(atom in attrs[ogid].condition_atoms for atom in atoms)
+        ):
+            return True
+    return False
 
 
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
@@ -2909,43 +2947,48 @@ def _project_planned_keys(
             and concept_satisfiable(c, outputs)
             and not _carry_needs_own_node(c, outputs)
         ]
+        # what the parent's rows determine: its outputs, and a column pinned
+        # to one literal on every row (`city = 'X'`), a constant there
         determined = (
-            strict_fd_closure(environment, frozenset(outputs))
+            strict_fd_closure(
+                environment, frozenset(outputs | _subtree_pinned_addresses(parent))
+            )
             if len(owed) > len(rendered)
             else frozenset()
         )
         # an authored relation's member or a rowset handle pairs as authored,
         # never through a producer of it or a rendering off its mate's column
         lookups = [
-            producer
+            lookup
             for c in owed
             if c not in rendered
             and c.address in determined
             and c.address not in authored
             and c.derivation != Derivation.ROWSET
-            and (producer := _key_lookup(c, outputs, producers)) is not None
+            and (lookup := _key_lookup(c, parent, determined, producers, environment))
+            is not None
         ]
         if not rendered and not lookups:
             out.append(parent)
             continue
         node = parent
         if lookups:
+            # nodes carry no `identifier`: dedupe the producers by identity
+            spokes = list({id(p): (p, keys) for p, keys in lookups}.values())
             looked_up = [
                 c
                 for c in owed
-                if c not in rendered and any(c.address in p.output_lcl for p in lookups)
+                if c not in rendered
+                and any(c.address in p.output_lcl for p, _ in spokes)
             ]
-            # nodes carry no `identifier`: dedupe the producers by identity
-            producers_used = list({id(p): p for p in lookups}.values())
             node = MergeNode(
-                input_concepts=readable_outputs([parent, *producers_used]),
+                input_concepts=readable_outputs([parent, *(p for p, _ in spokes)]),
                 output_concepts=[*parent.output_concepts, *looked_up],
                 environment=environment,
-                parents=[parent, *producers_used],
-                # each producer looks its value up on its own grain
-                planned_pairs=PlannedPairs.star(
-                    parent, [(p, _resolved_grain(p)) for p in producers_used]
-                ),
+                parents=[parent, *(p for p, _ in spokes)],
+                planned_pairs=PlannedPairs.star(parent, spokes),
+                # one value looked up per parent row: the rows are the parent's
+                grain=parent.resolve().grain,
             )
         if rendered:
             node = _projection_over(node, rendered, environment)
@@ -2956,21 +2999,65 @@ def _project_planned_keys(
 
 
 def _key_lookup(
-    key: BuildConcept, outputs: set[str], producers: Sequence[StrategyNode]
-) -> StrategyNode | None:
-    """A producer of `key` whose grain the parent's outputs hold, so joining
-    it on that grain looks one value up per parent row. The producer must
-    project that grain too: joined on less, its rows repeat per value."""
+    key: BuildConcept,
+    parent: StrategyNode,
+    determined: frozenset[str],
+    producers: Sequence[StrategyNode],
+    environment: BuildEnvironment,
+) -> tuple[StrategyNode, frozenset[str]] | None:
+    """A producer of `key` and the keys to join it on: columns of its grain
+    that determine the rest, so each parent row looks one value up (joined on
+    less, its rows repeat per value). A key either side lacks is carried onto
+    it: the parent determines it, so its rows stay put (`cell` beside a
+    per-tree row), and the producer's grain holds it."""
     for producer in producers:
-        grain = set(producer.resolve().grain.components)
-        if (
-            key.address in producer.output_lcl
-            and grain
-            and grain <= outputs
-            and all(address in producer.output_lcl for address in grain)
-        ):
-            return producer
+        if key.address not in producer.output_lcl:
+            continue
+        grain = frozenset(producer.resolve().grain.components)
+        keys = _lookup_keys(parent, producer, grain, determined, environment)
+        if keys and _carry_lookup_keys(parent, producer, keys, environment):
+            return producer, keys
     return None
+
+
+def _lookup_keys(
+    parent: StrategyNode,
+    producer: StrategyNode,
+    grain: frozenset[str],
+    determined: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str] | None:
+    """The fewest grain columns the parent determines that determine the whole
+    grain; columns both sides already hold are kept over ones to carry."""
+    keys = set(grain & determined)
+    if not keys or not grain <= strict_fd_closure(environment, keys):
+        return None
+    held = {o.address for o in parent.output_concepts} & producer.output_lcl.addresses
+    for address in sorted(keys, key=lambda a: (a in held, a)):
+        if grain <= strict_fd_closure(environment, keys - {address}):
+            keys.discard(address)
+    return frozenset(keys)
+
+
+def _carry_lookup_keys(
+    parent: StrategyNode,
+    producer: StrategyNode,
+    keys: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """Project the lookup's keys off both sides; they are the producer's grain
+    columns and ones the parent determines, so neither side's rows change."""
+    for node in (producer, parent):
+        held = {c.address for c in node.output_concepts}
+        missing = _join_key_concepts([], environment, set(keys - held))
+        if node is producer:
+            for concept in missing:
+                _widen_scan_chain(producer, concept, environment=environment)
+        elif missing:
+            _carry_join_keys([parent], missing, environment)
+    return all(
+        keys <= {c.address for c in node.output_concepts} for node in (producer, parent)
+    )
 
 
 def _carry_join_keys(
@@ -5576,20 +5663,19 @@ def _final_dedup_targets(
         is not True
     ):
         return None
-    mandatory_addrs = set(final_contract.output_addresses)
-    targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
-    # Pseudonym fallback: a struct field surfaces under its origin address
-    # (`s.a`, carrying the attr-access lineage) while the requested output is the
-    # canonical key (`local.a`) that no output names directly. Keep the node's
-    # covering output so the projection renders; the CTE layer maps the two by
-    # pseudonym for the user-facing alias.
-    if not targets:
-        targets = [
-            o
-            for o in node.output_concepts
-            if any(output_covers(o, m) for m in contract_outputs)
-        ]
-    return targets
+    held = {o.address for o in node.output_concepts}
+    # A requested output no column names directly surfaces under a pseudonym:
+    # a struct field under its origin address (`s.a` for `local.a`), a merged
+    # derivation under its own (`merged_lat` for `latitude`), beside `tree_id`
+    # matched by name. Keep the covering output so the projection renders; the
+    # CTE layer maps the two by pseudonym for the user-facing alias.
+    by_pseudonym = [m for m in contract_outputs if m.address not in held]
+    return [
+        o
+        for o in node.output_concepts
+        if o.address in final_contract.output_addresses
+        or any(output_covers(o, m) for m in by_pseudonym)
+    ]
 
 
 def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:

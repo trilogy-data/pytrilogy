@@ -19,6 +19,7 @@ from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
+    get_concept_row_arguments,
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -720,7 +721,19 @@ def _held_columns(
             | _boundary_columns(group, environment)
             | frozenset(a for a in extra if _is_handle(a, environment))
         )
-    return held | extra
+    return (held | extra) - _peel_atom_columns(group)
+
+
+def _peel_atom_columns(group: GroupAttrs) -> frozenset[str]:
+    """A dimension peel groups to its keys, so a column only its WHERE atom
+    reads is filtered on below the grouping and is no column of its rows."""
+    if group.derivation != Derivation.ROOT or not group.dim_keys:
+        return frozenset()
+    return frozenset(
+        c.address
+        for atom in group.condition_atoms
+        for c in get_concept_row_arguments(atom)
+    ) - frozenset(group.output_concepts)
 
 
 def _is_handle(address: str, environment: BuildEnvironment) -> bool:
