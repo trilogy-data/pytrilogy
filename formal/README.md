@@ -2099,6 +2099,31 @@ a design decision or a bug.
     and 2 invalid, the branch none; nothing broken; summary reads +755, scans
     -542, JOINs -2,008. The first family: nothing wrong on either side; summary
     reads +425, scans -401, JOINs -3,319.
+- **The 210k-270k sweep** (0.3.507). Seeds 210,000-270,000 of both oracle
+  families; on main the spellings hold 3 wrong answers and 1 invalid
+  statement there, the first family none:
+  - A `?` filter's re-sum of the summary beside a row scan the WHERE filtered
+    joined each partial once per kept tree (spellings 262499, 267243;
+    `Rollup.filtered_passenger_multiplies`, `Rollup.key_filter_is_semijoin`).
+    A filtered finer root scan is dropped as a passenger when another root
+    applies the same atoms.
+  - A value peeled onto the summary at a key the WHERE's atom is a function of
+    was joined back outer unfiltered and kept every key (spellings 237480;
+    `SelectGrain.unfiltered_peel_keeps_rejected`). An aggregate peel the row
+    stream's keys determine now carries the atom; a peel of plain columns does
+    not (TPC-H q03's SQL grew 30% when it did).
+  - Two merged plans each joined one CTE from their own side, referencing it
+    twice (spellings 243699, invalid on the base model;
+    `SelectGrain.rejoined_cte_is_one_conjunction`). `coalesce_duplicate_joins`
+    folds an INNER re-join onto the join that brings in its later side.
+  - Efficiency: `sum(height) by city where city = 'A'` beside the select's
+    `(city, species)` rows re-sums the summary when every WHERE column is a
+    function of the aggregate's keys
+    (`Rollup.group_filter_commutes_with_resum`).
+  - Spellings 0-270,000 x 2 models (540,000 queries): main 3 wrong and 1
+    invalid, the branch none; nothing broken; summary reads +302, scans -228,
+    JOINs +1,540. The first family: nothing wrong on either side; summary
+    reads +317, scans -375, JOINs +699.
 
 ## Limits
 

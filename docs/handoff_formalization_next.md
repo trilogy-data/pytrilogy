@@ -1121,7 +1121,17 @@ does not rewrite it; that rewrite is open.
       filter columns, so it read every species. That wide form is the lead:
       it needs the coarse bucket to scan the summary at its own grain with the
       WHERE applied, then group.
-    - SUMMARY_PLACEHOLDER
+    - The A/B over 0-270,000 of both families x 2 models (1,080,000 queries).
+      Spellings: main 3 wrong and 1 invalid, the branch none; nothing broken;
+      summary reads +302, scans -228, JOINs +1,540 (1,421 queries gained a
+      JOIN, 131 lost one). First family: nothing wrong on either side; summary
+      reads +317, scans -375, JOINs +699. The JOINs are the aggregate peel
+      above and the summary's join-back. Three queries scan once more (2492,
+      242543 spellings; 22464 first, all summary): the HAVING's
+      `count(tree_id) by species` now reads the summary, but the select's
+      `max(height) by city` and its row keys each scan the trees where main
+      shared one scan. The lead is to let a coarse aggregate that still scans
+      join the row stream's scan instead of opening its own.
 
 ## Candidate areas
 
