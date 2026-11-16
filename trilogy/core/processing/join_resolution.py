@@ -1342,18 +1342,38 @@ def preserved_sources(
 ) -> set[str]:
     """Identifiers of the sources whose every row survives the join tree.
     Joins are left-deep: a join that does not preserve its left side drops
-    rows of everything joined so far, and an UNNEST can drop rows too."""
+    rows of everything joined so far, and an UNNEST can drop rows too. A
+    right the join does not preserve keeps every row all the same when each
+    has a partner (`_partners_every_right_row`)."""
     right_ids = joined_right_ids(joins)
     alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
     for join in joins:
         if not isinstance(join, Join):
             alive = set()
             continue
+        right_kept = join.join_type in PADS_LEFT_JOIN_TYPES or (
+            _partners_every_right_row(join, alive)
+        )
         if join.join_type not in PADS_RIGHT_JOIN_TYPES:
             alive = set()
-        if join.join_type in PADS_LEFT_JOIN_TYPES:
+        if right_kept:
             alive.add(join.right.identifier)
     return alive
+
+
+def _partners_every_right_row(join: Join, alive: set[str]) -> bool:
+    """A join on one key from a left whose every row survives and which holds
+    the key's whole domain: every right row with a key has a partner, so only
+    a NULL key on the right drops one (`trees LEFT JOIN ~species`)."""
+    pairs = join.pairs or []
+    if len(pairs) != 1:
+        return False
+    pair = pairs[0]
+    return (
+        pair.node.identifier in alive
+        and complete_key_domain(pair.node, pair.left.address)
+        and all(c.address != pair.right.address for c in join.right.nullable_concepts)
+    )
 
 
 def merge_partial_addresses(
