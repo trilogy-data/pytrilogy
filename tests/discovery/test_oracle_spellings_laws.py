@@ -379,6 +379,10 @@ FOUND_SEEDS_506 = [11684, 172552, 177430, 185026]
 # gate (237480); a CTE joined twice from two merged plans (243699); a filtered
 # row scan joined under a re-sum of the summary (262499, 267243)
 FOUND_SEEDS_508 = [237480, 243699, 262499, 267243]
+# seeds 0.3.509 fixed: a lookup beside split WHERE keys skipped FINAL's
+# re-apply (304584); a column a side merely exposed read as joining two
+# islands, skipping the bridge (273853, 310634)
+FOUND_SEEDS_509 = [273853, 304584, 310634]
 
 
 def _seed(seed: int):
@@ -409,6 +413,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_504,
             *FOUND_SEEDS_506,
             *FOUND_SEEDS_508,
+            *FOUND_SEEDS_509,
             *OPEN,
             8920,
         )
