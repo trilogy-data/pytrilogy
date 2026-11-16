@@ -1386,6 +1386,15 @@ class Join(Generic[NodeT]):
                 for p in self.pairs
             )
             return f"{self.join_type.value} join {'&'.join(partners)} on {','.join(pair_keys)}{guard}"
+        if (
+            self.join_type == JoinType.INNER
+            and not self.pairs
+            and not self.concepts
+            and self.left is not None
+        ):
+            # a keyless INNER is a cross product, whichever side it starts from
+            partners = sorted({_node_name(self.left), self.right_name})
+            return f"{self.join_type.value} join {'&'.join(partners)} on {guard}"
         if not self.pairs:
             return str(self) + guard
         pair_keys = sorted(

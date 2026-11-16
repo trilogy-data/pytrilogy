@@ -836,6 +836,7 @@ def _pair(
     reach: dict[str, frozenset[str]],
     scalars: frozenset[str],
     environment: BuildEnvironment,
+    merge_keys: frozenset[str] = frozenset(),
 ) -> Pairing:
     # scoped: an unscoped lookup caches on the statement's class baseline
     # one row pairs with every row: no key, whatever the sides share
@@ -856,9 +857,12 @@ def _pair(
         for a in side
         if roots.get(a, a) in other
     )
-    axes = frozenset().union(
-        *(_axis_of(a, roots, environment) for a in identity[left] | identity[right])
+    # two row streams identified by nothing pair on the keys the merge is
+    # (a scan and its WHERE-filtered copy, both holding `species`)
+    named = identity[left] | identity[right] or (
+        merge_keys if not (identity[left] or identity[right]) else frozenset()
     )
+    axes = frozenset().union(*(_axis_of(a, roots, environment) for a in named))
     keys = {a for a in shared if _axis_of(a, roots, environment) & axes}
     # a relation both sides carry a member of is an axis by declaration;
     # authored when the sides hold different members of it
@@ -1005,7 +1009,14 @@ def plan_final_join(
         for left, right in combinations(contributors, 2)
         if (
             pairing := _pair(
-                left, right, identity, carries, reach, scalars, environment
+                left,
+                right,
+                identity,
+                carries,
+                reach,
+                scalars,
+                environment,
+                frozenset().union(*(identity[g] for g in supplying)),
             )
         ).keys
         or pairing.implied

@@ -353,12 +353,18 @@ class JoinHoist(OptimizationRule):
                 return False
 
             add_datasource_sorted(parent_cte, dim_qds)
+            # a column the dim hides is no column of its rendered rows
+            visible = [
+                c
+                for c in dim_cte.output_columns
+                if c.address not in dim_cte.hidden_concepts
+            ]
             existing_input_addrs = {c.address for c in parent_cte.source.input_concepts}
-            for c in dim_cte.output_columns:
+            for c in visible:
                 if c.address not in existing_input_addrs:
                     parent_cte.source.input_concepts.append(c)
                     existing_input_addrs.add(c.address)
-            for c in dim_cte.output_columns:
+            for c in visible:
                 parent_cte.source.source_map.setdefault(c.address, set()).add(dim_qds)
             new_pairs = [
                 ConceptPair(
@@ -386,7 +392,7 @@ class JoinHoist(OptimizationRule):
             else:
                 parent_cte.add_dependency(dim_cte)
                 dim_source_key = parent_cte.source_key_for(dim_cte)
-            for c in dim_cte.output_columns:
+            for c in visible:
                 parent_cte.source_map.setdefault(c.address, [])
                 if dim_source_key not in parent_cte.source_map[c.address]:
                     parent_cte.source_map[c.address].append(dim_source_key)

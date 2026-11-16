@@ -730,8 +730,10 @@ def coarser_than_rows(
     concept: BuildConcept, target: set[str], environment: BuildEnvironment
 ) -> bool:
     """An aggregate grouped by a strict subset of the select's row keys, or by
-    properties keyed on the rows' own keys (`by tree_form` beside `species`),
-    that does not determine the rows. A grain further off the rows' keys (`by
+    properties keyed on exactly the rows' own keys (`by tree_form` beside
+    `species`), that does not determine the rows. Beside `city, species` the
+    property pairs the rows on `species` alone, and a sibling grouped by it
+    leaves the summary's pairs keyless. A grain further off the rows' keys (`by
     tree_form` beside `tree_id`, `species` included) has no row to join back
     on, and one mixing a row key in (`by city, tree_form` beside `city,
     species`) pairs the rows on the property alone where no other side holds
@@ -760,7 +762,7 @@ def _property_of(address: str, keys: set[str], environment: BuildEnvironment) ->
         and concept.purpose == Purpose.PROPERTY
         and concept.derivation == Derivation.ROOT
         and bool(concept.keys)
-        and set(concept.keys or ()) <= keys
+        and set(concept.keys or ()) == keys
     )
 
 

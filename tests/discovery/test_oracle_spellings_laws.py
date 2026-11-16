@@ -384,8 +384,10 @@ FOUND_SEEDS_508 = [237480, 243699, 262499, 267243]
 # islands, skipping the bridge (273853, 310634)
 FOUND_SEEDS_509 = [273853, 304584, 310634]
 # 0.3.510: two HAVING groups beside tree rows joined on a column they share
-# that identifies neither (356401)
-FOUND_SEEDS_510 = [356401]
+# that identifies neither (356401); a WHERE-filtered row root never paired
+# with the unfiltered one (62069); a keyless INNER join kept in both
+# orientations (96191); a hoisted join mapping a column its CTE hides (153508)
+FOUND_SEEDS_510 = [356401, 62069, 96191, 153508]
 
 
 def _seed(seed: int):
