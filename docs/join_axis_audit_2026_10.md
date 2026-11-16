@@ -3456,6 +3456,19 @@ family's facts hang off its own customer key.
 `test_axis_preserves_only_its_own_joins` checks the rows under the default
 walk and each reversed order. It fails on `main` under the reversed keys.
 
+**A FULL folds into its mirror (part 90).** Part 77 folds an outer join into
+its mirror when both NULL-extend the same CTEs. It keyed a FULL's padded
+sides as `left + right`, though, so `ss FULL JOIN sr` and `sr FULL JOIN ss`
+never matched. Both QueryDatasource identities used the same order-bound
+list (`_null_extended_sides`, `_null_extended_names`). The two arms of
+`test_union_arms_having_on_union_join_key` each build the merge of `a` and
+`b`. Under the stated order the second arm walks it the other way round, the
+copies land in one CTE, and it rendered `"abundant" FULL JOIN "cheerful"
+FULL JOIN "abundant"`, which DuckDB rejects. Two `test_multiway_matrix`
+cases did the same. A FULL pads both sides, so its padded set is now
+order-free in both helpers. `test_a_full_join_merges_into_its_mirror` pins
+it, and fails on `main`.
+
 MEASUREMENTS_PLACEHOLDER
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
@@ -3520,8 +3533,10 @@ not built yet:
    merge. So the plan can state those ties without moving rows. It now
    does (part 88). A star states its hub first. A group-graph plan states
    its suppliers first, then row streams before the lookups they pair with,
-   then finer rows first. Stating the order found one more row bug: an
-   authored axis's FULL widened a lookup hanging off one family (part 89).
+   then finer rows first. Stating the order found two more order bugs: an
+   authored axis's FULL widened a lookup hanging off one family (part 89),
+   and a FULL written from the other side did not fold into its mirror
+   (part 90).
    What is left of the walk's rank is the resolve facts above the tie: the
    solid and region terms, the scorer's anchor, partial and hosting terms,
    and grain size. Plans that state no order (a ROOT's source plan, the

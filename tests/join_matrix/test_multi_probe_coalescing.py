@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -148,6 +149,26 @@ def test_store_and_web_or_catalog_with_property_and_aggregate(
         ),
     )
     # customers 1 and 2 both in region 'E'
+    assert rows == [("E", 2)]
+
+
+@FORMS
+@pytest.mark.parametrize("walk", WALKS)
+def test_or_of_members_survives_any_walk(
+    tmp_path: Path, form: str, walk: str, monkeypatch: pytest.MonkeyPatch
+):
+    # Walked from catalog, store's join reads the key off web or catalog,
+    # whichever the earlier FULL kept: one coalesced key, never both.
+    flip_walk_spelling(monkeypatch, walk)
+    rows = _run(
+        tmp_path,
+        _relate(
+            form,
+            ["s.sk", "w.wk", "c.ck"],
+            "region, count(cust_id) as customers",
+            "s.sk is not null and (w.wk is not null or c.ck is not null)",
+        ),
+    )
     assert rows == [("E", 2)]
 
 

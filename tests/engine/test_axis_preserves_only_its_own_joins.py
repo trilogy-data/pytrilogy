@@ -1,8 +1,8 @@
 """A FULL on a merged customer axis licenses preserving a later join's right
-only when that join is keyed on the axis too. A sale's date hangs off one
-channel's rows: a date no web sale fell on is no customer's row, so its
-padding must not reach the per-customer totals, whichever join is walked
-first."""
+when that right is the axis's content, never a lookup keyed off the axis. A
+sale's date hangs off one channel's rows: a date no web sale fell on is no
+customer's row, so its padding must not reach the per-customer totals,
+whichever join is walked first."""
 
 import pytest
 

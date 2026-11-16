@@ -1449,7 +1449,7 @@ def _whole_coalesce_groups(
     kept_ids = {id(pair) for pair in kept}
     restore = {
         id(pair)
-        for group in coalesced_key_groups(pairs)
+        for group in coalesced_key_groups(pairs, _pair_source)
         if any(id(p) in kept_ids for p in group)
         for pair in group
     }

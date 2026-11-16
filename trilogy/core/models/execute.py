@@ -513,9 +513,12 @@ class CTE:
             if not isinstance(join, Join) or join.join_type is not JoinType.INNER:
                 continue
             for group in coalesced_key_groups(
-                pair
-                for pair in join.pairs or []
-                if _spells(pair.left, spellings) and _spells(pair.right, spellings)
+                (
+                    pair
+                    for pair in join.pairs or []
+                    if _spells(pair.left, spellings) and _spells(pair.right, spellings)
+                ),
+                _pair_side,
             ):
                 out.add(join.right.name)
                 names = {pair.node.name for pair in group}
@@ -1175,13 +1178,30 @@ def pair_matches_nulls(
 PairT = TypeVar("PairT", bound=ConceptPair)
 
 
-def coalesced_key_groups(pairs: Iterable[PairT]) -> list[list[PairT]]:
+def _pair_side(pair: ConceptPair) -> str:
+    return _node_name(pair.node)
+
+
+def coalesced_key_groups(
+    pairs: Iterable[PairT], side: Callable[[PairT], str]
+) -> list[list[PairT]]:
     """Pairs by the key they equate: several left sides of one key render
-    `coalesce(a.k, b.k) = c.k`, any one of which may be the padded NULL."""
-    groups: dict[tuple[str, str], list[PairT]] = {}
+    `coalesce(a.k, b.k) = c.k`, any one of which may be the padded NULL. The
+    sides may spell it differently (`c.ck`, `w.wk` beside `s.sk`, members of
+    one `union` relation); two columns of ONE side are two keys."""
+    by_right: dict[str, list[PairT]] = {}
     for pair in pairs:
-        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
-    return list(groups.values())
+        by_right.setdefault(pair.right.address, []).append(pair)
+    groups: list[list[PairT]] = []
+    for group in by_right.values():
+        if len({side(pair) for pair in group}) > 1:
+            groups.append(group)
+            continue
+        by_left: dict[str, list[PairT]] = {}
+        for pair in group:
+            by_left.setdefault(pair.left.address, []).append(pair)
+        groups.extend(by_left.values())
+    return groups
 
 
 def preserved_key_pairs(
@@ -1190,7 +1210,7 @@ def preserved_key_pairs(
     """Each coalesced key read off one side no earlier join pads, which equals
     the key on every row; with every side padded the coalesce IS the key."""
     out: list[PairT] = []
-    for group in coalesced_key_groups(pairs):
+    for group in coalesced_key_groups(pairs, source):
         preserved = [pair for pair in group if source(pair) not in padded]
         if len(group) == 1 or not preserved:
             out.extend(group)
