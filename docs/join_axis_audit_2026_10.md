@@ -3514,6 +3514,12 @@ FULL -95, RIGHT -104, LEFT +86, INNER +51, null-safe pairs +24 and
 - Every moved test passes on both trees, and the oracle laws among them
   compare rows against raw SQL.
 
+The suite run with the stated order reversed (`WALK_FLIP=key,side`) fails
+20 tests beside the 25 credential-gated ones, and none on rows. 11 are the
+walk's own unit tests, which pin the order. The other 9 pin shape: a join
+or table count, a rendered join, or that an optimizer rule fired (each
+`test_rule_soundness_laws` case checks its rows first, and they hold).
+
 The shape pins the stated order moved now read either orientation of the
 same join (`test_adhoc07`, gcat's `test_join` and `test_join_discovery`, the
 landmark merge, the raw-column fold, the BigQuery merged key, the MySQL
