@@ -83,7 +83,9 @@ an aggregate coarser than the rows off the summary; lesson 47; 0.3.508 sweeps
 both families to 270,000, fixes the four answers main gets wrong or cannot
 run there, and reads the coarse aggregate under a WHERE of its own keys;
 lesson 48; 0.3.509 sweeps both families to 330,000 and fixes the three
-answers main gets wrong or raises on there; lesson 49).
+answers main gets wrong or raises on there; lesson 49; 0.3.510 sweeps both
+families to 390,000, fixes the one answer main gets wrong there, and reads an
+aggregate by a property of the row keys off the summary; lesson 50).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
 does not rewrite it; that rewrite is open.
@@ -1176,6 +1178,52 @@ does not rewrite it; that rewrite is open.
       family: nothing wrong on either side; summary reads and scans
       unchanged, JOINs -15,703 (11,108 queries lost a JOIN, 19 gained one),
       CTEs -1,505. Both families' JOINs are the dropped second WHERE above.
+
+50. **Lessons from the 330k-390k round (0.3.510).**
+    - Main's only lead in the new range was spellings 356401, wrong on both
+      models: every tree came back twice. Reduce by dropping select items, then
+      HAVING atoms, then rewriting the WHERE; `not (x = 0)` failed where
+      `x != 0` passed, since only the former holds on NULL. The reduced shape
+      is a `by species` and a `by city, tree_form` HAVING group beside tree
+      rows. It was already wrong at 0.3.508.
+    - Read the join plan before the joins. Patching `plan_final_join` to print
+      each contributor's identity and carries, and each pairing's keys and
+      kind, showed it at once: the two HAVING groups were paired with each
+      other on `tree_form` as a BLEND, and the bridging row scan, joined as
+      built, carried no `species`, so the species group met each tree once
+      per species of its form (`SelectGrain.blend_beside_finer_rows_fans_out`).
+      `_underkeyed_blends` counted only a pairing short of what one side's
+      identity determines of the other's; it now also counts a blend between
+      two groups a third supplier's identity determines (`_pinned_finer`), and
+      `elect_bridges` then elects the row stream that pairs each on its own
+      keys (`unique_side_one_partner`).
+    - Mine the cached records for efficiency leads, not only for wrong rows.
+      Of main's summary-model queries over 330,000-390,000 that hold only
+      summable aggregates and summary columns, 4,404 of 13,384 scanned the
+      trees. The most common simple miss was an aggregate by a property of the
+      row key: `select species, min(height) by tree_form` scanned the trees
+      while `select tree_form, min(height) by tree_form` read the summary.
+      `coarser_than_rows` took only a strict subset of the row keys; it now
+      also takes a grain of properties keyed on the rows' own keys (those no
+      other row key determines: `by tree_form` beside `tree_id, species` has
+      no row to join back on and raised a keyless join on the first try).
+    - A mixed grain is not a lookup. `by city, tree_form` beside `city,
+      species` is FD-coarser too, but in a staged WHERE beside a `by species`
+      aggregate nothing else held the `(city, species)` pairs, and the plan
+      rebuilt them from the `(city, tree_form)` groups and the species of each
+      form: `(B, Quercus)` came back (spellings 344135 on the first A/B slice;
+      `Rollup.mixed_grain_pairs_on_property`). Only pure-property grains take
+      the new path. A 30,000-seed slice caught it; the unit probes had all
+      passed.
+    - The container restarted mid-round with two sweeps running at once, and
+      a background command stops at 2 hours. Run one sweep at a time, and
+      split a full-range side (~1.5 h for 390,000 seeds) into halves.
+    - Leads left: the mixed grain above (it needs the row stream holding the
+      pairs); a nested aggregate whose inner grain the summary answers under
+      an outer property (`select tree_form, max(max(height) by species)`); a
+      bare `select min(height) by tree_form` with no keys selected; `select
+      species, min(height) by city`, whose rows are the summary's own pairs.
+    - SWEEP_RESULTS
 
 ## Candidate areas
 

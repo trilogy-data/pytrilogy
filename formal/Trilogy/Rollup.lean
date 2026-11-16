@@ -1207,3 +1207,44 @@ theorem group_filter_commutes_with_resum {α κ : Type} [DecidableEq κ] (g : α
   by_cases h : g r = k <;> simp [h, hk]
 
 end Trilogy.Rollup
+
+namespace Trilogy.Rollup
+
+/-! ## An aggregate by a property of the row key re-sums the summary
+
+`select species, sum(x) by form`: `form` is a property of `species`, so every
+summary row `(city, species, h)` falls in one form group, and re-summing the
+partials by `form` is the sum over the trees (`property_resum_exact`); joined
+back to each species on its form, it reads no tree. A grain mixing a row key
+in (`by city, form` beside `city, species`) is no such lookup: with no other
+side holding the `(city, species)` pairs, the rows are the `(city, form)`
+groups paired with each species of the form, and `(B, Quercus)` comes back
+though no tree has it (`mixed_grain_pairs_on_property`). -/
+
+/-- Trees `(city, species, h)` and the species' form. -/
+def propTrees : List (Int × Int × Int) := [(0, 0, 3), (0, 0, 4), (0, 1, 5), (1, 0, 7), (1, 2, 2)]
+def propForm : Int → Int
+  | 2 => 1
+  | _ => 0
+
+/-- The summary: one partial sum per `(city, species)`. -/
+def propSummary : List (Int × Int × Int) := [(0, 0, 7), (0, 1, 5), (1, 0, 7), (1, 2, 2)]
+
+def sumByForm (rows : List (Int × Int × Int)) (f : Int) : Int :=
+  ((rows.filter fun r => propForm r.2.1 == f).map (·.2.2)).sum
+
+theorem property_resum_exact :
+    [0, 1].all fun f => sumByForm propSummary f == sumByForm propTrees f := by
+  decide
+
+/-- `(city, form)` groups paired with the species of each form: `(1, 1)`, a
+pair no tree has, is among them. -/
+theorem mixed_grain_pairs_on_property :
+    let groups : List (Int × Int) := [(0, 0), (1, 0), (1, 1)]
+    let species : List Int := [0, 1, 2]
+    let paired := groups.flatMap fun g =>
+      (species.filter fun s => propForm s == g.2).map fun s => (g.1, s)
+    (1, 1) ∈ paired ∧ ¬ propTrees.any fun t => t.1 == 1 && t.2.1 == 1 := by
+  decide
+
+end Trilogy.Rollup

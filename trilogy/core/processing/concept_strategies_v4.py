@@ -760,7 +760,7 @@ def _property_of(address: str, keys: set[str], environment: BuildEnvironment) ->
         and concept.purpose == Purpose.PROPERTY
         and concept.derivation == Derivation.ROOT
         and bool(concept.keys)
-        and set(concept.keys) <= keys
+        and set(concept.keys or ()) <= keys
     )
 
 

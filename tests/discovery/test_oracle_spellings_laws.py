@@ -383,6 +383,9 @@ FOUND_SEEDS_508 = [237480, 243699, 262499, 267243]
 # re-apply (304584); a column a side merely exposed read as joining two
 # islands, skipping the bridge (273853, 310634)
 FOUND_SEEDS_509 = [273853, 304584, 310634]
+# 0.3.510: two HAVING groups beside tree rows joined on a column they share
+# that identifies neither (356401)
+FOUND_SEEDS_510 = [356401]
 
 
 def _seed(seed: int):
@@ -414,6 +417,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_506,
             *FOUND_SEEDS_508,
             *FOUND_SEEDS_509,
+            *FOUND_SEEDS_510,
             *OPEN,
             8920,
         )
