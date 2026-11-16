@@ -63,6 +63,22 @@ def test_a_scan_plan_states_rows_before_their_lookups_finer_first():
     )
 
 
+def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
+    keys = {
+        frozenset({"returns", "sales"}): frozenset({"item", "order"}),
+        frozenset({"sales", "items"}): frozenset({"item"}),
+        frozenset({"returns", "items"}): frozenset({"item"}),
+    }
+    grains = {
+        "items": frozenset({"item"}),
+        "returns": frozenset({"item", "order"}),
+        "sales": frozenset({"item", "order"}),
+    }
+    partials = {"returns": frozenset({"item", "order"})}
+    assert scan_precedence(keys, grains, partials) == ("sales", "items", "returns")
+    assert scan_precedence(keys, grains) == ("returns", "sales", "items")
+
+
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:
     sides = ["ds~a", "ds~b", "ds~c"]
     return JoinFacts(

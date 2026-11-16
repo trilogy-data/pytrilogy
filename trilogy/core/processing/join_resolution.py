@@ -212,14 +212,19 @@ class PlannedPairs:
         """A plan between datasource scans, stating `scan_precedence` over
         each scan's declared grain. A side no datasource names (a derived
         connector, whose rows are its subplan's) states none."""
-        named = frozenset().union(*sides.values())
-        grains = {
-            name: frozenset(datasources[name].grain.components)
+        named = sorted(
+            name for name in frozenset().union(*sides.values()) if name in datasources
+        )
+        grains = {name: frozenset(datasources[name].grain.components) for name in named}
+        partials = {
+            name: frozenset(c.address for c in datasources[name].partial_concepts)
             for name in named
-            if name in datasources
         }
         return cls(
-            sides, keys, grain_paired=grain_paired, order=scan_precedence(keys, grains)
+            sides,
+            keys,
+            grain_paired=grain_paired,
+            order=scan_precedence(keys, grains, partials),
         )
 
     def rank(self, groups: frozenset[str]) -> int:
@@ -275,21 +280,33 @@ class PlannedPairs:
 def scan_precedence(
     keys: Mapping[frozenset[str], frozenset[str]],
     grains: Mapping[str, frozenset[str]],
+    partials: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[str, ...]:
     """The order a merge of scans joins them in when nothing else decides,
     as `JoinPlan.precedence` states it for groups: a scan of rows before the
     lookups its pairings identify (a scan whose grain lies inside the keys
-    it pairs on), finer rows first. A scan of no declared grain is stated
-    with the coarsest."""
-    looked_up = {
-        side
-        for pair, pairs in keys.items()
-        if len(pair) == 2
-        for side in pair
-        if grains.get(side) and grains[side] <= pairs
-    }
+    it pairs on), a scan binding its pairing keys completely before one
+    binding them as a subset (`~`), finer rows first. A scan of no declared
+    grain is stated with the coarsest."""
+    partials = partials or {}
+    looked_up: set[str] = set()
+    paired: dict[str, set[str]] = defaultdict(set)
+    for pair, pairs in keys.items():
+        if len(pair) != 2:
+            continue
+        for side in pair:
+            paired[side] |= pairs
+            if grains.get(side) and grains[side] <= pairs:
+                looked_up.add(side)
     return tuple(
-        sorted(sorted(grains), key=lambda s: (s in looked_up, -len(grains[s])))
+        sorted(
+            sorted(grains),
+            key=lambda s: (
+                s in looked_up,
+                bool(partials.get(s, frozenset()) & paired[s]),
+                -len(grains[s]),
+            ),
+        )
     )
 
 
