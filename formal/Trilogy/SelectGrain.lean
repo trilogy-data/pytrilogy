@@ -1374,3 +1374,34 @@ theorem blend_beside_finer_rows_fans_out :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A filtered copy of the rows pairs with the rows on their keys
+
+`select city, species, tree_form, sum(x) by city, tree_form, count_distinct(t)
+where max(x) by species > 6 and ...`: FINAL held the trees and the
+WHERE-filtered trees, both identified by nothing, and joined them only through
+the `(city, tree_form)` group. Every species of a kept form came back off the
+unfiltered side (`filtered_copy_paired_through_group_keeps_rejected`); paired
+on the keys the merge is identified by, the copy is a semijoin
+(`filtered_copy_paired_on_keys_exact`). -/
+
+/-- Rows `(city, species, form)`. -/
+def copyRows : List (Int × Int × Int) := [(0, 0, 0), (0, 1, 0), (1, 0, 0)]
+
+def copyKept : List (Int × Int × Int) := copyRows.filter fun r => r.2.1 == 0
+
+theorem filtered_copy_paired_on_keys_exact :
+    dedup ((copyRows.filter fun r =>
+      copyKept.any fun k => k.1 == r.1 && k.2.1 == r.2.1).map fun r => (r.1, r.2.1)) =
+      dedup (copyKept.map fun r => (r.1, r.2.1)) := by
+  decide
+
+theorem filtered_copy_paired_through_group_keeps_rejected :
+    (0, 1) ∈ dedup ((copyRows.filter fun r =>
+      copyKept.any fun k => k.1 == r.1 && k.2.2 == r.2.2).map fun r => (r.1, r.2.1)) ∧
+      (0, 1) ∉ dedup (copyKept.map fun r => (r.1, r.2.1)) := by
+  decide
+
+end Trilogy.SelectGrain

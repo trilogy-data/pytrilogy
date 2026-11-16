@@ -84,7 +84,8 @@ both families to 270,000, fixes the four answers main gets wrong or cannot
 run there, and reads the coarse aggregate under a WHERE of its own keys;
 lesson 48; 0.3.509 sweeps both families to 330,000 and fixes the three
 answers main gets wrong or raises on there; lesson 49; 0.3.510 sweeps both
-families to 390,000, fixes the one answer main gets wrong there, and reads an
+families to 390,000, fixes the four answers main gets wrong, raises on or
+renders invalid SQL for there and below, and reads an
 aggregate by a property of the row keys off the summary; lesson 50).
 `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
 non-null classes (`ValueSet.count_column_from_row_count`) but the planner
@@ -1204,9 +1205,11 @@ does not rewrite it; that rewrite is open.
       row key: `select species, min(height) by tree_form` scanned the trees
       while `select tree_form, min(height) by tree_form` read the summary.
       `coarser_than_rows` took only a strict subset of the row keys; it now
-      also takes a grain of properties keyed on the rows' own keys (those no
-      other row key determines: `by tree_form` beside `tree_id, species` has
-      no row to join back on and raised a keyless join on the first try).
+      also takes a grain of properties keyed on exactly the rows' own keys
+      (those no other row key determines). Each narrowing came from a sweep:
+      `by tree_form` beside `tree_id, species` has no row to join back on and
+      raised a keyless join; beside `city, species` with a `by species`
+      sibling (51510, 108947, 126418) the summary's pairs were left keyless.
     - A mixed grain is not a lookup. `by city, tree_form` beside `city,
       species` is FD-coarser too, but in a staged WHERE beside a `by species`
       aggregate nothing else held the `(city, species)` pairs, and the plan
@@ -1215,6 +1218,20 @@ does not rewrite it; that rewrite is open.
       `Rollup.mixed_grain_pairs_on_property`). Only pure-property grains take
       the new path. A 30,000-seed slice caught it; the unit probes had all
       passed.
+    - Re-sweep the old range on the branch, not only the new one. The
+      branch's first full run over 0-195,000 failed on three seeds that are
+      bad on main too and on 0.3.509's own commit, though that round reported
+      0-330,000 clean (its cache predated #1014, lesson 47's trap again):
+      62069 read `(city, species)` off the unfiltered trees, joined to the
+      WHERE-filtered trees only through a `(city, tree_form)` group, because
+      `_pair` gives two identity-less row streams no axis
+      (`filtered_copy_paired_through_group_keeps_rejected`); 96191 kept one
+      keyless INNER join in both orientations after a CTE merge, since a
+      keyless join's `unique_id` named only its right side; 153508 had
+      `JoinHoist` map a column the hoisted CTE had hidden (`hide_unused`
+      ran first). To find the pass, turn each `CONFIG.optimizations` flag off
+      in turn, then log the optimizer at INFO and read the passes touching
+      the CTE the error names.
     - The container restarted mid-round with two sweeps running at once, and
       a background command stops at 2 hours. Run one sweep at a time, and
       split a full-range side (~1.5 h for 390,000 seeds) into halves.
