@@ -258,7 +258,8 @@ def _entity_peels_beside_row_stream(
     environment: BuildEnvironment,
 ) -> list[str]:
     """Entity peels that can host a row atom held only by a row stream FINAL
-    never merges. The stream carries no output, so an atom elected onto it
+    never merges, and aggregate peels the atom is a function of beside one
+    it does. The stream carries no output, so an atom elected onto it
     alone is dropped; a peel re-plans its rows from the datasources and,
     joined through the stream's copy of its key, keeps only the entities with
     a qualifying row."""
@@ -277,13 +278,27 @@ def _entity_peels_beside_row_stream(
         and gid in buckets
         and buckets[gid].anchor_keys
         and any(buckets[gid].anchor_keys <= group_members[s] for s in streams)
-        and (
-            not merged
-            or strict_fd_determines_all(
-                environment, buckets[gid].anchor_keys, row_inputs
-            )
-        )
+        and (not merged or _aggregate_peel_of(gid, buckets, row_inputs, environment))
     ]
+
+
+def _aggregate_peel_of(
+    gid: str,
+    buckets: dict[str, GroupBucket],
+    row_inputs: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A peel of aggregates holds one row per group of the rows it summarizes,
+    so it hosts its keys as the stream does and is joined preserved: when its
+    keys determine the atom, it applies the atom itself
+    (`SelectGrain.unfiltered_peel_keeps_rejected`). A peel of plain columns is
+    a lookup the stream's rows gate."""
+    bucket = buckets[gid]
+    return any(
+        (c := environment.concepts.get(a)) is not None
+        and c.derivation == Derivation.AGGREGATE
+        for a in bucket.primary_members
+    ) and strict_fd_determines_all(environment, bucket.anchor_keys, row_inputs)
 
 
 def _nested_scope_chain(

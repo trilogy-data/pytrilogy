@@ -1090,8 +1090,12 @@ does not rewrite it; that rewrite is open.
       join inside its `?` filter padded; the join to the peel came out FULL,
       then LEFT, and every species returned (237480;
       `SelectGrain.unfiltered_peel_keeps_rejected`).
-      `_entity_peels_beside_row_stream` now hands the atom to a peel whose
-      keys determine it even when the stream is merged. It costs a JOIN where
+      `_entity_peels_beside_row_stream` now hands the atom to a peel of
+      aggregates whose keys determine it even when the stream is merged. A
+      peel of plain columns is a lookup the stream gates: given the atom too,
+      TPC-H q03's orders peel took `market_segment` through the customer FK,
+      a second filtered scan, and the SQL grew 1,099 to 1,446 characters (the
+      size budget caught it). It costs a JOIN where
       FINAL already joined the peel INNER to a filtered side (the enrichment
       join inside the peel's scan); the alternative, typing the join toward
       the side that applied the WHERE, needs SideFacts to know which sides
