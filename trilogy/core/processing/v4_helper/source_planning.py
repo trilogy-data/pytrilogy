@@ -2563,9 +2563,10 @@ def _bridge_plan(
         for other in names - {name}:
             pair = frozenset({name, other})
             keys[pair] = keys.get(pair, frozenset()) | own
-    return PlannedPairs(
+    return PlannedPairs.over_scans(
         {id(parent): frozenset({sides[id(parent)]}) for parent in parents},
         keys,
+        bridge.graph.datasources,
         grain_paired=frozenset(
             name for name in names if name.startswith(CONNECTOR_NODE_PREFIX)
         ),

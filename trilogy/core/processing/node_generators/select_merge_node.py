@@ -260,7 +260,7 @@ def _graph_join_plan(
         for ds, addresses in linked.items()
     }
     names = sorted(scans)
-    return PlannedPairs(
+    return PlannedPairs.over_scans(
         {id(node): frozenset({ds}) for ds, node in scans.items()},
         {
             frozenset({a, b}): frozenset(
@@ -271,6 +271,7 @@ def _graph_join_plan(
             for i, a in enumerate(names)
             for b in names[i + 1 :]
         },
+        pruned.datasources,
     )
 
 
