@@ -100,7 +100,7 @@ python local_scripts/sql_ab/join_census.py /tmp/census.json "tests/modeling/**/*
 (`join_resolution._stated_order`) decide a walk. It walks every merge of three
 or more sides again once per term, with that term held constant, and counts
 the merges whose join order moves: the terms of the key placement
-(`authored`, and the key's shape: `solid`, `held`, `max_held`, `holders`), the holders' shape places
+(the key's shape: `authored`, `solid`, `held`, `max_held`, `holders`), the holders' shape places
 (`holder_shape`) and the shape terms (`binding_tiers`, `plan_order`, `hosts`).
 Sum the per-worker files' `counts`.
 
@@ -111,11 +111,11 @@ RANK_OUT=/tmp/rank PYTHONPATH=local_scripts/sql_ab python -m pytest -p rank_cens
 ## Walk flip
 
 `walk_flip_plugin.py` asks whether the shape of the join walk's order decides
-rows. It reverses the shape terms (`shape`: each key's solid, held span,
-most-held and holder count, and each side's `~` tiers, plan order and
-hosting) and the side name that breaks their ties (`name`), through
-`tests/helpers/walk_order.py`, and leaves the one row term, `authored`,
-alone. A test that fails only under the flip either pins a shape (read its
+rows. It reverses the shape terms (`shape`: each key's authored, solid,
+held span, most-held and holder count, and each side's `~` tiers, plan
+order and hosting) and the side name that breaks their ties (`name`),
+through `tests/helpers/walk_order.py`. No term is left out: the order has
+no row term. A test that fails only under the flip either pins a shape (read its
 assertion) or has rows that depend on the shape, which is a bug.
 
 ```bash

@@ -4434,6 +4434,62 @@ Gates, against `54571d9`:
   held-constant count.
 - Fuzzer: 522/522.
 
+**A side joins on all that relates it to the tree (part 122).** The
+authored witness of part 111 (`test_property_hop_alignment_matrix`, q25's
+shape) is a 4-cycle:
+
+    a_facts ⋈ a_customers on a_sk
+    b_facts ⋈ b_customers on b_sk
+    a_customers ⋈ b_customers on cust_id   (authored)
+    a_facts ⋈ b_facts on sku
+
+Two facts sharing `sku` are related by `sku` *and* `cust_id`, and neither
+fact holds `cust_id`: each reaches it through its own customers. With the
+authored key held constant, the walk met the facts on `sku` alone. That
+join fans out across every customer with the `sku`. The cycle then closed on
+an outer join to `b_customers`, and an outer join cannot filter what it
+fails to match, so each order got the per-`sku` total.
+
+The `sku` pairing is a *chord* (`JoinFacts.chords`): both sides determine a
+key the plan pairs other sides on, and neither holds it. A side now joins
+on a chord only where a walked side it pairs with in the same join holds the
+missing key (`JoinFacts.whole`); otherwise the walk takes a side that joins
+whole first. Walked from `a_facts`, the walk now takes `a_customers`, then
+`b_customers` on `cust_id`, then `b_facts` on (`sku`, `b_sk`) in one join.
+A pairing on either side's whole grain equates all that side determines, so
+it is no chord. That exclusion keeps TPC-H q05/q07/q08 and TPC-DS q24/q64
+fixed: there `lineitem ⋈ orders` on `order.id` reaches the customer's nation,
+and a first cut reordered their INNER joins.
+
+**A column read off a side a `~` partner narrows is partial (part 123).**
+With the authored key held constant, the third witness
+(`test_member_projected_two_side_rollup[subset join]`) is not about the
+walk. Its data had broken the model. `b_facts` bound `cust: b_cust_sk`
+complete, which claims every b customer has a sale, but C3 has none. Under
+that claim the FINAL join of the two per-customer totals is INNER, and only
+a nullable stamp, an accident of the stated walk, made it LEFT. With the
+binding stated honestly (`cust: ~b_cust_sk`), the stated walk lost C3 too.
+The b total's group, `b_facts ⋈ b_customers` grouped by `cust_id`, was not
+stamped partial on `cust_id`: `merge_partial_addresses` read `cust_id` off
+`b_customers` alone, which binds it complete.
+
+The join keeps `b_customers` only where a `~b_cust_sk` sale has a row, so
+every column read off it alone holds a subset of its values
+(`_narrowed_sources`). A side the tree does not preserve, paired on a key its
+partner binds `~`, is narrowed. The FINAL now reads the b totals as partial
+on `cust_id` and preserves the a side. The test binds `~b_cust_sk` and is
+pinned under every walk.
+
+**Authored is the key's shape (part 124).** With the chord gated and the
+witness's data honest, holding the authored key constant moves no rows in
+the suite. `KeyShape` now starts with it (authored, solid, held span,
+most-held, holders), so `shape_flipped` reverses it with the rest. The
+order is the one `_stated_order` already read, so no plan moves. The walk
+reads no row term of a key: what decides rows is the seed, the stitch, the
+transit and the chord, each a gate the walk waits for in any order.
+
+GATES_PLACEHOLDER
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4540,7 +4596,10 @@ not built yet:
    so it stays a row term beside authored (part 119). All six were a `~`
    side meeting a coarser one before its anchor. The walk now meets them
    only through the anchor (part 120), and the holder count is the key's
-   shape, leaving authored as the one row term (part 121). Ties the plan's
+   shape, leaving authored as the one row term (part 121). A side now joins
+   on all that relates it to the tree (part 122), a column read off a side
+   a `~` partner narrows is partial (part 123), and authored is the key's
+   shape, so the walk's order has no row term (part 124). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
