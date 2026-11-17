@@ -4359,7 +4359,23 @@ edge closes the cycle together with the dimension key instead of pairing
 the facts alone. The holder count has the six open witnesses above.
 Most-held is a stitch the walk waits for, and otherwise shape.
 
-Suite and flip results: pending.
+Gates, against `7c54bf1`:
+
+- Corpus (205 statements): 0 moved.
+- Suite (`-n 4`, without adventureworks/clickhouse/bigquery/cloud_live):
+  the same 25 credential-gated failures as `main`. Suite capture: join
+  counts unchanged outside the known statement-count noise. About a dozen
+  tests outside the noisy oracle laws (the sweep shapes, the padded
+  population gate, where-hosts) move by part 118: an INNER join now keeps
+  a second left's pair on a key and a later pass keeps one of two pairs
+  that are equal by FD, so the ON reads the key off the other left. Every
+  one passes its row assertions.
+- Whole suite under `WALK_FLIP=shape,name`, which now reverses the
+  key's shape too: the same failures as `main`'s flip (101), plus one
+  walk unit test that pins the order it states. Before part 118 it also
+  failed the expressions oracle; with the holder count reversed as well,
+  it also fails the six witnesses of part 119.
+- Fuzzer: 522/522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
