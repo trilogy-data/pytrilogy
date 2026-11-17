@@ -76,6 +76,8 @@ class JoinPlan:
     # contributors holding a declared `subset` member whose anchor another
     # contributor holds
     subset_sides: frozenset[str] = frozenset()
+    # BASIC contributors computed off grouped rows alone: a group's rows
+    over_groups: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -619,6 +621,28 @@ def _held(
     )
 
 
+def _over_groups_only(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> bool:
+    """A BASIC computed off grouped rows alone (`count(id) + 1`): it holds what
+    they output, and no row of it reaches a key they determine but lack. A
+    group at its input rows' own grain (`sum(x)` by `tree_id`) is those rows."""
+    if attrs[gid].derivation != Derivation.BASIC:
+        return False
+    parents = _group_parents(group_graph, attrs, gid)
+    return bool(parents) and all(
+        _groups_its_rows(attrs[p]) or _over_groups_only(group_graph, attrs, p)
+        for p in parents
+    )
+
+
+def _groups_its_rows(group: GroupAttrs) -> bool:
+    return group.derivation in GROUPING_DERIVATIONS and not (
+        group.aggregate_input_grain
+        and group.aggregate_input_grain <= group.grain_components
+    )
+
+
 def _widenable(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -890,7 +914,8 @@ def _pair(
         # two scans paired on the merge's keys hold the same rows there
         kind = PairingKind.LOOKUP
     elif any(
-        identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
+        (named_by := pairing_keys(identity[gid]))
+        and build_fd_determines_all(environment, keys, named_by)
         for gid in (left, right)
     ):
         kind = PairingKind.LOOKUP
@@ -981,7 +1006,7 @@ def plan_final_join(
         # an extra side is joined as built, never widened to a sibling's key
         siblings = (
             frozenset().union(*(identity[o] for o in contributors if o != gid))
-            if gid in supplying
+            if gid in supplying and not _over_groups_only(group_graph, attrs, gid)
             else frozenset()
         )
         held = _held(
@@ -1046,6 +1071,9 @@ def plan_final_join(
         frozenset(environment.domain_graph.coalescing_relation_members()),
         frozenset(supplying),
         subset_sides=subset_sides(carries, environment),
+        over_groups=frozenset(
+            gid for gid in supplying if _over_groups_only(group_graph, attrs, gid)
+        ),
     ).with_split(split)
 
 
@@ -1087,6 +1115,7 @@ def elect_bridges(
     authored: frozenset[str] = frozenset(),
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
+    reader_grain: frozenset[str] = frozenset(),
 ) -> JoinPlan:
     """The plan over `cover` with the groups outside it that join its islands
     as extras, in the order they join: each, planned beside the cover as a
@@ -1109,7 +1138,7 @@ def elect_bridges(
     current = plan(extras=bridges)
     while True:
         islands = len(current.islands())
-        blends = _underkeyed_blends(current, attrs, environment)
+        blends = _underkeyed_blends(current, attrs, environment, reader_grain)
         if islands <= 1 and not blends:
             return current
         # a bridge every pairing of which is keyed: shared columns that
@@ -1123,7 +1152,7 @@ def elect_bridges(
                 and gid not in bridges
                 and (
                     len((trial := plan(extras=[*bridges, gid])).islands()),
-                    _underkeyed_blends(trial, attrs, environment),
+                    _underkeyed_blends(trial, attrs, environment, reader_grain),
                 )
                 < (islands, blends)
                 and all(
@@ -1145,7 +1174,10 @@ def elect_bridges(
 
 
 def _underkeyed_blends(
-    plan: JoinPlan, attrs: dict[str, GroupAttrs], environment: BuildEnvironment
+    plan: JoinPlan,
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    reader_grain: frozenset[str] = frozenset(),
 ) -> int:
     """Pairings of two grouped suppliers on fewer keys than one's grain
     determines of the other's (`count(id)` by city, species beside `max(x) by
@@ -1158,7 +1190,9 @@ def _underkeyed_blends(
         # a dimension peel's rows are identified by its keys, as a group's
         # are by its grain (a stored `sum(height) by city, species`)
         if not all(
-            attrs[g].derivation in GROUPING_DERIVATIONS or attrs[g].dim_keys
+            attrs[g].derivation in GROUPING_DERIVATIONS
+            or attrs[g].dim_keys
+            or g in plan.over_groups
             for g in (p.left, p.right)
         ):
             continue
@@ -1166,11 +1200,14 @@ def _underkeyed_blends(
         if not any(
             not b <= p.keys and b <= _determined(a, environment)
             for a, b in ((left, right), (right, left))
-        ) and not _pinned_finer(plan, p, environment):
+        ) and not (
+            _pinned_finer(plan, p, environment)
+            or _reader_pinned(plan, p, reader_grain, environment)
+        ):
             continue
         if not any(
-            _bridges_on_identity(plan, extra, p.left)
-            and _bridges_on_identity(plan, extra, p.right)
+            _bridges_on_identity(plan, extra, p.left, environment)
+            and _bridges_on_identity(plan, extra, p.right, environment)
             for extra in plan.extras
         ):
             count += 1
@@ -1191,10 +1228,34 @@ def _pinned_finer(plan: JoinPlan, p: Pairing, environment: BuildEnvironment) -> 
     )
 
 
-def _bridges_on_identity(plan: JoinPlan, bridge: str, side: str) -> bool:
+def _reader_pinned(
+    plan: JoinPlan,
+    p: Pairing,
+    reader_grain: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """The reader's own grain determines both sides of blend `p` (a value at
+    city, species over one by species and one by city, tree_form): each of
+    its rows has one partner on each side, and the shared keys pair every
+    species of a form with every city of it
+    (`SelectGrain.blend_under_a_finer_reader_invents_pairs`)."""
+    both = plan.identity[p.left] | plan.identity[p.right]
+    return (
+        bool(reader_grain)
+        and not both <= p.keys
+        and both <= _determined(reader_grain, environment)
+    )
+
+
+def _bridges_on_identity(
+    plan: JoinPlan, bridge: str, side: str, environment: BuildEnvironment
+) -> bool:
+    """`bridge` pairs with `side` on keys that determine its identity (a value
+    the side is also grained by, `v1` beside `tree_id`, is one of them)."""
     return any(
         {q.left, q.right} == {bridge, side}
         and q.kind != PairingKind.BLEND
-        and plan.identity[side] <= q.keys | q.implied
+        and pairing_keys(plan.identity[side])
+        <= _determined(q.keys | q.implied, environment)
         for q in plan.pairings
     )

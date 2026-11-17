@@ -1840,18 +1840,23 @@ class BaseDialect:
                 c = _own_aggregate_definition(cte, c)
                 assert isinstance(c.lineage, BuildAggregateWrapper)
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
+                # collapsed, the argument stands bare in its reader's expression
+                bare = [
+                    f"({arg})" if _needs_arithmetic_parentheses(v) else arg
+                    for arg, v in zip(args, c.lineage.function.arguments)
+                ]
                 operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:
                     if _aggregate_over_collapsed_filter(
                         cte, c.lineage
                     ) or _aggregates_a_constant(c.lineage.function):
-                        rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])
+                        rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](bare, [])
                     else:
                         rval = self.FUNCTION_MAP[operator](args, [])
                 elif _aggregate_collapse_safe(cte, c.lineage):
                     # at (or beyond) the aggregate's grain: agg(x) == x (the
                     # single-row collapse formula per operator).
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])}"
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[operator](bare, [])}"
                 else:
                     # A global (`by *`) aggregate in a keyed, non-grouping CTE:
                     # the collapse would silently turn it into each row's own

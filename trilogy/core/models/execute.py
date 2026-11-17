@@ -131,6 +131,23 @@ def _spells(side: BuildConcept, spellings: set[str]) -> bool:
     return bool(({side.address} | set(side.pseudonyms)) & spellings)
 
 
+def _computed_over(
+    concept: BuildConcept, targets: set[str], materialized: set[str]
+) -> bool:
+    """`concept` is computed, through values no source column holds, off one
+    of `targets`."""
+    if not targets or concept.lineage is None:
+        return False
+    return any(
+        arg.address in targets
+        or (
+            arg.address not in materialized
+            and _computed_over(arg, targets, materialized)
+        )
+        for arg in concept.concept_arguments
+    )
+
+
 @dataclass
 class CTE:
     name: str
@@ -714,6 +731,14 @@ class CTE:
             if self.group_to_grain
             else set()
         )
+        # so is an atom reading a value computed here off one
+        # (`count(id) by city / count(id)` over a re-summed count)
+        aggregated |= {
+            c.address
+            for c in self.output_columns
+            if c.address not in materialized
+            and _computed_over(c, aggregated, materialized)
+        }
         where: BoolExpr | None = None
         having: BoolExpr | None = None
         qualify: BoolExpr | None = None

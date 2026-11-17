@@ -13,10 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.510.** Areas 0-12 below each have a module and a law suite. Both
-oracle families (`first`, `spellings`) are clean on seeds 0-390,000 x 2 models:
-nothing wrong, raising or invalid. `OPEN` in
-`tests/discovery/test_oracle_spellings_laws.py` is empty.
+**State at 0.3.511.** Areas 0-12 below each have a module and a law suite. The
+`first` and `spellings` oracle families were swept to seed 450,000 and the
+`expressions` family, new this round, to 30,000; the PR of each round holds
+its sweep totals. What they still get wrong is `OPEN` in
+`tests/discovery/test_oracle_spellings_laws.py` (404253) and
+`test_oracle_expressions_laws.py` (six seeds), under area 1 below.
 
 The `Oracle sweep` workflow re-sweeps that whole range on main every night
 (`.github/workflows/oracle_sweep.yml`), since the law suites replay only the
@@ -130,8 +132,9 @@ seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
   claims the planner reads back. Persist every expression in a sweep, read the
   table raw, and diff every read before and after the `persist`.
 - Compare a declared type with the engine's `typeof`, not only the value.
-- Sweep a family, not only random seeds; a second generator finds more than
-  more seeds of the first. Generate the spellings a user writes.
+- Sweep a family, not only random seeds; a new generator finds more than
+  more seeds of the last (the third failed on 1.6% of its seeds where the
+  older two were down to 4 in 60,000). Generate the spellings a user writes.
 - Run every suite on every engine CI has (DuckDB, SQLite, chdb), and render
   every dialect: the ones with no engine in CI break in the rendering.
 - A sweep with no wrong rows still has a round in it: group raises by message
@@ -210,6 +213,9 @@ seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
 - Turning an error into rows is not progress until the rows are checked. A
   fix that unblocks a shape owes its rows; diff the wrong-answer set against
   main, not the count.
+- A/B a new family against main before calling a fix done: `broken` lists
+  what the fix took from main (five of this round's changes each broke seeds
+  no committed case covered).
 - Rerun the whole family and the committed seeds after every planner change,
   narrowing included, and the broad suite after the last one. Re-sweep the
   old range on the branch too: twice a round reported a range clean from
@@ -252,6 +258,12 @@ seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
   rolled root only with what the plan downstream will filter.
 - A mixed grain (`by city, tree_form` beside `city, species`) is not a
   lookup; only pure-property grains take the property-rollup path.
+- The all-rows marker in an identity is no key: read
+  `pairing_keys(identity)` wherever an identity is compared with keys.
+- A plan may say a side can be widened to a key only when a row of it reaches
+  that key: a BASIC over grouped rows alone holds what they output.
+- A value over a partial is computed after the partial is re-summed, and a
+  filter finer than a re-sum is applied below it.
 - `existence_arguments` of a literal `in (...)` is `[()]`, truthy: test with
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
 - Efficiency: "summary reads lost" is a cost only where the base scans grew.
@@ -295,8 +307,30 @@ this edit no longer reproduced, so probe any lead before working on it.
 
 ### 1. Answering from intermediate aggregates (`Rollup.lean`, `ValueSet.lean`, the sweeps)
 
-Correctness is clean to 390,000. What is left is reads the summary could
-serve:
+Open in the `expressions` family (each fails on main too):
+
+- A value over a stored count beside a `by *` total, off the summary
+  (2171, 4244, wrong rows): `count(tree_id) * min(height) by city` at `(city,
+  species, tree_form)` is bucketed at `city`, because the count is a root
+  column of a scan at tree grain and gives the BASIC no grain.
+- A gate and a row atom under a derived key (3102, 4180, 5715, 5780: `Missing
+  source reference`).
+- An aggregate group's merge takes no keying bridge (it would count the
+  repeats), so a blend among an aggregate's own inputs is still unbridged.
+- `select species, count_distinct(tag) + 1, sum(height) by tree_form` off the
+  summary raises a keyless join: the stored sum is a peel at `tree_form` and
+  no side holds `species` beside it (`test_sweep_450k_shapes.py`).
+- Spellings 404253: FINAL reads `height` off a side its merge does not join.
+- Not generated yet: `/` by a value that can be 0, a derived key inside a
+  `by`, nested aggregates, windows, `order by` an expression.
+
+Reads the summary could serve:
+
+- `min(count(tree_id) by tree_form) where city = 'B' and species = 'Acer'`
+  (first 446174) now reads the trees: the summary answers it with the WHERE
+  on its scan, below the re-sum.
+- A stored count read beside tree rows joins the summary to the trees and
+  groups back (`count(tree_id) / count(tree_id) by *` beside a mixed grain).
 
 - `count(cls)` beside a stored `count(id) by cls` is the re-sum over the
   non-null classes (`ValueSet.count_column_from_row_count`); the planner does

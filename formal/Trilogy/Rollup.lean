@@ -1248,3 +1248,50 @@ theorem mixed_grain_pairs_on_property :
   decide
 
 end Trilogy.Rollup
+
+namespace Trilogy.Rollup
+
+/-! ## A value over a partial reads it finished
+
+`select form, max(h) by * - max(h)` off the summary: the per-species maxima
+are partials of the form's. `total - partial` computed on the summary's rows is
+one value per species, and a dedup keeps both
+(`value_off_a_partial_is_per_summary_row`); the partial is re-aggregated to
+its own grain before anything reads it. -/
+
+/-- Per-species maxima `(species, form, max)`; the total is 7. -/
+def partialMax : List (Int × Int × Int) := [(0, 0, 7), (1, 0, 5), (2, 1, 2)]
+
+theorem value_off_a_partial_is_per_summary_row :
+    ((partialMax.filter fun r => r.2.1 == 0).map fun r => 7 - r.2.2) = [0, 2] ∧
+      7 - ((partialMax.filter fun r => r.2.1 == 0).map (·.2.2)).foldl max 0 = 0 := by
+  decide
+
+/-! ## A filter finer than a re-sum is applied below it
+
+`select min(count(id) by form) where city = 1 and species = 0` off the
+summary: the stored counts were summed by species, then joined back to the
+summary's `(city, species)` rows to apply `city = 1`. Each kept group still
+counts the trees of the rejected city (`filter_above_resum_keeps_rejected`). -/
+
+/-- The summary `(city, species, n)`. -/
+def storedCounts : List (Int × Int × Int) := [(0, 0, 2), (1, 0, 1), (1, 2, 1)]
+
+def countOf (rows : List (Int × Int × Int)) (s : Int) : Int :=
+  ((rows.filter fun r => r.2.1 == s).map (·.2.2)).sum
+
+theorem filter_above_resum_keeps_rejected :
+    let kept := storedCounts.filter fun r => r.1 == 1
+    countOf kept 0 = 1 ∧
+      (if kept.any fun r => r.2.1 == 0 then countOf storedCounts 0 else 0) = 3 := by
+  decide
+
+/-- **Filtering before the re-sum is the answer over the kept rows**, for any
+filter on the summary's own keys. -/
+theorem filter_below_resum_exact (rows : List (Int × Int × Int))
+    (p : Int × Int × Int → Bool) (s : Int) :
+    countOf (rows.filter p) s =
+      ((rows.filter fun r => p r && r.2.1 == s).map (·.2.2)).sum := by
+  simp [countOf, List.filter_filter, Bool.and_comm]
+
+end Trilogy.Rollup
