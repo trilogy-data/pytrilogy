@@ -812,6 +812,42 @@ theorem sole_gate_paired_short_of_its_grain :
         fun r => (r.1, r.2.2))).length = 3 := by
   decide
 
+/-! ## A finished value is no partial of the rows beside it
+
+`select city, species, form, count(id) by city, form + count(id) by species,
+sum(x)`: FINAL paired the two counts through the per-tree rows and found
+`sum(x)`, already one value per `(city, species)`, at a grain finer than its
+own, so it re-summed it as a stored partial, once per tree (0.3.513). Only
+what a source stores as a partial is re-summed. -/
+
+/-- A `(city, species)` of two trees whose height sum is 3: read once it is
+3, re-summed per tree 6 (`finished_value_resummed_per_row`). -/
+theorem finished_value_resummed_per_row :
+    let perTree : List Int := [3, 3]
+    perTree.head? = some 3 ∧ perTree.foldl (· + ·) 0 = 6 := by
+  decide
+
+/-! ## A gate that holds on NULL is not re-applied over padding
+
+`select city, form, count_distinct(tag) by city + min(x) by * where sum(x)
+by city is null`: the value's side read past the gate's host and held only
+the kept cities; FINAL kept the unfiltered `(city, form)` rows beside it and
+re-applied the gate after the join, where every rejected city's padding read
+NULL and passed (0.3.513). A side past filters the merge re-applies is kept
+whole only when no re-applied atom can hold on its padding. -/
+
+/-- Cities 0 and 1, neither of null sum, so the gate keeps none: joined to
+the kept side the rows are none; re-checked on the padded rows (`none` for
+every city) both pass (`gate_on_padding_passes_rejected`). -/
+theorem gate_on_padding_passes_rejected :
+    let rows : List Int := [0, 1]
+    let sums : List (Int × Option Int) := [(0, some 8), (1, some 9)]
+    let kept := sums.filter (·.2 == none)
+    (rows.filter fun c => kept.any (·.1 == c)).length = 0 ∧
+      (rows.filter fun c => ((kept.find? (·.1 == c)).bind (·.2)) == none).length
+        = 2 := by
+  decide
+
 /-! ## A count past its host reads 0, not NULL
 
 `select city, species, form, max(x ? ...) where min(x) by species - count(id)

@@ -774,9 +774,21 @@ def _unfiltered_copy(
     if not filtered.grain or not filtered.grain <= rows.grain | rows.determined:
         return None
     extra = [a for a in filtered.filters if not any(a == b for b in rows.filters)]
-    if not _passed_all(applied, extra):
+    if not _passed_all(applied, extra) or any(map(_passes_on_padding, extra)):
         return None
     return left_in_right
+
+
+def _passes_on_padding(atom: BoolExpr) -> bool:
+    """Whether `atom` can hold on a row the filtered side pads: re-applied
+    after the join it would pass the rows it rejected
+    (`SelectGrain.gate_on_padding_passes_rejected`)."""
+    # local import: v4_helper's package init imports this module
+    from trilogy.core.processing.v4_helper.condition_placement import (
+        args_holding_on_absent,
+    )
+
+    return bool(args_holding_on_absent(atom))
 
 
 def _fd_closure(

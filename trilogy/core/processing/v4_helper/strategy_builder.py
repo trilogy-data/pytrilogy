@@ -5826,8 +5826,15 @@ def _stored_partials(
     grain finer than their own. One at its own grain is final, a value of its
     keys, which a coarser dedup groups by and never re-sums
     (`SelectGrain.by_keys_split_tuple`)."""
-    rollable = [o for o in targets if o.is_aggregate and _is_rollable_aggregate(o)]
-    return pending_rollups(rollable, node.resolve().grain) if rollable else []
+    resolved = node.resolve()
+    # a finished aggregate joined beside finer rows is no partial of them
+    held = {c.address for c in resolved.rollup_concepts}
+    rollable = [
+        o
+        for o in targets
+        if o.address in held and o.is_aggregate and _is_rollable_aggregate(o)
+    ]
+    return pending_rollups(rollable, resolved.grain) if rollable else []
 
 
 def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:
