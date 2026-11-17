@@ -2165,8 +2165,9 @@ a design decision or a bug.
       nothing, and joined them only through the `(city, tree_form)` group, so
       every species of a kept form came back (62069;
       `SelectGrain.filtered_copy_paired_through_group_keeps_rejected`,
-      `filtered_copy_paired_on_keys_exact`). Two identity-less row streams now
-      pair on the keys the merge's suppliers are identified by.
+      `filtered_copy_paired_on_keys_exact`). Two scans identified by nothing
+      now pair, as a lookup, on the keys the merge's suppliers are identified
+      by.
     - A keyless INNER join was kept in both orientations when two CTEs
       merged, so neither side could be the base (96191). Its `unique_id` is
       now orientation-free, as a keyed INNER's already was

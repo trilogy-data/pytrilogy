@@ -1232,6 +1232,12 @@ does not rewrite it; that rewrite is open.
       ran first). To find the pass, turn each `CONFIG.optimizations` flag off
       in turn, then log the optimizer at INFO and read the passes touching
       the CTE the error names.
+    - A pairing the plan adds must be a kind `elect_bridges` accepts. Pairing
+      the two scans on the merge's keys first came out as a BLEND (neither
+      has an identity), and a bridge with a BLEND pairing is never elected:
+      41 `tree_id` selects then raised a keyless join on the re-sweep. Two
+      ROOT scans paired on the merge's keys are a LOOKUP of each other; other
+      identity-less streams are left unpaired.
     - The container restarted mid-round with two sweeps running at once, and
       a background command stops at 2 hours. Run one sweep at a time, and
       split a full-range side (~1.5 h for 390,000 seeds) into halves.
