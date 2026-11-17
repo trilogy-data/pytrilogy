@@ -1,3 +1,4 @@
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
@@ -55,6 +56,17 @@ def gen_constant(
                 parents=[gate],
                 force_group=True,
             )
+    # a constant carried at a key (`select city, 2` beside a gate by city,
+    # form) takes the key's rows from the parent supplying it
+    keyed = [o for o in outputs if o.derivation != Derivation.CONSTANT]
+    if keyed and parents:
+        return GroupNode(
+            output_concepts=list(outputs),
+            input_concepts=keyed,
+            environment=environment,
+            parents=parents,
+            force_group=True,
+        )
     return ConstantNode(
         input_concepts=[],
         output_concepts=outputs,

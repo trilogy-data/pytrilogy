@@ -244,15 +244,23 @@ FOUND_SEEDS_512 = [
     2171, 3102, 4180, 4244, 5715, 5780, 9445, 30258, 31752, 33164, 33606,
     43598, 48214, 58034,
 ]  # fmt: skip
+# seeds 0.3.513 fixed (each failed on main): a FINAL gate pairing a sole side
+# short of its grain (38531; 47126, 73006 raised); a finished aggregate
+# re-summed per row beside a row stream (99020, 99897); a gate holding on NULL
+# re-applied over padding (2287, 7677, 23288, 42137, 50995, 60555, 62086,
+# 63137, 89358, 93329)
+FOUND_SEEDS_513 = [
+    2287, 7677, 23288, 38531, 42137, 47126, 50995, 60555, 62086, 63137,
+    73006, 89358, 93329, 99020, 99897,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
 KEYLESS = "keyless join"
 OPEN: dict[tuple[int, str], str | None] = {
-    # a gate FINAL re-applies beside a value whose side dropped its keys
-    (38531, "base"): None,
-    (38531, "summary"): None,
-    **{(s, m): KEYLESS for s in (15826, 47126) for m in ("base", "summary")},
-    (17715, "summary"): KEYLESS,
+    **{(s, m): KEYLESS for s in (15826, 89514) for m in ("base", "summary")},
+    **{(78245, m): "missing non-hidden parent" for m in ("base", "summary")},
+    # `species` beside a value `by tree_form`, off the summary
+    **{(s, "summary"): KEYLESS for s in (17715, 62974, 66824)},
 }
 
 
@@ -263,6 +271,7 @@ def cases():
             *FOUND_SEEDS_511,
             *BROKEN_SEEDS_511,
             *FOUND_SEEDS_512,
+            *FOUND_SEEDS_513,
             *(s for s, _ in OPEN),
         )
     )

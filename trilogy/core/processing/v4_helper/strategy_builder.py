@@ -5357,6 +5357,16 @@ def _final_gate_keys(
     )
 
 
+def _widen_to_gate_keys(
+    node: StrategyNode, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    return frozenset(
+        concept.address
+        for concept in _concepts_at(environment, keys)
+        if _widen_scan_chain(node, concept, environment=environment)
+    )
+
+
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
     return frozenset(
         key
@@ -5816,8 +5826,15 @@ def _stored_partials(
     grain finer than their own. One at its own grain is final, a value of its
     keys, which a coarser dedup groups by and never re-sums
     (`SelectGrain.by_keys_split_tuple`)."""
-    rollable = [o for o in targets if o.is_aggregate and _is_rollable_aggregate(o)]
-    return pending_rollups(rollable, node.resolve().grain) if rollable else []
+    resolved = node.resolve()
+    # a finished aggregate joined beside finer rows is no partial of them
+    held = {c.address for c in resolved.rollup_concepts}
+    rollable = [
+        o
+        for o in targets
+        if o.address in held and o.is_aggregate and _is_rollable_aggregate(o)
+    ]
+    return pending_rollups(rollable, resolved.grain) if rollable else []
 
 
 def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:
@@ -6228,9 +6245,15 @@ def _assemble_sole_contributor(
         sole_avail = cover.holds(gid)
         # a gate's producer pairs on its grain, which the dedup would strip
         missing = _concepts_at(environment, filter_only_addrs - sole_avail)
-        gate_paired_feeders = bool(
-            _gate_grain_keys(missing) & {o.address for o in sole_node.output_concepts}
+        gate_keys = _gate_grain_keys(missing)
+        held = {o.address for o in sole_node.output_concepts}
+        # a gate pairs on its whole grain: one key short, it keeps the rows
+        # it rejected on another (`SelectGrain.gate_paired_short_of_its_grain`)
+        # the all-rows marker of a `by *` gate is no key to carry
+        widened = _widen_to_gate_keys(
+            sole_node, pairing_keys(gate_keys - held), environment
         )
+        gate_paired_feeders = bool(gate_keys & (held | widened))
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)
             for feeder in _filter_arg_producers(
@@ -6366,7 +6389,15 @@ def _apply_final_conditions(
             attrs, producers, arg_concepts, avail, spans, environment
         )
         plan = _condition_join_plan(
-            {gid: keep}, feeders, asks, keep, group_graph, attrs, environment
+            {gid: keep},
+            feeders,
+            asks,
+            keep,
+            group_graph,
+            attrs,
+            environment,
+            # the contributor as built: widened to a gate key its rows hold
+            {gid: asks & {o.address for o in node.output_concepts}},
         )
         if asks:
             _carry_asked_keys([node, *arg_nodes], origin, plan, environment)
@@ -6428,9 +6459,11 @@ def _condition_join_plan(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
+    built_holds: dict[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The join plan of a merge hosting a FINAL condition: `cover` beside the
-    `extras` joined to filter it, each side contracted to the `asks`."""
+    `extras` joined to filter it, each side contracted to the `asks`, or to
+    the asks `built_holds` says its built node already carries."""
     return plan_final_join(
         group_graph,
         attrs,
@@ -6440,6 +6473,7 @@ def _condition_join_plan(
         _required_final_contract(attrs).authored_axes,
         contracted={
             side: carryable(group_graph, attrs, side, asks, environment)
+            | (built_holds or {}).get(side, frozenset())
             for side in (*cover, *extras)
         },
         extras=extras,
