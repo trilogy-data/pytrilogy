@@ -8,6 +8,7 @@ hand-computed, the fourth is both."""
 import pytest
 
 from tests.helpers.rows import executor_for, sort_rows, sorted_rows, twin_rows
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy.executor import Executor
 
 # ---------------------------------------------------------------- composite key
@@ -401,6 +402,22 @@ def test_two_facts_at_one_grain(
     derived, materialized = two_fact_join
     rows = twin_rows(derived, materialized, query)
     assert rows == sort_rows(expected)
+
+
+@pytest.mark.parametrize("walk", WALKS)
+def test_returns_meet_the_items_only_through_their_sales(
+    monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    flip_walk_spelling(monkeypatch, walk)
+    assert sorted_rows(
+        executor_for(TWO_FACT_JOIN_DERIVED),
+        "select item_desc, reason_class, is_returned",
+    ) == [
+        ("alpha", "defect", True),
+        ("alpha", "other", False),
+        ("beta", "other", True),
+        ("gamma", "other", False),
+    ]
 
 
 def test_aggregate_over_a_region_pairs_its_merged_rows_on_the_span(monkeypatch):

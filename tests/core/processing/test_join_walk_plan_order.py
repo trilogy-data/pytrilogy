@@ -406,3 +406,47 @@ def test_a_side_holding_a_span_it_pairs_on_with_no_one_joins_after_its_stitch(
     assert facts.stitches == {"count": frozenset({"customers", "orders"})}
     walked = [j.right for j in resolve_join_order_v2(facts)]
     assert walked[-1] == "count"
+
+
+def _returns_facts(**returns) -> JoinFacts:
+    keys = frozenset({"c~order", "c~item"})
+    order = frozenset({"c~order"})
+    return JoinFacts(
+        sides={
+            "ds~lines": SideFacts(columns=keys),
+            "ds~returns": SideFacts(columns=keys, **returns),
+            "ds~orders": SideFacts(columns=order),
+        },
+        pair_keys={
+            frozenset({"ds~lines", "ds~returns"}): keys,
+            frozenset({"ds~lines", "ds~orders"}): order,
+            frozenset({"ds~returns", "ds~orders"}): order,
+        },
+        side_ranks={"ds~returns": 0, "ds~orders": 1, "ds~lines": 2},
+    )
+
+
+def test_a_subset_side_meets_a_coarser_one_only_through_its_anchor():
+    facts = _returns_facts(partials=frozenset({"c~order", "c~item"}))
+    assert facts.transits == {
+        frozenset({"ds~returns", "ds~orders"}): frozenset({"ds~lines"})
+    }
+    joins = resolve_join_order_v2(facts)
+    assert [j.right for j in joins] == ["ds~lines", "ds~orders"]
+    assert set(joins[1].keys) == {"ds~lines", "ds~returns"}
+
+
+@pytest.mark.parametrize(
+    "returns",
+    [
+        {},
+        {
+            "partials": frozenset({"c~order", "c~item"}),
+            "nullables": frozenset({"c~order"}),
+        },
+    ],
+)
+def test_a_complete_or_nullable_side_pairs_a_coarser_one_directly(returns: dict):
+    facts = _returns_facts(**returns)
+    assert not facts.transits
+    assert resolve_join_order_v2(facts)[0].right == "ds~orders"

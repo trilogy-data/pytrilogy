@@ -32,7 +32,7 @@ _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
 # variant -> the key's shape term held constant
-KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2}
+KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2, "holders": 3}
 # variant -> the shape term held constant
 SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 
@@ -55,8 +55,8 @@ def _held(term: tuple, index: int) -> tuple:
 
 
 def _keys_held(name: str) -> Callable[..., list]:
-    """`_key_terms` with one term held constant: `authored`, `holders`, or
-    one of the key's shape (`KEY_TERMS`)."""
+    """`_key_terms` with one term held constant: `authored`, or one of the
+    key's shape (`KEY_TERMS`)."""
     index = KEY_TERMS.get(name)
 
     def keys(facts, holders):
@@ -64,10 +64,9 @@ def _keys_held(name: str) -> Callable[..., list]:
             (
                 True if name == "authored" else authored,
                 shape if index is None else _held(shape, index),
-                0 if name == "holders" else count,
                 held_by,
             )
-            for authored, shape, count, held_by in _keys(facts, holders)
+            for authored, shape, held_by in _keys(facts, holders)
             # the solid holders are a term of their own
             if name != "solid" or shape[0]
         ]
@@ -121,7 +120,7 @@ def _census(ranks, facts, declared) -> dict[str, int]:
     _counts["merges"] = _counts.get("merges", 0) + 1
     args = (ranks, facts, declared)
     base = _walked(facts, out)
-    for name in ("authored", *KEY_TERMS, "holders"):
+    for name in ("authored", *KEY_TERMS):
         if _walked(facts, _variant("_key_terms", _keys_held(name), args)) != base:
             _hit(name)
     for name, index in SHAPE_TERMS.items():
