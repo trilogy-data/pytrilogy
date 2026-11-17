@@ -334,6 +334,24 @@ def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
     return member in extended
 
 
+def _lefts_alone_before(cte: CTE, target: Join) -> bool:
+    """Every CTE joined before ``target`` is a left it reads its one key off.
+    A row entering ``target`` is some joined CTE's own row, so the ON's
+    coalesce of the lefts is that row's key, however the earlier outer joins
+    padded the others: two `subset join` members joined before their anchor."""
+    pairs = target.pairs or []
+    if len({pair.right.address for pair in pairs}) != 1:
+        return False
+    joined: set[str] = set()
+    for j in cte.joins or []:
+        if j is target:
+            break
+        if not isinstance(j, Join):
+            return False
+        joined |= {p.node.name for p in j.pairs or []} | {j.right.name}
+    return joined <= {pair.node.name for pair in pairs}
+
+
 def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPair]:
     """``pair`` and every read of its left key that an INNER join before
     ``target`` equates with it: on the rows entering ``target`` each holds the
@@ -688,13 +706,20 @@ def _proven_subset_of(
     independent populations the declaration says are incomparable. Proving
     `sub ⊑ sibling` says nothing about `sub ⊑ sup`, and rule-B narrowing on
     it drops rows present on only one side. Siblings are excluded; sup's own
-    address stays, so a genuine subset path through the merge still narrows."""
+    address stays, so a genuine subset path through the merge still narrows.
+    So is a spelling sup is itself a subset of: `subset join kb = ka` and
+    `subset join kc = ka` spell `kc` as `ka` too, and `kb ⊑ ka` says nothing
+    about `kb ⊑ kc`."""
     if sub_concept.address == sup_concept.address:
         return False
     group = graph.join_key_groups().get(graph.canonical(sup_concept.address), set())
     siblings = (group & graph.coalescing_relation_members()) - {sup_concept.address}
     for candidate in sorted(sup_concept.all_spellings):
         if candidate == sub_concept.address or candidate in siblings:
+            continue
+        if candidate != sup_concept.address and graph.proven_subset(
+            sup_concept.address, candidate
+        ):
             continue
         if graph.proven_subset(sub_concept.address, candidate):
             return True
@@ -1062,7 +1087,11 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             or not _key_nullable(sub, sub_cte)
         ):
             return False
-        return right_is_subset or not _null_extended_before(cte, join, sub_cte.name)
+        return (
+            right_is_subset
+            or not _null_extended_before(cte, join, sub_cte.name)
+            or _lefts_alone_before(cte, join)
+        )
 
     def _narrow_directionally(
         self,

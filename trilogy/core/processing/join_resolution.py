@@ -956,21 +956,12 @@ def ensure_content_preservation(
 
 
 def _score_join_candidate(
-    x: str,
-    *,
-    root: str,
-    facts: JoinFacts,
-    multi_partial: bool,
-    anchor_sources: frozenset[str],
-) -> tuple[bool, bool, int, bool, bool, str]:
+    x: str, *, root: str, facts: JoinFacts, multi_partial: bool
+) -> tuple[bool, int, bool, str]:
     side = facts.side(x)
     is_partial = root in side.partials
     rank, name = facts.rank(x)
     return (
-        # A query-scoped LEFT anchor must seed the join base: a right is typed
-        # against the lefts in walk order, so each co-anchored optional source
-        # dedups against the anchor (LEFT_OUTER), not the other optional (FULL).
-        x in anchor_sources,
         # a lone `~` binding of the key joins after its complete holders
         not is_partial or multi_partial,
         # below the facts, the plan's order
@@ -979,8 +970,6 @@ def _score_join_candidate(
         # seeds the tree: its feeders hang LEFT off it instead of meeting FULL
         # before it arrives
         side.hosts and not is_partial,
-        # several `~` bindings of the key meet each other first
-        multi_partial and is_partial,
         name,
     )
 
@@ -1148,26 +1137,10 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     ``ensure_content_preservation`` keeps every later join from dropping the
     rows an earlier one preserved.
     """
-    # A source is an anchor when it provides a scoped-LEFT anchor key as a
-    # COMPLETE (non-partial) concept; optional sources are partial against it.
-    # An anchor key is only ACTIVE when some present source is partial against
-    # it: the boost exists to keep optional sources directional (LEFT, not
-    # FULL), and with no optional side in the plan, seeding the tree on it
-    # would just perturb unrelated joins.
-    active_anchor_keys = {
-        key
-        for key in facts.anchor_keys
-        if any(key in side.partials for side in facts.sides.values())
-    }
-    anchor_sources = frozenset(
-        ds
-        for ds, side in facts.sides.items()
-        if side.columns & active_anchor_keys and not active_anchor_keys & side.partials
-    )
-    output = _walk(facts, anchor_sources)
+    output = _walk(facts)
     seed = _preserved_past_inner(output)
     if seed is not None:
-        output = _walk(facts, anchor_sources, seed)
+        output = _walk(facts, seed)
     ensure_content_preservation(
         output,
         facts.axis_keys,
@@ -1178,9 +1151,7 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     return output
 
 
-def _walk(
-    facts: JoinFacts, anchor_sources: frozenset[str], seed: str | None = None
-) -> list[JoinOrderOutput]:
+def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
     """One walk over the plan's pairings, from `seed` when given."""
     pivot_map = _pivot_map(facts)
     pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
@@ -1216,7 +1187,6 @@ def _walk(
             root=key,
             facts=facts,
             multi_partial=multi_partial,
-            anchor_sources=anchor_sources,
         )
         right = max(
             (

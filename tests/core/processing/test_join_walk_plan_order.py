@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from trilogy.core.processing.join_resolution import (
@@ -58,6 +60,28 @@ def test_a_bridge_holding_the_rows_comes_before_the_suppliers_it_looks_up():
     )
     assert plan.looked_up == frozenset({"by_id", "by_gh"})
     assert plan.precedence == ("rows", "by_gh", "by_id")
+
+
+def test_a_subset_member_comes_after_the_side_holding_its_anchor():
+    plan = JoinPlan(
+        contributors=("buyers_a", "buyers_b", "orders"),
+        pins={},
+        identity={
+            "buyers_a": frozenset({"a.cust"}),
+            "buyers_b": frozenset({"b.cust"}),
+            "orders": frozenset({"id"}),
+        },
+        carry_demands={},
+        pairings=(
+            Pairing("buyers_a", "orders", frozenset({"id"}), PairingKind.LOOKUP),
+            Pairing("buyers_b", "orders", frozenset({"id"}), PairingKind.LOOKUP),
+            Pairing("buyers_a", "buyers_b", frozenset({"id"}), PairingKind.BLEND),
+        ),
+        suppliers=frozenset({"buyers_a", "buyers_b", "orders"}),
+    )
+    assert plan.precedence == ("buyers_a", "buyers_b", "orders")
+    anchored = replace(plan, subset_sides=frozenset({"buyers_a", "buyers_b"}))
+    assert anchored.precedence == ("orders", "buyers_a", "buyers_b")
 
 
 def test_a_scan_plan_states_rows_before_their_lookups_finer_first():

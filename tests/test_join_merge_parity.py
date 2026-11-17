@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.exceptions import ParseError
@@ -408,7 +409,14 @@ def test_multi_way_left_join_intersection(
 
 # Chained-equality `a = b = c` collapses all keys into ONE equivalence group
 # with one join type. It must match the equivalent pairwise form exactly.
-def test_chained_equality_join_matches_pairwise(multi_engine: Executor, tmp_path: Path):
+@pytest.mark.parametrize("walk", WALKS)
+def test_chained_equality_join_matches_pairwise(
+    multi_engine: Executor,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    walk: str,
+):
+    flip_walk_spelling(monkeypatch, walk)
     select = (
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc order by ka asc;"

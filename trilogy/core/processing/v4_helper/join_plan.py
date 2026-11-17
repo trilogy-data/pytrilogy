@@ -73,6 +73,9 @@ class JoinPlan:
     suppliers: frozenset[str] = frozenset()
     # bridges elected to key a pairing, not to join islands
     keying: frozenset[str] = frozenset()
+    # contributors holding a declared `subset` member whose anchor another
+    # contributor holds
+    subset_sides: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -134,7 +137,8 @@ class JoinPlan:
     @property
     def precedence(self) -> tuple[str, ...]:
         """The order resolve joins the contributors in when nothing else
-        decides: a row stream before the lookups its pairings identify (a
+        decides: a declared `subset` member after the side holding its
+        anchor, a row stream before the lookups its pairings identify (a
         bridge holding the rows included), the suppliers before the sides
         joined to pair or filter them, and finer rows first."""
         looked_up = self.looked_up
@@ -142,6 +146,7 @@ class JoinPlan:
             sorted(
                 self.contributors,
                 key=lambda gid: (
+                    gid in self.subset_sides,
                     gid in looked_up,
                     gid not in self.suppliers,
                     -len(self.identity.get(gid, ())),
@@ -1021,7 +1026,28 @@ def plan_final_join(
         carries,
         frozenset(environment.domain_graph.coalescing_relation_members()),
         frozenset(supplying),
+        subset_sides=subset_sides(carries, environment),
     ).with_split(split)
+
+
+def subset_sides(
+    carries: dict[str, frozenset[str]], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The sides holding a declared `subset` member whose anchor another side
+    holds: the anchor's rows are the relation's, and each member hangs off
+    them (`subset join a = b` is a LEFT anchored on `b`)."""
+    graph = environment.domain_graph
+    return frozenset(
+        gid
+        for member, anchor in graph.declared_subset_pairs()
+        for gid, held in carries.items()
+        if member in held
+        and any(
+            {anchor, graph.canonical(anchor)} & other
+            for o, other in carries.items()
+            if o != gid and member not in other
+        )
+    )
 
 
 def final_predecessors(

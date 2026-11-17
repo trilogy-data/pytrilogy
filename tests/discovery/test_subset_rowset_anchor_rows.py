@@ -58,3 +58,10 @@ def test_filtered_subsets_keep_every_anchor_row():
         (2, 20, 200),
         (3, 30, None),
     ]
+
+
+def test_each_subset_member_hangs_off_the_anchor():
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    sql = executor.generate_sql(executor.parse_text(_MODEL)[-1])[-1]
+    assert "FULL JOIN" not in sql
+    assert sql.count("LEFT OUTER JOIN") == 2
