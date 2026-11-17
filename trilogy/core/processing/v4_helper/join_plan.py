@@ -857,8 +857,8 @@ def _pair(
         for a in side
         if roots.get(a, a) in other
     )
-    # two row streams identified by nothing pair on the keys the merge is
-    # (a scan and its WHERE-filtered copy, both holding `species`)
+    # two scans identified by nothing pair on the keys the merge is (the trees
+    # and their WHERE-filtered copy, both holding `species`)
     named = identity[left] | identity[right] or (
         merge_keys if not (identity[left] or identity[right]) else frozenset()
     )
@@ -881,6 +881,9 @@ def _pair(
     ) - keys
     if authored:
         kind = PairingKind.AUTHORED
+    elif merge_keys and keys and not (identity[left] or identity[right]):
+        # two scans paired on the merge's keys hold the same rows there
+        kind = PairingKind.LOOKUP
     elif any(
         identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
         for gid in (left, right)
@@ -1016,7 +1019,12 @@ def plan_final_join(
                 reach,
                 scalars,
                 environment,
-                frozenset().union(*(identity[g] for g in supplying)),
+                (
+                    frozenset().union(*(identity[g] for g in supplying))
+                    if attrs[left].derivation == Derivation.ROOT
+                    and attrs[right].derivation == Derivation.ROOT
+                    else frozenset()
+                ),
             )
         ).keys
         or pairing.implied
