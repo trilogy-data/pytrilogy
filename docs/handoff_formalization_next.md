@@ -91,9 +91,10 @@ nothing wrong, raising or invalid. `OPEN` in
   restart: rerun the same command and it continues. One sweep at a time; a
   second on the same records refuses to start. Never start one with a
   trailing `&` in a foreground command, and never move the worktree under it.
-- **pytest.** One pytest process at a time on a shared tree. `-n` is safe
-  for the law suites (each worker has its own engines); a suite that defines
-  concepts needs a fresh environment per case, or failures move with `-n`.
+- **pytest.** One pytest invocation at a time on a shared tree. Every
+  `*_laws.py` passes under `-n 4` (31,660 cases, 9.5 minutes against 28 of
+  CPU), and CI's `laws` job runs them `-n auto`. A suite that defines concepts
+  needs a fresh environment per case, or its failures move with `-n`.
 - **Other harnesses.** The fuzzer (`python -m local_scripts.fuzzer`; adding a
   spec changes `CASES_PER_SEED` in `local_scripts/fuzzer/test_fuzzer.py`, which
   CI does not run). The TPC-DS corpus at sf=0.1 ablates in ~20 minutes. The

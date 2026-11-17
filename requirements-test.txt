@@ -1,5 +1,7 @@
 pytest
 pytest-cov
+# the laws job fans its grids over the runner's cores
+pytest-xdist
 # parity oracle for the pest parser; not a runtime dependency
 lark
 duckdb>=2,<3
