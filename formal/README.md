@@ -2301,6 +2301,25 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     `count_distinct(tag) by *` read every tree under `tree_form = 'linden'`
     (30258, 31752, 33606; `SelectGrain.peel_of_joined_table_reads_rejected`).
     A table sharing a column with the row stream's tables is not peeled.
+- **The expressions family to 100,000** (0.3.513). On main 24 of its 200,000
+  queries are wrong and 13 raise; the branch leaves 0 and 7. Fixed:
+  - A sole side computing a value at `(city, form)` met a FINAL gate at
+    `(city, species)` on `city` alone, keeping a form all of whose rows the
+    gate rejected (38531), or on nothing, a keyless join (47126, 73006,
+    78245; `SelectGrain.sole_gate_paired_short_of_its_grain`). The side is
+    widened to the gate's keys its rows hold, and the gate's join plan reads
+    the side as built.
+  - A finished bare aggregate joined beside a per-row stream was re-summed
+    as a stored partial, once per row (99020, 99897;
+    `SelectGrain.finished_value_resummed_per_row`). Only what a node holds as
+    a rollup is a partial.
+  - A side past a gate the merge re-applies was kept whole by a RIGHT join,
+    and a gate holding on NULL (`sum(height) by city is null`) passed every
+    rejected key's padding (2287, 7677, 23288, 42137, 50995, 60555, 62086,
+    63137, 89358, 93329;
+    `SelectGrain.gate_on_padding_passes_rejected`).
+  - A constant carried at a key beside a gate was built as a bare constant
+    claiming the key, and nothing sourced it.
 
 ## Limits
 
