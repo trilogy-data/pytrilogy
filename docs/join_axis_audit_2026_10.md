@@ -3917,6 +3917,20 @@ plan's order now decides 6,067 (5,362 at `dc69dcf`), and hosting is
 unchanged (593). The scorer replica differs from the scorer in 12 merges
 on both trees, so that mismatch predates this change.
 
+Reversing the stated order (`WALK_FLIP=key,side`) now fails 14 tests
+beyond the 66 that `main` fails under the flip at `dc69dcf`, and none
+fails on rows. The anchor and the `~` order used to live in the scorer,
+which the flip leaves alone. Now they live in the scan plan's order,
+which the flip reverses, so the shapes they set get pinned as order:
+- LEFT-off-anchor pins: `test_subset_join_renders_left_outer`,
+  `test_join_keyword_tracks_authored_type`, the gcat launch/vehicle
+  pins, `test_double_partial_key_join_order`, and the existence-HAVING
+  fold;
+- q64's no-RIGHT pin, checked after its rows;
+- two rule-fires checks in the rule soundness laws, whose rows still
+  match;
+- this part's own walk unit test.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
