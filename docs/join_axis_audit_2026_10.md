@@ -3851,6 +3851,66 @@ above, and `test_resolve_join_order_v2_multi_partial`, which pinned the
 several-`~` bump's order. Before part 103 it also failed the chained
 parity test, on rows.
 
+**A scan plan states a `~` binding after its anchor (part 104).**
+Part 102 dropped the anchor term, and with it the shape of a scan plan
+over `merge x into ~y` facts: `scan_precedence` ranked the complete
+dimension last, as their lookup, so the facts met FULL and the dimension
+joined RIGHT (`test_double_partial_key_join_order`). A scan plan knows
+its datasources, so it can state what the anchor term read. A scan
+binding a key as `~` now comes after a scan it pairs with that binds
+the key completely (its anchor), ahead of the row/lookup term. The facts
+hang LEFT off the customer dimension again, and q97 one/two seed on the
+customer domain again (part 102 had moved them).
+
+One fact needed care. A union arm's datasource is partial on every
+column, its grain included: its rows are a subset of the union's rows,
+and none of its keys is a `~` binding. The first cut read every partial
+column as a binding, so in q69 the date dimension anchored each sales
+arm and a WHERE on the date left the scan merge (+3 CTEs each in q35 and
+q69). A scan partial on its own grain now anchors only on a key that a
+declared `subset` relation names. The declared keys come from the domain
+graph; `PlannedPairs.over_scans` reads the environment for them.
+
+**The walk reads no `~` binding a scan plan orders (part 105).** With
+the anchor stated, a scan plan states every binding the lone-`~` penalty
+read, so the walk drops the penalty for such a plan
+(`PlannedPairs.orders_bindings`, read through `JoinFacts`). One kind of
+`~` stays unstated: a scoped `subset join` on a derived key. No
+datasource binds it, and the scan cannot see which side computes it.
+A plan pairing on one says it orders no bindings, and the walk reads
+them as before (`test_scoped_left_join_on_nonrowset_derived_key` found
+it). A group plan still cannot state the penalty, since stage 3 picks
+the bindings. So the penalty now reads only group plans, and scan plans
+pairing on a scoped derived key.
+
+Suite capture against `main` at `dc69dcf` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated
+failures, and the only other outcome change is the Rust-binary test's
+skip (listed noise). Two captures of one tree differ in
+`tpc_ds_duckdb/test_queries.py` and `thelook_duckdb/test_thelook_queries.py`,
+which are left out of the tally. The corpus covers those queries. The
+rest adds up to FULL -24, INNER -2, LEFT +54, RIGHT -34, `coalesce` -17,
+null-safe pairs -1 and CTE -5.
+
+- `test_derived_key_domain` loses 15 FULLs and 21 `coalesce` calls:
+  two `~customer_id` facts no longer meet FULL and then join RIGHT onto
+  the customers they hang off; each joins LEFT off customers.
+- The dimension-chain oracle loses 5 CTEs and a null-safe pair.
+- gcat's launch/vehicle shapes lose 6 FULLs.
+- `test_partial_key_join_order` hangs both facts LEFT off the customers
+  again (now pinned).
+- The rest mirrors RIGHT to LEFT, the same rows from the other end.
+
+Every moved test passes. The oracle laws among them compare rows against
+raw SQL.
+
+In the corpus (205 statements), seven statements move. q97 one/two
+re-seed on the customer domain (part 104). Five turn an INNER around or
+mirror a LEFT/RIGHT onto the row stream (part 105): q83, TPC-H q09, and
+thelook adhoc02, query18 and query22. CTE and join counts are unchanged.
+
+CENSUS_PLACEHOLDER
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3931,14 +3991,14 @@ not built yet:
    before their anchor now narrow onto it (part 100), the plan states a
    declared member after its anchor (part 101), the walk reads no anchor
    and no several-`~` bump (part 102), and a superset of a narrowing's
-   sup side no longer stands in for it (part 103). What is left of the walk's
+   sup side no longer stands in for it (part 103). A scan plan now states
+   a `~` binding after its anchor (part 104), and the walk reads no
+   binding a scan plan orders (part 105). What is left of the walk's
    rank above the stated order: the solid and region terms, and a lone
-   `~` binding's penalty. That penalty decides 640 merges' shape (341 in
-   group plans, 164 in scan plans of the files that decide the most). It
-   is per key, not per side: restated as one side order it still moves
-   333 of 505 on those files, and as a per-key holder order 93. A group
-   plan cannot state it, since the `~` bindings are the datasources'
-   stage 3 picks. Below the order is hosting. Ties the plan's terms leave
+   `~` binding's penalty in group plans (and in a scan plan pairing on a
+   scoped derived key). PENALTY_PLACEHOLDER A group plan cannot state
+   it, since the `~` bindings are the datasources' stage 3 picks. Below
+   the order is hosting. Ties the plan's terms leave
    are still broken by the position the plan lists them in (cover order,
    scan name), and stating them as ties costs plan quality (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
