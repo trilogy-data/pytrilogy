@@ -1534,23 +1534,31 @@ def reduce_concept_pairs(
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     is_outer = join_type in OUTER_JOIN_TYPES
-    right_left_seen: dict[tuple[str, str], bool] = {}
+    # one column paired from two left nodes is one pair only where an earlier
+    # join equated them on it (`agreement`): met on another key alone, each
+    # node's own equality is what ties its rows to the right's
+    right_left_seen: dict[tuple[str, str], tuple[bool, str]] = {}
     for index, pair in enumerate(pairs):
         dedup_key = (pair.right.address, pair.node.identifier)
         if dedup_key in seen:
             continue
         rl_key = (pair.right.address, pair.left.address)
+        prior = right_left_seen.get(rl_key)
         if (
-            rl_key in right_left_seen
+            prior is not None
             and not is_outer
-            and not (right_left_seen[rl_key] or pair.is_partial)
+            and not (prior[0] or pair.is_partial)
+            and agree.same(prior[1], pair.node.identifier, pair.left.address)
         ):
             continue
         if index in fd_pruned or _aggregate_beside_its_grain(pair, pairs):
             continue
 
         seen.add(dedup_key)
-        right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
+        right_left_seen[rl_key] = (
+            (prior is not None and prior[0]) or pair.is_partial,
+            prior[1] if prior else pair.node.identifier,
+        )
         final.append(pair)
     all_keys = {x.right.address for x in final}
     if (
