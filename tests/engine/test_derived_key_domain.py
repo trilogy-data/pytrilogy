@@ -25,6 +25,7 @@ from tests.helpers.rows import (
     twin_rows,
     twins,
 )
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy.core import optimization
 from trilogy.executor import Executor
 
@@ -1332,12 +1333,15 @@ query '''select 1 as o, 10 as i, 1 as ro''';
         ),
     ],
 )
+@pytest.mark.parametrize("walk", WALKS)
 def test_completion_keeps_its_padding_beside_a_domain_on_its_span(
-    query: str, expected: list[tuple]
+    monkeypatch: pytest.MonkeyPatch, walk: str, query: str, expected: list[tuple]
 ):
     """`order_id` keeps the unordered customer out of the base region AND is a
     span `returns` completes `lines` on: the customer domain owning it must not
-    turn `lines LEFT JOIN returns` into an INNER join."""
+    turn `lines LEFT JOIN returns` into an INNER join. Walked returns first,
+    returns meets orders only through lines."""
+    flip_walk_spelling(monkeypatch, walk)
     executor = executor_for(_COMPLETION_BESIDE_DOMAIN)
     assert sorted_rows(executor, query) == expected
 

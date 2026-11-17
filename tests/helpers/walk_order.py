@@ -56,11 +56,7 @@ _keys = jr._key_terms
 
 
 def flipped_keys(facts, holders):
-    return [(a, _Rev(shape), n, held) for a, shape, n, held in _keys(facts, holders)]
-
-
-def flipped_holders(facts, holders):
-    return [(a, shape, -n, held) for a, shape, n, held in _keys(facts, holders)]
+    return [(a, _Rev(shape), held) for a, shape, held in _keys(facts, holders)]
 
 
 # what each flip replaces: (owner, attribute, replacement)
@@ -69,8 +65,6 @@ SHAPE_FLIPS = [
     (jr, "_key_terms", flipped_keys),
 ]
 NAME_FLIPS = [(jr.JoinFacts, "rank", flipped_rank)]
-# the holder count is a row term: reversed, it still moves rows
-HOLDER_FLIPS = [(jr, "_key_terms", flipped_holders)]
 FLIPS = {
     "walked": [],
     "shape_flipped": SHAPE_FLIPS,

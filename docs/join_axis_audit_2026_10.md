@@ -4377,6 +4377,63 @@ Gates, against `7c54bf1`:
   it also fails the six witnesses of part 119.
 - Fuzzer: 522/522.
 
+**A `~` side meets a coarser one only through its anchor (part 120).**
+All six witnesses of part 119 are one shape: a returns side bound `~` on
+the keys it pairs its sales (or lines) on, and a coarser side (items,
+orders) the plan pairs with both on part of those keys:
+
+    returns ⋈ lines on (order, item)
+    lines ⋈ orders on order
+    returns ⋈ orders on order
+
+Walked returns first, returns meets orders on `order` before lines
+arrives. The join preserves orders, so an order with no return is a row
+with a padded `item`. Lines then pairs on (`returns.item`, `order`) and
+finds no partner for that row, so the order's lines come back as a second,
+unmatched row (`test_derived_key_domain`: bob gains a row with no item).
+TPC-DS q40 is worse: there returns met items INNER and then sales INNER, so
+every sale without a return was dropped.
+
+The third pairing says nothing the other two do not. Every return has its
+sale (lines binds both keys completely, returns some of them as `~`), and
+the sale pairs with the order on the same key. It is a *transit*, implied
+through an anchor (`JoinFacts.transits`), and the walk now uses it only
+once an anchor is in the tree (`JoinFacts.walked_pair`). Before that,
+returns meets orders only through lines. A key either side can NULL is
+no transit: a NULL has no anchor partner. The value-NULL `product_id`
+group a filtered count pairs with null-safely
+(`test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members`)
+is the case that showed it, when a first cut dropped the pairing from the
+plan instead.
+
+That first cut also moved TPC-H q09: supplier and part hung off partsupp
+(lineitem's anchor) instead of lineitem, and nation turned LEFT. Waiting
+for the anchor keeps every pairing the plan states and only gates when it
+is walked, so the stated walk is unchanged. The six witnesses are pinned
+under every walk (`test_completion_keeps_its_padding_beside_a_domain_on_its_span`,
+`test_returns_meet_the_items_only_through_their_sales`, and the q40, q75
+and q80 benchmark rows under `WALK_FLIP=shape`).
+
+**Holder count is the key's shape (part 121).** With the transit gated, a
+reversed holder count moves no rows in the suite. `KeyShape` now ends with
+it (solid, held span, most-held, holders), so `shape_flipped` reverses it
+with the rest, and `HOLDER_FLIPS` is gone. The order is the one
+`_stated_order` already read, so no plan moves. The walk reads one row term
+of a key, authored, which a left-deep tree needs (part 111's 4-cycle). The
+rest is stitch, transit and shape.
+
+Gates, against `54571d9`:
+
+- Corpus (205 statements): 0 moved.
+- Suite (`-n 4`, without adventureworks/clickhouse/bigquery/cloud_live):
+  the same 25 credential-gated failures as `main`.
+- Whole suite under `WALK_FLIP=shape,name`, which now reverses the holder
+  count too: the same 102 failures as `main`'s flip, plus one shape pin. `test_guarded_full_join_is_refused_not_dropped`
+  is still refused, but its FULLs now key off two concepts before
+  the `~` region's padding is reached, the reason part 115 saw under the
+  held-constant count.
+- Fuzzer: 522/522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4480,7 +4537,10 @@ not built yet:
    stitch (part 116). It, solid and held span are the key's shape, which
    the flip reverses (part 117). Reversing them found one pair-dedup bug
    (part 118). Holder count still decides rows in six suite witnesses,
-   so it stays a row term beside authored (part 119). Ties the plan's
+   so it stays a row term beside authored (part 119). All six were a `~`
+   side meeting a coarser one before its anchor. The walk now meets them
+   only through the anchor (part 120), and the holder count is the key's
+   shape, leaving authored as the one row term (part 121). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
