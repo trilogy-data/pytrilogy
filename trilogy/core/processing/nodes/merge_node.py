@@ -479,7 +479,6 @@ class MergeNode(StrategyNode):
         environment: BuildEnvironment,
         planned_pairs: dict[frozenset[str], frozenset[str]] | None = None,
         side_ranks: dict[str, int] | None = None,
-        orders_bindings: bool = False,
     ) -> list[SourceJoin | UnnestJoin]:
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
@@ -559,7 +558,6 @@ class MergeNode(StrategyNode):
                     keyspace=self.span_scope.keyspace,
                     planned_pairs=planned_pairs,
                     side_ranks=side_ranks or {},
-                    orders_bindings=orders_bindings,
                 )
         elif final_joins:
             logger.info(
@@ -958,7 +956,6 @@ class MergeNode(StrategyNode):
                 self.environment,
                 planned_pairs,
                 side_ranks,
-                self.planned_pairs is not None and self.planned_pairs.orders_bindings,
             )
         else:
             joins = []

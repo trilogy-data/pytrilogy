@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
-from itertools import combinations
+from itertools import combinations, permutations
 from operator import attrgetter
 from typing import NamedTuple
 
@@ -178,9 +178,6 @@ class PlannedPairs:
     # the groups in the order the plan joins them when nothing else decides;
     # a group it leaves out comes after, in no stated order
     order: tuple[str, ...] = ()
-    # the order states each `~` binding after a complete one it pairs with
-    # (`scan_precedence`), so the walk reads no binding
-    orders_bindings: bool = False
 
     @classmethod
     def star(
@@ -211,34 +208,20 @@ class PlannedPairs:
         keys: Mapping[frozenset[str], frozenset[str]],
         datasources: Mapping[str, BuildDatasource | BuildUnionDatasource],
         grain_paired: frozenset[str] = frozenset(),
-        environment: BuildEnvironment | None = None,
     ) -> PlannedPairs:
         """A plan between datasource scans, stating `scan_precedence` over
-        each scan's declared grain and `~` bindings, and over the
-        environment's declared `subset` relations. A side no datasource
-        names (a derived connector, whose rows are its subplan's) states
-        none. A `~` no datasource binds (a scoped `subset join` on a derived
-        key) is not stated, so a plan pairing on one leaves the walk to read
-        bindings."""
-        named = sorted(
-            name for name in frozenset().union(*sides.values()) if name in datasources
-        )
-        grains = {name: frozenset(datasources[name].grain.components) for name in named}
-        partials = {
-            name: frozenset(c.address for c in datasources[name].partial_concepts)
-            for name in named
+        each scan's declared grain. A side no datasource names (a derived
+        connector, whose rows are its subplan's) states none."""
+        grains = {
+            name: frozenset(datasources[name].grain.components)
+            for name in sorted(frozenset().union(*sides.values()))
+            if name in datasources
         }
         return cls(
             sides,
             keys,
             grain_paired=grain_paired,
-            order=scan_precedence(
-                keys, grains, partials, _declared_subset_keys(environment)
-            ),
-            orders_bindings=environment is None
-            or environment.scoped_partial_derived.isdisjoint(
-                frozenset().union(*keys.values())
-            ),
+            order=scan_precedence(keys, grains),
         )
 
     def rank(self, groups: frozenset[str]) -> int:
@@ -291,72 +274,25 @@ class PlannedPairs:
         )
 
 
-def _declared_subset_keys(environment: BuildEnvironment | None) -> frozenset[str]:
-    """Every key a declared `subset` relation names, member or anchor."""
-    if environment is None:
-        return frozenset()
-    graph = environment.domain_graph
-    return frozenset(
-        address
-        for member, anchor in graph.declared_subset_pairs()
-        for address in (member, anchor, graph.canonical(anchor))
-    )
-
-
-def _subset_bindings(
-    partials: frozenset[str], grain: frozenset[str] | None, declared: Collection[str]
-) -> frozenset[str]:
-    """The keys a scan binds as `~`: all of its partials when its own grain
-    is complete, else (an arm of a union) only the declared ones."""
-    if grain and grain <= partials:
-        return partials & frozenset(declared)
-    return partials
-
-
 def scan_precedence(
     keys: Mapping[frozenset[str], frozenset[str]],
     grains: Mapping[str, frozenset[str]],
-    partials: Mapping[str, frozenset[str]] | None = None,
-    declared: Collection[str] = frozenset(),
 ) -> tuple[str, ...]:
     """The order a merge of scans joins them in when nothing else decides,
-    as `JoinPlan.precedence` states it for groups: a scan binding a key as
-    `~` after a scan it pairs with that binds the key completely (its
-    anchor: the member's rows hang off the anchor's), a scan of rows before
+    as `JoinPlan.precedence` states it for groups: a scan of rows before
     the lookups its pairings identify (a scan whose grain lies inside the
-    keys it pairs on), a scan binding its pairing keys completely before one
-    binding them as `~`, finer rows first. A scan of no declared grain is
-    stated with the coarsest.
-
-    A union arm is partial on every column, its grain included: its rows
-    are a subset of the union's, and no key of it is a `~` binding unless a
-    `declared` subset relation names the key."""
-    partials = partials or {}
-    looked_up: set[str] = set()
-    anchored: set[str] = set()
-    paired: dict[str, set[str]] = defaultdict(set)
-    for pair, pairs in keys.items():
-        if len(pair) != 2:
-            continue
-        a, b = pair
-        for side, other in ((a, b), (b, a)):
-            paired[side] |= pairs
-            if grains.get(side) and grains[side] <= pairs:
-                looked_up.add(side)
-            if other in grains and _subset_bindings(
-                partials.get(side, frozenset()), grains.get(side), declared
-            ) & pairs - partials.get(other, frozenset()):
-                anchored.add(side)
+    keys it pairs on), finer rows first. A scan of no declared grain is
+    stated with the coarsest. Where a `~` binding puts a scan is resolve's
+    to state (`_binding_order`)."""
+    looked_up = {
+        side
+        for pair, pairs in keys.items()
+        if len(pair) == 2
+        for side in pair
+        if grains.get(side) and grains[side] <= pairs
+    }
     return tuple(
-        sorted(
-            sorted(grains),
-            key=lambda s: (
-                s in anchored,
-                s in looked_up,
-                bool(partials.get(s, frozenset()) & paired[s]),
-                -len(grains[s]),
-            ),
-        )
+        sorted(sorted(grains), key=lambda s: (s in looked_up, -len(grains[s])))
     )
 
 
@@ -388,6 +324,9 @@ class SideFacts:
     hosts: bool = False
     # every column is a one-row value (a `by *` total, a constant)
     one_row: bool = False
+    # reads one datasource partial on its own grain (an arm of a union): its
+    # rows are a subset of a whole relation's, so its partials bind no key
+    arm: bool = False
     # spans the side holds a region's rows on
     held_spans: frozenset[str] = frozenset()
     # extent-free spans the side carries every value of
@@ -435,11 +374,10 @@ class JoinFacts:
     # two sides -> the keys the join plan pairs them on, each a column both
     # hold; a pair it does not name pairs on nothing
     pair_keys: Mapping[frozenset[str], frozenset[str]] = field(default_factory=dict)
-    # each side's place in the plan's order (`PlannedPairs.ranked`): the walk
-    # breaks the ties its facts leave on it
+    # each side's place in the order the merge joins its sides in when nothing
+    # else decides: the plan's (`PlannedPairs.rank`), a side hanging off an
+    # anchor after the rest (`_binding_order`)
     side_ranks: Mapping[str, int] = field(default_factory=dict)
-    # the plan's order states each `~` binding after its complete partner
-    orders_bindings: bool = False
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -1007,22 +945,15 @@ def ensure_content_preservation(
                 review_join.type = widened
 
 
-def _score_join_candidate(
-    x: str, *, root: str, facts: JoinFacts, multi_partial: bool
-) -> tuple[bool, int, bool, str]:
-    side = facts.side(x)
-    is_partial = root in side.partials
+def _score_join_candidate(x: str, *, facts: JoinFacts) -> tuple[int, bool, str]:
     rank, name = facts.rank(x)
     return (
-        # a lone `~` binding of the key joins after its complete holders,
-        # unless the plan's order already states it
-        not is_partial or multi_partial or facts.orders_bindings,
-        # below the facts, the plan's order
+        # the stated order
         -rank,
-        # between sides the plan ranks alike, the one holding the merge's rows
+        # between sides it ranks alike, the one holding the merge's rows
         # seeds the tree: its feeders hang LEFT off it instead of meeting FULL
         # before it arrives
-        side.hosts and not is_partial,
+        facts.side(x).hosts,
         name,
     )
 
@@ -1212,7 +1143,6 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
     output: list[JoinOrderOutput] = []
     walked: list[str] = [seed] if seed else []
     eligible_left: set[str] = set(walked)
-    opened: dict[_Pivot, bool] = {}
 
     while True:
         touching = [
@@ -1224,23 +1154,7 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
         if not open_edges:
             break
         root = open_edges[0][0]
-        key = root.key
-        # judged once, over the key's holders unjoined when it first ranks best
-        multi_partial = opened.setdefault(
-            root,
-            sum(
-                1
-                for x in pivot_map[root]
-                if x not in eligible_left and key in facts.side(x).partials
-            )
-            > 1,
-        )
-        score_key = partial(
-            _score_join_candidate,
-            root=key,
-            facts=facts,
-            multi_partial=multi_partial,
-        )
+        score_key = partial(_score_join_candidate, facts=facts)
         right = max(
             (
                 side
@@ -2597,6 +2511,7 @@ def _side_facts(
         <= {canon_node(c.address) for c in datasource.output_concepts} - own_partials,
         one_row=bool(concepts)
         and all(c.granularity == Granularity.SINGLE_ROW for c in visible),
+        arm=_reads_arm(datasource),
         # A side holding a region's rows (its domain, or whatever read it)
         # hosts that region's extension rows on the join keyed by its span,
         # whatever columns it emits: the contract, not an inference from the
@@ -2622,6 +2537,54 @@ def _side_facts(
     return facts, concepts
 
 
+def _declared_subset_keys(environment: BuildEnvironment) -> frozenset[str]:
+    """Every key a declared `subset` relation names, member or anchor."""
+    graph = environment.domain_graph
+    return frozenset(
+        address
+        for member, anchor in graph.declared_subset_pairs()
+        for address in (member, anchor, graph.canonical(anchor))
+    )
+
+
+def _reads_arm(datasource: DataSource) -> bool:
+    if isinstance(datasource, BuildDatasource):
+        grain = datasource.grain.components
+        return bool(grain) and grain <= {c.address for c in datasource.partial_concepts}
+    return len(datasource.datasources) == 1 and _reads_arm(datasource.datasources[0])
+
+
+def _subset_bindings(side: SideFacts, declared: frozenset[str]) -> frozenset[str]:
+    """The keys a side binds as `~`: its partials, or for an arm of a union
+    only those a `declared` subset relation names."""
+    return side.partials & declared if side.arm else side.partials
+
+
+def _binding_order(
+    ranks: Mapping[str, int],
+    sides: Mapping[str, SideFacts],
+    pair_keys: Mapping[frozenset[str], frozenset[str]],
+    declared: frozenset[str],
+) -> dict[str, int]:
+    """`ranks` (the plan's order) with the sides partial on a key they pair
+    on after every side that is not, and after those the sides binding one as
+    `~` whose partner binds it completely (its anchor: the member's rows hang
+    off the anchor's). The `~` bindings are the built sides', so no plan
+    states them: resolve does, once for the merge, before the walk."""
+    tier: dict[str, int] = defaultdict(int)
+    for pair, keys in pair_keys.items():
+        if len(pair) != 2:
+            continue
+        for side, other in permutations(pair):
+            if _subset_bindings(sides[side], declared) & keys - sides[other].partials:
+                tier[side] = 2
+            elif sides[side].partials & keys:
+                tier[side] = max(tier[side], 1)
+    # a side the plan left out comes after the ones it states
+    last = max(ranks.values(), default=-1) + 1
+    return {node: ranks.get(node, last) + (last + 1) * tier[node] for node in sides}
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -2632,16 +2595,15 @@ def get_node_joins(
     *,
     planned_pairs: Mapping[frozenset[str], frozenset[str]],
     side_ranks: Mapping[str, int] | None = None,
-    orders_bindings: bool = False,
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
     rowset body pads them under and its region partition. `planned_pairs` is
     the merge's join plan pair by pair of sides (by datasource identifier):
     two sides pair only on what the plan pairs them on, and a column two sides
     merely share is no key. `side_ranks` is each side's place in the plan's
-    order (by identifier), which the walk breaks its ties on;
-    `orders_bindings` says that order places each `~` binding. Resolve orders
-    and types the joins; it never chooses a key."""
+    order (by identifier), which the walk breaks its ties on once each
+    `~` binding is placed (`_binding_order`). Resolve orders and types the
+    joins; it never chooses a key."""
     keyspace = keyspace or Keyspace()
 
     # each pseudonym class is one graph node, named by a source's own output
@@ -2745,10 +2707,15 @@ def get_node_joins(
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
         span_families=span_families,
         pair_keys=pair_nodes,
-        side_ranks={
-            f"ds~{identifier}": rank for identifier, rank in (side_ranks or {}).items()
-        },
-        orders_bindings=orders_bindings,
+        side_ranks=_binding_order(
+            {
+                f"ds~{identifier}": rank
+                for identifier, rank in (side_ranks or {}).items()
+            },
+            sides,
+            pair_nodes,
+            frozenset(canon_node(a) for a in _declared_subset_keys(environment)),
+        ),
     )
     merge = _Merge(facts, ds_node_map, ds_concept_map, spellings, canon_node, memo)
     joins = resolve_join_order_v2(facts)
