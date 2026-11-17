@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.walk_order import ROW_WALKS, flip_walk_spelling
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -303,7 +303,7 @@ def test_padded_key_does_not_pair_with_a_value_null_group(
         "count_of_address_only_rows",
     ],
 )
-@pytest.mark.parametrize("walk", ROW_WALKS)
+@pytest.mark.parametrize("walk", WALKS)
 def test_address_only_rows_stay_their_own(
     tmp_path: Path,
     query: str,

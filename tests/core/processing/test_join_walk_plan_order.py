@@ -381,3 +381,28 @@ def test_a_flipped_shape_keeps_the_row_terms(monkeypatch):
     assert _order(_stated_order(plan, facts, frozenset())) == ["a", "c", "b"]
     flip_walk_spelling(monkeypatch, "shape_flipped")
     assert _order(_stated_order(plan, facts, frozenset())) == ["c", "a", "b"]
+
+
+def _stitch_facts(count_rank: int) -> JoinFacts:
+    return JoinFacts(
+        sides={
+            "customers": SideFacts(held_spans=frozenset({"cust"})),
+            "orders": SideFacts(),
+            "count": SideFacts(held_spans=frozenset({"cust", "bucket"})),
+        },
+        pair_keys={
+            frozenset({"customers", "orders"}): frozenset({"cust"}),
+            frozenset({"orders", "count"}): frozenset({"bucket"}),
+        },
+        side_ranks={"count": count_rank, "orders": 1, "customers": 2},
+    )
+
+
+@pytest.mark.parametrize("count_rank", [0, 3])
+def test_a_side_holding_a_span_it_pairs_on_with_no_one_joins_after_its_stitch(
+    count_rank: int,
+):
+    facts = _stitch_facts(count_rank)
+    assert facts.stitches == {"count": frozenset({"customers", "orders"})}
+    walked = [j.right for j in resolve_join_order_v2(facts)]
+    assert walked[-1] == "count"

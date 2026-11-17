@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
 from itertools import permutations
@@ -418,6 +418,26 @@ class JoinFacts:
     def paired(self, a: str, b: str) -> frozenset[str]:
         """What the plan pairs two sides on."""
         return self.pair_keys.get(frozenset({a, b}), frozenset())
+
+    @cached_property
+    def stitches(self) -> Mapping[str, frozenset[str]]:
+        """The sides each side must join after: a side holding a region's
+        rows on a span the plan pairs it on with no side holds the padded
+        rows of a stitch other sides make on that span, and a padded row a
+        later join mints pairs back with nothing. The sides the plan pairs
+        on such a span are that stitch."""
+        holders = _key_holders(self.pair_keys)
+        out: dict[str, frozenset[str]] = {}
+        for node, side in self.sides.items():
+            own = frozenset().union(
+                *(keys for pair, keys in self.pair_keys.items() if node in pair)
+            )
+            after = frozenset().union(
+                *(holders.get(span, set()) for span in side.held_spans - own)
+            )
+            if after - {node}:
+                out[node] = after - {node}
+        return out
 
 
 def _preserving(left: bool) -> JoinType:
@@ -1043,8 +1063,8 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     a side pairing with none seeds a tree only when none does. The walk
     chooses nothing itself, so the plan is deterministic across runs.
 
-    The stated order (`_stated_order`) is the plan's shape below what each
-    key's holders' rows are (`_key_row_terms`). Two more facts about rows
+    The stated order (`_stated_order`) is shape around two row terms of a
+    key, whether it is authored and how many sides pair on it (`_key_terms`). Two more facts about rows
     outrank it. A merge whose rows are one side's states that side (`facts.seed`), and the
     walk starts from it. And the walk repairs a side preserved past an INNER
     join among the sides walked before it (`_preserved_past_inner`): that
@@ -1067,11 +1087,17 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     return output
 
 
+def _stitched(facts: JoinFacts, sides: Iterable[str], walked: set[str]) -> list[str]:
+    """The `sides` whose stitches (`JoinFacts.stitches`) are all walked."""
+    return [s for s in sides if facts.stitches.get(s, frozenset()) <= walked]
+
+
 def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
     """One walk over the plan's pairings, from `seed` when given. Each step
     joins the side the merge states first (`facts.rank`) among those the plan
-    pairs with a joined one; when it pairs none, the first of the rest seeds
-    another island."""
+    pairs with a joined one whose stitches are walked (`_stitched`), or among
+    all of them when none is; when it pairs none, the first of the rest seeds
+    another island the same way."""
     paired = {
         side
         for pair, keys in facts.pair_keys.items()
@@ -1088,7 +1114,13 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
             for side in unjoined
             if any(facts.paired(side, left) for left in walked)
         ]
-        right = min(touching or unjoined, key=facts.rank)
+        right = min(
+            _stitched(facts, touching, eligible_left)
+            or touching
+            or _stitched(facts, unjoined, eligible_left)
+            or unjoined,
+            key=facts.rank,
+        )
         if touching:
             output.append(_join_onto(right, walked, facts))
         elif eligible_left:
@@ -1502,23 +1534,31 @@ def reduce_concept_pairs(
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     is_outer = join_type in OUTER_JOIN_TYPES
-    right_left_seen: dict[tuple[str, str], bool] = {}
+    # one column paired from two left nodes is one pair only where an earlier
+    # join equated them on it (`agreement`): met on another key alone, each
+    # node's own equality is what ties its rows to the right's
+    right_left_seen: dict[tuple[str, str], tuple[bool, str]] = {}
     for index, pair in enumerate(pairs):
         dedup_key = (pair.right.address, pair.node.identifier)
         if dedup_key in seen:
             continue
         rl_key = (pair.right.address, pair.left.address)
+        prior = right_left_seen.get(rl_key)
         if (
-            rl_key in right_left_seen
+            prior is not None
             and not is_outer
-            and not (right_left_seen[rl_key] or pair.is_partial)
+            and not (prior[0] or pair.is_partial)
+            and agree.same(prior[1], pair.node.identifier, pair.left.address)
         ):
             continue
         if index in fd_pruned or _aggregate_beside_its_grain(pair, pairs):
             continue
 
         seen.add(dedup_key)
-        right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
+        right_left_seen[rl_key] = (
+            (prior is not None and prior[0]) or pair.is_partial,
+            prior[1] if prior else pair.node.identifier,
+        )
         final.append(pair)
     all_keys = {x.right.address for x in final}
     if (
@@ -2581,37 +2621,35 @@ def _solid_holders(
     return out
 
 
-RowTerm = tuple[bool, bool, bool, int, int]
+# a key's shape: not a value-nullable key between region-free holders, not a
+# held span, the most other spans a holder holds
+KeyShape = tuple[bool, bool, int]
+# where a key comes: not authored, its shape, how many sides the plan pairs
+# on it, and the holders it places
+KeyTerm = tuple[bool, KeyShape, int, set[str]]
 
 
-def _key_row_terms(
-    facts: JoinFacts, holders: Mapping[str, set[str]]
-) -> list[tuple[RowTerm, set[str]]]:
-    """Where each planned key comes for what its holders' rows are, with the
-    holders it places. An AUTHORED key (scoped join / merge relation) comes
-    first: its equality is the pairing between its holders' rows, and sides
-    met on a cheaper shared key before it pair on that key alone. Then a
-    value-nullable key between the sides holding no region
-    (`_solid_holders`). Then a span some side holds a region on: the stitch
-    on the span unites the region's rows with its feeder before a key the
-    region CARRIES joins them, or a `~?` guest never reaches its NULL group.
-    A key held by a side holding several regions' rows comes after the others
-    are stitched: its NULL group holds their padded rows. Then the key the
-    plan pairs the fewest sides on: a side that also pairs on a wider key
-    meets its holders on both."""
-    out: list[tuple[RowTerm, set[str]]] = []
+def _key_terms(facts: JoinFacts, holders: Mapping[str, set[str]]) -> list[KeyTerm]:
+    """Where each planned key comes, with the holders it places. Two terms
+    decide rows. An AUTHORED key (scoped join / merge relation) comes first:
+    its equality is the pairing between its holders' rows, and in a
+    left-deep tree sides met on a cheaper shared key before it pair on that
+    key alone. And below the shape, the key the plan pairs the fewest sides
+    on: a side that also pairs on a wider key meets its holders on both.
+
+    The shape between them reverses without moving rows: a value-nullable
+    key between the sides holding no region (`_solid_holders`), then a span
+    some side holds a region on, then the key held by a side holding the
+    fewest other spans. Where a side holds the rows of a span it pairs on
+    with no side, the walk waits for that stitch whatever the order
+    (`JoinFacts.stitches`)."""
+    out: list[KeyTerm] = []
     for key, held_by in holders.items():
         others = max(len(facts.side(s).held_spans - {key}) for s in held_by)
-        term = (
-            key not in facts.authored_join_keys,
-            True,
-            key not in facts.held_spans,
-            others,
-            len(held_by),
-        )
-        out.append((term, held_by))
+        shape = (True, key not in facts.held_spans, others)
+        out.append((key not in facts.authored_join_keys, shape, len(held_by), held_by))
     for solid in _solid_holders(facts, holders).values():
-        out.append(((True, False, False, 0, len(solid)), solid))
+        out.append((True, (False, False, 0), len(solid), solid))
     return out
 
 
@@ -2644,22 +2682,26 @@ def _stated_order(
     ranks: Mapping[str, int], facts: JoinFacts, declared: frozenset[str]
 ) -> dict[str, int]:
     """The one order the walk joins a merge's sides in. A side comes where
-    the best key the plan pairs it on puts it: a key is placed by what its
-    holders' rows are (`_key_row_terms`), then by where the plan's shape
-    puts those holders (`_shape_terms`, over `ranks`, the plan's order), so
-    a lookup follows the rows it hangs off. Sides one key places alike come
-    in the shape's order. All of it reads the built sides, so no plan states
-    it: resolve does, once for the merge, before the walk."""
+    the best key the plan pairs it on puts it: a key is placed by whether it
+    is authored, its shape and its holder count (`_key_terms`), then by where the plan's
+    shape puts its holders (`_shape_terms`, over `ranks`, the plan's
+    order), so a lookup follows the rows it hangs off. Sides one key places
+    alike come in the shape's order. All of it reads the built sides, so no
+    plan states it: resolve does, once for the merge, before the walk."""
     sides, pair_keys = facts.sides, facts.pair_keys
     shape = _places(_shape_terms(ranks, sides, pair_keys, declared))
-    best: dict[str, tuple[RowTerm, tuple[int, ...]]] = {}
-    for rows, held_by in _key_row_terms(facts, _key_holders(pair_keys)):
-        term = (rows, tuple(sorted(shape[side] for side in held_by)))
+    best: dict[str, tuple[bool, KeyShape, int, tuple[int, ...]]] = {}
+    for authored, key_shape, count, held_by in _key_terms(
+        facts, _key_holders(pair_keys)
+    ):
+        places = tuple(sorted(shape[side] for side in held_by))
+        term = (authored, key_shape, count, places)
         for side in held_by:
             best[side] = min(best.get(side, term), term)
     # a side the plan pairs on nothing comes after the ones it pairs
-    unpaired = ((True, True, True, len(sides), len(sides)), ())
-    return _places({node: (best.get(node, unpaired), shape[node]) for node in sides})
+    return _places(
+        {node: (node not in best, best.get(node, ()), shape[node]) for node in sides}
+    )
 
 
 def get_node_joins(

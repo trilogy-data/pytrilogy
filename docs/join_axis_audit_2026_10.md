@@ -4276,6 +4276,107 @@ four shape pins part 111 named (q75's SQL budget, the q64 semi-join probe,
 a FULL lowering refused for another reason than the one pinned, the
 `DropIdentityGroup` rule-fires check).
 
+**Most-held is a stitch the walk waits for (part 116).** Part 115 read
+the term as a property of a left-deep tree. That is right about the tree
+but not about the rank. The count in its witness pairs only on `bucket`,
+with the orders. It holds the customer region's rows too, on a span the
+plan pairs it on with no side, so its padded rows are those of a stitch
+two other sides make: customers and orders on `customer_id`. The term
+placed `bucket` after `customer_id` because the count holds one more
+span, a rank over keys. What the tree needs is narrower: the count may
+not join before the sides the plan pairs on that span.
+
+So the walk reads it as that (`JoinFacts.stitches`). A side holding a
+region's rows on a span it pairs on with no side waits for every side
+the plan pairs on that span, and the walk joins the side stated first
+among the paired sides whose stitches are walked (`_stitched`), or among
+all of them when none is. A seed is picked the same way, since a seed
+the walk starts from is joined before everything.
+
+The term stays in the order, now as shape. A first cut dropped it. That
+kept the corpus, and the suite's rows, but the suite capture moved 8
+statements, each worse: in the dimension-chain oracle and
+`test_the_solid_rows_keep_the_region_spans`, a side holding two spans
+seeded the walk and two LEFTs became FULLs. So the count of other spans
+a key's holders hold still places the key, as plan quality, below what
+the stitch guarantees for rows.
+
+The witness is now pinned under every walk, the reversed shape included.
+With the stitch disabled, it fails in 6 of its 12 walks.
+
+**Solid, held span and most-held are the key's shape (part 117).**
+Holding a term constant (part 111) shows only that it decides no rows on
+its witnesses. Reversing it is the stronger test. `_key_terms` now states
+each key as authored, then a shape (`KeyShape`: solid, held span, most
+other spans held), then its holder count. The order is the one
+`_stated_order` already read, so nothing moves (corpus 0, suite
+unchanged). `shape_flipped` reverses the key's shape along with the
+side's (`tests/helpers/walk_order.flipped_keys`), and every
+walk-parametrized test (2,795) passes that way. `ROW_WALKS` and the
+held-constant walks fold into `WALKS`.
+
+Over the whole suite (`WALK_FLIP=shape,name`), the reversed key shape
+fails nothing on rows that `main`'s flip does not. Reversing one term at
+a time, with and without the side shape, rows move only when the holder
+count is reversed.
+
+**An INNER pair two left nodes share is one pair only where they agree
+(part 118).** The first whole-suite run with the reversed key shape
+found a row bug in the expressions oracle (seed 8, `summary`).
+`reduce_concept_pairs` dropped a second INNER pair on the same
+(right, left) columns read off another left node, as if every left were
+already equated on it. Walked the other way, a store summary met the
+gated trees on `species` alone. Then the per-tree value joined both on
+`tree_id`, but kept only the trees' pair, so the summary's rows fanned
+out across the species. The FD pruning and grain restriction in the
+same function already ask `_Agreement`; this dedup now asks it too.
+Corpus: 0 moved. The case is pinned under every walk
+(`test_two_lefts_met_on_another_key_each_keep_their_pair`).
+
+**Holder count still decides rows (part 119).** Part 112 fixed the
+witness part 111 named, a transitive plan pairing. Reversing the holder
+count over the whole suite finds six more, each passing on `main`'s
+flip and failing with the count reversed (all but one also need the
+side shape reversed):
+
+- `test_derived_key_domain::test_completion_keeps_its_padding_beside_a_domain_on_its_span`
+  (two cases: a customer with no order gains a padded row);
+- `test_unmodelled_regions::test_two_facts_at_one_grain`;
+- TPC-DS q40, q75 and q80 (row values), and
+  `test_truncated_search_seed_fallback_returns_correct_rows`.
+
+So the holder count stays a row term, below the key's shape, and
+`WALK_FLIP=holders` (`walk_order.HOLDER_FLIPS`) reverses it to
+reproduce them. These six are the next witnesses: each is a typing or
+pairing that holds in one direction only, the kind parts 112 to 114
+fixed.
+
+The order the walk reads is now two row terms of a key amid shape.
+Authored is a key rank a left-deep tree needs. Its witness is a 4-cycle:
+two facts share `sku`, and the authored key sits between their
+dimensions. The authored edge has to be a tree edge, so the cheap `sku`
+edge closes the cycle together with the dimension key instead of pairing
+the facts alone. The holder count has the six open witnesses above.
+Most-held is a stitch the walk waits for, and otherwise shape.
+
+Gates, against `7c54bf1`:
+
+- Corpus (205 statements): 0 moved.
+- Suite (`-n 4`, without adventureworks/clickhouse/bigquery/cloud_live):
+  the same 25 credential-gated failures as `main`. Suite capture: join
+  counts unchanged outside the known statement-count noise. About a dozen
+  tests outside the noisy oracle laws (the sweep shapes, the padded
+  population gate, where-hosts) move by part 118: an INNER join now keeps
+  a second left's pair on a key and a later pass keeps one of two pairs
+  that are equal by FD, so the ON reads the key off the other left. Every
+  one passes its row assertions.
+- Whole suite under `WALK_FLIP=shape,name`, which now reverses the
+  key's shape too: the same failures as `main`'s flip (101), plus one
+  walk unit test that pins the order it states. Before part 118 it also
+  failed the expressions oracle; with the holder count reversed as well,
+  it also fails the six witnesses of part 119.
+- Fuzzer: 522/522.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4375,7 +4476,11 @@ not built yet:
    held span a filtered total typed INNER against the rows it rolls up
    (part 113), and solid a coalesced null-safe key reaching padding (part
    114); each now holds in both directions. Most other held spans is the
-   tree's, like authored (part 115). Ties the plan's
+   tree's, like authored (part 115), and the walk now waits for it as a
+   stitch (part 116). It, solid and held span are the key's shape, which
+   the flip reverses (part 117). Reversing them found one pair-dedup bug
+   (part 118). Holder count still decides rows in six suite witnesses,
+   so it stays a row term beside authored (part 119). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).

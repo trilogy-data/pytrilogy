@@ -37,6 +37,7 @@ from tests.discovery.test_oracle_sweep_laws import (
     lit,
     normalize,
 )
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 
 DERIVED = {
     "fc": (
@@ -284,4 +285,17 @@ def test_expression_matches_raw_row_oracle(seed: int, model: str):
         if (reason := OPEN.get((seed, model))) is not None and reason not in str(e):
             pytest.fail(f"{query}\n{e}", pytrace=False)
         raise
+    assert normalize(rows) == normalize(expected), f"{query}\n{sql}"
+
+
+@pytest.mark.parametrize("walk", WALKS)
+def test_two_lefts_met_on_another_key_each_keep_their_pair(
+    monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    """Shape-flipped, the per-tree value joins the gated trees after the
+    summary met them on `species` alone: its `tree_id` pairs with both."""
+    flip_walk_spelling(monkeypatch, walk)
+    query, expected = shape3(8)
+    sql = executor("summary").generate_sql(query)[-1]
+    rows = executor("summary").execute_raw_sql(sql).fetchall()
     assert normalize(rows) == normalize(expected), f"{query}\n{sql}"

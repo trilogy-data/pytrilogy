@@ -5,8 +5,9 @@
 
 The walk reads one order, stated once per merge (`_stated_order`). Every
 merge of three or more sides is walked again once per variant, each with one
-term of that order held constant: a row term of the key placement
-(`_key_row_terms`; `solid` drops the solid holders), the holders' shape
+term of that order held constant: a term of the key placement
+(`_key_terms`: `authored`, or one of the key's shape; `solid` drops the
+solid holders), the holders' shape
 places (`holder_shape`), or a shape term (`_shape_terms`). A variant whose
 join order differs is counted as deciding that merge.
 Writes `<RANK_OUT>.<worker>.json`: {counts, hits: [{variant, nodeid}]}.
@@ -24,14 +25,14 @@ import pytest
 from trilogy.core.processing import join_resolution as jr
 
 _stated = jr._stated_order
-_rows = jr._key_row_terms
+_keys = jr._key_terms
 _shape = jr._shape_terms
 _counts: dict[str, int] = {}
 _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
-# variant -> the row term held constant
-ROW_TERMS = {"authored": 0, "solid": 1, "held": 2, "max_held": 3, "holders": 4}
+# variant -> the key's shape term held constant
+KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2}
 # variant -> the shape term held constant
 SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 
@@ -53,16 +54,25 @@ def _held(term: tuple, index: int) -> tuple:
     return (*term[:index], 0, *term[index + 1 :])
 
 
-def _rows_held(index: int) -> Callable[..., list]:
-    def rows(facts, holders):
+def _keys_held(name: str) -> Callable[..., list]:
+    """`_key_terms` with one term held constant: `authored`, `holders`, or
+    one of the key's shape (`KEY_TERMS`)."""
+    index = KEY_TERMS.get(name)
+
+    def keys(facts, holders):
         return [
-            (_held(term, index), held_by)
-            for term, held_by in _rows(facts, holders)
+            (
+                True if name == "authored" else authored,
+                shape if index is None else _held(shape, index),
+                0 if name == "holders" else count,
+                held_by,
+            )
+            for authored, shape, count, held_by in _keys(facts, holders)
             # the solid holders are a term of their own
-            if index != ROW_TERMS["solid"] or term[1]
+            if name != "solid" or shape[0]
         ]
 
-    return rows
+    return keys
 
 
 def _shape_held(index: int) -> Callable[..., dict]:
@@ -87,7 +97,7 @@ def _variant(name: str, replacement: Callable, args: tuple) -> dict[str, int]:
     try:
         return _stated(*args)
     finally:
-        jr._key_row_terms = _rows
+        jr._key_terms = _keys
         jr._shape_terms = _shape
 
 
@@ -111,8 +121,8 @@ def _census(ranks, facts, declared) -> dict[str, int]:
     _counts["merges"] = _counts.get("merges", 0) + 1
     args = (ranks, facts, declared)
     base = _walked(facts, out)
-    for name, index in ROW_TERMS.items():
-        if _walked(facts, _variant("_key_row_terms", _rows_held(index), args)) != base:
+    for name in ("authored", *KEY_TERMS, "holders"):
+        if _walked(facts, _variant("_key_terms", _keys_held(name), args)) != base:
             _hit(name)
     for name, index in SHAPE_TERMS.items():
         if _walked(facts, _variant("_shape_terms", _shape_held(index), args)) != base:

@@ -1,12 +1,11 @@
 """The join walk with its shape order reversed.
 
-The walk joins a merge's sides in one stated order (`_stated_order`): what
-the sides' rows are, then the plan's shape, then the side's name. The last
-two are no fact about rows, so a plan walked the other way round on either
+The walk joins a merge's sides in one stated order (`_stated_order`): two
+facts about a key's rows (whether it is authored, how many sides pair on
+it) amid shape (each key's and the plan's), then the side's name. Shape and
+name are no fact about rows, so a plan walked the other way round on either
 must return the same rows. `flip_walk_spelling` reverses one of them; the
-row terms stay. Of the row terms, three are typing that must hold in either
-direction too (`ROW_WALKS`), so a plan walked with one held constant must
-return the same rows.
+row terms stay.
 """
 
 from __future__ import annotations
@@ -53,45 +52,33 @@ def flipped_rank(facts, node):
     return (rank, _Rev(name))
 
 
-_rows = jr._key_row_terms
-
-# row term -> its index in `RowTerm`
-ROW_TERMS = {"authored": 0, "solid": 1, "held": 2, "max_held": 3, "holders": 4}
+_keys = jr._key_terms
 
 
-def held_row(*names: str):
-    """`_key_row_terms` with the named terms held constant; `solid` drops
-    the solid holders, which are a term of their own."""
-    indexes = {ROW_TERMS[name] for name in names}
+def flipped_keys(facts, holders):
+    return [(a, _Rev(shape), n, held) for a, shape, n, held in _keys(facts, holders)]
 
-    def rows(facts, holders):
-        return [
-            (tuple(0 if i in indexes else t for i, t in enumerate(term)), held_by)
-            for term, held_by in _rows(facts, holders)
-            if term[1] or ROW_TERMS["solid"] not in indexes
-        ]
 
-    return rows
+def flipped_holders(facts, holders):
+    return [(a, shape, -n, held) for a, shape, n, held in _keys(facts, holders)]
 
 
 # what each flip replaces: (owner, attribute, replacement)
-SHAPE_FLIPS = [(jr, "_shape_terms", flipped_shape)]
+SHAPE_FLIPS = [
+    (jr, "_shape_terms", flipped_shape),
+    (jr, "_key_terms", flipped_keys),
+]
 NAME_FLIPS = [(jr.JoinFacts, "rank", flipped_rank)]
+# the holder count is a row term: reversed, it still moves rows
+HOLDER_FLIPS = [(jr, "_key_terms", flipped_holders)]
 FLIPS = {
     "walked": [],
     "shape_flipped": SHAPE_FLIPS,
     "names_flipped": NAME_FLIPS,
-    **{
-        f"{name}_held": [(jr, "_key_row_terms", held_row(name))]
-        for name in ("solid", "held", "holders")
-    },
 }
 
 # as walked, and with each reversed
 WALKS = ["walked", "shape_flipped", "names_flipped"]
-# as walked, and with each row term that is typing held constant; `authored`
-# and `max_held` are the left-deep tree's: a stitch must come first
-ROW_WALKS = ["walked", "solid_held", "held_held", "holders_held"]
 
 
 def flip_walk_spelling(monkeypatch: pytest.MonkeyPatch, walk: str) -> None:
