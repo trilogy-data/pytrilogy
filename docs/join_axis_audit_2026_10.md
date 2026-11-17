@@ -3980,12 +3980,15 @@ completely. It is dropped, and with it the scorer's `root` argument:
 Suite capture against `main` at `a705d3c` (`sqlcap`, `-n 4`,
 `PYTHONHASHSEED=0`): both trees have the same 25 credential-gated
 failures, and the only other outcome change is the Rust-binary test's
-skip (listed noise). 186 tests move, 5 of them flipped-walk variants.
-Left out of the tally: the two capture files that move between two runs
-of one tree (part 105), and `test_cli_consistency`, `test_config` and
-`test_duckdb_validate`, which compile a varying number of statements. The
-rest adds up to FULL -2, INNER +3, LEFT +25, RIGHT -26, `coalesce` -3,
-null-safe pairs +1 and CTE 0. Join counts are unchanged.
+skip (listed noise). Left out of the tally: the two capture files that
+move between two runs of one tree (part 105), the script tests and
+`test_duckdb_validate`, which compile a varying number of statements,
+and the flipped-walk variants, which reverse the order this part states.
+Of the rest 292 tests move, adding up to FULL -4, INNER +3, LEFT +29,
+RIGHT -28, `coalesce` -5, null-safe pairs +1 and CTE 0. Join counts are
+unchanged. 131 of the 292 are the oracle spellings laws, which move by
+the column order of one CTE and by a different number between two
+captures of this tree (50, then 131).
 
 - `test_derived_key_domain` (14) loses 4 FULLs, and 19 RIGHTs mirror to
   LEFT off the customer rows.
@@ -3994,10 +3997,7 @@ null-safe pairs +1 and CTE 0. Join counts are unchanged.
 - `test_cluster_key_lookup` (19) turns 4 INNERs into LEFTs.
 - `test_unmodelled_regions` mirrors 4 RIGHTs to LEFT and loses 3
   `coalesce` calls.
-- `test_multi_probe_coalescing` gains 2 FULLs, in its flipped-walk
-  variants only.
-- The oracle spellings laws (50) and the rest move by an INNER turned
-  around or a mirrored outer join.
+- The rest move by an INNER turned around or a mirrored outer join.
 
 Every moved test passes. The oracle laws among them compare rows against
 raw SQL.
@@ -4015,7 +4015,47 @@ counts what scan plans stated themselves. Hosting is unchanged (594),
 and so are the region terms (solid 24, held 31, max-held 29). The scorer
 replica differs in 13 merges (12 at `a705d3c`), all flipped-walk tests.
 
-<!-- flip -->
+**A forced LEFT states its seed (part 108).** Reversing the stated
+order (`WALK_FLIP=key,side`) found a row bug in 72 relation-rollup law
+cases, all of the `element` spelling. A relation rollup reads a summary
+through its list's pairs: `_star_merge` joins the pairs to the summary
+with `force_join_type=LEFT_OUTER`, since a species listing no ecoregion
+keeps its trees under a NULL one. The MergeNode stamps that type on
+whatever join the walk returns. LEFT keeps the side walked first, so the
+type was right only while the summary seeded. The plan put it first, as
+the star's hub, but only as a tie-break. Until part 106 the lone-`~`
+penalty also kept the pairs (a `~` binding of the species) behind it, in
+the scorer, where the flip did not reach. With the binding order stated
+and reversed, the pairs seeded, the LEFT kept them, and the species with
+no pair lost its rows:
+
+    select tree_eco_region, count(tree_id) as n;
+    -- walked from the summary: (0, 3) ... (4, 6), (NULL, 2)
+    -- walked from the pairs:   (0, 3) ... (4, 6)
+
+**Fix:** where a merge forces LEFT, the side its plan states first is a
+fact about rows, not a tie-break. The MergeNode names it
+(`_forced_seed`), `JoinFacts.seed` carries it, and the walk starts from
+it whatever the rank says. A forced FULL or INNER is symmetric and names
+none. `test_the_summary_keeps_its_rows_whichever_side_is_walked_first`
+runs every shape under each walk.
+
+With the seed stated, the reversed walk fails 97 tests against the 80
+`main` fails under the flip at `a705d3c`: 19 new, 2 gone (the
+`orders_bindings` unit tests), and none on rows. The `~` order of group
+plans used to sit in the scorer, which the flip leaves alone; it now
+sits in the stated order, which the flip reverses, so the shapes it set
+are pinned as order:
+- LEFT-off-anchor pins in the scoped and rowset `subset join` tests
+  (`test_scoped_left_join_on_nonrowset_derived_key`,
+  `test_scoped_derived_rowset_join_correct`,
+  `test_subset_join_blends_two_rowset_measures` and four more shape
+  pins of that family);
+- the plan-trace and region-typing pins of a first LEFT
+  (`test_first_region_holder_is_left_at_plan_time` and two trace tests);
+- TPC-H q13's no-`count(CASE` pin, a rule-fires check in the filtered
+  count join, and the city build's no-null-safe-filter-column pin;
+- three walk unit tests that pin the order they state.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -4102,7 +4142,8 @@ not built yet:
    binding a scan plan orders (part 105). No plan can state the rest of
    the `~` bindings, which are the built sides': resolve states them
    once per merge, over the plan's order, for every plan (part 106), and
-   the scorer reads no binding (part 107). What is left of the walk's
+   the scorer reads no binding (part 107). A merge forcing LEFT states
+   the side its rows are, which seeds the walk (part 108). What is left of the walk's
    rank above the stated order: the authored, solid and region terms of
    the key rank. Below the order is hosting. Ties the plan's terms leave
    are still broken by the position the plan lists them in (cover order,

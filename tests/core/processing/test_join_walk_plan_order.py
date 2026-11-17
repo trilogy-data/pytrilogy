@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     PlannedPairs,
@@ -10,6 +11,7 @@ from trilogy.core.processing.join_resolution import (
     resolve_join_order_v2,
     scan_precedence,
 )
+from trilogy.core.processing.nodes.merge_node import _forced_seed
 from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
 
 
@@ -238,3 +240,27 @@ def _hosted_star(ranks: dict[str, int]) -> JoinFacts:
 def test_hosting_breaks_only_ties_the_plan_leaves(ranks, seed):
     joins = resolve_join_order_v2(_hosted_star(ranks))
     assert joins[0].lefts.pop() == seed
+
+
+def test_a_stated_seed_starts_the_walk_whatever_the_order_says():
+    facts = replace(_star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2}), seed="ds~c")
+    joins = resolve_join_order_v2(facts)
+    assert [joins[0].lefts.pop(), *(j.right for j in joins)] == [
+        "ds~c",
+        "ds~a",
+        "ds~b",
+    ]
+
+
+@pytest.mark.parametrize(
+    "forced,ranks,seed",
+    [
+        (JoinType.LEFT_OUTER, {"hub": 0, "spoke0": 1, "spoke1": 1}, "hub"),
+        (JoinType.LEFT_OUTER, {"a": 0, "b": 0}, None),
+        (JoinType.FULL, {"hub": 0, "spoke0": 1}, None),
+        (None, {"hub": 0, "spoke0": 1}, None),
+        (JoinType.LEFT_OUTER, {}, None),
+    ],
+)
+def test_a_forced_left_seeds_the_side_the_plan_states_first(forced, ranks, seed):
+    assert _forced_seed(forced, ranks) == seed

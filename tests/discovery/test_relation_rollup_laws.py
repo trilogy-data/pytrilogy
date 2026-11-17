@@ -12,6 +12,7 @@ must answer alike, and the summary must be read wherever no WHERE applies."""
 import pytest
 
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.unnest.test_unnest_filter_laws import (
     REGIONS,
     Data,
@@ -242,6 +243,23 @@ def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
                 m.setattr(join_resolution, "_binding_order", _no_binding_order)
                 sql, blind_rows = _rows(_executor(model, data, sizing), query)
             assert blind_rows == walked, (query, seed, sql)
+
+
+@pytest.mark.parametrize("walk", WALKS)
+@pytest.mark.parametrize("shape", list(SHAPES))
+def test_the_summary_keeps_its_rows_whichever_side_is_walked_first(
+    monkeypatch, shape, walk
+):
+    """The relation join is a LEFT off the summary: a species listing no
+    ecoregion keeps its trees with the pairs walked first too."""
+    model, value, sizing, _ = SPELLINGS["element"]
+    data = random_data(CONFORMING[0])
+    query = f"select {SHAPES[shape].format(v=value)};"
+    _, expected = _rows(_executor(model, data, sizing), query)
+    flip_walk_spelling(monkeypatch, walk)
+    sql, got = _rows(_executor(model + SUMMARY, data, sizing), query)
+    assert got == expected, sql
+    assert '"summary"' in sql, sql
 
 
 ELEMENT_ORACLE = """select e, count(distinct tree_id) from trees t

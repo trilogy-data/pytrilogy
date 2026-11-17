@@ -378,6 +378,9 @@ class JoinFacts:
     # else decides: the plan's (`PlannedPairs.rank`), a side hanging off an
     # anchor after the rest (`_binding_order`)
     side_ranks: Mapping[str, int] = field(default_factory=dict)
+    # the side holding the merge's rows, when the merge states one: the walk
+    # starts from it
+    seed: str | None = None
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -1114,15 +1117,17 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     between two unjoined sides seeds a tree only when none touches it. Every
     choice point sorts its inputs, so the plan is deterministic across runs.
 
-    The order is a choice of plan shape, not of rows, with one exception the
-    walk repairs: a side preserved past an INNER join among the sides walked
-    before it (`_preserved_past_inner`) seeds the walk instead, so each of
-    them hangs off its rows on its own pairing.
+    The order is a choice of plan shape, not of rows, with two exceptions. A
+    merge whose rows are one side's states that side (`facts.seed`), and the
+    walk starts from it. And the walk repairs a side preserved past an INNER
+    join among the sides walked before it (`_preserved_past_inner`): that
+    side seeds the walk instead, so each of them hangs off its rows on its
+    own pairing.
     ``ensure_content_preservation`` keeps every later join from dropping the
     rows an earlier one preserved.
     """
-    output = _walk(facts)
-    seed = _preserved_past_inner(output)
+    output = _walk(facts, facts.seed)
+    seed = None if facts.seed else _preserved_past_inner(output)
     if seed is not None:
         output = _walk(facts, seed)
     ensure_content_preservation(
@@ -2595,6 +2600,7 @@ def get_node_joins(
     *,
     planned_pairs: Mapping[frozenset[str], frozenset[str]],
     side_ranks: Mapping[str, int] | None = None,
+    seed: str | None = None,
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
     rowset body pads them under and its region partition. `planned_pairs` is
@@ -2602,8 +2608,9 @@ def get_node_joins(
     two sides pair only on what the plan pairs them on, and a column two sides
     merely share is no key. `side_ranks` is each side's place in the plan's
     order (by identifier), which the walk breaks its ties on once each
-    `~` binding is placed (`_binding_order`). Resolve orders and types the
-    joins; it never chooses a key."""
+    `~` binding is placed (`_binding_order`). `seed` is the side the walk
+    starts from when the merge's rows are that side's. Resolve orders and
+    types the joins; it never chooses a key."""
     keyspace = keyspace or Keyspace()
 
     # each pseudonym class is one graph node, named by a source's own output
@@ -2716,6 +2723,7 @@ def get_node_joins(
             pair_nodes,
             frozenset(canon_node(a) for a in _declared_subset_keys(environment)),
         ),
+        seed=f"ds~{seed}" if seed else None,
     )
     merge = _Merge(facts, ds_node_map, ds_concept_map, spellings, canon_node, memo)
     joins = resolve_join_order_v2(facts)
