@@ -44,8 +44,6 @@ VARIANTS: dict[str, tuple[tuple[int, ...], bool]] = {
     "all_but_name": ((0, 1, 2, 3, 4, 5), True),
 }
 SCORE_TERMS = (
-    "anchor",
-    "multi_partial",
     "partial",
     "hosts",
     "rank",
@@ -106,23 +104,21 @@ STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str, str], Any]]] = {
 
 def _scorer(
     off: frozenset[str], stand_in: str | None = None
-) -> Callable[..., tuple[bool, bool, int, bool, bool, str]]:
+) -> Callable[..., tuple[bool, int, bool, str]]:
     """`_score_join_candidate` with the terms in `off` held constant, and the
     term `stand_in` replaces reading its fact instead."""
     read = STAND_INS[stand_in][1] if stand_in else None
 
-    def score(x, *, root, facts, multi_partial, anchor_sources):
+    def score(x, *, root, facts, multi_partial):
         side = facts.side(x)
         if read is not None:
             side = jr.replace(side, hosts=bool(read(facts, x, root)))
         is_partial = root in side.partials
         rank, name = facts.rank(x)
         return (
-            x in anchor_sources and "anchor" not in off,
             "partial" in off or not is_partial or multi_partial,
             0 if "rank" in off else -rank,
             side.hosts and not is_partial and "hosts" not in off,
-            multi_partial and is_partial and "multi_partial" not in off,
             name,
         )
 

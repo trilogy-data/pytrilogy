@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
@@ -95,12 +96,15 @@ having coalesce(catalog_agg.cat_qty, 0) > 0
 order by store_agg.item_id asc;
 """
 
+# A chain declares each member inside the next: catalog ⊆ web ⊆ store, as the
+# data holds it. Declared the other way round, web's (item2, cust2) would be
+# no member of catalog, and which rows survive would rest on the lie.
 THREE_SOURCE_CHAINED = _HEAD + """
 select
     store_agg.item_id, store_agg.cust_id, store_agg.store_qty,
     coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) as other_qty
-subset join web_agg.item_id = catalog_agg.item_id = store_agg.item_id
-subset join web_agg.cust_id = catalog_agg.cust_id = store_agg.cust_id
+subset join catalog_agg.item_id = web_agg.item_id = store_agg.item_id
+subset join catalog_agg.cust_id = web_agg.cust_id = store_agg.cust_id
 having coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) > 0
 order by store_agg.item_id asc;
 """
@@ -152,7 +156,11 @@ def test_two_source_outer_join_anchor_preserved(models: Path):
     assert rows == [(1, 1, 10, 5)], rows
 
 
-def test_three_source_chained_outer_join_anchor_preserved(models: Path):
+@pytest.mark.parametrize("walk", WALKS)
+def test_three_source_chained_outer_join_anchor_preserved(
+    models: Path, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    flip_walk_spelling(monkeypatch, walk)
     sql, rows = _run(models, THREE_SOURCE_CHAINED)
     assert "INVALID_REFERENCE_BUG" not in sql
     assert not _MEASURE_IN_JOIN.search(sql), f"measure used as join key:\n{sql}"
@@ -160,7 +168,11 @@ def test_three_source_chained_outer_join_anchor_preserved(models: Path):
     assert rows == [(1, 1, 10, 8), (2, 2, 20, 7)], rows
 
 
-def test_three_source_star_outer_join_anchor_preserved(models: Path):
+@pytest.mark.parametrize("walk", WALKS)
+def test_three_source_star_outer_join_anchor_preserved(
+    models: Path, monkeypatch: pytest.MonkeyPatch, walk: str
+):
+    flip_walk_spelling(monkeypatch, walk)
     sql, rows = _run(models, THREE_SOURCE_STAR)
     assert "INVALID_REFERENCE_BUG" not in sql
     assert not _MEASURE_IN_JOIN.search(sql), f"measure used as join key:\n{sql}"

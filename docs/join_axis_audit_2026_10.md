@@ -3740,6 +3740,117 @@ Every moved test passes, and the oracle laws among them compare rows
 against raw SQL. In the corpus (205 statements) one statement moves
 (hackernews `adhoc03`, orientation only).
 
+**Which scorer terms still decide, after part 99 (census).** Replayed over
+the suite at `239cd0a` (14,981 merges of three or more sides), holding one
+`_score_join_candidate` term constant moves the lone-`~` penalty's order in
+640 merges, hosting's in 590 (520 of them the rollup laws' ties), the
+authored anchor's in 92 and the several-`~` bump's in 9. Of the two terms
+still above the plan's order, the anchor reads a statement fact (declared
+`subset` relations) and the lone-`~` penalty reads the `~` bindings of the
+datasources stage 3 picked.
+
+**Two members joined before their anchor narrow onto it (part 100).**
+Dropping the anchor term failed two tests on rows. One is a real order
+bug. In
+
+    subset join web.cust = store.cust
+    subset join cat.k = store.cust
+    where web.cust is not null or cat.k is not null
+
+walked from the members, `cat FULL web` meets `store` FULL on
+`coalesce(cat.k, web.cust)`. Resolve types every `~` pairing FULL and the
+optimizer's declared-subset narrowing
+(`UpgradeOuterFromKeySetEquivalence._narrow_directionally`) narrows it. A
+member left of the join must not have been null-extended by an earlier
+outer join (`_null_extended_before`), and here each member was padded by
+the other's FULL. So the FULL stayed, and a web-only customer outside the
+anchor survived. Walked from `store`, each member hangs LEFT off it and
+the narrowing drops that customer. **Fix:** when every CTE joined before
+the target is a left it reads its one key off (`_lefts_alone_before`), a
+row entering the join is some member's own row, and the ON's coalesce of
+the members is that row's key. The members' padding of each other is no
+NULL there, and the FULL narrows to RIGHT onto the anchor.
+
+The other failure had no bug. `test_three_source_chained_outer_join`
+declared `subset join web = catalog = store` (web ⊆ catalog ⊆ store) over
+data where web holds a pair catalog does not. Walked from catalog, web's
+extra row was no member of catalog and dropped; seeded on store, it
+survived. A lying declaration is author error (subset/union design), so
+neither walk is wrong. The test now declares the chain its data holds
+(catalog ⊆ web ⊆ store) and runs under every walk, as does the star form.
+
+**A declared subset member follows its anchor (part 101).** With the term
+gone, four `subset join` shapes walked their members first: `a FULL b`,
+then RIGHT onto the anchor, where the anchor had seeded two LEFTs. In
+`test_subset_rowset_anchor_rows` the plan put the anchor (`orders`) last,
+because its identity `id` lies inside the keys the members pair on, so it
+reads as their lookup. The anchor term had overridden that. The plan now
+states it: `JoinPlan.subset_sides` names the contributors holding a
+declared `subset` member whose anchor another contributor holds, read off
+the domain graph's declared pairs and each side's carries at stage 2.
+`precedence` ranks them after every other side, ahead of its other terms.
+Scan plans already state a `~` scan after the complete ones
+(`scan_precedence`).
+
+**The walk reads no anchor, and no several-`~` bump (part 102).** With the
+members' order stated and the narrowing order-blind,
+`_score_join_candidate` ranks:
+
+1. a lone `~` binding of the root key after its complete holders;
+2. the plan's order;
+3. hosting, between sides the plan ranks alike;
+4. the name.
+
+The several-`~` bump (below hosting since part 99) decided 9 merges, none
+on rows. Dropped, the files it decided pass as they stand. `anchor_keys`
+remains a typing fact (authored and axis keys).
+
+**A superset of the sup side is no spelling of it (part 103).** With the
+anchor no longer seeding, the reversed walk found a row bug in
+`subset join kc = kb = ka` (kc ⊆ kb ⊆ ka, data conforming) and in its
+pairwise form (`kb = ka`, `kc = ka`). Walked `c, b, a`, the optimizer
+narrowed `c FULL b` to LEFT, keeping `c`, then to INNER, and `b`'s bucket
+40 (no `c` row) lost its value. `_proven_subset_of` matches the sup side
+through its pseudonym closure, since rendering may re-address it. Both
+forms spell `kc` as `ka` too, so `kb ⊑ ka` read as `kb ⊑ kc`. It already
+excluded union siblings for the same reason. **Fix:** a spelling the sup
+side is itself a subset of is no stand-in for it either (its own address
+stays). The chain narrows `c FULL b` to RIGHT, keeping `b`; the pairwise
+form, which declares nothing between `b` and `c`, keeps it FULL.
+`test_chained_equality_join_matches_pairwise` now runs under every walk.
+A first cut that also dropped the sup side's own address (subset proofs
+are reflexive) grew 13 TPC benchmarks past their SQL budgets.
+
+Suite capture against `main` at `239cd0a` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated
+failures, and nothing else changes outcome. 25 tests change joins, CTEs
+or `coalesce` calls, adding up to FULL -12, INNER +7, LEFT -13, RIGHT +20,
+`coalesce` +3 and CTE +2.
+
+- The rollup cases in `test_derived_key_domain` (12) lose a FULL each:
+  two facts joined before their padded region narrow onto it (part 100).
+- The `~` cluster lookups in `test_cluster_key_lookup` turn a LEFT into
+  INNER, and several `subset join` shapes mirror LEFT to RIGHT.
+- Two shapes pay for the anchor term. `test_double_partial_key_join_order`
+  is a scan plan over `merge x into ~y` facts. `scan_precedence` ranks the
+  complete dimension last as their lookup, so the facts meet FULL and the
+  dimension joins RIGHT, where the anchor had seeded two LEFTs. In
+  `test_duckdb_subset_join_pivot_axis` the FINAL gains a wrap CTE: there
+  the ROOT side carries both the anchor and the member, so
+  `subset_sides` names neither. Stating the anchor in scan plans needs the
+  declared pairs plumbed into `PlannedPairs.over_scans`' two callers.
+
+In the corpus (205 statements) two statements move, q97 one and two: the
+two channel facts pair first and the customer domain joins after them
+(same CTE and join counts).
+
+The suite with the stated order reversed (`WALK_FLIP=key,side`) fails 41
+tests beside the 25 credential-gated ones, none on rows. That is `main`'s
+39 at `239cd0a` plus two that pin the stated order: the anchor-shape pin
+above, and `test_resolve_join_order_v2_multi_partial`, which pinned the
+several-`~` bump's order. Before part 103 it also failed the chained
+parity test, on rows.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -3816,12 +3927,20 @@ not built yet:
    narrowing that counted a fully partnered right as dropped (part 97).
    A row stream now leads the lookups its pairings identify even as a
    bridge (part 98), and the plan's order outranks hosting, which breaks
-   only ties the plan leaves (part 99). What is left of the walk's rank
-   above the stated order: the solid and region terms, the authored
-   anchor, and a lone `~` binding's penalty. Below it are hosting and the
-   several-`~` bump. Ties the plan's terms leave are still broken by the
-   position the plan lists them in (cover order, scan name), and stating
-   them as ties costs plan quality (part 99).
+   only ties the plan leaves (part 99). Two `subset join` members walked
+   before their anchor now narrow onto it (part 100), the plan states a
+   declared member after its anchor (part 101), the walk reads no anchor
+   and no several-`~` bump (part 102), and a superset of a narrowing's
+   sup side no longer stands in for it (part 103). What is left of the walk's
+   rank above the stated order: the solid and region terms, and a lone
+   `~` binding's penalty. That penalty decides 640 merges' shape (341 in
+   group plans, 164 in scan plans of the files that decide the most). It
+   is per key, not per side: restated as one side order it still moves
+   333 of 505 on those files, and as a per-key holder order 93. A group
+   plan cannot state it, since the `~` bindings are the datasources'
+   stage 3 picks. Below the order is hosting. Ties the plan's terms leave
+   are still broken by the position the plan lists them in (cover order,
+   scan name), and stating them as ties costs plan quality (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

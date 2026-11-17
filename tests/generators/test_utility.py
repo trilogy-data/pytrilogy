@@ -513,8 +513,7 @@ def test_resolve_join_order_v2_multi_partial():
 
     output = resolve_join_order_v2(_facts(columns, partials))
 
-    # Both fact tables should join to dim; fact tables join first
-    # because multi_partial scoring boosts them.
+    # Both fact tables should join to dim
     assert len(output) == 2
     # dim should be the last join (right side)
     assert output[-1].right == "ds~dim"
