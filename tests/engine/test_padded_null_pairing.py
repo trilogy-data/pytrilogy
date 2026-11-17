@@ -16,7 +16,7 @@ import pytest
 from tests.helpers.models import LINE_ITEMS
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from tests.helpers.rows import ExecutorCache, executor_for, sorted_rows
-from tests.helpers.walk_order import ROW_WALKS, WALKS, flip_walk_spelling
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
 
 _BASE = """
@@ -322,7 +322,7 @@ def test_where_testing_a_region_precedes_the_aggregates_grouping_it(
         ),
     ],
 )
-@pytest.mark.parametrize("walk", ROW_WALKS)
+@pytest.mark.parametrize("walk", WALKS)
 def test_a_member_the_where_emptied_is_not_a_region_row(
     query: str, expected: list[tuple], monkeypatch: pytest.MonkeyPatch, walk: str
 ):
@@ -343,7 +343,7 @@ def test_a_member_the_where_emptied_is_not_a_region_row(
         ),
     ],
 )
-@pytest.mark.parametrize("walk", sorted({*WALKS, *ROW_WALKS}))
+@pytest.mark.parametrize("walk", WALKS)
 def test_an_aggregate_holding_both_regions_pairs_after_they_are_stitched(
     query: str, expected: list[tuple], monkeypatch: pytest.MonkeyPatch, walk: str
 ):
@@ -380,7 +380,7 @@ def test_a_region_row_the_where_keeps_beside_a_total_it_lacks(model: str):
         ),
     ],
 )
-@pytest.mark.parametrize("walk", ROW_WALKS)
+@pytest.mark.parametrize("walk", WALKS)
 def test_where_kept_region_row_beside_a_solid_total_by_another_key(
     query: str, expected: list[tuple], monkeypatch: pytest.MonkeyPatch, walk: str
 ):
@@ -454,7 +454,7 @@ def test_a_coalesced_inner_key_pairs_value_nulls_null_safely():
     ) == [(1, 5, 1), (1, 7, 1)]
 
 
-@pytest.mark.parametrize("walk", sorted({*WALKS, *ROW_WALKS}))
+@pytest.mark.parametrize("walk", WALKS)
 def test_a_where_the_padded_row_passes_is_not_pushed_into_the_padded_side(
     monkeypatch: pytest.MonkeyPatch, walk: str
 ):
