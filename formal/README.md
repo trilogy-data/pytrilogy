@@ -2179,7 +2179,10 @@ a design decision or a bug.
     beside `species`) is re-summed off the summary and joined back on the
     property (`Rollup.property_resum_exact`); a grain mixing a row key in
     (`by city, tree_form`) stays on the rows (`Rollup.mixed_grain_pairs_on_property`).
-  - A/B: SWEEP_RESULTS
+  - A/B: Spellings 0-390,000 x 2 models (780,000 queries) on the branch:
+    nothing wrong, raising or invalid. On main, 356401 is wrong in the new
+    range and 62069, 96191 and 153508 are wrong, raise or render invalid SQL
+    below it.
 
 ## Limits
 

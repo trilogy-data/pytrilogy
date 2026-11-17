@@ -1246,7 +1246,10 @@ does not rewrite it; that rewrite is open.
       an outer property (`select tree_form, max(max(height) by species)`); a
       bare `select min(height) by tree_form` with no keys selected; `select
       species, min(height) by city`, whose rows are the summary's own pairs.
-    - SWEEP_RESULTS
+    - Spellings 0-390,000 x 2 models (780,000 queries) on the branch:
+      nothing wrong, raising or invalid. On main, 356401 is wrong in the new
+      range and 62069, 96191 and 153508 are wrong, raise or render invalid SQL
+      below it.
 
 ## Candidate areas
 
