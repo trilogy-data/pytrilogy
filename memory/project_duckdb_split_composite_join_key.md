@@ -17,4 +17,17 @@ Also fixed in the same change (the semantic half of #1027, from 0.3.502): `SideF
 
 Debugging recipe that found it: compile both versions, run each SQL hunk of the diff alone under `SET memory_limit` + `SET max_temp_directory_size`, then read the join conditions and estimates in the JSON plan. `count(*)` per CTE proves nothing here: every CTE was fine alone.
 
-Open: a join whose left keys come off two CTEs of the SAME select (`a.k1 = c.k1 AND b.k2 = c.k2`) is the same shape with nothing to materialize; not addressed. Not reported to DuckDB yet (no standalone repro that picks the bad half).
+Open: a join whose left keys come off two CTEs of the SAME select (`a.k1 = c.k1 AND b.k2 = c.k2`) is the same shape with nothing to materialize; not addressed. The standalone repro is exactly that shape, so it is reachable.
+
+Standalone repro (DuckDB 2.0.0 fails; 1.4.1 and 1.2.2 pick the good order; a TABLE instead of Parquet is fine on every version — no distinct-count stats on Parquet, and 2.0.0 breaks the tie toward the one-value key):
+
+```sql
+SET memory_limit='1GB'; SET max_temp_directory_size='1GB';
+COPY (SELECT i AS tree_id, 'ams' AS city, i % 45000 AS cell FROM range(337417) t(i)) TO 'trees.parquet' (FORMAT parquet);
+WITH per_cell AS (SELECT city, cell, count(*) AS n FROM 'trees.parquet' GROUP BY 1, 2)
+SELECT count(*) FROM 'trees.parquet' t
+INNER JOIN 'trees.parquet' c ON t.tree_id = c.tree_id
+INNER JOIN per_cell ON t.city = per_cell.city AND c.cell = per_cell.cell;
+```
+
+Upstream DuckDB issue drafted, not filed as of 2026-11-17.
