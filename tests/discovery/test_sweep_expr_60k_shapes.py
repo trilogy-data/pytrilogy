@@ -22,6 +22,9 @@ import pytest
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
 from tests.discovery.test_rollup_resolution_laws import BASE
 from trilogy import Dialects
+from trilogy.core.enums import FunctionType
+from trilogy.core.functions import FunctionFactory
+from trilogy.core.models.author import _reads_bare_aggregate
 from trilogy.core.models.build import Factory
 from trilogy.parsing.parse_engine_v2 import parse_text
 
@@ -146,3 +149,18 @@ def test_expression_of_aggregates_grain(expression: str, grain: set[str]):
     built = Factory(environment=env, grain=select.grain).build(select.as_lineage(env))
     (v,) = [c for c in built.output_components if c.address == "local.v"]
     assert v.grain.components == grain
+
+
+@pytest.mark.parametrize(
+    "operator, bare", [(FunctionType.COUNT, True), (FunctionType.GROUPING, False)]
+)
+def test_unwrapped_aggregate_is_bare_unless_a_pass_key(
+    operator: FunctionType, bare: bool
+):
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.parse_text(BASE)
+    env = ex.environment
+    function = FunctionFactory(env).create_function(
+        [env.concepts["city"].reference], operator
+    )
+    assert _reads_bare_aggregate(function, env) is bare
