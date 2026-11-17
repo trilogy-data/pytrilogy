@@ -1,17 +1,14 @@
-"""pytest plugin: which `_pivot_rank` and `_score_join_candidate` terms
-decide a join walk.
+"""pytest plugin: which terms of the join walk's stated order decide a walk.
 
     RANK_OUT=/tmp/rank PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p rank_census_plugin tests ...
 
-Every `resolve_join_order_v2` over three or more sides is replayed once per
-variant, each with one rank term held constant (`solid` also drops the solid
-pivots, `solid_nullable` reads any nullable key for a value-nullable one), or
-one scorer term held constant, or under the plan's order with no `~`
-binding placed (`binding_order`), or read off a stand-in fact (`STAND_INS`; the
-`field:` variants replace a side fact for every reader, typing included). A
-variant whose join order differs is counted as deciding that merge. `score_replica` counts merges the scorer's replica orders
-differently from the scorer itself; it must stay 0.
+The walk reads one order, stated once per merge (`_stated_order`). Every
+merge of three or more sides is walked again once per variant, each with one
+term of that order held constant: a row term of the key placement
+(`_key_row_terms`; `solid` drops the solid holders), the holders' shape
+places (`holder_shape`), or a shape term (`_shape_terms`). A variant whose
+join order differs is counted as deciding that merge.
 Writes `<RANK_OUT>.<worker>.json`: {counts, hits: [{variant, nodeid}]}.
 """
 
@@ -26,26 +23,17 @@ import pytest
 
 from trilogy.core.processing import join_resolution as jr
 
-_resolve = jr.resolve_join_order_v2
-_rank = jr._pivot_rank
-_solid = jr._solid_value_null_pivots
-_score = jr._score_join_candidate
-_order = jr._binding_order
+_stated = jr._stated_order
+_rows = jr._key_row_terms
+_shape = jr._shape_terms
 _counts: dict[str, int] = {}
 _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
-# variant -> (rank terms held constant, drop the solid pivots)
-VARIANTS: dict[str, tuple[tuple[int, ...], bool]] = {
-    "authored": ((0,), False),
-    "solid": ((1,), True),
-    "held": ((2,), False),
-    "max_held": ((3,), False),
-    "holders": ((4,), False),
-    "key_length": ((5,), False),
-    "all_but_name": ((0, 1, 2, 3, 4, 5), True),
-}
-SCORE_TERMS = ("hosts", "rank")
+# variant -> the row term held constant
+ROW_TERMS = {"authored": 0, "solid": 1, "held": 2, "max_held": 3, "holders": 4}
+# variant -> the shape term held constant
+SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 
 
 def _signature(joins: list[jr.JoinOrderOutput]) -> list[tuple]:
@@ -61,97 +49,54 @@ def _signature(joins: list[jr.JoinOrderOutput]) -> list[tuple]:
     ]
 
 
-def _held(terms: tuple[int, ...]):
-    def rank(pivot, holders, facts):
-        out = list(_rank(pivot, holders, facts))
-        for i in terms:
-            out[i] = 0
-        return tuple(out)
-
-    return rank
+def _held(term: tuple, index: int) -> tuple:
+    return (*term[:index], 0, *term[index + 1 :])
 
 
-def _replay(facts: jr.JoinFacts, terms: tuple[int, ...], no_solid: bool) -> list:
-    jr._pivot_rank = _held(terms)
-    if no_solid:
-        jr._solid_value_null_pivots = lambda pivot_map, facts: {}
+def _rows_held(index: int) -> Callable[..., list]:
+    def rows(facts, holders):
+        return [
+            (_held(term, index), held_by)
+            for term, held_by in _rows(facts, holders)
+            # the solid holders are a term of their own
+            if index != ROW_TERMS["solid"] or term[1]
+        ]
+
+    return rows
+
+
+def _shape_held(index: int) -> Callable[..., dict]:
+    def shape(ranks, sides, pair_keys, declared):
+        terms = _shape(ranks, sides, pair_keys, declared)
+        return {node: _held(term, index) for node, term in terms.items()}
+
+    return shape
+
+
+def _no_holder_shape(ranks, sides, pair_keys, declared):
+    """The shape with every side in one place while keys are placed."""
+    return dict.fromkeys(sides, 0)
+
+
+def _walked(facts: jr.JoinFacts, ranks: dict[str, int]) -> list[tuple]:
+    return _signature(jr.resolve_join_order_v2(jr.replace(facts, side_ranks=ranks)))
+
+
+def _variant(name: str, replacement: Callable, args: tuple) -> dict[str, int]:
+    setattr(jr, name, replacement)
     try:
-        return _signature(_resolve(facts))
+        return _stated(*args)
     finally:
-        jr._pivot_rank = _rank
-        jr._solid_value_null_pivots = _solid
+        jr._key_row_terms = _rows
+        jr._shape_terms = _shape
 
 
-def _solid_nullable(pivot_map, facts):
-    if not facts.held_spans:
-        return {}
-    out = {}
-    for pivot, sides in pivot_map.items():
-        solid = [s for s in sides if not facts.side(s).held_spans]
-        if len(solid) > 1 and any(pivot.key in facts.side(s).nullables for s in solid):
-            out[jr._Pivot(pivot.key, solid=True)] = solid
-    return out
-
-
-# stand-in name -> (term it replaces, the side fact read in its place)
-STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str], Any]]] = {
-    "hosts=held_any": ("hosts", lambda f, x: bool(f.side(x).held_spans)),
-}
-
-
-def _scorer(
-    off: frozenset[str], stand_in: str | None = None
-) -> Callable[..., tuple[int, bool, str]]:
-    """`_score_join_candidate` with the terms in `off` held constant, and the
-    term `stand_in` replaces reading its fact instead."""
-    read = STAND_INS[stand_in][1] if stand_in else None
-
-    def score(x, *, facts):
-        side = facts.side(x)
-        if read is not None:
-            side = jr.replace(side, hosts=bool(read(facts, x)))
-        rank, name = facts.rank(x)
-        return (
-            0 if "rank" in off else -rank,
-            side.hosts and "hosts" not in off,
-            name,
-        )
-
-    return score
-
-
-def _replay_score(
-    facts: jr.JoinFacts, off: frozenset[str], stand_in: str | None = None
-) -> list:
-    jr._score_join_candidate = _scorer(off, stand_in)
-    try:
-        return _signature(_resolve(facts))
-    finally:
-        jr._score_join_candidate = _score
-
-
-# whole-field stand-ins: every reader of the field reads the stand-in
-FIELD_STAND_INS: dict[str, Callable[[jr.SideFacts], dict[str, Any]]] = {
-    "field:hosts=held_any": lambda s: {"hosts": bool(s.held_spans)},
-    "field:hosts=off": lambda s: {"hosts": False},
-}
-
-
-def _replay_field(facts: jr.JoinFacts, name: str) -> list:
-    read = FIELD_STAND_INS[name]
-    sides = {node: jr.replace(s, **read(s)) for node, s in facts.sides.items()}
-    return _signature(_resolve(jr.replace(facts, sides=sides)))
-
-
-# id of a merge's stated ranks -> the plan's ranks they were stated over
-_plan_ranks: dict[int, dict[str, int]] = {}
-
-
-def _binding_order(ranks, sides, pair_keys, declared):
-    out = _order(ranks, sides, pair_keys, declared)
-    _plan_ranks.clear()
-    _plan_ranks[id(out)] = dict(ranks)
-    return out
+def _holder_shape_off(ranks, facts, declared) -> dict[str, int]:
+    """The order with keys placed by their row terms alone, each side then
+    in the shape's order."""
+    shape = jr._places(_shape(ranks, facts.sides, facts.pair_keys, declared))
+    keyed = _variant("_shape_terms", _no_holder_shape, (ranks, facts, declared))
+    return jr._places({node: (keyed[node], shape[node]) for node in facts.sides})
 
 
 def _hit(name: str) -> None:
@@ -159,44 +104,27 @@ def _hit(name: str) -> None:
     _hits.append({"variant": name, "nodeid": _nodeid[0]})
 
 
-def _census(facts: jr.JoinFacts) -> list[jr.JoinOrderOutput]:
-    out = _resolve(facts)
+def _census(ranks, facts, declared) -> dict[str, int]:
+    out = _stated(ranks, facts, declared)
     if len(facts.sides) < 3:
         return out
     _counts["merges"] = _counts.get("merges", 0) + 1
-    base = _signature(out)
-    for name, (terms, no_solid) in VARIANTS.items():
-        if _replay(facts, terms, no_solid) != base:
+    args = (ranks, facts, declared)
+    base = _walked(facts, out)
+    for name, index in ROW_TERMS.items():
+        if _walked(facts, _variant("_key_row_terms", _rows_held(index), args)) != base:
             _hit(name)
-    jr._solid_value_null_pivots = _solid_nullable
-    try:
-        if _signature(_resolve(facts)) != base:
-            _hit("solid_nullable")
-    finally:
-        jr._solid_value_null_pivots = _solid
-    for name in FIELD_STAND_INS:
-        if _replay_field(facts, name) != base:
+    for name, index in SHAPE_TERMS.items():
+        if _walked(facts, _variant("_shape_terms", _shape_held(index), args)) != base:
             _hit(name)
-    plan_ranks = _plan_ranks.get(id(facts.side_ranks))
-    if plan_ranks is not None and (
-        _signature(_resolve(jr.replace(facts, side_ranks=plan_ranks))) != base
-    ):
-        _hit("binding_order")
-    if _replay_score(facts, frozenset()) != base:
-        _hit("score_replica")
-    for term in SCORE_TERMS:
-        if _replay_score(facts, frozenset({term})) != base:
-            _hit(term)
-    for stand_in in STAND_INS:
-        if _replay_score(facts, frozenset(), stand_in) != base:
-            _hit(stand_in)
+    if _walked(facts, _holder_shape_off(*args)) != base:
+        _hit("holder_shape")
     return out
 
 
 def pytest_configure(config) -> None:
     if os.environ.get("RANK_OUT"):
-        jr.resolve_join_order_v2 = _census
-        jr._binding_order = _binding_order
+        jr._stated_order = _census
 
 
 @pytest.hookimpl(hookwrapper=True)

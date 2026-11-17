@@ -1,10 +1,12 @@
+from dataclasses import replace
+
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     JoinOrderOutput,
     SideFacts,
-    _binding_order,
+    _stated_order,
     ensure_content_preservation,
     resolve_join_order_v2,
     restore_unpadded_joins,
@@ -35,15 +37,17 @@ def _sides(
 
 
 def _facts(columns: Columns, partials: dict[str, list[str]]) -> JoinFacts:
-    sides, pairs = _sides(columns, partials), _shared(columns)
-    return JoinFacts(
-        sides=sides,
-        pair_keys=pairs,
-        side_ranks=_binding_order({}, sides, pairs, frozenset()),
-    )
+    return JoinFacts(sides=_sides(columns, partials), pair_keys=_shared(columns))
 
 
-def test_resolve_join_order_v2():
+def _resolve(facts: JoinFacts) -> list[JoinOrderOutput]:
+    """The walk over the order resolve states for `facts`, its `side_ranks`
+    read as the plan's."""
+    ranks = _stated_order(facts.side_ranks, facts, frozenset())
+    return resolve_join_order_v2(replace(facts, side_ranks=ranks))
+
+
+def test__resolve():
     columns = {
         "ds~orders": {"c~order_id", "c~product_id", "c~customer_id"},
         "ds~products": {"c~product_id", "c~price"},
@@ -56,7 +60,7 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(_facts(columns, partials))
+    output = _resolve(_facts(columns, partials))
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
@@ -94,7 +98,7 @@ def test_sides_pair_only_on_their_own_planned_keys():
     columns = _shared_key()
     columns["ds~a"].add("c~x")
     columns["ds~b"].add("c~x")
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides=_sides(columns),
             pair_keys={
@@ -105,13 +109,13 @@ def test_sides_pair_only_on_their_own_planned_keys():
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~b", {"ds~c": {"c~k"}}),
-        ("ds~a", {"ds~b": {"c~x"}}),
+        ("ds~b", {"ds~a": {"c~x"}}),
+        ("ds~c", {"ds~b": {"c~k"}}),
     ]
 
 
 def test_a_side_waits_for_its_planned_partner():
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides=_sides(_shared_key()),
             pair_keys={
@@ -122,8 +126,8 @@ def test_a_side_waits_for_its_planned_partner():
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~a", {"ds~c": {"c~k"}}),
         ("ds~b", {"ds~a": {"c~k"}}),
+        ("ds~c", {"ds~a": {"c~k"}}),
     ]
 
 
@@ -135,7 +139,7 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
         "ds~d": {"c~p2", "c~q"},
         "ds~e": {"c~q"},
     }
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides=_sides(columns),
             authored_join_keys=frozenset({"c~p1"}),
@@ -148,7 +152,7 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
         ),
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~a", {"ds~b": {"c~p1"}}),
+        ("ds~b", {"ds~a": {"c~p1"}}),
         ("ds~d", {"ds~b": {"c~p2"}}),
         ("ds~e", {"ds~d": {"c~q"}}),
         ("ds~c", {"ds~b": {"c~p2"}}),
@@ -156,7 +160,7 @@ def test_a_better_pairing_a_join_exposes_is_walked_next():
 
 
 def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides={
                 "ds~a": SideFacts(columns=frozenset({"c~k", "c~p"})),
@@ -182,7 +186,7 @@ def test_of_two_lefts_on_the_same_keys_the_one_walked_first_is_kept():
 
 def test_a_side_preserved_past_an_inner_join_seeds_the_walk():
     k = "c~k"
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides={
                 "ds~a": SideFacts(
@@ -199,13 +203,13 @@ def test_a_side_preserved_past_an_inner_join_seeds_the_walk():
         )
     )
     assert [(j.right, j.type, set(j.keys)) for j in planned] == [
-        ("ds~c", JoinType.LEFT_OUTER, {"ds~a"}),
         ("ds~b", JoinType.LEFT_OUTER, {"ds~a"}),
+        ("ds~c", JoinType.LEFT_OUTER, {"ds~a"}),
     ]
 
 
 def test_a_solid_value_null_pairing_walks_before_a_held_span():
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides={
                 "ds~r": SideFacts(
@@ -226,8 +230,8 @@ def test_a_solid_value_null_pairing_walks_before_a_held_span():
         )
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~a", {"ds~b": {"c~v"}}),
-        ("ds~r", {"ds~b": {"c~v"}, "ds~a": {"c~s"}}),
+        ("ds~b", {"ds~a": {"c~v"}}),
+        ("ds~r", {"ds~a": {"c~s"}, "ds~b": {"c~v"}}),
     ]
 
 
@@ -238,39 +242,35 @@ def test_a_second_island_seeds_on_nothing_then_walks_its_pairings():
         "ds~c": {"c~k"},
         "ds~d": {"c~k"},
     }
-    planned = resolve_join_order_v2(
-        JoinFacts(sides=_sides(columns), pair_keys=_shared(columns))
-    )
+    planned = _resolve(JoinFacts(sides=_sides(columns), pair_keys=_shared(columns)))
     assert [(j.right, j.type, j.keys) for j in planned] == [
-        ("ds~a", JoinType.INNER, {"ds~b": {"c~j"}}),
-        ("ds~d", JoinType.INNER, {}),
-        ("ds~c", JoinType.INNER, {"ds~d": {"c~k"}}),
+        ("ds~b", JoinType.INNER, {"ds~a": {"c~j"}}),
+        ("ds~c", JoinType.INNER, {}),
+        ("ds~d", JoinType.INNER, {"ds~c": {"c~k"}}),
     ]
 
 
 def test_sides_sharing_a_column_the_plan_does_not_name_join_on_nothing():
-    joins = resolve_join_order_v2(JoinFacts(sides=_sides(_shared_key())))
+    joins = _resolve(JoinFacts(sides=_sides(_shared_key())))
     assert [(j.right, j.keys) for j in joins] == [("ds~b", {}), ("ds~c", {})]
 
 
 def test_a_side_the_plan_pairs_on_nothing_joins_on_nothing():
-    planned = resolve_join_order_v2(
+    planned = _resolve(
         JoinFacts(
             sides=_sides(_shared_key()),
             pair_keys={frozenset({"ds~a", "ds~b"}): frozenset({"c~k"})},
         )
     )
     assert [(j.right, j.keys) for j in planned] == [
-        ("ds~a", {"ds~b": {"c~k"}}),
+        ("ds~b", {"ds~a": {"c~k"}}),
         ("ds~c", {}),
     ]
 
 
 def test_a_side_sharing_no_column_joins_on_nothing_after_the_pivots():
     columns = {**_shared_key(), "ds~d": {"c~x"}}
-    joins = resolve_join_order_v2(
-        JoinFacts(sides=_sides(columns), pair_keys=_shared(columns))
-    )
+    joins = _resolve(JoinFacts(sides=_sides(columns), pair_keys=_shared(columns)))
     assert [(j.left, j.right, j.keys) for j in joins][-1] == ("ds~a", "ds~d", {})
 
 
@@ -517,17 +517,17 @@ def test_resolve_join_order_v2_multi_partial():
         "ds~fact2": ["c~shared_id"],
     }
 
-    # walked facts first: resolve states the dim first, as their anchor
-    facts = JoinFacts(sides=_sides(columns, partials), pair_keys=_shared(columns))
+    # walked facts first: the dim joins last, onto both
+    facts = JoinFacts(
+        sides=_sides(columns, partials),
+        pair_keys=_shared(columns),
+        side_ranks={"ds~fact1": 0, "ds~fact2": 1, "ds~dim": 2},
+    )
     output = resolve_join_order_v2(facts)
 
-    # Both fact tables should join to dim
     assert len(output) == 2
-    # dim should be the last join (right side)
     assert output[-1].right == "ds~dim"
-    # The dim join should have two left sources (both facts)
-    dim_join = output[-1]
-    assert len(dim_join.keys) == 2
+    assert len(output[-1].keys) == 2
 
 
 class _Node:

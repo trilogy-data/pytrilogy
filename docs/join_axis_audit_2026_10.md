@@ -4057,6 +4057,145 @@ are pinned as order:
   count join, and the city build's no-null-safe-filter-column pin;
 - three walk unit tests that pin the order they state.
 
+**The walk reads one order (part 109).** After part 108 the walk still
+ranked twice. It ranked every planned pairing by its key
+(`_pivot_rank`: authored, solid, held span, most other held spans,
+holder count, the holders' places, the key's name), took the best key
+touching the joined set, and scored that key's unjoined holders
+(`_score_join_candidate`: the stated order, hosting, the name). Only the
+second read the order resolve states.
+
+The key rank chose nothing but the next side: `_join_onto` joins a side
+onto every walked side the plan pairs it with, on all their keys,
+whichever key picked it. So the question was how much of the walk the
+key rank decides at all. Two measurements at `ed9a5ad`:
+
+- The census (15,193 merges of three or more sides) with each fact term
+  held constant: authored 548 (477 of them `test_cluster_key_lookup`),
+  solid 24, held 31, most-held 29, hosting 594.
+- The whole suite under a walk with no key rank (join the best-scored
+  side the plan pairs with a joined one): 24 tests fail beyond the 25
+  credential-gated ones. Sixteen are in tests that assert rows (the
+  padded-NULL, property-hop, scoped-join and derived-connector
+  families); the rest are four walk unit tests and four shape pins
+  (q75's SQL budget, the q64 semi-join probe among them).
+
+So the walk is one order of sides, and the key rank is a statement about
+where a side comes. The walk now reads only that
+(`_walk`): each step joins the side stated first (`facts.rank`) among the
+unjoined ones the plan pairs with a joined one, and a side pairing with
+none seeds a tree only when none does. `_Pivot`, `_pivot_map`,
+`_solid_value_null_pivots`, `_pivot_rank`, `_ranked_edges` and
+`_score_join_candidate` are gone, with the per-step scan of ranked
+edges. The name breaks ties in one direction: the scorer took the last
+name and every other read took the first, and now all take the first.
+
+**Resolve states the whole order, rows above shape (part 110).**
+`_stated_order` (where `_binding_order` stood) states it once per merge:
+
+1. A side comes where the best key the plan pairs it on puts it.
+2. A key is placed by what its holders' rows are (`_key_row_terms`):
+   an authored key, then a value-nullable key between region-free
+   holders, then a held span, then the fewest other regions held, then
+   the fewest holders.
+3. Keys alike on those are placed by where the plan's shape puts their
+   holders, so a lookup follows the rows it hangs off.
+4. Sides one key places alike come in the shape's order
+   (`_shape_terms`): the `~` tiers of part 106 (`_binding_tiers`), the
+   plan's order, then hosting.
+
+Hosting moved from the scorer into the shape. Held constant on `main`,
+all 170 tests it decides pass, so it is shape.
+
+A first cut placed each side by its own facts alone (pairs on an
+authored key, holds no region, how many regions it holds), with no
+holders' places. It passed the suite's rows but moved 18 of the corpus's
+205 statements and lost the q64 semi-join probe: the two year aggregates
+met before the enrichment both pair with, and the mirror no longer
+fired. Placing keys by their holders' shape moves 1 statement (TPC-H
+q09, one INNER lookup in another position) and keeps the probe.
+
+The flip reverses what is shape and nothing else.
+`tests/helpers/walk_order.py` reverses `_shape_terms` (`shape_flipped`:
+tiers, plan order, hosting, and with them the holders' places) or the
+name (`names_flipped`); the row terms stay. The old flip left hosting
+alone and reversed no term above the holders' places.
+
+**Which terms decide rows (part 111).** Each row term held constant on
+this tree, over the 148 tests the earlier censuses and the no-key-rank
+run named:
+
+| term | fails on rows | witness |
+|---|---|---|
+| authored | 3 | `test_property_hop_alignment_matrix`: two facts sharing `sku`, the authored key on their dimensions |
+| solid | 1 | `test_address_only_rows_stay_their_own[two_value_null_aggregates]` |
+| held span | 1 | `test_where_kept_region_row_beside_a_solid_total_by_another_key` |
+| most other held spans | 1 | `test_an_aggregate_holding_both_regions_pairs_after_they_are_stitched` |
+| holder count | 3 | `test_multileg_sql_parity_via_not_null`, and two `test_padded_null_pairing` WHERE cases |
+
+Holder count is the new one. Part 71 read it as the plan's shape (how
+many sides pair on a key), and the flip never reversed it, since it
+reversed only the two terms below it. It decides rows:
+
+    union join ss.ticket = sr.ticket and ss.item = sr.item and ss.customer = sr.customer
+    union join ss.customer = cs.customer and ss.item = cs.item
+
+The plan pairs `cs` with `sr` on (customer, item), by transitivity; no
+relation was authored between them. `ticket` has two holders and the
+other keys three, so the fewest-holders term joins `sr` and `ss` first.
+With the term held constant the plan's order walks `cs`, `sr`, `ss`,
+the first FULL pairs the two sides no relation was authored between,
+and `test_multileg_sql_parity_via_not_null` returns no row where it
+expects one. Held constant over the 444 tests it decides, the term
+fails those three on rows and four shape pins (q75's budget, the q64
+probe, a refused FULL lowering, a rule-fires check).
+
+These five terms are what is left of the order that decides rows, and
+each now has a named witness. The authored one is a property of a
+left-deep tree (the authored equality has to be in the tree before the
+cheaper key pairs its sides). The other four are typing that is right
+in one direction only, the kind parts 74 to 108 fixed for the scorer's
+terms.
+
+Suite (`-n 4`, without adventureworks/clickhouse/bigquery/cloud_live):
+the same 25 credential-gated failures as `main` at `ed9a5ad`.
+
+Suite capture against `main` (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`):
+`sqldiff` reports 790 of 46,106 tests moved. About 220 are the worktree
+path in file-source SQL (the dashboard and script-source tests). Over
+the rest, with the listed noise left out, the statements that changed
+add up to FULL 0, INNER +5, LEFT -3, RIGHT 0, `coalesce` 0, null-safe
+pairs +32 and CTE 0.
+
+- The rollup-resolution laws (182) turn 6 LEFTs into INNERs.
+- The partial-lookup fallback oracle (142) walks its two row CTEs in the
+  other order, the same INNERs from the other end, and gains the
+  null-safe pairs.
+- The oracle spellings laws (82) are the run-to-run movers of part 106.
+- The rest turn an INNER around or reorder lookups under one row stream.
+
+Every moved test passes, and the oracle laws among them compare rows
+against raw SQL. I did not capture `main` twice, so the split between
+noise and reordering in the law grids is by reading diffs, not measured.
+
+Reversed (`WALK_FLIP=shape,name` here, `key,side` on `main`): 101 tests
+fail against `main`'s 97. Outside the two walk unit files, which pin the
+order they state (21 here, 17 on `main`), the two runs fail the same 55
+tests, none on rows.
+
+The census (`rank_census_plugin`, rewritten over the stated order: it
+holds one term constant and walks again) over the whole suite, 15,196
+merges of three or more sides: the plan's order decides 6,095, the `~`
+tiers 1,869, holder count 1,086, authored 544, the holders' places 359,
+held span 41, most-held 39, solid 34 and hosting 13. Hosting fell from
+594 because the name now breaks its ties toward the first name, where
+the scorer took the last.
+
+One thing the reversed run showed and nothing here uses: it left 14 TPC
+benchmark logs ratcheted to shorter SQL (q02 from 4,817 to 4,403
+characters), so for those queries the reversed shape renders less text
+than the stated one. Whether it is the better plan was not measured.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4143,11 +4282,18 @@ not built yet:
    the `~` bindings, which are the built sides': resolve states them
    once per merge, over the plan's order, for every plan (part 106), and
    the scorer reads no binding (part 107). A merge forcing LEFT states
-   the side its rows are, which seeds the walk (part 108). What is left of the walk's
-   rank above the stated order: the authored, solid and region terms of
-   the key rank. Below the order is hosting. Ties the plan's terms leave
-   are still broken by the position the plan lists them in (cover order,
-   scan name), and stating them as ties costs plan quality (part 99).
+   the side its rows are, which seeds the walk (part 108). The walk now
+   reads one order and ranks nothing itself: the key rank and the scorer
+   are gone (part 109), and resolve states the order once per merge, what
+   each key's holders' rows are above the plan's shape, hosting included
+   (part 110). What is left is in that statement. Five of its terms
+   decide rows, each with a named witness (part 111): authored, solid,
+   held span, most other held spans, and holder count, which had been
+   read as shape. The authored one belongs to a left-deep tree; the other
+   four are typing that holds in one direction only. Ties the plan's
+   terms leave are still broken by the position the plan lists them in
+   (cover order, scan name), and stating them as ties costs plan quality
+   (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
    holds its own side of a statement relation (part 38), and each edge is

@@ -220,8 +220,8 @@ CONFORMING = [
 ][:3]
 
 
-def _no_binding_order(ranks, sides, pair_keys, declared):
-    return dict(ranks)
+def _no_binding_tiers(sides, pair_keys, declared):
+    return dict.fromkeys(sides, 0)
 
 
 @pytest.mark.parametrize("where", list(FILTERS))
@@ -240,7 +240,7 @@ def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
             data = random_data(seed)
             _, walked = _rows(_executor(model, data, sizing), query)
             with monkeypatch.context() as m:
-                m.setattr(join_resolution, "_binding_order", _no_binding_order)
+                m.setattr(join_resolution, "_binding_tiers", _no_binding_tiers)
                 sql, blind_rows = _rows(_executor(model, data, sizing), query)
             assert blind_rows == walked, (query, seed, sql)
 

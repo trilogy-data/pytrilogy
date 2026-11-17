@@ -2,12 +2,14 @@ from dataclasses import replace
 
 import pytest
 
+from tests.helpers.walk_order import flip_walk_spelling
 from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     PlannedPairs,
     SideFacts,
-    _binding_order,
+    _shape_terms,
+    _stated_order,
     resolve_join_order_v2,
     scan_precedence,
 )
@@ -134,21 +136,39 @@ def _order(ranks: dict[str, int]) -> list[str]:
 def test_a_subset_side_comes_after_its_anchor_wherever_the_plan_put_it():
     plan = {"fact1": 0, "fact2": 1, "customers": 2}
     facts = _bound({"fact1": {"cust"}, "fact2": {"cust"}})
-    ranks = _binding_order(plan, facts, _CUST_PAIRS, frozenset())
+    ranks = _stated_order(
+        plan, JoinFacts(sides=facts, pair_keys=_CUST_PAIRS), frozenset()
+    )
     assert _order(ranks) == ["customers", "fact1", "fact2"]
     # a side the plan left out keeps its place after the stated ones, however
     # far into its order the plan put them
-    ranks = _binding_order({"fact1": 7}, facts, _CUST_PAIRS, frozenset())
+    ranks = _stated_order(
+        {"fact1": 7}, JoinFacts(sides=facts, pair_keys=_CUST_PAIRS), frozenset()
+    )
     assert _order(ranks) == ["customers", "fact1", "fact2"]
-    assert ranks["customers"] == 8
 
 
 def test_sides_partial_on_a_pairing_key_come_after_the_rest_in_the_plans_order():
     plan = {"fact2": 0, "fact1": 1, "customers": 2}
     pairs = {frozenset({"fact1", "fact2"}): frozenset({"cust"})}
-    facts = _bound({"fact1": {"cust"}, "fact2": {"cust"}})
-    ranks = _binding_order(plan, facts, pairs, frozenset())
-    assert _order(ranks) == ["customers", "fact2", "fact1"]
+    sides = _bound({"fact1": {"cust"}, "fact2": {"cust"}})
+    shape = _shape_terms(plan, sides, pairs, frozenset())
+    assert sorted(shape, key=shape.__getitem__) == ["customers", "fact2", "fact1"]
+
+
+def test_a_lookup_comes_with_the_rows_it_hangs_off():
+    facts = _keyed(
+        {
+            ("sales", "returns"): {"ticket"},
+            ("sales", "item"): {"item"},
+            ("returns", "reason"): {"reason"},
+        }
+    )
+    plan = {"sales": 0, "returns": 1, "item": 2, "reason": 3}
+    ranks = _stated_order(plan, facts, frozenset())
+    assert _order(ranks) == ["sales", "returns", "item", "reason"]
+    ranks = _stated_order({**plan, "sales": 1, "returns": 0}, facts, frozenset())
+    assert _order(ranks) == ["returns", "sales", "reason", "item"]
 
 
 def test_an_arm_of_a_union_anchors_only_on_a_declared_key():
@@ -156,23 +176,33 @@ def test_an_arm_of_a_union_anchors_only_on_a_declared_key():
     arms = _bound({"fact1": {"cust"}}, arm=True)
     member = _bound({"fact2": {"cust"}})
     sides = {**member, "fact1": arms["fact1"]}
-    ranks = _binding_order(plan, sides, _CUST_PAIRS, frozenset())
+    ranks = _stated_order(
+        plan, JoinFacts(sides=sides, pair_keys=_CUST_PAIRS), frozenset()
+    )
     assert _order(ranks) == ["customers", "fact1", "fact2"]
-    ranks = _binding_order(plan, sides, _CUST_PAIRS, frozenset({"cust"}))
+    ranks = _stated_order(
+        plan, JoinFacts(sides=sides, pair_keys=_CUST_PAIRS), frozenset({"cust"})
+    )
     assert _order(ranks) == ["customers", "fact1", "fact2"]
     assert ranks["fact2"] - ranks["fact1"] == 1
 
 
-def test_the_scorer_reads_no_binding_above_the_stated_order():
-    facts = _star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2})
+def test_the_walk_reads_the_stated_order_and_no_fact():
+    facts = _star_facts({"ds~a": 2, "ds~b": 1, "ds~c": 0})
+    first = SideFacts(
+        columns=frozenset({"c~k"}), hosts=True, held_spans=frozenset({"c~k"})
+    )
     facts = replace(
         facts,
-        sides={
-            **facts.sides,
-            "ds~a": SideFacts(columns=frozenset({"c~k"}), partials=frozenset({"c~k"})),
-        },
+        sides={**facts.sides, "ds~a": first},
+        authored_join_keys=frozenset({"c~k"}),
     )
-    assert resolve_join_order_v2(facts)[0].lefts.pop() == "ds~a"
+    joins = resolve_join_order_v2(facts)
+    assert [joins[0].lefts.pop(), *(j.right for j in joins)] == [
+        "ds~c",
+        "ds~b",
+        "ds~a",
+    ]
 
 
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:
@@ -238,7 +268,9 @@ def _hosted_star(ranks: dict[str, int]) -> JoinFacts:
     ],
 )
 def test_hosting_breaks_only_ties_the_plan_leaves(ranks, seed):
-    joins = resolve_join_order_v2(_hosted_star(ranks))
+    facts = _hosted_star(ranks)
+    stated = _stated_order(ranks, facts, frozenset())
+    joins = resolve_join_order_v2(replace(facts, side_ranks=stated))
     assert joins[0].lefts.pop() == seed
 
 
@@ -264,3 +296,88 @@ def test_a_stated_seed_starts_the_walk_whatever_the_order_says():
 )
 def test_a_forced_left_seeds_the_side_the_plan_states_first(forced, ranks, seed):
     assert _forced_seed(forced, ranks) == seed
+
+
+def _keyed(pairs: dict[tuple[str, str], set[str]], **sides: SideFacts) -> JoinFacts:
+    names = sorted({side for pair in pairs for side in pair})
+    return JoinFacts(
+        sides={side: sides.get(side, SideFacts()) for side in names},
+        pair_keys={frozenset(pair): frozenset(keys) for pair, keys in pairs.items()},
+    )
+
+
+def test_an_authored_key_states_its_holders_before_the_plans_order():
+    facts = replace(
+        _keyed(
+            {
+                ("fact_a", "fact_b"): {"sku"},
+                ("fact_a", "dim_a"): {"a_sk"},
+                ("fact_b", "dim_b"): {"b_sk"},
+                ("dim_a", "dim_b"): {"cust"},
+            }
+        ),
+        authored_join_keys=frozenset({"cust"}),
+    )
+    plan = {"fact_a": 0, "fact_b": 1, "dim_a": 2, "dim_b": 3}
+    ranks = _stated_order(plan, facts, frozenset())
+    assert _order(ranks) == ["dim_a", "dim_b", "fact_a", "fact_b"]
+
+
+def test_of_two_authored_keys_the_one_pairing_fewer_sides_states_its_holders_first():
+    facts = replace(
+        _keyed(
+            {
+                ("returns", "sales"): {"cust", "ticket"},
+                ("catalog", "sales"): {"cust"},
+                ("catalog", "returns"): {"cust"},
+            }
+        ),
+        authored_join_keys=frozenset({"cust", "ticket"}),
+    )
+    ranks = _stated_order({"catalog": 0, "returns": 1, "sales": 2}, facts, frozenset())
+    assert _order(ranks) == ["returns", "sales", "catalog"]
+
+
+def test_region_free_holders_of_a_value_null_key_come_before_the_region():
+    facts = _keyed(
+        {
+            ("region", "by_span"): {"span"},
+            ("by_span", "by_value"): {"value"},
+            ("region", "by_value"): {"value"},
+        },
+        region=SideFacts(held_spans=frozenset({"span"})),
+        by_span=SideFacts(value_nullables=frozenset({"value"})),
+    )
+    ranks = _stated_order(
+        {"region": 0, "by_span": 1, "by_value": 2}, facts, frozenset()
+    )
+    assert _order(ranks) == ["by_span", "by_value", "region"]
+
+
+def test_a_side_holding_several_regions_comes_after_they_are_stitched():
+    both = SideFacts(held_spans=frozenset({"cust", "bucket"}))
+    facts = _keyed(
+        {
+            ("customers", "orders"): {"cust"},
+            ("buckets", "orders"): {"bucket"},
+            ("by_bucket", "buckets"): {"bucket"},
+            ("by_bucket", "orders"): {"bucket"},
+        },
+        customers=SideFacts(held_spans=frozenset({"cust"})),
+        buckets=SideFacts(held_spans=frozenset({"bucket"})),
+        by_bucket=both,
+    )
+    ranks = _stated_order({"by_bucket": 0}, facts, frozenset())
+    assert _order(ranks)[:2] == ["customers", "orders"]
+    assert ranks["by_bucket"] > ranks["customers"]
+
+
+def test_a_flipped_shape_keeps_the_row_terms(monkeypatch):
+    facts = replace(
+        _keyed({("a", "b"): {"k"}, ("b", "c"): {"k"}, ("a", "c"): {"k", "x"}}),
+        authored_join_keys=frozenset({"x"}),
+    )
+    plan = {"a": 0, "b": 1, "c": 2}
+    assert _order(_stated_order(plan, facts, frozenset())) == ["a", "c", "b"]
+    flip_walk_spelling(monkeypatch, "shape_flipped")
+    assert _order(_stated_order(plan, facts, frozenset())) == ["c", "a", "b"]
