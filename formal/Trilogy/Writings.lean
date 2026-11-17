@@ -103,7 +103,7 @@ set_option maxRecDepth 100000 in
 theorem decimal_read_write :
     ∀ u : Nat, u < 400 → ∀ s : Nat, s < 4 →
       readDecimal (writeDecimal ((u : Int) - 200) s) = some ((u : Int) - 200, s) := by
-  decide
+  decide +kernel
 
 theorem decimal_scale_written :
     writeDecimal 300 2 = [.d 3, .point, .d 0, .d 0] ∧
@@ -178,7 +178,7 @@ set_option maxRecDepth 100000 in
 theorem layout_read_exact :
     ∀ ds ∈ sigs, ∀ x : Nat, x < 140 →
       readLayout (layout ds ((x : Int) - 120)) = some (ds, (x : Int) - 120) := by
-  decide
+  decide +kernel
 
 def isFixed (t : List W) : Bool := !t.contains W.e
 
@@ -240,7 +240,7 @@ set_option maxRecDepth 100000 in
 theorem fraction_read_write :
     ∀ k : Nat, k < 1000 → readFraction (fractionText (k * 997 % 1000000)) =
       some (k * 997 % 1000000) := by
-  decide
+  decide +kernel
 
 /-- An engine holding `k` fraction digits (ClickHouse's 3) writes them all. -/
 def paddedFraction (k μ : Nat) : List W :=
@@ -252,7 +252,7 @@ set_option maxRecDepth 100000 in
 theorem fraction_precision_free :
     ∀ ms : Nat, ms < 1000 →
       fractionText (ms * 1000) = clickhouseStrip (paddedFraction 3 (ms * 1000)) := by
-  decide
+  decide +kernel
 
 theorem clickhouse_pads_fraction :
     paddedFraction 3 250000 = [.point, .d 2, .d 5, .d 0] ∧

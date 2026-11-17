@@ -11,6 +11,12 @@ cd formal
 lake build        # elan installs the pinned toolchain from lean-toolchain
 ```
 
+A clean build is under a minute. A proof by exhaustion over a bounded domain
+(the ones under `set_option maxRecDepth`) is closed with `decide +kernel`:
+plain `decide` evaluates the proposition in the elaborator and then again in
+the kernel, which doubled the build. It is the same kernel check and adds no
+axiom.
+
 ## How it is used
 
 The model is the oracle for the fuzzer's `law` family

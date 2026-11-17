@@ -49,8 +49,8 @@ def test_records_round_trip(tmp_path: Path):
 
 def test_sweep_matches_the_oracle_whatever_the_jobs():
     seeds = [*range(24), 38477, 69075]
-    one = runner.sweep("spellings", seeds, jobs=1, quiet=True)
-    two = runner.sweep("spellings", seeds, jobs=2, quiet=True)
+    one = runner.sweep("spellings", seeds, jobs=1, quiet=True, cache=False)
+    two = runner.sweep("spellings", seeds, jobs=2, quiet=True, cache=False)
     assert one == two
     assert {r["status"] for r in one.values()} <= {"ok", "rejected"}
     assert one[(38477, "summary")]["summary"] and not one[(38477, "base")]["summary"]
@@ -68,3 +68,41 @@ def test_a_ref_is_swept_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert runner.compare(base, new)["broken"] == []
     monkeypatch.setattr(runner, "_sweep", None)
     assert runner.sweep("first", seeds, ref="HEAD", jobs=1, quiet=True) == base
+    assert runner.sweep("first", seeds, jobs=1, quiet=True) == new
+
+
+def test_a_killed_sweep_resumes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(runner, "CACHE", tmp_path)
+    monkeypatch.setattr(runner, "CHUNK", 4)
+    whole = runner.sweep("first", list(range(8)), jobs=1, quiet=True, cache=False)
+    append = runner.append_records
+
+    def die_after_one_chunk(path: Path, records: list[runner.Record]) -> None:
+        append(path, records)
+        with path.open("a") as f:
+            f.write('{"seed": 4, "mod')
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner, "append_records", die_after_one_chunk)
+    with pytest.raises(KeyboardInterrupt):
+        runner.sweep("first", list(range(8)), jobs=1, quiet=True)
+    monkeypatch.setattr(runner, "append_records", append)
+    ran: list[list[int]] = []
+    inner = runner._sweep
+
+    def record_seeds(family: str, seeds: list[int], *args: object) -> object:
+        ran.append(seeds)
+        return inner(family, seeds, *args)
+
+    monkeypatch.setattr(runner, "_sweep", record_seeds)
+    assert runner.sweep("first", list(range(8)), jobs=1, quiet=True) == whole
+    assert ran == [[4, 5, 6, 7]]
+
+
+def test_tree_states_are_pruned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(runner, "TREE_STATES", 1)
+    for name in ("tree-a-first-x.jsonl", "tree-b-first-x.jsonl", "abc-first-x.jsonl"):
+        (tmp_path / name).write_text("")
+    runner._prune_tree_states(tmp_path)
+    assert len(list(tmp_path.glob("tree-*.jsonl"))) == 1
+    assert (tmp_path / "abc-first-x.jsonl").exists()

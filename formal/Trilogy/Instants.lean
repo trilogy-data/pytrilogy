@@ -69,7 +69,7 @@ theorem roll_keeps_count :
     ∀ y : Nat, y < 3 → ∀ m : Nat, m < 12 → ∀ d : Nat, d < 31 →
       days (2019 + y) (m + 1) (d + 1) =
         (match roll (2019 + y) (m + 1) (d + 1) with | (y', m', d') => days y' m' d') := by
-  decide
+  decide +kernel
 
 /-! ## Local time, zones and UTC -/
 

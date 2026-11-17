@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -12,7 +13,9 @@ import time
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from io import BytesIO
+from itertools import groupby
 from multiprocessing import get_context
 from pathlib import Path
 from typing import Any
@@ -37,6 +40,9 @@ MODELS = ("base", "summary")
 # Seeds per task. Fixed, so a `--carry-state` run does not depend on `--jobs`.
 CHUNK = 250
 BAD = ("wrong", "raise", "invalid")
+# Working-tree result files kept: one per state of the source swept.
+TREE_STATES = 6
+NATIVE = "_preql_import_resolver"
 
 Record = dict[str, Any]
 Key = tuple[int, str]
@@ -145,7 +151,12 @@ def _queries(task: tuple[str, list[int]]) -> list[str]:
     return [shape(seed)[0] for seed in seeds]
 
 
-def _chunks(seeds: list[int]) -> Iterator[list[int]]:
+def _chunks(seeds: list[int], aligned: bool = False) -> Iterator[list[int]]:
+    """`aligned` cuts at multiples of CHUNK, whatever seeds are asked for."""
+    if aligned:
+        for _, chunk in groupby(seeds, key=lambda s: s // CHUNK):
+            yield list(chunk)
+        return
     for i in range(0, len(seeds), CHUNK):
         yield seeds[i : i + CHUNK]
 
@@ -186,19 +197,79 @@ def extract_ref(ref: str) -> tuple[str, Path]:
     return sha, root
 
 
-def generator_hash() -> str:
-    digest = hashlib.sha1(str(RECORD_VERSION).encode())
-    for name in GENERATOR_FILES:
-        digest.update((REPO / name).read_bytes())
+def _digest(files: Iterable[Path], seed: str = "") -> str:
+    digest = hashlib.sha1(seed.encode())
+    for path in sorted(files):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
+
+
+def generator_hash() -> str:
+    """The generators, the record format, and the native planner every side runs."""
+    spec = importlib.util.find_spec(NATIVE)
+    native = [
+        Path(d) for d in (spec.submodule_search_locations if spec else None) or []
+    ]
+    files = [f for d in native for f in d.rglob("*") if f.is_file()]
+    return _digest(
+        [*(REPO / name for name in GENERATOR_FILES), *files], str(RECORD_VERSION)
+    )
+
+
+def tree_hash() -> str:
+    """The working tree's `trilogy` sources: one cache file per state of them."""
+    skip = {"__pycache__", "target"}
+    files = (
+        f
+        for f in (REPO / "trilogy").rglob("*")
+        if f.is_file() and not skip.intersection(f.relative_to(REPO).parts)
+    )
+    return _digest(files)
+
+
+def _prune_tree_states(results: Path) -> None:
+    stale = sorted(results.glob("tree-*.jsonl"), key=lambda f: f.stat().st_mtime)
+    for path in stale[:-TREE_STATES]:
+        path.unlink(missing_ok=True)
+        path.with_suffix(".lock").unlink(missing_ok=True)
+
+
+@contextmanager
+def _locked(path: Path) -> Iterator[None]:
+    """Two sweeps writing one result file lose both."""
+    try:
+        import fcntl
+    except ImportError:  # Windows: no advisory lock
+        yield
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(".lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise SystemExit(
+                f"another sweep is writing {path.name}; wait for it"
+            ) from None
+        yield
 
 
 def read_records(path: Path) -> dict[Key, Record]:
     if not path.exists():
         return {}
+    records = []
     with path.open() as f:
-        records = [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue  # blank, or the line a killed sweep was writing
     return {(r["seed"], r["model"]): r for r in records}
+
+
+def append_records(path: Path, records: Iterable[Record]) -> None:
+    with path.open("a") as f:
+        f.writelines(json.dumps(r, sort_keys=True) + "\n" for r in records)
 
 
 def write_records(path: Path, records: Iterable[Record]) -> None:
@@ -230,29 +301,41 @@ def sweep(
     carry: bool = False,
     quiet: bool = False,
     proven: dict[Key, Record] | None = None,
+    cache: bool = True,
 ) -> dict[Key, Record]:
     """Records for `seeds` x `models`, on the working tree or on `ref`.
 
-    A ref's records are cached per commit, so only seeds it has not run cost
-    anything. A query two seeds share is planned once unless `carry`, and SQL
-    a `proven` record already matched to the oracle is not executed again."""
+    Records are cached per commit for a ref and per state of `trilogy/` for
+    the working tree, and written as each chunk finishes: only seeds a side has
+    not run cost anything, and a killed sweep resumes. A query two seeds share
+    is planned once unless `carry`, and SQL a `proven` record already matched to
+    the oracle is not executed again."""
     models = list(models)
     jobs = jobs or os.cpu_count() or 1
     root: Path | None = None
-    cache_path: Path | None = None
-    known: dict[Key, Record] = {}
     if ref:
-        sha, root = extract_ref(ref)
-        name = f"{sha}-{family}-{generator_hash()}{'-carry' if carry else ''}.jsonl"
-        cache_path = CACHE / "results" / name
-        known = read_records(cache_path)
-    wanted = [s for s in seeds if any((s, m) not in known for m in models)]
-    if wanted:
-        right = {k: r["sql"] for k, r in (proven or {}).items() if r["status"] == "ok"}
-        fresh = _sweep(family, wanted, models, jobs, root, carry, quiet, right)
-        known.update(fresh)
-        if cache_path:
-            write_records(cache_path, known.values())
+        state, root = extract_ref(ref)
+    else:
+        state = f"tree-{tree_hash()}"
+    right = {k: r["sql"] for k, r in (proven or {}).items() if r["status"] == "ok"}
+    if not cache:
+        fresh = _sweep(family, seeds, models, jobs, root, carry, quiet, right, None)
+        return {(s, m): fresh[(s, m)] for s in seeds for m in models}
+    name = f"{state}-{family}-{generator_hash()}{'-carry' if carry else ''}.jsonl"
+    path = CACHE / "results" / name
+    with _locked(path):
+        known = read_records(path)
+        wanted = [s for s in seeds if any((s, m) not in known for m in models)]
+        if carry:
+            # a seed's record depends on the seeds its chunk ran before it
+            stale = {s // CHUNK for s in wanted}
+            wanted = [s for s in seeds if s // CHUNK in stale]
+        if wanted:
+            known.update(
+                _sweep(family, wanted, models, jobs, root, carry, quiet, right, path)
+            )
+            write_records(path, known.values())
+            _prune_tree_states(path.parent)
     return {(s, m): known[(s, m)] for s in seeds for m in models}
 
 
@@ -265,6 +348,7 @@ def _sweep(
     carry: bool,
     quiet: bool,
     proven: dict[Key, str],
+    checkpoint: Path | None,
 ) -> dict[Key, Record]:
     started = time.perf_counter()
     pool = ProcessPoolExecutor(
@@ -274,14 +358,14 @@ def _sweep(
         initargs=(str(root) if root else None,),
     )
     with pool:
-        twin_of: dict[int, int] = {}
+        twins: dict[int, list[int]] = {}
         todo = seeds
         if not carry:
             first: dict[str, int] = {}
             texts = pool.map(_queries, [(family, c) for c in _chunks(seeds)])
             for seed, query in zip(seeds, (q for chunk in texts for q in chunk)):
-                twin_of[seed] = first.setdefault(query, seed)
-            todo = sorted(set(twin_of.values()))
+                twins.setdefault(first.setdefault(query, seed), []).append(seed)
+            todo = sorted(twins)
         out: dict[Key, Record] = {}
         tasks: list[Task] = [
             (
@@ -291,20 +375,24 @@ def _sweep(
                 carry,
                 {(s, m): proven[(s, m)] for s in c for m in models if (s, m) in proven},
             )
-            for c in _chunks(todo)
+            for c in _chunks(todo, aligned=carry)
         ]
         done = 0
         for task, records in zip(tasks, pool.map(_run_chunk, tasks)):
+            # a query's record stands for every seed that spells it
+            records = [
+                {**r, "seed": seed}
+                for r in records
+                for seed in twins.get(r["seed"], [r["seed"]])
+            ]
             out.update({(r["seed"], r["model"]): r for r in records})
+            if checkpoint:
+                append_records(checkpoint, records)
             done += len(task[1])
             if not quiet:
                 _progress(done, len(todo), started)
     if not quiet:
         print(file=sys.stderr)
-    for seed, twin in twin_of.items():
-        if seed != twin:
-            for model in models:
-                out[(seed, model)] = {**out[(twin, model)], "seed": seed}
     return out
 
 
@@ -344,7 +432,7 @@ def compare(base: dict[Key, Record], new: dict[Key, Record]) -> Record:
             k for k in both if new[k]["summary"] and not base[k]["summary"]
         ],
         "summary_lost": lost,
-        # a read lost beside the same fact scans is not a cost (lesson 43)
+        # a read lost beside the same fact scans is not a cost
         "summary_lost_more_scans": grew("scans", lost),
         "more_joins": grew("joins", both),
         "fewer_joins": [k for k in both if new[k]["joins"] < base[k]["joins"]],
@@ -409,6 +497,7 @@ def _parser() -> argparse.ArgumentParser:
             action="store_true",
             help=f"keep each select's definitions for the next, per {CHUNK} seeds",
         )
+        p.add_argument("--no-cache", action="store_true", help="run every seed again")
 
     run = sub.add_parser("run", help="sweep the working tree, or --ref")
     common(run)
@@ -447,7 +536,12 @@ def main(argv: list[str] | None = None) -> int:
         show_seed(args.family, args.seed, models, args.ref)
         return 0
     seeds = parse_seeds(args.seeds)
-    kwargs = {"models": models, "jobs": args.jobs, "carry": args.carry_state}
+    kwargs = {
+        "models": models,
+        "jobs": args.jobs,
+        "carry": args.carry_state,
+        "cache": not args.no_cache,
+    }
     if args.command == "run":
         records = sweep(args.family, seeds, ref=args.ref, **kwargs)
         if args.out:

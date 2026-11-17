@@ -24,6 +24,24 @@ python -m local_scripts.oracle_sweep show 38477 [--ref origin/main]
 round can replay only the seeds a diff named. `ab` and `run` exit 1 when a
 query is newly wrong, raising or invalid.
 
+## Killed, repeated and concurrent runs
+
+Every side's records are cached under `.cache/oracle_sweep/results/`: per
+commit for a `--ref`, per state of the `trilogy/` sources for the working tree
+(the last six states are kept). They are written as each 250-seed chunk
+finishes, so:
+
+- a sweep that is killed (a 2-hour background limit, a container restart)
+  continues from its last chunk when the same command is run again;
+- a second run on unchanged sources costs nothing, and a wider range runs only
+  the seeds it is missing;
+- two sweeps cannot write one side's records: the second exits at once.
+
+`--no-cache` runs every seed again. The cache key also holds the generator
+files, `RECORD_VERSION` and the built native extension, which every side
+shares: a ref's Python runs on the working tree's Rust, so in a round that
+changes the Rust search the base side is not quite main.
+
 ## What it costs
 
 Spellings seeds 0-90,000 x 2 models (180,000 queries), 4 cores:
@@ -46,9 +64,7 @@ Where the time went, and what each fix is:
   ran before it or on `--jobs`.
 - **Both sides of an A/B were run every time.** A `--ref`'s package is
   extracted once (`git archive`, as recipe step 4 does by hand) and its
-  records are cached per commit under `.cache/oracle_sweep/`, keyed on the
-  generator files and `RECORD_VERSION` too. Main is paid for once; a wider range only runs the seeds it
-  is missing.
+  records are cached per commit. Main is paid for once.
 - **11% of the spellings seeds repeat a query**; each is planned once.
 - **Unchanged SQL is not run again.** In `ab`, a query whose SQL hashes to the
   base's, where the base matched the oracle, is right without executing it
@@ -64,12 +80,14 @@ SQL's hash, and counts of `tree_summary` reads, `trees` scans, JOINs and CTEs.
 planned, the seeds that moved: `broken`, `fixed`, `still_bad`, `sql_changed`,
 `summary_gained`, `summary_lost`, `more_joins`, `fewer_joins`, `more_scans`.
 `summary_lost_more_scans` is the subset of lost reads that also scan the trees
-more: a read lost beside the same scans is not a cost (lesson 43).
+more: a read lost beside the same scans is not a cost.
 
 ## State between statements
 
 A select defines its outputs in the environment, and some bugs need an earlier
-statement's definition to show (lesson 41). The default plans every seed on a
+statement's definition to show. The default plans every seed on a
 clean model and cannot see those. `--carry-state` keeps one environment per
 250-seed chunk, as the suites' shared executor does; it skips the repeat-query
-shortcut, and its records are cached apart from the clean ones.
+shortcut, and its records are cached apart from the clean ones. Its chunks
+are cut at multiples of 250 whatever seeds are asked for, and a chunk missing
+any seed is run whole, so a record does not depend on the range requested.
