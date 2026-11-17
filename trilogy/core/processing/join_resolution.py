@@ -211,14 +211,15 @@ class PlannedPairs:
         keys: Mapping[frozenset[str], frozenset[str]],
         datasources: Mapping[str, BuildDatasource | BuildUnionDatasource],
         grain_paired: frozenset[str] = frozenset(),
-        scoped_partials: Collection[str] = frozenset(),
+        environment: BuildEnvironment | None = None,
     ) -> PlannedPairs:
         """A plan between datasource scans, stating `scan_precedence` over
-        each scan's declared grain and `~` bindings. A side no datasource
+        each scan's declared grain and `~` bindings, and over the
+        environment's declared `subset` relations. A side no datasource
         names (a derived connector, whose rows are its subplan's) states
-        none. A `~` no datasource binds (`scoped_partials`, a scoped `subset
-        join` on a derived key) is not stated, so a plan pairing on one
-        leaves the walk to read bindings."""
+        none. A `~` no datasource binds (a scoped `subset join` on a derived
+        key) is not stated, so a plan pairing on one leaves the walk to read
+        bindings."""
         named = sorted(
             name for name in frozenset().union(*sides.values()) if name in datasources
         )
@@ -231,8 +232,11 @@ class PlannedPairs:
             sides,
             keys,
             grain_paired=grain_paired,
-            order=scan_precedence(keys, grains, partials),
-            orders_bindings=frozenset(scoped_partials).isdisjoint(
+            order=scan_precedence(
+                keys, grains, partials, _declared_subset_keys(environment)
+            ),
+            orders_bindings=environment is None
+            or environment.scoped_partial_derived.isdisjoint(
                 frozenset().union(*keys.values())
             ),
         )
@@ -287,15 +291,29 @@ class PlannedPairs:
         )
 
 
+def _declared_subset_keys(environment: BuildEnvironment | None) -> frozenset[str]:
+    """Every key a declared `subset` relation names, member or anchor."""
+    if environment is None:
+        return frozenset()
+    graph = environment.domain_graph
+    return frozenset(
+        address
+        for member, anchor in graph.declared_subset_pairs()
+        for address in (member, anchor, graph.canonical(anchor))
+    )
+
+
 def scan_precedence(
     keys: Mapping[frozenset[str], frozenset[str]],
     grains: Mapping[str, frozenset[str]],
     partials: Mapping[str, frozenset[str]] | None = None,
+    declared: Collection[str] = frozenset(),
 ) -> tuple[str, ...]:
     """The order a merge of scans joins them in when nothing else decides,
-    as `JoinPlan.precedence` states it for groups: a scan binding a key as a
-    subset (`~`) after a scan it pairs with that binds the key completely
-    (its anchor: the `~` rows hang off the anchor's), a scan of rows before
+    as `JoinPlan.precedence` states it for groups: a scan binding a
+    `declared` subset key as `~` after a scan it pairs with that binds the
+    key completely (its anchor: the member's rows hang off the anchor's; a
+    union arm's `~` is no anchored subset), a scan of rows before
     the lookups its pairings identify (a scan whose grain lies inside the
     keys it pairs on), a scan binding its pairing keys completely before one
     binding them as `~`, finer rows first. A scan of no declared grain is
@@ -313,7 +331,7 @@ def scan_precedence(
             if grains.get(side) and grains[side] <= pairs:
                 looked_up.add(side)
             if other in grains and (
-                partials.get(side, frozenset()) & pairs
+                partials.get(side, frozenset()) & pairs & frozenset(declared)
             ) - partials.get(other, frozenset()):
                 anchored.add(side)
     return tuple(

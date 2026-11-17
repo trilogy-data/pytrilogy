@@ -272,7 +272,7 @@ def _graph_join_plan(
             for b in names[i + 1 :]
         },
         pruned.datasources,
-        scoped_partials=environment.scoped_partial_derived,
+        environment=environment,
     )
 
 

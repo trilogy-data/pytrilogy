@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,25 +138,35 @@ def test_a_subset_scan_comes_after_its_anchor_even_when_the_anchor_is_a_lookup()
         "fact2": frozenset({"f2"}),
     }
     partials = {"fact1": frozenset({"cust"}), "fact2": frozenset({"cust"})}
-    assert scan_precedence(keys, grains, partials) == ("customers", "fact1", "fact2")
-    assert scan_precedence(keys, grains) == ("fact1", "fact2", "customers")
+    assert scan_precedence(keys, grains, partials, {"cust"}) == (
+        "customers",
+        "fact1",
+        "fact2",
+    )
+    # a union arm's `~` names no declared subset: its anchor is no lookup's
+    assert scan_precedence(keys, grains, partials) == ("fact1", "fact2", "customers")
 
 
 class _Scan:
     def __init__(self, grain: set[str], partials: frozenset[str] = frozenset()) -> None:
-        self.grain = type("G", (), {"components": grain})()
-        self.partial_concepts = [type("C", (), {"address": a})() for a in partials]
+        self.grain = SimpleNamespace(components=grain)
+        self.partial_concepts = [SimpleNamespace(address=a) for a in partials]
+
+
+def _env(scoped: set[str]) -> SimpleNamespace:
+    graph = SimpleNamespace(
+        declared_subset_pairs=lambda: [("k", "k")], canonical=lambda a: a
+    )
+    return SimpleNamespace(domain_graph=graph, scoped_partial_derived=scoped)
 
 
 def test_a_scan_plan_orders_only_the_bindings_its_datasources_declare():
     keys = {frozenset({"a", "b"}): frozenset({"k", "derived"})}
-    scans = {"a": _Scan({"k"}), "b": _Scan({"j"}, {"k"})}
+    scans = {"a": _Scan({"j"}, frozenset({"k"})), "b": _Scan({"k"})}
     sides = {1: frozenset({"a"}), 2: frozenset({"b"})}
-    plan = PlannedPairs.over_scans(sides, keys, scans)  # type: ignore[arg-type]
-    assert plan.orders_bindings and plan.order == ("a", "b")
-    scoped = PlannedPairs.over_scans(
-        sides, keys, scans, scoped_partials={"derived"}  # type: ignore[arg-type]
-    )
+    plan = PlannedPairs.over_scans(sides, keys, scans, environment=_env(set()))  # type: ignore[arg-type]
+    assert plan.orders_bindings and plan.order == ("b", "a")
+    scoped = PlannedPairs.over_scans(sides, keys, scans, environment=_env({"derived"}))  # type: ignore[arg-type]
     assert not scoped.orders_bindings
 
 

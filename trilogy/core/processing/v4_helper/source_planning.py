@@ -10,7 +10,7 @@ lineage-related cross product, the unconditioned retry), never a re-search.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
@@ -2527,7 +2527,7 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
             parents,
             sides,
             unsearched,
-            request.environment.scoped_partial_derived,
+            request.environment,
         ),
     )
     if merged is not None and request.complete_partials:
@@ -2548,7 +2548,7 @@ def _bridge_plan(
     parents: list[StrategyNode],
     sides: Mapping[int, str],
     unsearched: Mapping[str, frozenset[str]] | None = None,
-    scoped_partials: Collection[str] = frozenset(),
+    environment: BuildEnvironment | None = None,
 ) -> PlannedPairs:
     """The search's joins as the bridge merge's plan: each parent pairs with
     another only on what the search joined their sources on. A derived
@@ -2577,7 +2577,7 @@ def _bridge_plan(
         grain_paired=frozenset(
             name for name in names if name.startswith(CONNECTOR_NODE_PREFIX)
         ),
-        scoped_partials=scoped_partials,
+        environment=environment,
     )
 
 
