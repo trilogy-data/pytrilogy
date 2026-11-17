@@ -4304,31 +4304,60 @@ the stitch guarantees for rows.
 The witness is now pinned under every walk, the reversed shape included.
 With the stitch disabled, it fails in 6 of its 12 walks.
 
-**Solid, held span, most-held and holder count are the key's shape
-(part 117).** Holding them constant (part 111) shows they decide no rows
-on the witnesses. Reversing them is the stronger test, and it holds too.
-Reversed (solid last, held spans last, most holders first) over the 80
-files that test padding, regions and scoped joins (7,691 tests), the
-only failures are two shape pins part 111 named (the `DropIdentityGroup`
-rule-fires check, the refused FULL lowering's message) and two walk unit
-tests that pin the order they state.
+**Solid, held span and most-held are the key's shape (part 117).**
+Holding a term constant (part 111) shows only that it decides no rows on
+its witnesses. Reversing it is the stronger test. `_key_terms` now states
+each key as authored, then a shape (`KeyShape`: solid, held span, most
+other spans held), then its holder count. The order is the one
+`_stated_order` already read, so nothing moves (corpus 0, suite
+unchanged). `shape_flipped` reverses the key's shape along with the
+side's (`tests/helpers/walk_order.flipped_keys`), and every
+walk-parametrized test (2,795) passes that way. `ROW_WALKS` and the
+held-constant walks fold into `WALKS`.
 
-So they are no longer row terms. `_key_terms` states each key as one row
-term, whether it is authored, then a shape (`KeyShape`: solid, held span,
-most other spans held, holder count) above the holders' shape places.
-The order is unchanged. What changes is what the flip reverses:
-`shape_flipped` now reverses the key's shape along with the side's
-(`tests/helpers/walk_order.flipped_keys`), so every walk-parametrized
-test, 1,828 of them, checks the four terms in reverse. `ROW_WALKS` and
-the held-constant walks fold into `WALKS`, and `WALK_FLIP` takes only
-`shape` and `name`.
+Over the whole suite (`WALK_FLIP=shape,name`), the reversed key shape
+fails nothing on rows that `main`'s flip does not. Reversing one term at
+a time, with and without the side shape, rows move only when the holder
+count is reversed.
 
-The order the walk reads is now one row term over shape. Authored is a
-key rank a left-deep tree needs. Its witness is a 4-cycle: two facts
-share `sku`, and the authored key sits between their dimensions. The
-authored edge has to be a tree edge, so the cheap `sku` edge closes the
-cycle together with the dimension key instead of pairing the facts
-alone. Most-held is a stitch the walk waits for.
+**An INNER pair two left nodes share is one pair only where they agree
+(part 118).** The first whole-suite run with the reversed key shape
+found a row bug in the expressions oracle (seed 8, `summary`).
+`reduce_concept_pairs` dropped a second INNER pair on the same
+(right, left) columns read off another left node, as if every left were
+already equated on it. Walked the other way, a store summary met the
+gated trees on `species` alone. Then the per-tree value joined both on
+`tree_id`, but kept only the trees' pair, so the summary's rows fanned
+out across the species. The FD pruning and grain restriction in the
+same function already ask `_Agreement`; this dedup now asks it too.
+Corpus: 0 moved. The case is pinned under every walk
+(`test_two_lefts_met_on_another_key_each_keep_their_pair`).
+
+**Holder count still decides rows (part 119).** Part 112 fixed the
+witness part 111 named, a transitive plan pairing. Reversing the holder
+count over the whole suite finds six more, each passing on `main`'s
+flip and failing with the count reversed (all but one also need the
+side shape reversed):
+
+- `test_derived_key_domain::test_completion_keeps_its_padding_beside_a_domain_on_its_span`
+  (two cases: a customer with no order gains a padded row);
+- `test_unmodelled_regions::test_two_facts_at_one_grain`;
+- TPC-DS q40, q75 and q80 (row values), and
+  `test_truncated_search_seed_fallback_returns_correct_rows`.
+
+So the holder count stays a row term, below the key's shape, and
+`WALK_FLIP=holders` (`walk_order.HOLDER_FLIPS`) reverses it to
+reproduce them. These six are the next witnesses: each is a typing or
+pairing that holds in one direction only, the kind parts 112 to 114
+fixed.
+
+The order the walk reads is now two row terms of a key amid shape.
+Authored is a key rank a left-deep tree needs. Its witness is a 4-cycle:
+two facts share `sku`, and the authored key sits between their
+dimensions. The authored edge has to be a tree edge, so the cheap `sku`
+edge closes the cycle together with the dimension key instead of pairing
+the facts alone. The holder count has the six open witnesses above.
+Most-held is a stitch the walk waits for, and otherwise shape.
 
 Suite and flip results: pending.
 
@@ -4432,9 +4461,10 @@ not built yet:
    (part 113), and solid a coalesced null-safe key reaching padding (part
    114); each now holds in both directions. Most other held spans is the
    tree's, like authored (part 115), and the walk now waits for it as a
-   stitch (part 116). It and the other three are the key's shape, which
-   the flip reverses, so the order is one row term, authored, over shape
-   (part 117). Ties the plan's
+   stitch (part 116). It, solid and held span are the key's shape, which
+   the flip reverses (part 117). Reversing them found one pair-dedup bug
+   (part 118). Holder count still decides rows in six suite witnesses,
+   so it stays a row term beside authored (part 119). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
