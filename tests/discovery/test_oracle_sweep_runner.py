@@ -1,4 +1,5 @@
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,12 @@ def test_tree_states_are_pruned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     runner._prune_tree_states(tmp_path)
     assert len(list(tmp_path.glob("tree-*.jsonl"))) == 1
     assert (tmp_path / "abc-first-x.jsonl").exists()
+
+
+def test_a_sweep_caches_without_a_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(runner, "CACHE", tmp_path)
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+    seeds = list(range(4))
+    first = runner.sweep("first", seeds, jobs=1, quiet=True)
+    monkeypatch.setattr(runner, "_sweep", None)
+    assert runner.sweep("first", seeds, jobs=1, quiet=True) == first

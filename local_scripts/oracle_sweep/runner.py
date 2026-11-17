@@ -243,7 +243,6 @@ def _locked(path: Path) -> Iterator[None]:
     except ImportError:  # Windows: no advisory lock
         yield
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
     with path.with_suffix(".lock").open("w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -323,6 +322,7 @@ def sweep(
         return {(s, m): fresh[(s, m)] for s in seeds for m in models}
     name = f"{state}-{family}-{generator_hash()}{'-carry' if carry else ''}.jsonl"
     path = CACHE / "results" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
     with _locked(path):
         known = read_records(path)
         wanted = [s for s in seeds if any((s, m) not in known for m in models)]
