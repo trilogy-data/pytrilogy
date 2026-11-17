@@ -49,8 +49,8 @@ SELECT
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
 FROM
-    \"uneven\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"uneven\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    \"memory\".\"customer\" as \"sales_billing_customer_customers\"
+    INNER JOIN \"uneven\" on \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\" = \"uneven\".\"sales_billing_customer_sk\"
 ORDER BY 
     \"customer_id\" asc nulls first
 LIMIT (100)"""

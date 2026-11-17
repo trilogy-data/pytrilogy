@@ -13,8 +13,8 @@ SELECT
     sum(\"cs_catalog_returns\".\"CR_NET_LOSS\") as \"returns_loss\"
 FROM
     \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_return_customer_customers\" on \"cs_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" = \"cs_return_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_return_customer_current_address_customer_address\" on \"cs_return_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_return_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_return_customer_current_demographics_customer_demographics\" on \"cs_return_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"cs_return_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cs_return_customer_current_household_demographics_household_demographics\" on \"cs_return_customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"cs_return_customer_current_household_demographics_household_demographics\".\"HD_DEMO_SK\"

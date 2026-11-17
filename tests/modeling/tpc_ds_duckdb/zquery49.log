@@ -89,8 +89,8 @@ SELECT
     sum(\"cheerful\".\"sales_return_amount\") as \"return_amt\",
     sum(\"cheerful\".\"sales_return_quantity\") as \"return_qty\"
 FROM
-    \"abundant\"
-    INNER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
+    \"cheerful\"
+    INNER JOIN \"abundant\" on \"cheerful\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"cheerful\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"cheerful\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
 GROUP BY
     1,
     2),

@@ -95,8 +95,8 @@ SELECT
     \"uneven\".\"store_cume\" as \"store_cume\",
     \"uneven\".\"web_cume\" as \"web_cume\"
 FROM
-    \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"uneven\".\"sales_sale_date_date\" = \"questionable\".\"sales_sale_date_date\")
+    \"questionable\"
+    INNER JOIN \"uneven\" on \"questionable\".\"sales_item_sk\" = \"uneven\".\"sales_item_sk\" AND \"questionable\".\"sales_sale_date_date\" = \"uneven\".\"sales_sale_date_date\")
 SELECT
     \"yummy\".\"sales_item_sk\" as \"item_sk\",
     \"yummy\".\"sales_sale_date_date\" as \"d_date\",

@@ -34,8 +34,8 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"web_returns\" as \"ws_web_returns\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_web_returns\".\"WR_ITEM_SK\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"ws_web_returns\".\"WR_ORDER_NUMBER\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_return_address_customer_address\" on \"ws_web_returns\".\"WR_RETURNING_ADDR_SK\" = \"ws_return_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"ws_return_date_date\".\"D_YEAR\" = 2002 and \"ws_return_address_customer_address\".\"CA_STATE\" is not null
 ),
@@ -62,8 +62,8 @@ SELECT
     \"thoughtful\".\"ws_return_customer_sk\" as \"ws_return_customer_sk\",
     sum(\"thoughtful\".\"ws_return_amount\") as \"customer_state_returns_2002\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"thoughtful\" on \"cooperative\".\"ws_return_address_state\" is not distinct from \"thoughtful\".\"ws_return_address_state\" AND \"cooperative\".\"ws_return_customer_sk\" is not distinct from \"thoughtful\".\"ws_return_customer_sk\"
+    \"thoughtful\"
+    INNER JOIN \"cooperative\" on \"thoughtful\".\"ws_return_address_state\" is not distinct from \"cooperative\".\"ws_return_address_state\" AND \"thoughtful\".\"ws_return_customer_sk\" is not distinct from \"cooperative\".\"ws_return_customer_sk\"
     INNER JOIN \"questionable\" on \"cooperative\".\"ws_return_address_state\" is not distinct from \"questionable\".\"ws_return_address_state\"
 WHERE
     \"cooperative\".\"_virt_agg_sum_4733057279147332_wscope\" > \"questionable\".\"_virt_func_multiply_8895519467362601_wscope\"

@@ -395,6 +395,8 @@ class ConceptAttrs:
     # them (a fact FK column aliased beside a fact property has one BASIC per
     # root and no shared consumer).
     datasource_bindings: frozenset[str] = frozenset()
+    # every column those datasources bind: two tables sharing one join on it
+    datasource_columns: frozenset[str] = frozenset()
     # True for a pure rename (``alias(...)`` lineage), a pseudonym of its
     # source. The renderer resolves it transparently to the source column, so
     # it must not be folded into a rollup group like a genuine transform dim.

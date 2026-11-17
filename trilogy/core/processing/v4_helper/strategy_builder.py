@@ -130,6 +130,7 @@ from .constants import (
     AGGREGATING_DERIVATIONS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    NESTED_DEPTHS,
     ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
@@ -3928,7 +3929,7 @@ def _plan_group_bridges(
             group_graph,
             attrs,
             cover,
-            _bridge_candidates(group_graph, planned, gid),
+            _bridge_candidates(group_graph, attrs, planned, gid),
             [c for concepts in cover.values() for c in concepts],
             environment,
             authored,
@@ -5318,20 +5319,24 @@ def _sole_partners(plan: JoinPlan, contributors: Sequence[str]) -> frozenset[str
 
 def _bridge_candidates(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     planned: Sequence[str],
     consumer: str = FINAL_NODE_ID,
 ) -> list[str]:
     """The `planned` groups, in build order, decided before `consumer` (every
     group, for the FINAL: one feeding no output may sort after it) that are
     still in the plan, most derived first. A group folded into its readers left
-    the plan at its turn."""
+    the plan at its turn. A condition-phase group's rows never passed the
+    WHERE, so it bridges an outer consumer only when nothing else does."""
     decided = (
         planned if consumer == FINAL_NODE_ID else planned[: planned.index(consumer)]
     )
     groups = {gid for gid in decided if gid in group_graph and gid != FINAL_NODE_ID}
+    outer = attrs[consumer].depth_label not in NESTED_DEPTHS
     return sorted(
         groups,
         key=lambda gid: (
+            not (outer and attrs[gid].depth_label in NESTED_DEPTHS),
             sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
             gid,
         ),
@@ -6663,7 +6668,7 @@ def _assemble_final_node(
         group_graph,
         attrs,
         per_group,
-        _bridge_candidates(group_graph, cover.groups),
+        _bridge_candidates(group_graph, attrs, cover.groups),
         mandatory_list,
         environment,
         final_contract.authored_axes,
@@ -7346,7 +7351,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
     carry_demands = _input_contract_carry_demands(a)
-    candidates = _bridge_candidates(group_graph, ctx.planned, gid)
+    candidates = _bridge_candidates(group_graph, attrs, ctx.planned, gid)
     element_filters: list[StrategyNode] = []
     if derivation == Derivation.UNION:
         parents = _union_arm_parents(

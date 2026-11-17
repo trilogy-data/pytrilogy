@@ -31,8 +31,8 @@ WHERE
 SELECT
     \"highfalutin\".\"filtered_product_name\" as \"filtered_product_name\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"highfalutin\" on \"wakeful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
+    \"highfalutin\"
+    INNER JOIN \"wakeful\" on \"highfalutin\".\"item_manufact\" is not distinct from \"wakeful\".\"item_manufact\"
 WHERE
     \"highfalutin\".\"filtered_product_name\" is not null
 

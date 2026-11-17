@@ -1489,3 +1489,94 @@ theorem null_key_group_is_a_group :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## An expression of a bare aggregate is at the select grain
+
+`select city, species, count(id) * min(x) by city`: the count is grouped by
+`(city, species)`, so the product is one value per `(city, species)`. Its
+grain was the union of its aggregates' `by` keys, `city` alone, so the plan
+grouped it by `(city, value)` and joined it back on `city`: each species met
+every value its city has (`by_keys_alone_fan_out`, eight rows for five
+groups). Keyed by the select grain each group meets its own
+(`bare_beside_by_is_select_grain`). `count(id) - count_distinct(tag)` was
+keyed by the aggregated columns' key, `id`, and a summary's row read beside
+it was repeated per tree. -/
+
+/-- `(city, species)` and the count of its trees. -/
+def treeCounts : List ((Int × Int) × Int) :=
+  [((0, 0), 2), ((0, 1), 1), ((0, 2), 1), ((1, 0), 1), ((1, 3), 1)]
+
+theorem by_keys_alone_fan_out :
+    let byCity := dedup (treeCounts.map fun g => (g.1.1, g.2))
+    (treeCounts.flatMap fun g => byCity.filter fun v => v.1 == g.1.1).length = 8 ∧
+      treeCounts.length = 5 := by
+  decide
+
+theorem bare_beside_by_is_select_grain :
+    (treeCounts.flatMap fun g => treeCounts.filter fun h => h.1 == g.1).length = 5 := by
+  decide
+
+/-! ## A bridge's rows passed the WHERE
+
+`select id, count(id) by city, form - count(id) where form = 0 and max(x) by
+city, form > 1`: the per-tree value is paired with the `(city, form)` value
+through rows holding `(id, city, form)`. The condition-phase scan holds them
+too, and it came first by name; its rows never passed the WHERE, and the
+aggregates joined it preserved, so every tree came back
+(`unfiltered_bridge_keeps_rejected`). -/
+
+/-- Trees `(id, form)`: form 0 for four, 1 and 2 for one each. -/
+def formTrees : List (Int × Int) := [(0, 0), (1, 0), (2, 0), (3, 1), (4, 0), (5, 2)]
+
+theorem unfiltered_bridge_keeps_rejected :
+    (formTrees.filter fun t => t.2 == 0).length = 4 ∧ formTrees.length = 6 := by
+  decide
+
+/-- `select coalesce(form, 'none') where max(x) by city, species < 4`: the
+key is a lookup of the species, and a fresh scan of the forms in place of
+the gated rows holds every form, `none` included
+(`dimension_rescan_drops_gate`). Species `(id, form, kept)`. -/
+def gatedSpecies : List (Int × Int × Bool) :=
+  [(0, 0, true), (1, 0, false), (2, 3, false), (3, 1, true)]
+
+theorem dimension_rescan_drops_gate :
+    (dedup (gatedSpecies.map (·.2.1))).length = 3 ∧
+      (dedup ((gatedSpecies.filter (·.2.2)).map (·.2.1))).length = 2 := by
+  decide
+
+/-! ## A total of a table the WHERE's table joins
+
+`select form, min(x) + count_distinct(tag) by * where form = 'linden'`: the
+summary answers `min(x)` by form, so the trees feed only the `by *` total and
+share no table with the other reads. They join the forms on `species`, so the
+WHERE keeps only the linden trees; the total was read off every tree
+(`peel_of_joined_table_reads_rejected`). -/
+
+/-- Trees `(tag, form)`. -/
+def tagTrees : List (Int × Int) := [(0, 0), (1, 0), (0, 0), (0, 1), (1, 0), (0, 2)]
+
+theorem peel_of_joined_table_reads_rejected :
+    (dedup (tagTrees.map (·.1))).length = 2 ∧
+      (dedup ((tagTrees.filter fun t => t.2 == 2).map (·.1))).length = 1 := by
+  decide
+
+/-! ## A re-sum reads its partial's rows
+
+`select form0, count(id) by *, count(id) where sum(x) by form > 3 and x > 3`:
+the total is re-summed off the per-`form0` counts, which already kept only
+the rows passing both atoms. The planner judged the re-sum to read rows no
+host filtered (the columns its function names come from no input), copied
+`x > 3` onto it, and `x` is not a column of a per-`form0` row
+(`resum_reads_partial_rows`: the partials' sum is the filtered count). -/
+
+/-- Rows `(form0, x)` passing the WHERE, and the per-`form0` counts. -/
+def keptRows : List (Int × Int) := [(0, 5), (0, 7)]
+
+theorem resum_reads_partial_rows :
+    ((dedup (keptRows.map (·.1))).map fun f =>
+        (keptRows.filter fun r => r.1 == f).length).sum = keptRows.length := by
+  decide
+
+end Trilogy.SelectGrain

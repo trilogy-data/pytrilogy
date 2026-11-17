@@ -1,5 +1,5 @@
 query_id = "81"
-gen_length = 7411
+gen_length = 7412
 preql_size = 2098
 comp_size = 1459
 generated_sql = """
@@ -37,8 +37,8 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_return_address_customer_address\" on \"cs_catalog_returns\".\"CR_RETURNING_ADDR_SK\" = \"cs_return_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"cs_return_date_date\".\"D_YEAR\" = 2000 and \"cs_return_address_customer_address\".\"CA_STATE\" is not null
 ),
@@ -65,9 +65,9 @@ SELECT
     \"thoughtful\".\"cs_return_customer_sk\" as \"cs_return_customer_sk\",
     sum(\"thoughtful\".\"cs_return_amount_inc_tax\") as \"customer_state\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"thoughtful\" on \"cooperative\".\"cs_return_address_state\" is not distinct from \"thoughtful\".\"cs_return_address_state\" AND \"cooperative\".\"cs_return_customer_sk\" is not distinct from \"thoughtful\".\"cs_return_customer_sk\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"cs_return_address_state\" is not distinct from \"questionable\".\"cs_return_address_state\"
+    \"questionable\"
+    INNER JOIN \"thoughtful\" on \"questionable\".\"cs_return_address_state\" is not distinct from \"thoughtful\".\"cs_return_address_state\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"cs_return_address_state\" is not distinct from \"cooperative\".\"cs_return_address_state\" AND \"thoughtful\".\"cs_return_customer_sk\" is not distinct from \"cooperative\".\"cs_return_customer_sk\"
 WHERE
     \"cooperative\".\"_virt_agg_sum_4008878287401003_wscope\" > \"questionable\".\"_virt_func_multiply_2954284655828826_wscope\"
 

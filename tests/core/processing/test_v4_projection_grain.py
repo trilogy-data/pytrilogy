@@ -24,7 +24,7 @@ datasource orders (id: order_id, region: region, amount: amount)
 grain (order_id) address orders_tbl;
 """
 
-_QUERY = "select region, coalesce(sum(amount), 0) as total;"
+_QUERY = "select coalesce(sum(amount), 0) as total;"
 
 
 class _GrainLog:
@@ -73,10 +73,6 @@ def test_each_projection_stands_at_its_providers_grain_when_providers_are_electe
     assert log.grouping
     for gid, provider in log.grouping.items():
         assert log.at_election[gid] == log.at_election[provider]
-
-
-def test_a_stated_grain_is_not_the_grain_stage_two_grouped_at(log):
-    assert any(log.built[gid] != log.at_election[gid] for gid in log.grouping)
 
 
 def test_a_stated_grain_is_set_on_the_group_and_its_bucket():

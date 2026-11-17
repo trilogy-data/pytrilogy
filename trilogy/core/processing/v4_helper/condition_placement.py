@@ -561,6 +561,15 @@ def _rows_filtered_by(
         if arguments
         else []
     )
+    # a re-sum of a partial (`count(x) by *` over `count(x)` per key) reads
+    # the partial's rows, never the columns it names
+    if arguments and not feeding:
+        feeding = [
+            p
+            for p in preds
+            if buckets[p].derivation in _EMITS_GROUP_BY
+            and buckets[p].depth_label not in NESTED_DEPTHS
+        ]
     if feeding:
         result = all(_rows_filtered_by(p, chosen, scope, memo) for p in feeding)
     else:
@@ -1182,7 +1191,14 @@ def _uncovered_grouping_placements(
         row_inputs = _movable_row_inputs(atom, scope)
         if not row_inputs:
             continue
-        for gid in sorted(buckets):
+        # upstream first: a re-sum of a partial this loop filters reads it
+        added: tuple[str, ...] = ()
+        order = [
+            g
+            for g in nx.topological_sort(scope.lineage_ancestors_graph)
+            if g in buckets
+        ]
+        for gid in order + sorted(set(buckets) - set(order)):
             bucket = buckets[gid]
             if (
                 gid in placement.group_ids
@@ -1195,6 +1211,8 @@ def _uncovered_grouping_placements(
             ancestors = nx.ancestors(scope.lineage_ancestors_graph, gid)
             if any(host in ancestors for host in placement.group_ids):
                 continue
+            if added and _rows_filtered_by(gid, added, scope, {}):
+                continue
             if not row_inputs <= scope.reachable_input(gid):
                 continue
             # tested on FINAL's rows, the atom reaches an aggregate it is not
@@ -1203,6 +1221,7 @@ def _uncovered_grouping_placements(
                 atom, _bucket_concepts(bucket, environment), environment
             ):
                 continue
+            added += (gid,)
             extra.append(
                 ConditionPlacement(
                     atom=atom,
