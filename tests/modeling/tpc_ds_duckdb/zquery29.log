@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 5862
+gen_length = 5875
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -41,7 +41,7 @@ GROUP BY
     4,
     5,
     6),
-concerned as (
+concerned as MATERIALIZED (
 SELECT
     \"vacuous\".\"store_sales_customer_sk\" as \"catalog_customer_item_cat_customer_sk\",
     \"vacuous\".\"store_sales_customer_sk\" as \"store_sales_customer_sk\",

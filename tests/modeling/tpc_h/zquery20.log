@@ -1,11 +1,11 @@
 query_id = "20"
-gen_length = 2019
+gen_length = 2032
 preql_size = 456
 comp_size = 908
 generated_sql = """
 
 WITH 
-abundant as (
+abundant as MATERIALIZED (
 SELECT
     \"part_part\".\"p_partkey\" as \"part_id\",
     \"part_partsupp\".\"ps_availqty\" as \"part_available_quantity\",

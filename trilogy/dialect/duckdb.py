@@ -66,6 +66,7 @@ from trilogy.dialect.common import (
     utc_text,
     written_kind,
 )
+from trilogy.dialect.join_barriers import split_key_barriers
 from trilogy.utility import safe_open
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
@@ -873,8 +874,11 @@ class DuckDBDialect(BaseDialect):
         # references through other inlined CTEs and each recursive iteration:
         # slower, and each run a new snapshot. Materialize every one.
         compiled = super().generate_ctes(query)
+        # DuckDB inlines a CTE and reorders its joins with its consumer's; one
+        # that assembles a join's keys from several relations must stay whole.
+        barriers = split_key_barriers(query.ctes)
         for cte, out in zip(query.ctes[:-1], compiled[:-1]):
-            out.materialized = reads_program(cte)
+            out.materialized = reads_program(cte) or cte.name in barriers
         return compiled
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
