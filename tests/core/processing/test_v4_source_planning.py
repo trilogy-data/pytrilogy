@@ -527,23 +527,24 @@ def test_a_bridge_merge_pairs_on_the_search_s_joins():
     ) == {"local.customer_id", "local.item_id"}
 
 
-def _bridge_over_a(**stated: Any) -> BridgePlan:
+def _bridge_over_a(**stated: Any) -> tuple[BridgePlan, BuildEnvironment]:
     """A bridge whose one searched scan is `ds~a`."""
     _, benv = _build(GRAINED_BRIDGE_MODEL)
-    return BridgePlan(
+    plan = BridgePlan(
         concepts=[], graph=generate_graph(benv), scans=frozenset({"ds~a"}), **stated
     )
+    return plan, benv
 
 
 def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
-    plan = _bridge_over_a()
+    plan, benv = _bridge_over_a()
     chosen, connector, filled = object(), object(), object()
     sides = {id(chosen): "ds~a", id(connector): "connector~r.k", id(filled): "ds~b"}
     unsearched = {
         "connector~r.k": frozenset({"r.k", "local.k"}),
         "ds~b": frozenset({"local.j"}),
     }
-    planned = _bridge_plan(plan, [chosen, connector, filled], sides, unsearched)
+    planned = _bridge_plan(plan, [chosen, connector, filled], sides, benv, unsearched)
     assert planned.grain_paired == {"connector~r.k"}
     assert planned.between(frozenset({"ds~a"}), frozenset({"connector~r.k"})) == {
         "r.k",
@@ -558,20 +559,23 @@ def test_a_bridge_side_the_search_did_not_choose_pairs_on_what_it_carries():
 
 
 def test_a_bridge_side_nothing_planned_is_a_planner_bug():
-    plan = _bridge_over_a()
+    plan, benv = _bridge_over_a()
     chosen, stray = object(), object()
     with pytest.raises(ValueError, match="planner bug"):
-        _bridge_plan(plan, [chosen, stray], {id(chosen): "ds~a"})
+        _bridge_plan(plan, [chosen, stray], {id(chosen): "ds~a"}, benv)
 
 
 def test_a_bridge_through_a_chosen_connector_pairs_on_its_grain():
-    plan = _bridge_over_a(
+    plan, benv = _bridge_over_a(
         connector_aliases=("r.k",),
         join_keys={frozenset({"ds~a", "connector~r.k"}): frozenset({"local.k"})},
     )
     scan, connector = object(), object()
     planned = _bridge_plan(
-        plan, [scan, connector], {id(scan): "ds~a", id(connector): "connector~r.k"}
+        plan,
+        [scan, connector],
+        {id(scan): "ds~a", id(connector): "connector~r.k"},
+        benv,
     )
     assert planned is not None
     assert planned.grain_paired == {"connector~r.k"}
