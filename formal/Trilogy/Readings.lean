@@ -166,7 +166,7 @@ set_option maxRecDepth 100000 in
 `globNumber` reads the trimmed string, as the rendering does. -/
 theorem glob_number_exact :
     (strings 5).all (fun s => globNumber (trim s) == accepts s) = true := by
-  decide
+  decide +kernel
 
 /-- Spaces inside a numeral are not trimmed away. -/
 theorem inner_space_refused : accepts [.d 1, .sp, .d 2] = false := by decide
@@ -253,7 +253,7 @@ theorem truncate_then_round_exact :
     ∀ a : Nat, a < 601 → ∀ K : Nat, K < 2 →
       roundHalfAway (ratio (truncTo ((a : Int) - 300) 3 (K + 1)) (K + 1)) =
         roundHalfAway (ratio ((a : Int) - 300) 3) := by
-  decide
+  decide +kernel
 
 /-- Truncating to the target's own scale is not enough: `0.5` truncates to 0
 at no places, where it rounds to 1. -/
@@ -390,6 +390,6 @@ def textLe (n bound : Nat) : Bool :=
 set_option maxRecDepth 100000 in
 /-- Bounded: every numeral below 2000 against the bound 1207. -/
 theorem digit_compare_exact : ∀ n : Nat, n < 2000 → textLe n 1207 = decide (n ≤ 1207) := by
-  decide
+  decide +kernel
 
 end Trilogy.Readings

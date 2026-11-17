@@ -237,7 +237,7 @@ def wellEnded (p : Str) : Bool :=
 
 set_option maxRecDepth 100000 in
 theorem ch_strip_sound : ∀ p ∈ strs 4, ∀ v ∈ strs 3,
-    wellEnded p → mt (chTokenize (chStrip p)) v = like v p := by decide
+    wellEnded p → mt (chTokenize (chStrip p)) v = like v p := by decide +kernel
 
 /-! ## `contains` -/
 

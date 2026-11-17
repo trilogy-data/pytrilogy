@@ -83,7 +83,7 @@ theorem clamp_exact :
       refPositions n ((a : Int) - 8) ((c : Int) - 8) =
         nativePositions n (clamped n ((a : Int) - 8) ((c : Int) - 8)).1
           (clamped n ((a : Int) - 8) ((c : Int) - 8)).2 := by
-  decide
+  decide +kernel
 
 theorem take_drop_positions (s : Str) (m count : Nat) :
     (List.range' (m + 1) count).filterMap (fun p => s[p - 1]?) = (s.drop m).take count := by
