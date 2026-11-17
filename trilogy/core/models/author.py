@@ -2873,9 +2873,9 @@ def _reads_bare_aggregate(expr, environment: Environment) -> bool:
     if isinstance(expr, (FunctionCallWrapper, Parenthetical)):
         return _reads_bare_aggregate(expr.content, environment)
     if isinstance(expr, (Comparison, Conditional)):
-        return _reads_bare_aggregate(
-            expr.left, environment
-        ) or _reads_bare_aggregate(expr.right, environment)
+        return _reads_bare_aggregate(expr.left, environment) or _reads_bare_aggregate(
+            expr.right, environment
+        )
     if isinstance(expr, (Function, CaseWhen, CaseSimpleWhen, CaseElse)):
         if isinstance(expr, Function) and (
             expr.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
