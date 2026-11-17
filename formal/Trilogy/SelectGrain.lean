@@ -791,6 +791,27 @@ theorem gate_paired_short_of_its_grain :
       (rows.flatMap fun r => gate.filter (·.1 == r.1)).length = 4 := by
   decide
 
+/-! ## A sole contributor carries the gate's whole grain
+
+`select city, form, max(x) by form * count(id) by city where sum(x) by city,
+species < 6`: the one side computing the value holds `(city, form)` off a row
+stream that also holds `species`, but it projected only `city`, so FINAL met
+the gate on `city` and kept a form every one of whose `(city, species)` rows
+failed (0.3.513). A side short of every gate key is widened to them (47126
+paired on nothing and raised). -/
+
+/-- Rows `(city, species, form)` and the `(city, species)` groups the gate
+keeps: on the gate's grain the kept `(city, form)` pairs are two, on `city`
+alone three (`sole_gate_paired_short_of_its_grain`). -/
+theorem sole_gate_paired_short_of_its_grain :
+    let rows : List (Int × Int × Int) := [(0, 0, 0), (1, 0, 0), (1, 1, 1)]
+    let kept : List (Int × Int) := [(0, 0), (1, 1)]
+    (dedup ((rows.filter fun r => kept.contains (r.1, r.2.1)).map
+        fun r => (r.1, r.2.2))).length = 2 ∧
+      (dedup ((rows.filter fun r => kept.any (·.1 == r.1)).map
+        fun r => (r.1, r.2.2))).length = 3 := by
+  decide
+
 /-! ## A count past its host reads 0, not NULL
 
 `select city, species, form, max(x ? ...) where min(x) by species - count(id)
