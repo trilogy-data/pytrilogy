@@ -1063,8 +1063,8 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     a side pairing with none seeds a tree only when none does. The walk
     chooses nothing itself, so the plan is deterministic across runs.
 
-    The stated order (`_stated_order`) is shape below one row term, whether
-    a key is authored (`_key_terms`). Two more facts about rows
+    The stated order (`_stated_order`) is shape around two row terms of a
+    key, whether it is authored and how many sides pair on it (`_key_terms`). Two more facts about rows
     outrank it. A merge whose rows are one side's states that side (`facts.seed`), and the
     walk starts from it. And the walk repairs a side preserved past an INNER
     join among the sides walked before it (`_preserved_past_inner`): that
@@ -2622,32 +2622,34 @@ def _solid_holders(
 
 
 # a key's shape: not a value-nullable key between region-free holders, not a
-# held span, the most other spans a holder holds, how many sides pair on it
-KeyShape = tuple[bool, bool, int, int]
+# held span, the most other spans a holder holds
+KeyShape = tuple[bool, bool, int]
+# where a key comes: not authored, its shape, how many sides the plan pairs
+# on it, and the holders it places
+KeyTerm = tuple[bool, KeyShape, int, set[str]]
 
 
-def _key_terms(
-    facts: JoinFacts, holders: Mapping[str, set[str]]
-) -> list[tuple[bool, KeyShape, set[str]]]:
-    """Where each planned key comes, with the holders it places. Only an
-    AUTHORED key (scoped join / merge relation) comes first for its holders'
-    rows: its equality is the pairing between them, and in a left-deep tree
-    sides met on a cheaper shared key before it pair on that key alone.
+def _key_terms(facts: JoinFacts, holders: Mapping[str, set[str]]) -> list[KeyTerm]:
+    """Where each planned key comes, with the holders it places. Two terms
+    decide rows. An AUTHORED key (scoped join / merge relation) comes first:
+    its equality is the pairing between its holders' rows, and in a
+    left-deep tree sides met on a cheaper shared key before it pair on that
+    key alone. And below the shape, the key the plan pairs the fewest sides
+    on: a side that also pairs on a wider key meets its holders on both.
 
-    The rest is the key's shape, and a walk in its reverse returns the same
-    rows: a value-nullable key between the sides holding no region
-    (`_solid_holders`), then a span some side holds a region on, then the
-    key held by a side holding the fewest other spans, then the key the plan
-    pairs the fewest sides on. Where a side holds the rows of a span it
-    pairs on with no side, the walk waits for that stitch whatever the
-    order (`JoinFacts.stitches`)."""
-    out: list[tuple[bool, KeyShape, set[str]]] = []
+    The shape between them reverses without moving rows: a value-nullable
+    key between the sides holding no region (`_solid_holders`), then a span
+    some side holds a region on, then the key held by a side holding the
+    fewest other spans. Where a side holds the rows of a span it pairs on
+    with no side, the walk waits for that stitch whatever the order
+    (`JoinFacts.stitches`)."""
+    out: list[KeyTerm] = []
     for key, held_by in holders.items():
         others = max(len(facts.side(s).held_spans - {key}) for s in held_by)
-        shape = (True, key not in facts.held_spans, others, len(held_by))
-        out.append((key not in facts.authored_join_keys, shape, held_by))
+        shape = (True, key not in facts.held_spans, others)
+        out.append((key not in facts.authored_join_keys, shape, len(held_by), held_by))
     for solid in _solid_holders(facts, holders).values():
-        out.append((True, (False, False, 0, len(solid)), solid))
+        out.append((True, (False, False, 0), len(solid), solid))
     return out
 
 
@@ -2681,16 +2683,19 @@ def _stated_order(
 ) -> dict[str, int]:
     """The one order the walk joins a merge's sides in. A side comes where
     the best key the plan pairs it on puts it: a key is placed by whether it
-    is authored, then by its shape (`_key_terms`), then by where the plan's
+    is authored, its shape and its holder count (`_key_terms`), then by where the plan's
     shape puts its holders (`_shape_terms`, over `ranks`, the plan's
     order), so a lookup follows the rows it hangs off. Sides one key places
     alike come in the shape's order. All of it reads the built sides, so no
     plan states it: resolve does, once for the merge, before the walk."""
     sides, pair_keys = facts.sides, facts.pair_keys
     shape = _places(_shape_terms(ranks, sides, pair_keys, declared))
-    best: dict[str, tuple[bool, KeyShape, tuple[int, ...]]] = {}
-    for authored, key_shape, held_by in _key_terms(facts, _key_holders(pair_keys)):
-        term = (authored, key_shape, tuple(sorted(shape[side] for side in held_by)))
+    best: dict[str, tuple[bool, KeyShape, int, tuple[int, ...]]] = {}
+    for authored, key_shape, count, held_by in _key_terms(
+        facts, _key_holders(pair_keys)
+    ):
+        places = tuple(sorted(shape[side] for side in held_by))
+        term = (authored, key_shape, count, places)
         for side in held_by:
             best[side] = min(best.get(side, term), term)
     # a side the plan pairs on nothing comes after the ones it pairs

@@ -32,7 +32,7 @@ _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
 # variant -> the key's shape term held constant
-KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2, "holders": 3}
+KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2}
 # variant -> the shape term held constant
 SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 
@@ -54,20 +54,22 @@ def _held(term: tuple, index: int) -> tuple:
     return (*term[:index], 0, *term[index + 1 :])
 
 
-def _keys_held(index: int | None) -> Callable[..., list]:
-    """`_key_terms` with one shape term held constant, or with `None` the
-    authored term."""
+def _keys_held(name: str) -> Callable[..., list]:
+    """`_key_terms` with one term held constant: `authored`, `holders`, or
+    one of the key's shape (`KEY_TERMS`)."""
+    index = KEY_TERMS.get(name)
 
     def keys(facts, holders):
         return [
             (
-                authored if index is not None else True,
+                True if name == "authored" else authored,
                 shape if index is None else _held(shape, index),
+                0 if name == "holders" else count,
                 held_by,
             )
-            for authored, shape, held_by in _keys(facts, holders)
+            for authored, shape, count, held_by in _keys(facts, holders)
             # the solid holders are a term of their own
-            if index != KEY_TERMS["solid"] or shape[0]
+            if name != "solid" or shape[0]
         ]
 
     return keys
@@ -119,8 +121,8 @@ def _census(ranks, facts, declared) -> dict[str, int]:
     _counts["merges"] = _counts.get("merges", 0) + 1
     args = (ranks, facts, declared)
     base = _walked(facts, out)
-    for name, at in {"authored": None, **KEY_TERMS}.items():
-        if _walked(facts, _variant("_key_terms", _keys_held(at), args)) != base:
+    for name in ("authored", *KEY_TERMS, "holders"):
+        if _walked(facts, _variant("_key_terms", _keys_held(name), args)) != base:
             _hit(name)
     for name, index in SHAPE_TERMS.items():
         if _walked(facts, _variant("_shape_terms", _shape_held(index), args)) != base:
