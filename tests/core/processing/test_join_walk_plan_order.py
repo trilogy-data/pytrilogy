@@ -138,13 +138,16 @@ def test_a_subset_scan_comes_after_its_anchor_even_when_the_anchor_is_a_lookup()
         "fact2": frozenset({"f2"}),
     }
     partials = {"fact1": frozenset({"cust"}), "fact2": frozenset({"cust"})}
-    assert scan_precedence(keys, grains, partials, {"cust"}) == (
+    assert scan_precedence(keys, grains, partials) == ("customers", "fact1", "fact2")
+    # an arm of a union is partial on its grain too: its `~` binds no key
+    # unless a declared subset relation names it
+    arms = {s: frozenset({"cust", f"f{s[-1]}"}) for s in ("fact1", "fact2")}
+    assert scan_precedence(keys, grains, arms) == ("fact1", "fact2", "customers")
+    assert scan_precedence(keys, grains, arms, {"cust"}) == (
         "customers",
         "fact1",
         "fact2",
     )
-    # a union arm's `~` names no declared subset: its anchor is no lookup's
-    assert scan_precedence(keys, grains, partials) == ("fact1", "fact2", "customers")
 
 
 class _Scan:

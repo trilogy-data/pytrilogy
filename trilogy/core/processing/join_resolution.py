@@ -303,6 +303,16 @@ def _declared_subset_keys(environment: BuildEnvironment | None) -> frozenset[str
     )
 
 
+def _subset_bindings(
+    partials: frozenset[str], grain: frozenset[str] | None, declared: Collection[str]
+) -> frozenset[str]:
+    """The keys a scan binds as `~`: all of its partials when its own grain
+    is complete, else (an arm of a union) only the declared ones."""
+    if grain and grain <= partials:
+        return partials & frozenset(declared)
+    return partials
+
+
 def scan_precedence(
     keys: Mapping[frozenset[str], frozenset[str]],
     grains: Mapping[str, frozenset[str]],
@@ -310,14 +320,17 @@ def scan_precedence(
     declared: Collection[str] = frozenset(),
 ) -> tuple[str, ...]:
     """The order a merge of scans joins them in when nothing else decides,
-    as `JoinPlan.precedence` states it for groups: a scan binding a
-    `declared` subset key as `~` after a scan it pairs with that binds the
-    key completely (its anchor: the member's rows hang off the anchor's; a
-    union arm's `~` is no anchored subset), a scan of rows before
+    as `JoinPlan.precedence` states it for groups: a scan binding a key as
+    `~` after a scan it pairs with that binds the key completely (its
+    anchor: the member's rows hang off the anchor's), a scan of rows before
     the lookups its pairings identify (a scan whose grain lies inside the
     keys it pairs on), a scan binding its pairing keys completely before one
     binding them as `~`, finer rows first. A scan of no declared grain is
-    stated with the coarsest."""
+    stated with the coarsest.
+
+    A union arm is partial on every column, its grain included: its rows
+    are a subset of the union's, and no key of it is a `~` binding unless a
+    `declared` subset relation names the key."""
     partials = partials or {}
     looked_up: set[str] = set()
     anchored: set[str] = set()
@@ -330,9 +343,9 @@ def scan_precedence(
             paired[side] |= pairs
             if grains.get(side) and grains[side] <= pairs:
                 looked_up.add(side)
-            if other in grains and (
-                partials.get(side, frozenset()) & pairs & frozenset(declared)
-            ) - partials.get(other, frozenset()):
+            if other in grains and _subset_bindings(
+                partials.get(side, frozenset()), grains.get(side), declared
+            ) & pairs - partials.get(other, frozenset()):
                 anchored.add(side)
     return tuple(
         sorted(
