@@ -1,5 +1,5 @@
 query_id = "19"
-gen_length = 1421
+gen_length = 1419
 preql_size = 280
 comp_size = 758
 generated_sql = """
@@ -9,10 +9,10 @@ wakeful as (
 SELECT
     \"order_items\".\"id\" as \"id\",
     \"order_items\".\"order_id\" as \"order_id\",
+    \"order_items\".\"sale_price\" - \"product_products\".\"cost\" as \"margin\",
     \"order_items\".\"sale_price\" as \"revenue\",
     \"order_items\".\"user_id\" as \"user_id\",
-    \"product_products\".\"id\" as \"product_id\",
-    (\"order_items\".\"sale_price\" - \"product_products\".\"cost\") as \"margin\"
+    \"product_products\".\"id\" as \"product_id\"
 FROM
     \"products\" as \"product_products\"
     INNER JOIN \"order_items\" as \"order_items\" on \"product_products\".\"id\" = \"order_items\".\"product_id\"),
