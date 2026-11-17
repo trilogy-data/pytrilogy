@@ -1473,21 +1473,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 # within x but the expression still varies per w's row.
                 pkeys: set[str] = set(by_refs)
                 if reads_bare:
-                    pkeys |= set(grain.components)
+                    pkeys |= set(grain.components) - {self.address}
+                read_on = set(pkeys)
                 pins = _pin_anchors(new_lineage)
-                # beside a bare aggregate the expression is read on the
-                # select's rows, so a row peer adds no identity of its own
-                peers = (
-                    []
-                    if reads_bare
-                    else _non_aggregate_row_refs(new_lineage, environment)
-                )
-                for x_ref in peers:
+                for x_ref in _non_aggregate_row_refs(new_lineage, environment):
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
-                    # a scalar of the `by` keys is read on the aggregate's rows
-                    if _function_of_addresses(x, set(by_refs), environment):
+                    # a scalar of the keys is read on the aggregates' rows
+                    if _function_of_addresses(x, read_on, environment):
                         continue
                     if x.derivation == Derivation.UNNEST:
                         pkeys.add(x.address)
@@ -2858,18 +2852,23 @@ def _row_grain(pkeys: set[str], grain: Grain, environment: Environment) -> Grain
     return Grain.from_concepts(pkeys, environment)
 
 
+_PASS_KEYS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
+
+
 def _reads_bare_aggregate(expr, environment: Environment) -> bool:
     """Whether a row-wise expression reads an aggregate with no `by`, which
-    resolves to the select grain (the `count(x)` of `count(x) * min(y) by k`)."""
+    resolves to the select grain (the `count(x)` of `count(x) * min(y) by k`).
+    `grouping()` is a key of its pass, not a value read at the grain."""
     if isinstance(expr, AggregateWrapper):
-        return not expr.by
+        return not expr.by and expr.function.operator not in _PASS_KEYS
     if isinstance(expr, ConceptRef):
         concept = environment.concepts.get(expr.address)
-        return (
-            concept is not None
-            and concept.is_aggregate
-            and not concept.grain.components
-        )
+        if concept is None or not concept.is_aggregate or concept.grain.components:
+            return False
+        lineage = concept.lineage
+        if isinstance(lineage, AggregateWrapper):
+            return not lineage.by and lineage.function.operator not in _PASS_KEYS
+        return not (isinstance(lineage, Function) and lineage.operator in _PASS_KEYS)
     if isinstance(expr, (FunctionCallWrapper, Parenthetical)):
         return _reads_bare_aggregate(expr.content, environment)
     if isinstance(expr, (Comparison, Conditional)):
@@ -2880,7 +2879,7 @@ def _reads_bare_aggregate(expr, environment: Environment) -> bool:
         if isinstance(expr, Function) and (
             expr.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
-            return True
+            return expr.operator not in _PASS_KEYS
         return any(
             _reads_bare_aggregate(arg, environment)
             for arg in _case_or_function_parts(expr)

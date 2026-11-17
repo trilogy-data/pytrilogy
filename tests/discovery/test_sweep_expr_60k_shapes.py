@@ -5,8 +5,10 @@
   city, species is one value per city, species; keyed by the `by` alone it
   paired every species' count with every other's. An expression of bare
   aggregates is at the select grain, never at their inputs' keys.
-- `SelectGrain.unfiltered_bridge_keeps_rejected`: a pairing bridged by the
-  condition-phase scan read rows the WHERE dropped.
+- `SelectGrain.unfiltered_bridge_keeps_rejected`,
+  `SelectGrain.dimension_rescan_drops_gate`: a pairing bridged by the
+  condition-phase scan, or a derived key looked up off a fresh scan of its
+  dimension, read rows the WHERE dropped.
 - `SelectGrain.resum_reads_partial_rows`,
   `SelectGrain.peel_of_joined_table_reads_rejected`: a re-sum of a filtered partial
   reads the partial's rows; a `by *` total's table joined to the WHERE's
@@ -90,6 +92,21 @@ CASES = [
     (
         "select tree_form, min(height) + count_distinct(tag) by * as v2 where tree_form = 'linden';",
         [("linden", 3)],
+    ),
+    # expressions 9445, reduced: a derived key's lookup regrafted off the
+    # gated rows onto a fresh scan of the forms
+    (
+        f"select {FORM0} where max(height) by city, species < 4;",
+        [("broadleaf",), ("linden",)],
+    ),
+    # expressions 48214, reduced: a re-sum's partial filtered in the same pass
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
+            " sum(height) by * as v0, sum(height) / count(tree_id) by * as v2"
+            " where (max(height) by * != 1 or height between 3 and 7);"
+        ),
+        [("b", 17, 2.5), ("o", 17, 0.333333)],
     ),
     # expressions 30258
     (

@@ -1534,6 +1534,18 @@ theorem unfiltered_bridge_keeps_rejected :
     (formTrees.filter fun t => t.2 == 0).length = 4 ∧ formTrees.length = 6 := by
   decide
 
+/-- `select coalesce(form, 'none') where max(x) by city, species < 4`: the
+key is a lookup of the species, and a fresh scan of the forms in place of
+the gated rows holds every form, `none` included
+(`dimension_rescan_drops_gate`). Species `(id, form, kept)`. -/
+def gatedSpecies : List (Int × Int × Bool) :=
+  [(0, 0, true), (1, 0, false), (2, 3, false), (3, 1, true)]
+
+theorem dimension_rescan_drops_gate :
+    (dedup (gatedSpecies.map (·.2.1))).length = 3 ∧
+      (dedup ((gatedSpecies.filter (·.2.2)).map (·.2.1))).length = 2 := by
+  decide
+
 /-! ## A total of a table the WHERE's table joins
 
 `select form, min(x) + count_distinct(tag) by * where form = 'linden'`: the

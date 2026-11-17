@@ -235,11 +235,24 @@ BROKEN_SEEDS_511 = [
 ]  # fmt: skip
 # seeds 0.3.512 fixed (each failed on main): a bare aggregate beside a `by`
 # aggregate in one expression keyed only by the `by` (2171, 4244); a WHERE atom
-# placed on the re-sum of a partial it already filtered (3102, 4180, 5715, 5780)
-FOUND_SEEDS_512 = [2171, 3102, 4180, 4244, 5715, 5780]
+# placed on the re-sum of a partial it already filtered (3102, 4180, 5715, 5780,
+# 48214); a bridge or a derived key's lookup off rows the WHERE never filtered
+# (33164, 9445, 58034); a `by *` total of a table the WHERE's table joins (30258,
+# 31752, 33606); two bare aggregates keyed by an input's key (43598)
+FOUND_SEEDS_512 = [
+    2171, 3102, 4180, 4244, 5715, 5780, 9445, 30258, 31752, 33164, 33606,
+    43598, 48214, 58034,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
-OPEN: dict[tuple[int, str], str | None] = {}
+KEYLESS = "keyless join"
+OPEN: dict[tuple[int, str], str | None] = {
+    # a gate FINAL re-applies beside a value whose side dropped its keys
+    (38531, "base"): None,
+    (38531, "summary"): None,
+    **{(s, m): KEYLESS for s in (15826, 47126) for m in ("base", "summary")},
+    (17715, "summary"): KEYLESS,
+}
 
 
 def cases():

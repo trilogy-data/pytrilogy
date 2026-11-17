@@ -155,10 +155,30 @@ def test_uncovered_final_is_the_first_planned_group():
 def test_bridge_candidates_are_planned_groups_decided_before_the_consumer():
     graph = nx.DiGraph()
     graph.add_edges_from([("root", "basic"), ("basic", "agg"), ("agg", FINAL_NODE_ID)])
+    attrs = {
+        g: _attrs(Derivation.ROOT) for g in ("root", "basic", "agg", FINAL_NODE_ID)
+    }
     planned = ["root", "basic", "agg"]
-    assert _bridge_candidates(graph, planned, "agg") == ["basic", "root"]
-    assert _bridge_candidates(graph, planned) == ["agg", "basic", "root"]
-    assert _bridge_candidates(graph, ["root", "agg"], "agg") == ["root"]
+    assert _bridge_candidates(graph, attrs, planned, "agg") == ["basic", "root"]
+    assert _bridge_candidates(graph, attrs, planned) == ["agg", "basic", "root"]
+    assert _bridge_candidates(graph, attrs, ["root", "agg"], "agg") == ["root"]
+
+
+def test_condition_phase_group_bridges_last():
+    graph = nx.DiGraph()
+    graph.add_edges_from([("root", "agg"), ("root_d1", "gate"), ("agg", FINAL_NODE_ID)])
+    attrs = {g: _attrs(Derivation.ROOT) for g in ("root", "agg", FINAL_NODE_ID)}
+    for g in ("root_d1", "gate"):
+        attrs[g] = GroupAttrs(
+            depth_label=DepthLabel.ROOT_D1, derivation=Derivation.ROOT
+        )
+    planned = ["root_d1", "gate", "root", "agg"]
+    assert _bridge_candidates(graph, attrs, planned) == [
+        "agg",
+        "root",
+        "gate",
+        "root_d1",
+    ]
 
 
 def test_cover_holds_what_a_contributor_renders_and_is_owed():

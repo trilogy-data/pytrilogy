@@ -2917,6 +2917,10 @@ def _synthetic_dimension_regraft_parent(
         and c.address in attrs[pred].primary_members
         for pred in root_preds
         for c in concept_attrs.values()
+    ) or any(
+        edge_kind(group_edges, feeder, pred) == EdgeKind.CONSTRAINT
+        for pred in root_preds
+        for feeder in group_graph.predecessors(pred)
     ):
         return None
     inputs = sorted(sets.inputs_of(gid))
