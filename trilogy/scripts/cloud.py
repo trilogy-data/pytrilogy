@@ -118,6 +118,7 @@ import fnmatch
 import hmac
 import json
 import os
+import re
 import secrets as pysecrets
 import threading
 import time
@@ -130,6 +131,7 @@ from dataclasses import field as dataclass_field
 from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from functools import cache
+from http.client import IncompleteRead
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, TypeVar
@@ -722,7 +724,9 @@ class CloudClient:
                     raise self._http_error(method, path, exc, attempt) from exc
                 wait = _retry_after(exc) or pause
                 failure = f"{exc.code} {exc.reason}"
-            except (URLError, TimeoutError, ConnectionError) as exc:
+            except (URLError, TimeoutError, ConnectionError, IncompleteRead) as exc:
+                # IncompleteRead: the connection closed part-way through the
+                # body, the same blip as a drop before it.
                 if attempt >= attempts:
                     raise self._transport_error(
                         method, path, exc, timeout, attempt
@@ -1023,6 +1027,74 @@ def collect_files(
             continue
         files.append({"name": rel, "content": content})
     return files
+
+
+_TABLE_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+
+
+def job_config_text(text: str) -> str:
+    """The trilogy.toml a job carries: the file without its ``[cloud]`` tables.
+
+    ``[cloud]`` (and every ``[[cloud.job]]``) tells this CLI how to deploy the
+    project; nothing that runs a job reads it. Sent as every job's config, a
+    multi-job project's table made each job carry the whole deploy manifest,
+    so editing one job's entry changed the content of all of them, minting a
+    version of each, and the org's job list grew with jobs x manifest.
+
+    The comments leading into a ``[cloud]`` table go with it. Anything this
+    cannot cut cleanly (a dotted ``cloud.x`` key, an inline table, a header
+    inside a multi-line string) fails the check that the result parses to the
+    original minus ``cloud``, and the file is sent unchanged.
+    """
+    try:
+        original = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return text
+    if "cloud" not in original:
+        return text
+    stripped = _drop_cloud_tables(text)
+    try:
+        reparsed = tomllib.loads(stripped)
+    except tomllib.TOMLDecodeError:
+        return text
+    expected = {k: v for k, v in original.items() if k != "cloud"}
+    return stripped if reparsed == expected else text
+
+
+def _drop_cloud_tables(text: str) -> str:
+    """Line-wise cut of every ``[cloud]``, ``[cloud.*]`` and ``[[cloud.*]]``
+    table.
+
+    Comment and blank lines are held until the next header decides whom they
+    lead: a ``cloud`` table takes them with it, any other keeps them.
+    """
+    out: list[str] = []
+    pending: list[str] = []
+    skipping = False
+    for line in text.splitlines(keepends=True):
+        bare = line.strip()
+        header = _TABLE_HEADER.match(line)
+        if header:
+            name = header.group(1)
+            if name == "cloud" or name.startswith("cloud."):
+                pending = []
+                skipping = True
+                continue
+            skipping = False
+            out.extend(pending)
+            pending = []
+            out.append(line)
+        elif not bare or bare.startswith("#"):
+            pending.append(line)
+        elif skipping:
+            pending = []
+        else:
+            out.extend(pending)
+            pending = []
+            out.append(line)
+    if not skipping:
+        out.extend(pending)
+    return "".join(out)
 
 
 def apply_rewrites(text: str, rewrites: list[tuple[str, str]]) -> str:
@@ -1667,6 +1739,81 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
     raise CloudError(f"No job named {name_or_id!r} in org {org!r}.")
 
 
+def _jobs_named(client: CloudClient, org: str, name: str) -> list[str] | None:
+    """The ids of every job named exactly *name*, asked of the server.
+
+    The paged list filters by name, so resolving one job costs one small
+    response rather than the whole org's jobs with their content, which for a
+    few hundred jobs ran to tens of MB per lookup. ``q`` narrows an API that
+    predates the ``name`` filter; the exact match is applied here either way.
+    ``None`` when the API has no paged list at all.
+    """
+    ids: list[str] = []
+    cursor: str | None = None
+    while True:
+        query: dict[str, str | int] = {"name": name, "q": name, "limit": 200}
+        if cursor:
+            query["cursor"] = cursor
+        try:
+            page = client.get(f"/v2/orgs/{org}/jobs?{urlencode(query)}") or {}
+        except CloudError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        ids.extend(
+            item["id"]
+            for item in page.get("items", [])
+            if isinstance(item, dict) and item.get("name") == name
+        )
+        cursor = page.get("next_cursor")
+        if not cursor:
+            return ids
+
+
+def _lookup_job(client: CloudClient, org: str, name_or_id: str) -> Job:
+    """One job by name or id, fetched whole, without listing the org.
+
+    The name is tried first: it is what people type, and it costs one small
+    request either way. Several jobs sharing it is an error, as in
+    ``_find_job``.
+    """
+    return _lookup_jobs(client, org, [name_or_id])[0]
+
+
+def _lookup_jobs(client: CloudClient, org: str, refs: Sequence[str]) -> list[Job]:
+    """``_lookup_job`` for each of *refs*, in order. An API without the paged
+    list falls back to listing the org, once for all of them."""
+    found: list[Job] = []
+    known: list[Job] | None = None
+    for ref in refs:
+        if known is None:
+            ids = _jobs_named(client, org, ref)
+            if ids is not None:
+                found.append(_job_from_ids(client, org, ref, ids))
+                continue
+            known = client.get_many(f"/orgs/{org}/jobs", Job)
+        found.append(_find_job(known, org, ref))
+    return found
+
+
+def _job_from_ids(
+    client: CloudClient, org: str, name_or_id: str, ids: Sequence[str]
+) -> Job:
+    """The job *name_or_id* names, given the ids of the jobs bearing it as a
+    name; with none, it is tried as an id."""
+    if len(ids) > 1:
+        raise CloudError(
+            f"Multiple jobs named {name_or_id!r}; use an id: " + ", ".join(ids)
+        )
+    job_id = ids[0] if ids else name_or_id
+    try:
+        return client.get_one(f"/orgs/{org}/jobs/{quote(job_id, safe='')}", Job)
+    except CloudError as exc:
+        if not ids and exc.status in (400, 404):
+            raise CloudError(f"No job named {name_or_id!r} in org {org!r}.") from exc
+        raise
+
+
 @jobs.command("push")
 @click.option(
     "--source",
@@ -1791,6 +1938,7 @@ def jobs_push(
                     touched += 1
         config_text = apply_rewrites(config_text, rewrite)
         print_info(f"Applied rewrites to {touched} file(s)")
+    config_text = job_config_text(config_text)
 
     existing = _existing_job(client, org, name, force_create)
     if existing is not None and existing.workspace_id and files:
@@ -1982,7 +2130,15 @@ def _existing_job(
     ``--create`` always creates, but still looks, and says so when the name is
     already taken: the org's schedules keep pointing at the first job.
     """
-    matches = [j for j in client.get_many(f"/orgs/{org}/jobs", Job) if j.name == name]
+    ids = _jobs_named(client, org, name)
+    if ids is None:
+        matches = [
+            j for j in client.get_many(f"/orgs/{org}/jobs", Job) if j.name == name
+        ]
+    else:
+        matches = [
+            client.get_one(f"/orgs/{org}/jobs/{quote(i, safe='')}", Job) for i in ids
+        ]
     if force_create:
         if matches:
             print_warning(
@@ -2240,7 +2396,7 @@ def jobs_fetch(
     Refuses a non-empty destination unless ``--force``.
     """
     client, org = _org_client(ctx)
-    found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+    found = _lookup_job(client, org, job)
     _guard_destination(dest, force)
 
     chain: list[Workspace] = []
@@ -2398,7 +2554,7 @@ def jobs_run(
     """
     run_flags = _run_flags(skip_validation, flags)
     client, org = _org_client(ctx)
-    found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+    found = _lookup_job(client, org, job)
     body: dict[str, object] = {}
     if force:
         body["force"] = _split_names(force)
@@ -2430,10 +2586,11 @@ def jobs_delete(ctx: click.Context, jobs_args: tuple[str, ...], yes: bool) -> No
     also binds a surviving job is left alone.
     """
     client, org = _org_client(ctx)
-    known = client.get_many(f"/orgs/{org}/jobs", Job)
     # By id, so naming one job twice deletes it once rather than 404ing on the
     # second pass.
-    targets = {job.id: job for job in (_find_job(known, org, j) for j in jobs_args)}
+    targets = {
+        job.id: job for job in _lookup_jobs(client, org, list(dict.fromkeys(jobs_args)))
+    }
     if not yes:
         click.confirm(
             f"Delete {len(targets)} job(s): "
@@ -2478,7 +2635,7 @@ def jobs_versions(ctx: click.Context, job: str, limit: int) -> None:
     an old version's content again, which mints a new version.
     """
     client, org = _org_client(ctx)
-    found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+    found = _lookup_job(client, org, job)
     rows = client.get_many(f"/orgs/{org}/jobs/{found.id}/versions", JobVersion)[:limit]
     _show_rows(
         "job_versions",
@@ -3203,8 +3360,7 @@ def schedules_create(
 ) -> None:
     """Create a schedule binding one or more jobs (by name or id)."""
     client, org = _org_client(ctx)
-    known = client.get_many(f"/orgs/{org}/jobs", Job)
-    job_ids = [_find_job(known, org, j).id for j in jobs_args]
+    job_ids = [job.id for job in _lookup_jobs(client, org, jobs_args)]
     schedule = client.post_one(
         f"/orgs/{org}/schedules",
         Schedule,
@@ -4224,7 +4380,7 @@ def _sync_one(
             project.directory.resolve(), project.include, project.exclude
         )
         files = [f for f in files if f["name"] != "trilogy.toml"]
-    config_text = project.config_path.read_text(encoding="utf-8")
+    config_text = job_config_text(project.config_path.read_text(encoding="utf-8"))
     # Digest over what identifies *this* job. In workspace mode its files live
     # elsewhere, so the entrypoint stands in for them: two jobs sharing a
     # workspace differ by which script they run, and a fingerprint that
