@@ -108,8 +108,8 @@ SELECT
     \"young\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
     \"young\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
-    \"late\"
-    INNER JOIN \"young\" on 1=1
+    \"young\"
+    INNER JOIN \"late\" on 1=1
 WHERE
     \"young\".\"_l0_filtered_bucket_sum_l0\" > \"late\".\"avg_sales_average_sales\"
 )

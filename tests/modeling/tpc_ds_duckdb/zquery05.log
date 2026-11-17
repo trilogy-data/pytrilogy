@@ -169,8 +169,8 @@ SELECT
     cast((0 - sum(\"abundant\".\"s_return_net_loss\")) as numeric(15,2)) as \"___entity_rows_arm_1_u_profit\",
     cast(sum(\"abundant\".\"s_return_amount\") as numeric(15,2)) as \"___entity_rows_arm_1_u_returns\"
 FROM
-    \"yummy\"
-    INNER JOIN \"abundant\" on \"yummy\".\"s_channel\" = \"abundant\".\"s_channel\" AND \"yummy\".\"s_item_sk\" = \"abundant\".\"s_item_sk\" AND \"yummy\".\"s_order_id\" = \"abundant\".\"s_order_id\"
+    \"abundant\"
+    INNER JOIN \"yummy\" on \"abundant\".\"s_channel\" = \"yummy\".\"s_channel\" AND \"abundant\".\"s_item_sk\" = \"yummy\".\"s_item_sk\" AND \"abundant\".\"s_order_id\" = \"yummy\".\"s_order_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"abundant\".\"s_return_date_sk\" = \"s_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"abundant\".\"s_channel\" = \"cheerful\".\"s_channel\" AND \"yummy\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\"
 WHERE

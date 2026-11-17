@@ -32,8 +32,8 @@ SELECT
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
     \"quizzical\".\"total_revenue\" as \"total_revenue\"
 FROM
-    \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\"
+    \"quizzical\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"quizzical\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"cheerful\" on 1=1
 WHERE
     \"quizzical\".\"total_revenue\" = \"cheerful\".\"max_supplier_rev\"

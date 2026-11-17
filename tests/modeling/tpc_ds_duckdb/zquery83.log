@@ -49,8 +49,8 @@ SELECT
     \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
-    \"questionable\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"item\" as \"sales_item_items\"
+    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_sk\"
     RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
     exists (select 1 from quizzical where quizzical.\"target_week_seqs\" = \"sales_return_date_date\".\"D_WEEK_SEQ\")

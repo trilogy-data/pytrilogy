@@ -12,9 +12,9 @@ SELECT
     sum(1) as \"cnt\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"store_sales_pos_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_pos_household_demographic_household_demographics\".\"HD_DEMO_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
     ( \"store_sales_sale_date_date\".\"D_DOM\" BETWEEN 1 AND 3 or \"store_sales_sale_date_date\".\"D_DOM\" BETWEEN 25 AND 28 ) and ( \"store_sales_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' or \"store_sales_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = 'Unknown' ) and \"store_sales_pos_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 0 and ( CASE
 	WHEN \"store_sales_pos_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 0 THEN (\"store_sales_pos_household_demographic_household_demographics\".\"HD_DEP_COUNT\" * 1.0) / nullif(\"store_sales_pos_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\", 0)

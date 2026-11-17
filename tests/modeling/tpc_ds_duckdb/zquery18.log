@@ -13,9 +13,9 @@ SELECT
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as \"cs_pos_customer_demographic_dependent_count\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_billing_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_current_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_sale_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
@@ -43,10 +43,10 @@ SELECT
     \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_billing_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_pos_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_billing_customer_current_address_customer_address\" on \"cs_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_billing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_sale_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
@@ -65,8 +65,8 @@ SELECT
     \"yummy\".\"row_birth_year\" as \"row_birth_year\",
     \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
-    \"yummy\"
-    INNER JOIN \"questionable\" on \"yummy\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"yummy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    \"questionable\"
+    INNER JOIN \"yummy\" on \"questionable\".\"cs_item_sk\" = \"yummy\".\"cs_item_sk\" AND \"questionable\".\"cs_order_number\" = \"yummy\".\"cs_order_number\")
 SELECT
     \"juicy\".\"cs_item_id\" as \"cs_item_id\",
     \"juicy\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",

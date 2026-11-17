@@ -14,10 +14,10 @@ SELECT
     count(CASE WHEN date_diff('day', CASE WHEN regexp_full_match(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END, CASE WHEN regexp_full_match(CAST(\"ship_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"ship_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END) > 120 THEN 1 ELSE NULL END) as \"over_120_days\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
+    INNER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ship_date_date\" on \"catalog_sales\".\"CS_SHIP_DATE_SK\" = \"ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"ship_mode\" as \"ship_mode_ship_mode\" on \"catalog_sales\".\"CS_SHIP_MODE_SK\" = \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"warehouse\" as \"warehouse_warehouse\" on \"catalog_sales\".\"CS_WAREHOUSE_SK\" = \"warehouse_warehouse\".\"w_warehouse_sk\"
-    INNER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sale_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"ship_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null
