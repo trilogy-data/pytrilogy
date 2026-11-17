@@ -32,7 +32,7 @@ _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
 # variant -> the key's shape term held constant
-KEY_TERMS = {"solid": 0, "held": 1, "holders": 2}
+KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2, "holders": 3}
 # variant -> the shape term held constant
 SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 

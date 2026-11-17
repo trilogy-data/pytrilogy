@@ -2614,8 +2614,8 @@ def _solid_holders(
 
 
 # a key's shape: not a value-nullable key between region-free holders, not a
-# held span, how many sides the plan pairs on it
-KeyShape = tuple[bool, bool, int]
+# held span, the most other spans a holder holds, how many sides pair on it
+KeyShape = tuple[bool, bool, int, int]
 
 
 def _key_terms(
@@ -2629,15 +2629,17 @@ def _key_terms(
     The rest is the key's shape, and a walk in its reverse returns the same
     rows: a value-nullable key between the sides holding no region
     (`_solid_holders`), then a span some side holds a region on, then the
-    key the plan pairs the fewest sides on. A side holding the rows of
-    several regions waits for their stitch in the walk instead
-    (`JoinFacts.stitches`)."""
+    key held by a side holding the fewest other spans, then the key the plan
+    pairs the fewest sides on. Where a side holds the rows of a span it
+    pairs on with no side, the walk waits for that stitch whatever the
+    order (`JoinFacts.stitches`)."""
     out: list[tuple[bool, KeyShape, set[str]]] = []
     for key, held_by in holders.items():
-        shape = (True, key not in facts.held_spans, len(held_by))
+        others = max(len(facts.side(s).held_spans - {key}) for s in held_by)
+        shape = (True, key not in facts.held_spans, others, len(held_by))
         out.append((key not in facts.authored_join_keys, shape, held_by))
     for solid in _solid_holders(facts, holders).values():
-        out.append((True, (False, False, len(solid)), solid))
+        out.append((True, (False, False, 0, len(solid)), solid))
     return out
 
 
@@ -2686,7 +2688,7 @@ def _stated_order(
     # a side the plan pairs on nothing comes after the ones it pairs
     unpaired: tuple[bool, KeyShape, tuple[int, ...]] = (
         True,
-        (True, True, len(sides)),
+        (True, True, len(sides), len(sides)),
         (),
     )
     return _places({node: (best.get(node, unpaired), shape[node]) for node in sides})

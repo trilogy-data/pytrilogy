@@ -4291,36 +4291,41 @@ region's rows on a span it pairs on with no side waits for every side
 the plan pairs on that span, and the walk joins the side stated first
 among the paired sides whose stitches are walked (`_stitched`), or among
 all of them when none is. A seed is picked the same way, since a seed
-the walk starts from is joined before everything. The most-held term is
-gone from `RowTerm`.
+the walk starts from is joined before everything.
+
+The term stays in the order, now as shape. A first cut dropped it. That
+kept the corpus, and the suite's rows, but the suite capture moved 8
+statements, each worse: in the dimension-chain oracle and
+`test_the_solid_rows_keep_the_region_spans`, a side holding two spans
+seeded the walk and two LEFTs became FULLs. So the count of other spans
+a key's holders hold still places the key, as plan quality, below what
+the stitch guarantees for rows.
 
 The witness is now pinned under every walk, the reversed shape included.
-With the stitch disabled, it fails in 6 of its 12 walks. Corpus (205
-statements, against `7c54bf1`): 0 moved. Suite: the same 25
-credential-gated failures as `main`.
+With the stitch disabled, it fails in 6 of its 12 walks.
 
-**Solid, held span and holder count are the key's shape (part 117).**
-Holding them constant (part 111) shows they decide no rows on the
-witnesses. Reversing them is the stronger test, and it holds too.
+**Solid, held span, most-held and holder count are the key's shape
+(part 117).** Holding them constant (part 111) shows they decide no rows
+on the witnesses. Reversing them is the stronger test, and it holds too.
 Reversed (solid last, held spans last, most holders first) over the 80
 files that test padding, regions and scoped joins (7,691 tests), the
-only failures are the shape pins part 111 named (the `DropIdentityGroup`
-rule-fires check, the refused FULL lowering's message) and two walk
-unit tests that pin the order they state.
+only failures are two shape pins part 111 named (the `DropIdentityGroup`
+rule-fires check, the refused FULL lowering's message) and two walk unit
+tests that pin the order they state.
 
 So they are no longer row terms. `_key_terms` states each key as one row
 term, whether it is authored, then a shape (`KeyShape`: solid, held span,
-holder count) above the holders' shape places. The order is unchanged:
-corpus 0 moved, and the suite is unchanged. What changes is what the flip
-reverses. `shape_flipped` now reverses the key's shape with the side's
+most other spans held, holder count) above the holders' shape places.
+The order is unchanged. What changes is what the flip reverses:
+`shape_flipped` now reverses the key's shape along with the side's
 (`tests/helpers/walk_order.flipped_keys`), so every walk-parametrized
-test, 1,828 of them, checks the three terms in reverse.
-`ROW_WALKS` and the held-constant walks fold into `WALKS`, and
-`WALK_FLIP` takes only `shape` and `name`.
+test, 1,828 of them, checks the four terms in reverse. `ROW_WALKS` and
+the held-constant walks fold into `WALKS`, and `WALK_FLIP` takes only
+`shape` and `name`.
 
 The order the walk reads is now one row term over shape. Authored is a
-key rank that a left-deep tree needs. Its witness is a 4-cycle (two
-facts sharing `sku`, the authored key between their dimensions): the
+key rank a left-deep tree needs. Its witness is a 4-cycle: two facts
+share `sku`, and the authored key sits between their dimensions. The
 authored edge has to be a tree edge, so the cheap `sku` edge closes the
 cycle together with the dimension key instead of pairing the facts
 alone. Most-held is a stitch the walk waits for.
@@ -4427,9 +4432,9 @@ not built yet:
    (part 113), and solid a coalesced null-safe key reaching padding (part
    114); each now holds in both directions. Most other held spans is the
    tree's, like authored (part 115), and the walk now waits for it as a
-   stitch, not a rank (part 116). The other three are the key's shape,
-   which the flip reverses, so the order is one row term, authored, over
-   shape (part 117). Ties the plan's
+   stitch (part 116). It and the other three are the key's shape, which
+   the flip reverses, so the order is one row term, authored, over shape
+   (part 117). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
