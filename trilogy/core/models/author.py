@@ -1463,7 +1463,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             by_refs, has_by_aggregate = _aggregate_by_grain_refs(
                 new_lineage, environment
             )
-            if has_by_aggregate:
+            reads_bare = _reads_bare_aggregate(new_lineage, environment)
+            if has_by_aggregate or reads_bare:
                 # A row-wise combination of aggregates is a metric whose grain is
                 # the union of its aggregates' `by` keys — not the keys of the
                 # aggregate inputs (see `_aggregate_by_grain_refs`). A row-scalar
@@ -1471,8 +1472,17 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 # keeps its own row identity in the grain: the sum is constant
                 # within x but the expression still varies per w's row.
                 pkeys: set[str] = set(by_refs)
+                if reads_bare:
+                    pkeys |= set(grain.components)
                 pins = _pin_anchors(new_lineage)
-                for x_ref in _non_aggregate_row_refs(new_lineage, environment):
+                # beside a bare aggregate the expression is read on the
+                # select's rows, so a row peer adds no identity of its own
+                peers = (
+                    []
+                    if reads_bare
+                    else _non_aggregate_row_refs(new_lineage, environment)
+                )
+                for x_ref in peers:
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
@@ -1497,7 +1507,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                             if x.address in pins
                             else {x.address}
                         ) or {x.address}
-                final_grain = Grain.from_concepts(pkeys, environment)
+                final_grain = _row_grain(pkeys, grain, environment)
                 keys = final_grain.components
             else:
                 pkeys = set()
@@ -1516,16 +1526,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     elif x.purpose == Purpose.KEY and _is_alias(new_lineage):
                         # a renamed key reads the rows that bind it
                         pkeys |= environment.bound_on(x.address)
-                # already reduced: re-reducing would drop a grouping spec's
-                # select-local flags, the only row identity rollup subtotals have
-                final_grain = (
-                    Grain(
-                        components=set(grain.components),
-                        component_order=list(grain.component_order),
-                    )
-                    if pkeys == grain.components
-                    else Grain.from_concepts(pkeys, environment)
-                )
+                final_grain = _row_grain(pkeys, grain, environment)
                 keys = final_grain.components
         return new_lineage, final_grain, keys
 
@@ -2844,6 +2845,47 @@ def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str],
             has_by = has_by or arg_by
         return refs, has_by
     return refs, False
+
+
+def _row_grain(pkeys: set[str], grain: Grain, environment: Environment) -> Grain:
+    # already reduced: re-reducing would drop a grouping spec's select-local
+    # flags, the only row identity rollup subtotals have
+    if pkeys == grain.components:
+        return Grain(
+            components=set(grain.components),
+            component_order=list(grain.component_order),
+        )
+    return Grain.from_concepts(pkeys, environment)
+
+
+def _reads_bare_aggregate(expr, environment: Environment) -> bool:
+    """Whether a row-wise expression reads an aggregate with no `by`, which
+    resolves to the select grain (the `count(x)` of `count(x) * min(y) by k`)."""
+    if isinstance(expr, AggregateWrapper):
+        return not expr.by
+    if isinstance(expr, ConceptRef):
+        concept = environment.concepts.get(expr.address)
+        return (
+            concept is not None
+            and concept.is_aggregate
+            and not concept.grain.components
+        )
+    if isinstance(expr, (FunctionCallWrapper, Parenthetical)):
+        return _reads_bare_aggregate(expr.content, environment)
+    if isinstance(expr, (Comparison, Conditional)):
+        return _reads_bare_aggregate(
+            expr.left, environment
+        ) or _reads_bare_aggregate(expr.right, environment)
+    if isinstance(expr, (Function, CaseWhen, CaseSimpleWhen, CaseElse)):
+        if isinstance(expr, Function) and (
+            expr.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return True
+        return any(
+            _reads_bare_aggregate(arg, environment)
+            for arg in _case_or_function_parts(expr)
+        )
+    return False
 
 
 @dataclass

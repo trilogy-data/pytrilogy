@@ -1006,9 +1006,10 @@ def _peel_exact_under_where(
     output_addresses: frozenset[str],
 ) -> bool:
     """A WHERE filters every scan of the select's rows, and a select's
-    aggregate reads the rows it kept. When no atom reads a peeled table, those
-    rows are the peeled table's whole whenever the row stream kept a row, and
-    none otherwise: an existence gate. A selected value that reads the total
+    aggregate reads the rows it kept. When no atom reads a peeled table and it
+    shares no column the row stream could join it on, those rows are the
+    peeled table's whole whenever the row stream kept a row, and none
+    otherwise: an existence gate. A selected value that reads the total
     beside the kept rows holds it already (no kept row, no value), so when
     every one does the peel reads the table once instead of once per kept row
     (#972). A value of the total alone keeps the scan in the row stream."""
@@ -1022,6 +1023,9 @@ def _peel_exact_under_where(
     if filtered & {n for n, _ in peeled} or any(
         concept_attrs[n].datasource_bindings & peeled_bindings for n in filtered
     ):
+        return False
+    peeled_columns = frozenset().union(*(d.datasource_columns for _, d in peeled))
+    if any(d.datasource_columns & peeled_columns for _, d in rest):
         return False
     reads_total, reads_rows = (
         _selected_readers(

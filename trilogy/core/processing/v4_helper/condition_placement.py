@@ -561,6 +561,15 @@ def _rows_filtered_by(
         if arguments
         else []
     )
+    # a re-sum of a partial (`count(x) by *` over `count(x)` per key) reads
+    # the partial's rows, never the columns it names
+    if arguments and not feeding:
+        feeding = [
+            p
+            for p in preds
+            if buckets[p].derivation in _EMITS_GROUP_BY
+            and buckets[p].depth_label not in NESTED_DEPTHS
+        ]
     if feeding:
         result = all(_rows_filtered_by(p, chosen, scope, memo) for p in feeding)
     else:

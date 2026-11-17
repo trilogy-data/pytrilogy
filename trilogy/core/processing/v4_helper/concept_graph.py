@@ -2923,7 +2923,9 @@ def build_concept_graph(
     # even when the demanded lineage graph never connects them (a fact FK
     # column beside a fact property, each consumed only by its own rename).
     binding_map: dict[str, set[str]] = defaultdict(set)
+    columns: dict[str, frozenset[str]] = {}
     for ds in datasources:
+        columns[ds.identifier] = frozenset(o.address for o in ds.output_concepts)
         for out in ds.output_concepts:
             binding_map[out.address].add(ds.identifier)
     for n in graph.nodes:
@@ -2936,4 +2938,7 @@ def build_concept_graph(
             bindings |= binding_map.get(pseudonym, set())
         if bindings:
             node_attrs.datasource_bindings = frozenset(bindings)
+            node_attrs.datasource_columns = frozenset().union(
+                *(columns[b] for b in bindings)
+            )
     return graph, attrs, edges
