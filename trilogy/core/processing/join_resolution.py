@@ -323,7 +323,8 @@ class SideFacts:
     determined: frozenset[str] = frozenset()
     # covers every `~`-licensed key the node emits, so extension rows ride it
     hosts: bool = False
-    # every column is a one-row value (a `by *` total, a constant)
+    # every column is a one-row value computed here (a `by *` total, a
+    # constant): never empty beside rows, as a stored one may be
     one_row: bool = False
     # reads one datasource partial on its own grain (an arm of a union): its
     # rows are a subset of a whole relation's, so its partials bind no key
@@ -2519,8 +2520,7 @@ def _side_facts(
         hosts=host_canon is not None
         and host_canon
         <= {canon_node(c.address) for c in datasource.output_concepts} - own_partials,
-        one_row=bool(concepts)
-        and all(c.granularity == Granularity.SINGLE_ROW for c in visible),
+        one_row=bool(concepts) and all(_computes_one_row(c) for c in visible),
         arm=_reads_arm(datasource),
         # A side holding a region's rows (its domain, or whatever read it)
         # hosts that region's extension rows on the join keyed by its span,
@@ -2546,6 +2546,19 @@ def _side_facts(
         },
     )
     return facts, concepts
+
+
+def _computes_one_row(concept: BuildConcept) -> bool:
+    """A one-row value this query computes: a constant, a `by *` total, or an
+    expression over those. One a datasource stores (`property <*>.watermark`)
+    has the rows its table holds, which may be none."""
+    if concept.granularity != Granularity.SINGLE_ROW:
+        return False
+    if concept.derivation in (Derivation.CONSTANT, Derivation.AGGREGATE):
+        return True
+    if concept.lineage is None:
+        return False
+    return all(_computes_one_row(arg) for arg in concept.lineage.concept_arguments)
 
 
 def _declared_subset_keys(environment: BuildEnvironment) -> frozenset[str]:

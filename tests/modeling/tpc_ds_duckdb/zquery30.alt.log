@@ -1,5 +1,5 @@
 query_id = "30.alt"
-gen_length = 5868
+gen_length = 5881
 preql_size = 1629
 comp_size = 1507
 generated_sql = """
@@ -26,7 +26,7 @@ FROM
 WHERE
     \"ws_return_customer_current_address_customer_address\".\"CA_STATE\" = 'GA'
 ),
-thoughtful as (
+thoughtful as MATERIALIZED (
 SELECT
     \"ws_return_address_customer_address\".\"CA_STATE\" as \"ws_return_address_state\",
     \"ws_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"ws_return_customer_sk\",
