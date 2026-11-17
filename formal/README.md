@@ -2302,11 +2302,12 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (30258, 31752, 33606; `SelectGrain.peel_of_joined_table_reads_rejected`).
     A table sharing a column with the row stream's tables is not peeled.
 - **The expressions family to 100,000** (0.3.513). On main 24 of its 200,000
-  queries are wrong and 13 raise; the branch leaves 0 and 7. Fixed:
+  queries are wrong and 13 raise; the branch leaves 0 and 9 (the older
+  families' seeds 0-60,000 lose their 5 wrong and break none). Fixed:
   - A sole side computing a value at `(city, form)` met a FINAL gate at
     `(city, species)` on `city` alone, keeping a form all of whose rows the
-    gate rejected (38531), or on nothing, a keyless join (47126, 73006,
-    78245; `SelectGrain.sole_gate_paired_short_of_its_grain`). The side is
+    gate rejected (38531), or on nothing, a keyless join (47126, 73006;
+    `SelectGrain.sole_gate_paired_short_of_its_grain`). The side is
     widened to the gate's keys its rows hold, and the gate's join plan reads
     the side as built.
   - A finished bare aggregate joined beside a per-row stream was re-summed

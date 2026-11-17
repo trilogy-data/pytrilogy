@@ -330,6 +330,8 @@ Open in the `expressions` family (each fails on main too):
   (15826, 89514): a gate or values at two grains no side holds together.
   89514's constant (`2 * 1`) is grouped at `city` beside the `species` rows;
   `select city, 2 where max(height) by city, tree_form = 5` now plans.
+- 78245: a FINAL merge's input `tree_form` has no non-hidden parent (an OR
+  of gates at `city, tree_form` and `species` beside `city, species`).
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
 - `select species, count_distinct(tag) + 1, sum(height) by tree_form` off the
