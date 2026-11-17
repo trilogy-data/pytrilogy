@@ -58,6 +58,12 @@ a design decision or a bug.
 | `Sharing.lean` | a rendering's operand: how many times a cast or a clamped substring names it, its size when nested, the draws a volatile operand reads, SQLite's flattener | inlined, `n` levels hold `k ^ n` copies of the operand (`inline_nested_ge`) and bound they grow linearly (`bound_nested`), so binding wins once its own text is under the copies it saves (`bound_le_inline`); bound, every use reads one draw (`bind_draws_once`), and a binding that reads its row's column draws per row (`correlated_per_row`); flattening a binding is inlining it (`flattened_is_inline`) (checked by `tests/core/test_bound_operand_laws.py` on DuckDB, SQLite and ClickHouse, and on SQLite 3.45 where `/usr/bin/python3` has it) |
 | `ValueSet.lean` | aggregates of a column a table stores at its own grain: a complete binding's values, repeat-blind and repeat-sensitive aggregates, `count` of a column against a stored row count | `min`, `max` and `count_distinct` are functions of their input's set of values (`value_set_min_exact`, `value_set_max_exact`, `value_set_count_distinct_exact`), and so is a scalar of the column alone (`SameValues.map`), so a complete binding answers them at any grain, and a column its table's grain determines holds the base rows' values under any predicate on that grain (`grain_column_values`, `grain_column_min_exact`); `count` and `sum` read repeats (`value_set_misses_repeats`); `count(cls)` is the re-sum of `count(id) by cls` over the non-null classes (`count_column_from_row_count`), and over every class it counts the NULL class's rows (`count_column_counts_null_group`) | (checked by `tests/discovery/test_value_set_laws.py`, with the row table in scope and hidden) |
 
+Every bug a law or oracle sweep finds is fixed with a regression test outside
+the formalization suites too: the reduced shape, with rows checked by hand, in
+a plain test file (`tests/discovery/test_sweep_<range>_shapes.py` or the
+area's own module). A `*_laws.py` seed list or a fuzzer family is not that
+test: they run in separate CI jobs and can be re-seeded or narrowed.
+
 ## What it found
 
 - **`not (...)` was Kleene while `not p` is two-valued**

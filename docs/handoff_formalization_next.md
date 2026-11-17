@@ -135,6 +135,15 @@ does not rewrite it; that rewrite is open.
    `trilogy/__init__.py`. Run `ruff check . --fix`, `black .` and
    `mypy trilogy`. Run only one pytest process at a time. Commit the TPC timing
    logs and charts the suites regenerate.
+
+   **Every fixed bug gets a regression test outside the law suites.** A
+   reduced shape with hand-checked rows goes in a plain test file
+   (`tests/discovery/test_sweep_<range>_shapes.py`, or the area's own test
+   module), never only in a `*_laws.py` seed list or a fuzzer family. The law
+   suites run in their own CI jobs and can be re-seeded or narrowed; the build
+   jobs that most coverage comes from do not run them. In 0.3.510 three fixes
+   tested only as spellings seeds left their lines uncovered by the build
+   jobs until the reduced shapes were added.
 6. **CI gotchas seen in #802.**
    - `codecov/patch` goes red on code for dialects with no engine in CI
      (Postgres, MySQL, SQL Server, BigQuery, Presto). Pin those renderings in a
