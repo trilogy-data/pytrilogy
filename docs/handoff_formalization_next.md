@@ -18,6 +18,12 @@ oracle families (`first`, `spellings`) are clean on seeds 0-390,000 x 2 models:
 nothing wrong, raising or invalid. `OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` is empty.
 
+The `Oracle sweep` workflow re-sweeps that whole range on main every night
+(`.github/workflows/oracle_sweep.yml`), since the law suites replay only the
+first few hundred seeds and the ones a round found. When a round extends the
+range, raise `SWEPT_TO` there and the number above. A red night names its
+seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
+
 ## The recipe
 
 1. **Probe before modelling.** A scratchpad script runs the same Trilogy text

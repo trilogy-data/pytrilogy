@@ -24,6 +24,14 @@ python -m local_scripts.oracle_sweep show 38477 [--ref origin/main]
 round can replay only the seeds a diff named. `ab` and `run` exit 1 when a
 query is newly wrong, raising or invalid.
 
+## The nightly sweep
+
+`.github/workflows/oracle_sweep.yml` runs `run --no-cache` over every seed the
+rounds have swept clean (`SWEPT_TO`), both families, on main each night, in
+four shards a family. `run` prints each wrong, raising or invalid seed with its
+query and exits 1, and a failing shard uploads its records. A pull request
+that touches the sweep runs the first 4,000 seeds.
+
 ## Killed, repeated and concurrent runs
 
 Every side's records are cached under `.cache/oracle_sweep/results/`: per
