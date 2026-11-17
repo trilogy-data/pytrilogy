@@ -1362,26 +1362,31 @@ def _partners_every_right_row(join: Join, alive: set[str]) -> bool:
     )
 
 
-def _narrowed_sources(
-    joins: list[SourceJoin | UnnestJoin], preserved: set[str]
-) -> set[str]:
-    """Sources the join tree keeps only where a partner binding the key `~`
-    has a row: a customer table beside `~` sales keeps the customers who
-    bought, so every column read off it alone holds a subset of its values."""
+def _narrowed_sources(joins: list[SourceJoin | UnnestJoin]) -> set[str]:
+    """Sources a join keeps only where a partner binding the key `~` has a
+    row: a customer table INNER (or padded) beside `~` sales keeps the
+    customers who bought, so every column read off it alone holds a subset
+    of its values. A join preserving the source keeps them all, and a source
+    binding the key `~` itself is already partial on it."""
     out: set[str] = set()
     for join in joins:
         if not isinstance(join, Join):
             continue
+        right_kept = join.join_type in PADS_LEFT_JOIN_TYPES
+        left_kept = join.join_type in PADS_RIGHT_JOIN_TYPES
         for pair in join.pairs or []:
-            for side, read, other in (
-                (pair.node, pair.left, join.right),
-                (join.right, pair.right, pair.node),
-            ):
-                if other.identifier not in preserved and any(
-                    c.address == read.address for c in side.partial_concepts
-                ):
-                    out.add(other.identifier)
+            right = _binds_partial(join.right, pair.right.address)
+            left = _binds_partial(pair.node, pair.left.address)
+            # two `~` bindings cover their own subsets; neither narrows the other
+            if right and not left and not left_kept:
+                out.add(pair.node.identifier)
+            if left and not right and not right_kept:
+                out.add(join.right.identifier)
     return out
+
+
+def _binds_partial(source: DataSource, address: str) -> bool:
+    return any(c.address == address for c in source.partial_concepts)
 
 
 def merge_partial_addresses(
@@ -1395,7 +1400,7 @@ def merge_partial_addresses(
     with no such side the rows come from the matched intersection, so any
     partial binding keeps the address partial."""
     preserved = preserved_sources(datasets, joins)
-    narrowed = _narrowed_sources(joins, preserved)
+    narrowed = _narrowed_sources(joins)
     bound = [
         (
             ds.identifier in preserved,
