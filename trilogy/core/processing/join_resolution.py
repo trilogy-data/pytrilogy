@@ -2686,12 +2686,9 @@ def _stated_order(
         for side in held_by:
             best[side] = min(best.get(side, term), term)
     # a side the plan pairs on nothing comes after the ones it pairs
-    unpaired: tuple[bool, KeyShape, tuple[int, ...]] = (
-        True,
-        (True, True, len(sides), len(sides)),
-        (),
+    return _places(
+        {node: (node not in best, best.get(node, ()), shape[node]) for node in sides}
     )
-    return _places({node: (best.get(node, unpaired), shape[node]) for node in sides})
 
 
 def get_node_joins(
