@@ -1,25 +1,23 @@
-"""The join walk with its order tie-breaks reversed.
+"""The join walk with its shape order reversed.
 
-Below the plan's facts the walk breaks ties on the order the plan states
-(`PlannedPairs.ranked`): which key's holders it puts first, and which side.
-That order is no fact about rows, so a plan walked the other way round must
-return the same rows. `flip_walk_spelling` reverses it; every other term of
-the rank and the scorer stays.
+The walk joins a merge's sides in one stated order (`_stated_order`): what
+the sides' rows are, then the plan's shape, then the side's name. The last
+two are no fact about rows, so a plan walked the other way round on either
+must return the same rows. `flip_walk_spelling` reverses one of them; the
+row terms stay.
 """
 
 from __future__ import annotations
 
 from functools import total_ordering
-from itertools import combinations
 from typing import Any
 
 import pytest
 
 from trilogy.core.processing import join_resolution as jr
 
-_rank = jr._pivot_rank
-_score = jr._score_join_candidate
-_keyless = jr._keyless_order
+_shape = jr._shape_terms
+_rank = jr.JoinFacts.rank
 
 
 @total_ordering
@@ -41,46 +39,27 @@ class _Rev:
         return hash(self.value)
 
 
-def flipped_rank(pivot, holders, facts):
-    out = _rank(pivot, holders, facts)
-    return (*out[:-2], _Rev(out[-2]), _Rev(out[-1]))
+def flipped_shape(ranks, sides, pair_keys, declared):
+    return {
+        node: _Rev(term)
+        for node, term in _shape(ranks, sides, pair_keys, declared).items()
+    }
 
 
-def flipped_edges(pivot_map, facts):
-    edges = [
-        (pivot, a, b)
-        for pivot, holders in pivot_map.items()
-        for a, b in combinations(holders, 2)
-        if pivot.key in facts.paired(a, b)
-    ]
-    return sorted(
-        edges,
-        key=lambda e: (
-            jr._pivot_rank(e[0], pivot_map[e[0]], facts),
-            _Rev(facts.rank(e[1])),
-            _Rev(facts.rank(e[2])),
-        ),
-    )
+def flipped_rank(facts, node):
+    rank, name = _rank(facts, node)
+    return (rank, _Rev(name))
 
 
-def flipped_score(x, **kwargs):
-    rank, hosts, name = _score(x, **kwargs)
-    return (_Rev(rank), hosts, _Rev(name))
+# what each flip replaces: (owner, attribute, replacement)
+SHAPE_FLIPS = [(jr, "_shape_terms", flipped_shape)]
+NAME_FLIPS = [(jr.JoinFacts, "rank", flipped_rank)]
 
-
-def flipped_keyless(facts, ds):
-    none, rank = _keyless(facts, ds)
-    return (none, _Rev(rank))
-
-
-KEY_FLIPS = {"_pivot_rank": flipped_rank, "_ranked_edges": flipped_edges}
-SIDE_FLIPS = {"_score_join_candidate": flipped_score, "_keyless_order": flipped_keyless}
-
-# as walked, and with each spelling reversed
-WALKS = ["walked", "keys_flipped", "sides_flipped"]
+# as walked, and with each reversed
+WALKS = ["walked", "shape_flipped", "names_flipped"]
 
 
 def flip_walk_spelling(monkeypatch: pytest.MonkeyPatch, walk: str) -> None:
-    flips = {"walked": {}, "keys_flipped": KEY_FLIPS, "sides_flipped": SIDE_FLIPS}
-    for name, replacement in flips[walk].items():
-        monkeypatch.setattr(jr, name, replacement)
+    flips = {"walked": [], "shape_flipped": SHAPE_FLIPS, "names_flipped": NAME_FLIPS}
+    for owner, name, replacement in flips[walk]:
+        monkeypatch.setattr(owner, name, replacement)
