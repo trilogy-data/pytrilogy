@@ -4,6 +4,7 @@ from trilogy.core.processing.join_resolution import (
     JoinFacts,
     JoinOrderOutput,
     SideFacts,
+    _binding_order,
     ensure_content_preservation,
     resolve_join_order_v2,
     restore_unpadded_joins,
@@ -34,7 +35,12 @@ def _sides(
 
 
 def _facts(columns: Columns, partials: dict[str, list[str]]) -> JoinFacts:
-    return JoinFacts(sides=_sides(columns, partials), pair_keys=_shared(columns))
+    sides, pairs = _sides(columns, partials), _shared(columns)
+    return JoinFacts(
+        sides=sides,
+        pair_keys=pairs,
+        side_ranks=_binding_order({}, sides, pairs, frozenset()),
+    )
 
 
 def test_resolve_join_order_v2():
@@ -511,7 +517,9 @@ def test_resolve_join_order_v2_multi_partial():
         "ds~fact2": ["c~shared_id"],
     }
 
-    output = resolve_join_order_v2(_facts(columns, partials))
+    # walked facts first: resolve states the dim first, as their anchor
+    facts = JoinFacts(sides=_sides(columns, partials), pair_keys=_shared(columns))
+    output = resolve_join_order_v2(facts)
 
     # Both fact tables should join to dim
     assert len(output) == 2

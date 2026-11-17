@@ -9,11 +9,10 @@ Random trees and lists (repeats, empty, NULL, unlisted species) are read with
 and without a `(city, species)` summary storing the count, sum and max; both
 must answer alike, and the summary must be read wherever no WHERE applies."""
 
-from functools import partial
-
 import pytest
 
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.unnest.test_unnest_filter_laws import (
     REGIONS,
     Data,
@@ -221,18 +220,17 @@ CONFORMING = [
 ][:3]
 
 
-def _blind_to_partials(score, x, **kwargs):
-    return score(x, **{**kwargs, "root": "", "multi_partial": False})
+def _no_binding_order(ranks, sides, pair_keys, declared):
+    return dict(ranks)
 
 
 @pytest.mark.parametrize("where", list(FILTERS))
 @pytest.mark.parametrize("spelling", list(SPELLINGS))
 def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
-    """The walk's partial term picks plan shape only: a `~` side joined
-    first (an unnest of the lists beside the trees) answers alike."""
+    """Where a `~` binding puts a side picks plan shape only: a `~` side
+    joined first (an unnest of the lists beside the trees) answers alike."""
     model, value, sizing, literal = SPELLINGS[spelling]
     condition = FILTERS[where].format(v=value, k=literal)
-    blind = partial(_blind_to_partials, join_resolution._score_join_candidate)
     for select in SHAPES.values():
         query = (
             f"select {select.format(v=value)}"
@@ -242,9 +240,26 @@ def test_the_walk_order_decides_no_rows(monkeypatch, spelling, where):
             data = random_data(seed)
             _, walked = _rows(_executor(model, data, sizing), query)
             with monkeypatch.context() as m:
-                m.setattr(join_resolution, "_score_join_candidate", blind)
+                m.setattr(join_resolution, "_binding_order", _no_binding_order)
                 sql, blind_rows = _rows(_executor(model, data, sizing), query)
             assert blind_rows == walked, (query, seed, sql)
+
+
+@pytest.mark.parametrize("walk", WALKS)
+@pytest.mark.parametrize("shape", list(SHAPES))
+def test_the_summary_keeps_its_rows_whichever_side_is_walked_first(
+    monkeypatch, shape, walk
+):
+    """The relation join is a LEFT off the summary: a species listing no
+    ecoregion keeps its trees with the pairs walked first too."""
+    model, value, sizing, _ = SPELLINGS["element"]
+    data = random_data(CONFORMING[0])
+    query = f"select {SHAPES[shape].format(v=value)};"
+    _, expected = _rows(_executor(model, data, sizing), query)
+    flip_walk_spelling(monkeypatch, walk)
+    sql, got = _rows(_executor(model + SUMMARY, data, sizing), query)
+    assert got == expected, sql
+    assert '"summary"' in sql, sql
 
 
 ELEMENT_ORACLE = """select e, count(distinct tree_id) from trees t

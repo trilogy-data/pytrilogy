@@ -3931,6 +3931,132 @@ which the flip reverses, so the shapes they set get pinned as order:
   match;
 - this part's own walk unit test.
 
+**Resolve states every `~` binding's place, once per merge (part 106).**
+After part 105 the `~` order had two owners and a flag between them. A
+scan plan stated it from its datasources (`scan_precedence`'s anchor and
+partial terms). For every other plan the walk's scorer read it key by key
+(the lone-`~` penalty), with state carried across steps (`multi_partial`,
+judged when a key first ranked best). `PlannedPairs.orders_bindings` told
+the walk which of the two applied, through the MergeNode and `JoinFacts`.
+
+Part 105 found why no plan can own it: the `~` bindings are the built
+sides'. A group plan does not know which datasources stage 3 picks, and a
+scan plan does not see a scoped `subset join` on a derived key. Resolve
+knows both, since each side's facts carry its partials. So resolve now
+states the order, for every plan, before the walk
+(`_binding_order`, called where `get_node_joins` builds the facts):
+
+1. the plan's order, as before;
+2. after those, the sides partial on a key they pair on;
+3. after those, the sides binding a pairing key as `~` whose partner
+   binds it completely (the anchor rule of part 104).
+
+A union arm keeps part 104's exception: it anchors only on a key a
+declared `subset` relation names. An arm is now a side fact
+(`SideFacts.arm`: the side reads one datasource that is partial on its
+own grain). Two cuts of that fact failed first, and the suite capture
+found both:
+- read off the built side's grain, an aggregate by a `~` key
+  (`sum(...) by part_id` over a `~part_id` fact) read as an arm, and a
+  dimension joined RIGHT onto it (TPC-H adhoc04);
+- read as "every column is partial", an unnest over an INNER join with a
+  `~` enrichment read as an arm, and 432 LEFTs in the unnest filter laws
+  mirrored to RIGHT.
+
+What this removes: `PlannedPairs.orders_bindings` and its plumbing through
+`MergeNode`, `get_node_joins` and `JoinFacts`; the partial, anchor and
+declared-key terms of `scan_precedence`, which is now grain only; the
+environment parameter part 104 added to `PlannedPairs.over_scans` and its
+two callers; the walk's `multi_partial` state. The scorer's first term is
+gone.
+
+**The scorer reads no binding (part 107).** With the order stated,
+hosting was the scorer's last binding read (`hosts and not is_partial`,
+on the root key). The census replayed it held constant: it moved no
+merge in the suite. Hosting already requires the host keys bound
+completely. It is dropped, and with it the scorer's `root` argument:
+`_score_join_candidate` is the stated order, then hosting, then the name.
+
+Suite capture against `main` at `a705d3c` (`sqlcap`, `-n 4`,
+`PYTHONHASHSEED=0`): both trees have the same 25 credential-gated
+failures, and the only other outcome change is the Rust-binary test's
+skip (listed noise). Left out of the tally: the two capture files that
+move between two runs of one tree (part 105), the script tests and
+`test_duckdb_validate`, which compile a varying number of statements,
+and the flipped-walk variants, which reverse the order this part states.
+Of the rest 292 tests move, adding up to FULL -4, INNER +3, LEFT +29,
+RIGHT -28, `coalesce` -5, null-safe pairs +1 and CTE 0. Join counts are
+unchanged. 131 of the 292 are the oracle spellings laws, which move by
+the column order of one CTE and by a different number between two
+captures of this tree (50, then 131).
+
+- `test_derived_key_domain` (14) loses 4 FULLs, and 19 RIGHTs mirror to
+  LEFT off the customer rows.
+- The dimension-chain oracle (23) turns 6 LEFTs into INNERs and gains one
+  null-safe pair.
+- `test_cluster_key_lookup` (19) turns 4 INNERs into LEFTs.
+- `test_unmodelled_regions` mirrors 4 RIGHTs to LEFT and loses 3
+  `coalesce` calls.
+- The rest move by an INNER turned around or a mirrored outer join.
+
+Every moved test passes. The oracle laws among them compare rows against
+raw SQL.
+
+In the corpus (205 statements) two statements move, both thelook: query18
+hangs its aggregate LEFT off users where it joined users RIGHT, and
+adhoc02 hangs the pair rollup LEFT off products the same way. CTE and
+join counts are unchanged.
+
+The census (`rank_census_plugin`, the whole suite) gained a
+`binding_order` variant: each merge replayed under the plan's order with
+no binding placed. The stated binding order moves 1,857 of 15,159 merges.
+That is more than the penalty's 486 at `a705d3c`, since it now also
+counts what scan plans stated themselves. Hosting is unchanged (594),
+and so are the region terms (solid 24, held 31, max-held 29). The scorer
+replica differs in 13 merges (12 at `a705d3c`), all flipped-walk tests.
+
+**A forced LEFT states its seed (part 108).** Reversing the stated
+order (`WALK_FLIP=key,side`) found a row bug in 72 relation-rollup law
+cases, all of the `element` spelling. A relation rollup reads a summary
+through its list's pairs: `_star_merge` joins the pairs to the summary
+with `force_join_type=LEFT_OUTER`, since a species listing no ecoregion
+keeps its trees under a NULL one. The MergeNode stamps that type on
+whatever join the walk returns. LEFT keeps the side walked first, so the
+type was right only while the summary seeded. The plan put it first, as
+the star's hub, but only as a tie-break. Until part 106 the lone-`~`
+penalty also kept the pairs (a `~` binding of the species) behind it, in
+the scorer, where the flip did not reach. With the binding order stated
+and reversed, the pairs seeded, the LEFT kept them, and the species with
+no pair lost its rows:
+
+    select tree_eco_region, count(tree_id) as n;
+    -- walked from the summary: (0, 3) ... (4, 6), (NULL, 2)
+    -- walked from the pairs:   (0, 3) ... (4, 6)
+
+**Fix:** where a merge forces LEFT, the side its plan states first is a
+fact about rows, not a tie-break. The MergeNode names it
+(`_forced_seed`), `JoinFacts.seed` carries it, and the walk starts from
+it whatever the rank says. A forced FULL or INNER is symmetric and names
+none. `test_the_summary_keeps_its_rows_whichever_side_is_walked_first`
+runs every shape under each walk.
+
+With the seed stated, the reversed walk fails 97 tests against the 80
+`main` fails under the flip at `a705d3c`: 19 new, 2 gone (the
+`orders_bindings` unit tests), and none on rows. The `~` order of group
+plans used to sit in the scorer, which the flip leaves alone; it now
+sits in the stated order, which the flip reverses, so the shapes it set
+are pinned as order:
+- LEFT-off-anchor pins in the scoped and rowset `subset join` tests
+  (`test_scoped_left_join_on_nonrowset_derived_key`,
+  `test_scoped_derived_rowset_join_correct`,
+  `test_subset_join_blends_two_rowset_measures` and four more shape
+  pins of that family);
+- the plan-trace and region-typing pins of a first LEFT
+  (`test_first_region_holder_is_left_at_plan_time` and two trace tests);
+- TPC-H q13's no-`count(CASE` pin, a rule-fires check in the filtered
+  count join, and the city build's no-null-safe-filter-column pin;
+- three walk unit tests that pin the order they state.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4013,13 +4139,14 @@ not built yet:
    and no several-`~` bump (part 102), and a superset of a narrowing's
    sup side no longer stands in for it (part 103). A scan plan now states
    a `~` binding after its anchor (part 104), and the walk reads no
-   binding a scan plan orders (part 105). What is left of the walk's
-   rank above the stated order: the solid and region terms, and a lone
-   `~` binding's penalty in group plans (and in a scan plan pairing on a
-   scoped derived key), which moves 486 merges' shape, down from 694. A
-   group plan cannot state it, since the `~` bindings are the
-   datasources' stage 3 picks. Below the order is hosting. Ties the
-   plan's terms leave are still broken by the position the plan lists them in (cover order,
+   binding a scan plan orders (part 105). No plan can state the rest of
+   the `~` bindings, which are the built sides': resolve states them
+   once per merge, over the plan's order, for every plan (part 106), and
+   the scorer reads no binding (part 107). A merge forcing LEFT states
+   the side its rows are, which seeds the walk (part 108). What is left of the walk's
+   rank above the stated order: the authored, solid and region terms of
+   the key rank. Below the order is hosting. Ties the plan's terms leave
+   are still broken by the position the plan lists them in (cover order,
    scan name), and stating them as ties costs plan quality (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
