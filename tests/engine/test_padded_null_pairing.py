@@ -343,9 +343,11 @@ def test_a_member_the_where_emptied_is_not_a_region_row(
         ),
     ],
 )
+@pytest.mark.parametrize("walk", sorted({*WALKS, *ROW_WALKS}))
 def test_an_aggregate_holding_both_regions_pairs_after_they_are_stitched(
-    query: str, expected: list[tuple]
+    query: str, expected: list[tuple], monkeypatch: pytest.MonkeyPatch, walk: str
 ):
+    flip_walk_spelling(monkeypatch, walk)
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected
 
 

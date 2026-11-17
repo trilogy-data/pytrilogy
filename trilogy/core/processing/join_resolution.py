@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
 from itertools import permutations
@@ -418,6 +418,26 @@ class JoinFacts:
     def paired(self, a: str, b: str) -> frozenset[str]:
         """What the plan pairs two sides on."""
         return self.pair_keys.get(frozenset({a, b}), frozenset())
+
+    @cached_property
+    def stitches(self) -> Mapping[str, frozenset[str]]:
+        """The sides each side must join after: a side holding a region's
+        rows on a span the plan pairs it on with no side holds the padded
+        rows of a stitch other sides make on that span, and a padded row a
+        later join mints pairs back with nothing. The sides the plan pairs
+        on such a span are that stitch."""
+        holders = _key_holders(self.pair_keys)
+        out: dict[str, frozenset[str]] = {}
+        for node, side in self.sides.items():
+            own = frozenset().union(
+                *(keys for pair, keys in self.pair_keys.items() if node in pair)
+            )
+            after = frozenset().union(
+                *(holders.get(span, set()) for span in side.held_spans - own)
+            )
+            if after - {node}:
+                out[node] = after - {node}
+        return out
 
 
 def _preserving(left: bool) -> JoinType:
@@ -1067,11 +1087,17 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
     return output
 
 
+def _stitched(facts: JoinFacts, sides: Iterable[str], walked: set[str]) -> list[str]:
+    """The `sides` whose stitches (`JoinFacts.stitches`) are all walked."""
+    return [s for s in sides if facts.stitches.get(s, frozenset()) <= walked]
+
+
 def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
     """One walk over the plan's pairings, from `seed` when given. Each step
     joins the side the merge states first (`facts.rank`) among those the plan
-    pairs with a joined one; when it pairs none, the first of the rest seeds
-    another island."""
+    pairs with a joined one whose stitches are walked (`_stitched`), or among
+    all of them when none is; when it pairs none, the first of the rest seeds
+    another island the same way."""
     paired = {
         side
         for pair, keys in facts.pair_keys.items()
@@ -1088,7 +1114,13 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
             for side in unjoined
             if any(facts.paired(side, left) for left in walked)
         ]
-        right = min(touching or unjoined, key=facts.rank)
+        right = min(
+            _stitched(facts, touching, eligible_left)
+            or touching
+            or _stitched(facts, unjoined, eligible_left)
+            or unjoined,
+            key=facts.rank,
+        )
         if touching:
             output.append(_join_onto(right, walked, facts))
         elif eligible_left:
@@ -2581,7 +2613,7 @@ def _solid_holders(
     return out
 
 
-RowTerm = tuple[bool, bool, bool, int, int]
+RowTerm = tuple[bool, bool, bool, int]
 
 
 def _key_row_terms(
@@ -2595,23 +2627,21 @@ def _key_row_terms(
     (`_solid_holders`). Then a span some side holds a region on: the stitch
     on the span unites the region's rows with its feeder before a key the
     region CARRIES joins them, or a `~?` guest never reaches its NULL group.
-    A key held by a side holding several regions' rows comes after the others
-    are stitched: its NULL group holds their padded rows. Then the key the
-    plan pairs the fewest sides on: a side that also pairs on a wider key
-    meets its holders on both."""
+    Then the key the plan pairs the fewest sides on: a side that also pairs
+    on a wider key meets its holders on both. A side holding the rows of
+    several regions is no term: it waits for their stitch in the walk
+    (`JoinFacts.stitches`)."""
     out: list[tuple[RowTerm, set[str]]] = []
     for key, held_by in holders.items():
-        others = max(len(facts.side(s).held_spans - {key}) for s in held_by)
         term = (
             key not in facts.authored_join_keys,
             True,
             key not in facts.held_spans,
-            others,
             len(held_by),
         )
         out.append((term, held_by))
     for solid in _solid_holders(facts, holders).values():
-        out.append(((True, False, False, 0, len(solid)), solid))
+        out.append(((True, False, False, len(solid)), solid))
     return out
 
 
@@ -2658,7 +2688,7 @@ def _stated_order(
         for side in held_by:
             best[side] = min(best.get(side, term), term)
     # a side the plan pairs on nothing comes after the ones it pairs
-    unpaired = ((True, True, True, len(sides), len(sides)), ())
+    unpaired = ((True, True, True, len(sides)), ())
     return _places({node: (best.get(node, unpaired), shape[node]) for node in sides})
 
 

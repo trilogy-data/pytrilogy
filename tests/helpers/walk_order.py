@@ -56,7 +56,7 @@ def flipped_rank(facts, node):
 _rows = jr._key_row_terms
 
 # row term -> its index in `RowTerm`
-ROW_TERMS = {"authored": 0, "solid": 1, "held": 2, "max_held": 3, "holders": 4}
+ROW_TERMS = {"authored": 0, "solid": 1, "held": 2, "holders": 3}
 
 
 def held_row(*names: str):
