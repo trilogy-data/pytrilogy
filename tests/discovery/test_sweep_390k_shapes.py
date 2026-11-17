@@ -11,6 +11,11 @@
   (`by tree_form` beside `species`) is re-summed off the summary and joined
   back on the property; a grain mixing a row key in (`by city, tree_form`)
   still rides the rows.
+- `formal/Trilogy/SelectGrain.lean` (`filtered_copy_paired_on_keys_exact`,
+  `filtered_copy_paired_through_group_keeps_rejected`,
+  `mirrored_cross_join_is_one`): the trees and their WHERE-filtered copy pair
+  on the merge's keys; a keyless INNER join is one join in either
+  orientation; a hoisted join maps only the columns its CTE projects.
 
 Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
 5, NULL, 7, 2)."""
@@ -47,6 +52,37 @@ CASES = [
             ("a4", None, None, None),
             ("b1", None, None, True),
         ],
+    ),
+    # spellings 62069, reduced: the filtered trees paired with the trees only
+    # through the (city, tree_form) group
+    (
+        (
+            "select city, species, tree_form, sum(height) by city, tree_form as v0,"
+            " count_distinct(tag) as v1 where max(height) by species > 6 and"
+            " count_distinct(tag) by city, tree_form != 0 and tree_form ="
+            " 'broadleaf' and height between 3 and 7;"
+        ),
+        [("A", "Acer", "broadleaf", 3, 1), ("B", "Acer", "broadleaf", 7, 1)],
+    ),
+    # spellings 96191, reduced: one keyless join kept in both orientations
+    (
+        (
+            "select tree_form, count(tree_id ? (max(height) by * = 10 and species"
+            " != 'Tilia')) as v0, min(height ? count(tree_id) by * > 1) as v1 where"
+            " height between 2 and 5;"
+        ),
+        [("broadleaf", 0, 3), ("linden", 0, 2)],
+    ),
+    # spellings 153508: a hoisted join mapped a column its CTE hides
+    (
+        (
+            "select species, tree_form, count(tree_id ? count(tree_id) by city,"
+            " tree_form >= 0) as v0 where ((tree_form = 'broadleaf' or city = 'A')"
+            " and (avg(height) by city, species != 3 and max(height) by species -"
+            " sum(height) by city, tree_form > 2)) having count_distinct(tag) by"
+            " species > 1 and tree_form = 'broadleaf';"
+        ),
+        [],
     ),
     # the mixed grain the property re-sum leaves on the rows
     (
