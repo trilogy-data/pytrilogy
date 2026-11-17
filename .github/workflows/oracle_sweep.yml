@@ -1,0 +1,86 @@
+# The oracle families are swept by hand, a range at a time, during a
+# formalization round; the law suites replay only the first few hundred seeds
+# and the ones a round found failing. Nothing else holds the range already
+# swept, and twice a round reported it clean from records that predated a
+# merge. This sweeps all of it on main every night.
+
+name: Oracle sweep
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      swept_to:
+        description: Sweep seeds 0 up to this one
+        default: "390000"
+  # A change to the sweep itself runs a short range, so the workflow is tested
+  # before the night it is needed.
+  pull_request:
+    branches: [main]
+    paths: ["local_scripts/oracle_sweep/**", ".github/workflows/oracle_sweep.yml"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The seeds every round has swept clean. Raise it when a round extends them
+  # (docs/handoff_formalization_next.md, "State").
+  SWEPT_TO: ${{ github.event_name == 'pull_request' && '4000' || inputs.swept_to || '390000' }}
+  SHARDS: 4
+
+jobs:
+  sweep:
+    name: ${{ matrix.family }} ${{ matrix.shard }}
+    if: github.repository == 'trilogy-data/pytrilogy'
+    runs-on: ubuntu-latest
+    # ~25 minutes a shard at 390,000 seeds on four cores.
+    timeout-minutes: 90
+    permissions:
+      contents: 'read'
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [first, spellings]
+        shard: [0, 1, 2, 3]
+    env:
+      MATURIN_PEP517_USE_BASE_PYTHON: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: stable
+          cache-workspaces: trilogy/scripts/dependency
+          cache-key: laws
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            requirements.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
+      - name: Build Rust extension
+        run: |
+          python -m pip install -e .
+      - name: Sweep
+        run: |
+          lo=$(( SWEPT_TO * ${{ matrix.shard }} / SHARDS ))
+          hi=$(( SWEPT_TO * (${{ matrix.shard }} + 1) / SHARDS ))
+          # exits 1, naming each seed, when a query is wrong, raising or invalid
+          python -m local_scripts.oracle_sweep run --family ${{ matrix.family }} \
+            --seeds "$lo:$hi" --no-cache --out records.jsonl
+      - name: Keep the records of a failing shard
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: sweep-${{ matrix.family }}-${{ matrix.shard }}
+          path: records.jsonl
