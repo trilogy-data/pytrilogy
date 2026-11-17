@@ -125,6 +125,56 @@ def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
     assert scan_precedence(keys, grains) == ("returns", "sales", "items")
 
 
+def test_a_subset_scan_comes_after_its_anchor_even_when_the_anchor_is_a_lookup():
+    keys = {
+        frozenset({"fact1", "fact2"}): frozenset({"cust"}),
+        frozenset({"fact1", "customers"}): frozenset({"cust"}),
+        frozenset({"fact2", "customers"}): frozenset({"cust"}),
+    }
+    grains = {
+        "customers": frozenset({"cust"}),
+        "fact1": frozenset({"f1"}),
+        "fact2": frozenset({"f2"}),
+    }
+    partials = {"fact1": frozenset({"cust"}), "fact2": frozenset({"cust"})}
+    assert scan_precedence(keys, grains, partials) == ("customers", "fact1", "fact2")
+    assert scan_precedence(keys, grains) == ("fact1", "fact2", "customers")
+
+
+class _Scan:
+    def __init__(self, grain: set[str], partials: frozenset[str] = frozenset()) -> None:
+        self.grain = type("G", (), {"components": grain})()
+        self.partial_concepts = [type("C", (), {"address": a})() for a in partials]
+
+
+def test_a_scan_plan_orders_only_the_bindings_its_datasources_declare():
+    keys = {frozenset({"a", "b"}): frozenset({"k", "derived"})}
+    scans = {"a": _Scan({"k"}), "b": _Scan({"j"}, {"k"})}
+    sides = {1: frozenset({"a"}), 2: frozenset({"b"})}
+    plan = PlannedPairs.over_scans(sides, keys, scans)  # type: ignore[arg-type]
+    assert plan.orders_bindings and plan.order == ("a", "b")
+    scoped = PlannedPairs.over_scans(
+        sides, keys, scans, scoped_partials={"derived"}  # type: ignore[arg-type]
+    )
+    assert not scoped.orders_bindings
+
+
+@pytest.mark.parametrize("orders_bindings,seed", [(False, "ds~b"), (True, "ds~a")])
+def test_the_walk_reads_no_binding_a_plan_orders(orders_bindings, seed):
+    facts = replace(
+        _star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2}),
+        orders_bindings=orders_bindings,
+    )
+    facts = replace(
+        facts,
+        sides={
+            **facts.sides,
+            "ds~a": SideFacts(columns=frozenset({"c~k"}), partials=frozenset({"c~k"})),
+        },
+    )
+    assert resolve_join_order_v2(facts)[0].lefts.pop() == seed
+
+
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:
     sides = ["ds~a", "ds~b", "ds~c"]
     return JoinFacts(

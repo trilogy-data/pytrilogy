@@ -272,6 +272,7 @@ def _graph_join_plan(
             for b in names[i + 1 :]
         },
         pruned.datasources,
+        scoped_partials=environment.scoped_partial_derived,
     )
 
 
@@ -299,7 +300,12 @@ def _joint_plan(searches: Sequence[SourcedScans]) -> PlannedPairs:
         for index, search in enumerate(searches)
         for name in search.plan.order
     )
-    return PlannedPairs(sides, keys, order=order)
+    return PlannedPairs(
+        sides,
+        keys,
+        order=order,
+        orders_bindings=all(search.plan.orders_bindings for search in searches),
+    )
 
 
 def _source_concepts_via_graph(
