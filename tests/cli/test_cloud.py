@@ -7,7 +7,9 @@ headers, status handling, model validation, and rendering, rather than only the
 command body."""
 
 import json
+import tomllib
 from datetime import UTC, datetime
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import ClassVar
 
@@ -36,6 +38,7 @@ from trilogy.scripts.cloud import (
     check_bundle_size,
     collect_files,
     forget_token,
+    job_config_text,
     parse_rewrite,
     resolve_api_url,
     resolve_token,
@@ -58,6 +61,17 @@ from trilogy.scripts.source_identity import (
 )
 
 TS = "2026-07-28T12:00:00Z"
+
+
+def _job_payload(job_id: str, name: str) -> dict:
+    return {
+        "id": job_id,
+        "org_id": "org-acme",
+        "name": name,
+        "operation": "run",
+        "created_at": TS,
+        "updated_at": TS,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -265,6 +279,63 @@ class TestRewrites:
     def test_parse_rejects_an_empty_old(self):
         with pytest.raises(click.BadParameter, match="must not be empty"):
             parse_rewrite(None, None, ("=new",))
+
+
+class TestJobConfigText:
+    """What a job carries of its project's trilogy.toml."""
+
+    TOML = """[project]
+name = "p"
+
+[engine]
+dialect = "duck_db"
+
+# How this project deploys.
+[cloud]
+org = "acme"
+
+# The nightly job.
+[[cloud.job]]
+name = "nightly"
+entrypoint = "a.preql"
+
+[[cloud.job]]
+name = "hourly"  # inline comment
+entrypoint = "b.preql"
+
+# Ordering content cannot express.
+[dependencies]
+"b.preql" = { after = ["a.preql"] }
+"""
+
+    def test_drops_the_cloud_tables_and_their_comments(self):
+        out = job_config_text(self.TOML)
+        assert "cloud" not in out and "nightly" not in out
+        assert "How this project deploys" not in out
+        assert "The nightly job" not in out
+
+    def test_keeps_everything_else_with_its_comments(self):
+        out = job_config_text(self.TOML)
+        assert tomllib.loads(out) == {
+            k: v for k, v in tomllib.loads(self.TOML).items() if k != "cloud"
+        }
+        assert "# Ordering content cannot express." in out
+        assert out.startswith('[project]\nname = "p"\n')
+
+    def test_a_file_without_cloud_is_sent_unchanged(self):
+        text = "[engine]\n# keep me\ndialect = 'duck_db'\n"
+        assert job_config_text(text) == text
+
+    def test_a_dotted_cloud_key_it_cannot_cut_is_sent_unchanged(self):
+        text = 'cloud.org = "acme"\n\n[engine]\ndialect = "duck_db"\n'
+        assert job_config_text(text) == text
+
+    def test_an_unparseable_file_is_sent_unchanged(self):
+        assert job_config_text("[cloud\n") == "[cloud\n"
+
+    def test_editing_one_job_entry_leaves_the_text_alone(self):
+        edited = self.TOML.replace('entrypoint = "b.preql"', 'entrypoint = "c.preql"')
+        assert job_config_text(edited) == job_config_text(self.TOML)
 
 
 class TestFindJob:
@@ -556,6 +627,21 @@ class TestHttpClient:
         )
         CloudClient(cloud_api.url, "t").get("/auth/me")
         assert cloud_api.pauses == [7.0]
+
+    def test_a_body_cut_off_part_way_is_retried(self, cloud_api, monkeypatch):
+        answer = cloud_api.urlopen
+        calls = []
+
+        def truncated_once(req, timeout=None):
+            calls.append(req.full_url)
+            if len(calls) == 1:
+                raise IncompleteRead(b"partial", 100)
+            return answer(req, timeout)
+
+        monkeypatch.setattr(cloud_mod, "urlopen", truncated_once)
+        assert CloudClient(cloud_api.url, "t").get("/auth/me")["email"]
+        assert len(calls) == 2
+        assert cloud_api.pauses == [2.0]
 
     def test_a_content_put_is_retried(self, cloud_api):
         cloud_api.set_steps(
@@ -2361,6 +2447,37 @@ class TestJobCommands:
         assert "Triggered run run-new" in result.output
         assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run")
 
+    def test_run_resolves_the_name_without_listing_the_org(self, logged_in, run_cloud):
+        run_cloud("jobs", "run", "nightly")
+        lookup = logged_in.call_for("GET", f"/v2/orgs/{logged_in.org}/jobs")
+        assert lookup.query["name"] == ["nightly"]
+        assert not logged_in.requests_for("GET", f"/orgs/{logged_in.org}/jobs")
+
+    def test_run_resolves_an_id(self, logged_in, run_cloud):
+        run_cloud("jobs", "run", "job-1")
+        assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run")
+
+    def test_run_names_an_unknown_job(self, logged_in, run_cloud):
+        result = run_cloud("jobs", "run", "nope")
+        assert result.exit_code != 0
+        assert "No job named 'nope'" in result.output
+
+    def test_run_refuses_a_shared_name(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "dup"), _job_payload("job-2", "dup")],
+        )
+        result = run_cloud("jobs", "run", "dup")
+        assert result.exit_code != 0
+        assert "job-1" in result.output and "job-2" in result.output
+
+    def test_run_falls_back_to_the_list_on_an_older_api(self, logged_in, run_cloud):
+        logged_in.fail("GET", f"/v2/orgs/{logged_in.org}/jobs", 404)
+        run_cloud("jobs", "run", "nightly")
+        assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run")
+        assert len(logged_in.requests_for("GET", f"/orgs/{logged_in.org}/jobs")) == 1
+
     def test_run_sends_no_body_without_force(self, logged_in, run_cloud):
         run_cloud("jobs", "run", "nightly")
         assert (
@@ -2642,8 +2759,32 @@ class TestScheduleCommands:
         assert result.exit_code == 0, result.output
         body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/schedules")
         assert body["job_ids"] == ["job-1", "job-2"]
-        assert sum(1 for c in logged_in.calls if c.path.endswith("/jobs")) == 1
+        assert not logged_in.requests_for("GET", f"/orgs/{logged_in.org}/jobs")
         assert "Created schedule" in result.output
+
+    def test_create_lists_an_older_api_once_for_every_reference(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "nightly"), _job_payload("job-2", "hourly")],
+        )
+        logged_in.fail("GET", f"/v2/orgs/{logged_in.org}/jobs", 404)
+        result = run_cloud(
+            "schedules",
+            "create",
+            "nightly",
+            "hourly",
+            "--name",
+            "combined",
+            "--cron",
+            "0 * * * *",
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/schedules")
+        assert body["job_ids"] == ["job-1", "job-2"]
+        assert len(logged_in.requests_for("GET", f"/orgs/{logged_in.org}/jobs")) == 1
 
     def test_create_rejects_an_unknown_job(self, logged_in, run_cloud):
         result = run_cloud(
