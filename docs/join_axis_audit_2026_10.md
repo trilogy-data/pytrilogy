@@ -3909,7 +3909,13 @@ re-seed on the customer domain (part 104). Five turn an INNER around or
 mirror a LEFT/RIGHT onto the row stream (part 105): q83, TPC-H q09, and
 thelook adhoc02, query18 and query22. CTE and join counts are unchanged.
 
-CENSUS_PLACEHOLDER
+The census (`rank_census_plugin`, the whole suite) replays each merge of
+three or more sides with one scorer term held constant. At `dc69dcf`, the
+lone-`~` penalty moves the walk in 694 of 14,901 merges; here it moves
+486 of 15,117. The rest are group plans and scoped derived keys. The
+plan's order now decides 6,067 (5,362 at `dc69dcf`), and hosting is
+unchanged (593). The scorer replica differs from the scorer in 12 merges
+on both trees, so that mismatch predates this change.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
@@ -3996,10 +4002,10 @@ not built yet:
    binding a scan plan orders (part 105). What is left of the walk's
    rank above the stated order: the solid and region terms, and a lone
    `~` binding's penalty in group plans (and in a scan plan pairing on a
-   scoped derived key). PENALTY_PLACEHOLDER A group plan cannot state
-   it, since the `~` bindings are the datasources' stage 3 picks. Below
-   the order is hosting. Ties the plan's terms leave
-   are still broken by the position the plan lists them in (cover order,
+   scoped derived key), which moves 486 merges' shape, down from 694. A
+   group plan cannot state it, since the `~` bindings are the
+   datasources' stage 3 picks. Below the order is hosting. Ties the
+   plan's terms leave are still broken by the position the plan lists them in (cover order,
    scan name), and stating them as ties costs plan quality (part 99).
 2. The contract's sets are named, and each reader reads the ones it needs
    (parts 34-36). The merge plan reads them per edge (part 37), each edge
