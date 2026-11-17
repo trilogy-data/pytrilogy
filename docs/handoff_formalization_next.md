@@ -26,6 +26,10 @@ first few hundred seeds and the ones a round found. When a round extends the
 range, raise `SWEPT_TO` there and the number above. A red night names its
 seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
 
+**Not in scope: ROLLUP, CUBE and GROUPING SETS.** They will be rewritten as
+table functions, so do not formalize them, build an oracle family for them,
+or fix their planning beyond keeping existing tests green.
+
 ## The recipe
 
 1. **Probe before modelling.** A scratchpad script runs the same Trilogy text
