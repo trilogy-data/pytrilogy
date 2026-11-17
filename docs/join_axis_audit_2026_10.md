@@ -4276,6 +4276,57 @@ four shape pins part 111 named (q75's SQL budget, the q64 semi-join probe,
 a FULL lowering refused for another reason than the one pinned, the
 `DropIdentityGroup` rule-fires check).
 
+**Most-held is a stitch the walk waits for (part 116).** Part 115 read
+the term as a property of a left-deep tree. That is right about the tree
+but not about the rank. The count in its witness pairs only on `bucket`,
+with the orders. It holds the customer region's rows too, on a span the
+plan pairs it on with no side, so its padded rows are those of a stitch
+two other sides make: customers and orders on `customer_id`. The term
+placed `bucket` after `customer_id` because the count holds one more
+span, a rank over keys. What the tree needs is narrower: the count may
+not join before the sides the plan pairs on that span.
+
+So the walk reads it as that (`JoinFacts.stitches`). A side holding a
+region's rows on a span it pairs on with no side waits for every side
+the plan pairs on that span, and the walk joins the side stated first
+among the paired sides whose stitches are walked (`_stitched`), or among
+all of them when none is. A seed is picked the same way, since a seed
+the walk starts from is joined before everything. The most-held term is
+gone from `RowTerm`.
+
+The witness is now pinned under every walk, the reversed shape included.
+With the stitch disabled, it fails in 6 of its 12 walks. Corpus (205
+statements, against `7c54bf1`): 0 moved. Suite: the same 25
+credential-gated failures as `main`.
+
+**Solid, held span and holder count are the key's shape (part 117).**
+Holding them constant (part 111) shows they decide no rows on the
+witnesses. Reversing them is the stronger test, and it holds too.
+Reversed (solid last, held spans last, most holders first) over the 80
+files that test padding, regions and scoped joins (7,691 tests), the
+only failures are the shape pins part 111 named (the `DropIdentityGroup`
+rule-fires check, the refused FULL lowering's message) and two walk
+unit tests that pin the order they state.
+
+So they are no longer row terms. `_key_terms` states each key as one row
+term, whether it is authored, then a shape (`KeyShape`: solid, held span,
+holder count) above the holders' shape places. The order is unchanged:
+corpus 0 moved, and the suite is unchanged. What changes is what the flip
+reverses. `shape_flipped` now reverses the key's shape with the side's
+(`tests/helpers/walk_order.flipped_keys`), so every walk-parametrized
+test, 1,828 of them, checks the three terms in reverse.
+`ROW_WALKS` and the held-constant walks fold into `WALKS`, and
+`WALK_FLIP` takes only `shape` and `name`.
+
+The order the walk reads is now one row term over shape. Authored is a
+key rank that a left-deep tree needs. Its witness is a 4-cycle (two
+facts sharing `sku`, the authored key between their dimensions): the
+authored edge has to be a tree edge, so the cheap `sku` edge closes the
+cycle together with the dimension key instead of pairing the facts
+alone. Most-held is a stitch the walk waits for.
+
+Suite and flip results: pending.
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4375,7 +4426,10 @@ not built yet:
    held span a filtered total typed INNER against the rows it rolls up
    (part 113), and solid a coalesced null-safe key reaching padding (part
    114); each now holds in both directions. Most other held spans is the
-   tree's, like authored (part 115). Ties the plan's
+   tree's, like authored (part 115), and the walk now waits for it as a
+   stitch, not a rank (part 116). The other three are the key's shape,
+   which the flip reverses, so the order is one row term, authored, over
+   shape (part 117). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
