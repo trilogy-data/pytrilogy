@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -123,6 +124,69 @@ def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
     partials = {"returns": frozenset({"item", "order"})}
     assert scan_precedence(keys, grains, partials) == ("sales", "items", "returns")
     assert scan_precedence(keys, grains) == ("returns", "sales", "items")
+
+
+def test_a_subset_scan_comes_after_its_anchor_even_when_the_anchor_is_a_lookup():
+    keys = {
+        frozenset({"fact1", "fact2"}): frozenset({"cust"}),
+        frozenset({"fact1", "customers"}): frozenset({"cust"}),
+        frozenset({"fact2", "customers"}): frozenset({"cust"}),
+    }
+    grains = {
+        "customers": frozenset({"cust"}),
+        "fact1": frozenset({"f1"}),
+        "fact2": frozenset({"f2"}),
+    }
+    partials = {"fact1": frozenset({"cust"}), "fact2": frozenset({"cust"})}
+    assert scan_precedence(keys, grains, partials) == ("customers", "fact1", "fact2")
+    # an arm of a union is partial on its grain too: its `~` binds no key
+    # unless a declared subset relation names it
+    arms = {s: frozenset({"cust", f"f{s[-1]}"}) for s in ("fact1", "fact2")}
+    assert scan_precedence(keys, grains, arms) == ("fact1", "fact2", "customers")
+    assert scan_precedence(keys, grains, arms, {"cust"}) == (
+        "customers",
+        "fact1",
+        "fact2",
+    )
+
+
+class _Scan:
+    def __init__(self, grain: set[str], partials: frozenset[str] = frozenset()) -> None:
+        self.grain = SimpleNamespace(components=grain)
+        self.partial_concepts = [SimpleNamespace(address=a) for a in partials]
+
+
+def _env(scoped: set[str]) -> SimpleNamespace:
+    graph = SimpleNamespace(
+        declared_subset_pairs=lambda: [("k", "k")], canonical=lambda a: a
+    )
+    return SimpleNamespace(domain_graph=graph, scoped_partial_derived=scoped)
+
+
+def test_a_scan_plan_orders_only_the_bindings_its_datasources_declare():
+    keys = {frozenset({"a", "b"}): frozenset({"k", "derived"})}
+    scans = {"a": _Scan({"j"}, frozenset({"k"})), "b": _Scan({"k"})}
+    sides = {1: frozenset({"a"}), 2: frozenset({"b"})}
+    plan = PlannedPairs.over_scans(sides, keys, scans, environment=_env(set()))  # type: ignore[arg-type]
+    assert plan.orders_bindings and plan.order == ("b", "a")
+    scoped = PlannedPairs.over_scans(sides, keys, scans, environment=_env({"derived"}))  # type: ignore[arg-type]
+    assert not scoped.orders_bindings
+
+
+@pytest.mark.parametrize("orders_bindings,seed", [(False, "ds~b"), (True, "ds~a")])
+def test_the_walk_reads_no_binding_a_plan_orders(orders_bindings, seed):
+    facts = replace(
+        _star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2}),
+        orders_bindings=orders_bindings,
+    )
+    facts = replace(
+        facts,
+        sides={
+            **facts.sides,
+            "ds~a": SideFacts(columns=frozenset({"c~k"}), partials=frozenset({"c~k"})),
+        },
+    )
+    assert resolve_join_order_v2(facts)[0].lefts.pop() == seed
 
 
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:

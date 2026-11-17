@@ -78,6 +78,9 @@ def test_double_partial_key_join_order():
         "INNER JOIN should not be used between partial-keyed sources. "
         f"Generated SQL:\n{compiled_sql}"
     )
+    # both facts hang off their anchor rather than meeting FULL before it
+    assert "FULL JOIN" not in compiled_sql, compiled_sql
+    assert compiled_sql.count("LEFT OUTER JOIN") == 2, compiled_sql
 
 
 def test_double_partial_key_results():

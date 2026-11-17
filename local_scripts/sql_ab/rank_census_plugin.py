@@ -116,7 +116,10 @@ def _scorer(
         is_partial = root in side.partials
         rank, name = facts.rank(x)
         return (
-            "partial" in off or not is_partial or multi_partial,
+            "partial" in off
+            or not is_partial
+            or multi_partial
+            or facts.orders_bindings,
             0 if "rank" in off else -rank,
             side.hosts and not is_partial and "hosts" not in off,
             name,
