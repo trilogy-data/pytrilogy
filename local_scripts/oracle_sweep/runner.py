@@ -475,6 +475,19 @@ def report(
     return not moved["broken"]
 
 
+def print_bad(family: str, records: dict[Key, Record], show: int = 50) -> int:
+    """Name each wrong, raising or invalid query; how many there are."""
+    bad = sorted(k for k, r in records.items() if r["status"] in BAD)
+    shape = shape_fn(family)
+    for seed, model in bad[:show]:
+        record = records[(seed, model)]
+        detail = record.get("error", "")
+        print(f"{record['status']} {seed}:{model}  {shape(seed)[0]}  {detail}")
+    if len(bad) > show:
+        print(f"... (+{len(bad) - show})")
+    return len(bad)
+
+
 def show_seed(family: str, seed: int, models: Iterable[str], ref: str | None) -> None:
     _init_worker(str(extract_ref(ref)[1]) if ref else None)
     query, expected = shape_fn(family)(seed)
@@ -555,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.out:
             write_records(args.out, records.values())
         print(json.dumps(summarize(records)))
-        return 0 if not any(r["status"] in BAD for r in records.values()) else 1
+        return 0 if not print_bad(args.family, records) else 1
     print(f"base {args.base}", file=sys.stderr)
     base = sweep(args.family, seeds, ref=args.base, **kwargs)
     print("working tree", file=sys.stderr)

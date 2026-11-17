@@ -385,6 +385,30 @@ class FakeCloudAPI:
                 return payload
         return _MISSING
 
+    def _from_job_list(self, path: str, query: dict[str, list[str]]) -> Any:
+        """The paged list (filtered by ``name``) and one job by id, answered
+        from the org's full job list when a test registered one and nothing
+        more specific — as the server answers both from the same rows."""
+        jobs = self.routes.get(("GET", f"/orgs/{self.org}/jobs"))
+        if not isinstance(jobs, list):
+            return _MISSING
+        if path == f"/v2/orgs/{self.org}/jobs":
+            name = (query.get("name") or [None])[0]
+            items = [j for j in jobs if name is None or j.get("name") == name]
+            return {
+                "items": items,
+                "next_cursor": None,
+                "total": len(items),
+                "total_exact": True,
+            }
+        prefix = f"/orgs/{self.org}/jobs/"
+        if path.startswith(prefix) and "/" not in path[len(prefix) :]:
+            job_id = path[len(prefix) :]
+            for job in jobs:
+                if job.get("id") == job_id:
+                    return job
+        return _MISSING
+
     def urlopen(self, req: Request, timeout: float | None = None) -> _FakeResponse:
         if self.offline:
             raise URLError("connection refused")
@@ -405,6 +429,8 @@ class FakeCloudAPI:
             )
         )
         payload = self._lookup(req.get_method(), path)
+        if payload is _MISSING and req.get_method() == "GET":
+            payload = self._from_job_list(path, parse_qs(query))
         if isinstance(payload, Steps):
             payload = payload.take()
         if payload is _MISSING:

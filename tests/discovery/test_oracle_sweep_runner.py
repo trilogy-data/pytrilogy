@@ -116,3 +116,15 @@ def test_a_sweep_caches_without_a_lock(tmp_path: Path, monkeypatch: pytest.Monke
     first = runner.sweep("first", seeds, jobs=1, quiet=True)
     monkeypatch.setattr(runner, "_sweep", None)
     assert runner.sweep("first", seeds, jobs=1, quiet=True) == first
+
+
+def test_a_run_names_its_bad_seeds(capsys: pytest.CaptureFixture[str]):
+    records = {
+        (3, "base"): {"seed": 3, "model": "base", **OK},
+        (5, "summary"): {"seed": 5, "model": "summary", **OK, "status": "wrong"},
+        (7, "base"): {"seed": 7, "model": "base", "status": "raise", "error": "boom"},
+    }
+    assert runner.print_bad("first", records) == 2
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("wrong 5:summary  select ")
+    assert out[1].startswith("raise 7:base  ") and out[1].endswith("boom")

@@ -7,7 +7,8 @@ decide a join walk.
 Every `resolve_join_order_v2` over three or more sides is replayed once per
 variant, each with one rank term held constant (`solid` also drops the solid
 pivots, `solid_nullable` reads any nullable key for a value-nullable one), or
-one scorer term held constant, or read off a stand-in fact (`STAND_INS`; the
+one scorer term held constant, or under the plan's order with no `~`
+binding placed (`binding_order`), or read off a stand-in fact (`STAND_INS`; the
 `field:` variants replace a side fact for every reader, typing included). A
 variant whose join order differs is counted as deciding that merge. `score_replica` counts merges the scorer's replica orders
 differently from the scorer itself; it must stay 0.
@@ -29,6 +30,7 @@ _resolve = jr.resolve_join_order_v2
 _rank = jr._pivot_rank
 _solid = jr._solid_value_null_pivots
 _score = jr._score_join_candidate
+_order = jr._binding_order
 _counts: dict[str, int] = {}
 _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
@@ -43,11 +45,7 @@ VARIANTS: dict[str, tuple[tuple[int, ...], bool]] = {
     "key_length": ((5,), False),
     "all_but_name": ((0, 1, 2, 3, 4, 5), True),
 }
-SCORE_TERMS = (
-    "partial",
-    "hosts",
-    "rank",
-)
+SCORE_TERMS = ("hosts", "rank")
 
 
 def _signature(joins: list[jr.JoinOrderOutput]) -> list[tuple]:
@@ -96,32 +94,26 @@ def _solid_nullable(pivot_map, facts):
 
 
 # stand-in name -> (term it replaces, the side fact read in its place)
-STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str, str], Any]]] = {
-    "hosts=held_any": ("hosts", lambda f, x, r: bool(f.side(x).held_spans)),
-    "hosts=held_root": ("hosts", lambda f, x, r: r in f.side(x).held_spans),
+STAND_INS: dict[str, tuple[str, Callable[[jr.JoinFacts, str], Any]]] = {
+    "hosts=held_any": ("hosts", lambda f, x: bool(f.side(x).held_spans)),
 }
 
 
 def _scorer(
     off: frozenset[str], stand_in: str | None = None
-) -> Callable[..., tuple[bool, int, bool, str]]:
+) -> Callable[..., tuple[int, bool, str]]:
     """`_score_join_candidate` with the terms in `off` held constant, and the
     term `stand_in` replaces reading its fact instead."""
     read = STAND_INS[stand_in][1] if stand_in else None
 
-    def score(x, *, root, facts, multi_partial):
+    def score(x, *, facts):
         side = facts.side(x)
         if read is not None:
-            side = jr.replace(side, hosts=bool(read(facts, x, root)))
-        is_partial = root in side.partials
+            side = jr.replace(side, hosts=bool(read(facts, x)))
         rank, name = facts.rank(x)
         return (
-            "partial" in off
-            or not is_partial
-            or multi_partial
-            or facts.orders_bindings,
             0 if "rank" in off else -rank,
-            side.hosts and not is_partial and "hosts" not in off,
+            side.hosts and "hosts" not in off,
             name,
         )
 
@@ -151,6 +143,17 @@ def _replay_field(facts: jr.JoinFacts, name: str) -> list:
     return _signature(_resolve(jr.replace(facts, sides=sides)))
 
 
+# id of a merge's stated ranks -> the plan's ranks they were stated over
+_plan_ranks: dict[int, dict[str, int]] = {}
+
+
+def _binding_order(ranks, sides, pair_keys, declared):
+    out = _order(ranks, sides, pair_keys, declared)
+    _plan_ranks.clear()
+    _plan_ranks[id(out)] = dict(ranks)
+    return out
+
+
 def _hit(name: str) -> None:
     _counts[name] = _counts.get(name, 0) + 1
     _hits.append({"variant": name, "nodeid": _nodeid[0]})
@@ -174,6 +177,11 @@ def _census(facts: jr.JoinFacts) -> list[jr.JoinOrderOutput]:
     for name in FIELD_STAND_INS:
         if _replay_field(facts, name) != base:
             _hit(name)
+    plan_ranks = _plan_ranks.get(id(facts.side_ranks))
+    if plan_ranks is not None and (
+        _signature(_resolve(jr.replace(facts, side_ranks=plan_ranks))) != base
+    ):
+        _hit("binding_order")
     if _replay_score(facts, frozenset()) != base:
         _hit("score_replica")
     for term in SCORE_TERMS:
@@ -188,6 +196,7 @@ def _census(facts: jr.JoinFacts) -> list[jr.JoinOrderOutput]:
 def pytest_configure(config) -> None:
     if os.environ.get("RANK_OUT"):
         jr.resolve_join_order_v2 = _census
+        jr._binding_order = _binding_order
 
 
 @pytest.hookimpl(hookwrapper=True)

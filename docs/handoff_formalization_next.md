@@ -20,6 +20,12 @@ its sweep totals. What they still get wrong is `OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` (404253) and
 `test_oracle_expressions_laws.py` (six seeds), under area 1 below.
 
+The `Oracle sweep` workflow re-sweeps that whole range on main every night
+(`.github/workflows/oracle_sweep.yml`), since the law suites replay only the
+first few hundred seeds and the ones a round found. When a round extends the
+range, raise `SWEPT_TO` there and the number above. A red night names its
+seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
+
 ## The recipe
 
 1. **Probe before modelling.** A scratchpad script runs the same Trilogy text

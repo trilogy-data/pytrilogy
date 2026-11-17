@@ -2552,13 +2552,7 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
         bridge.concepts,
         bridge.assembles_axis,
         joined_rollup=bool(bridge.joined_scans),
-        planned=_bridge_plan(
-            bridge,
-            parents,
-            sides,
-            unsearched,
-            request.environment,
-        ),
+        planned=_bridge_plan(bridge, parents, sides, unsearched),
     )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
@@ -2578,7 +2572,6 @@ def _bridge_plan(
     parents: list[StrategyNode],
     sides: Mapping[int, str],
     unsearched: Mapping[str, frozenset[str]] | None = None,
-    environment: BuildEnvironment | None = None,
 ) -> PlannedPairs:
     """The search's joins as the bridge merge's plan: each parent pairs with
     another only on what the search joined their sources on. A derived
@@ -2607,7 +2600,6 @@ def _bridge_plan(
         grain_paired=frozenset(
             name for name in names if name.startswith(CONNECTOR_NODE_PREFIX)
         ),
-        environment=environment,
     )
 
 

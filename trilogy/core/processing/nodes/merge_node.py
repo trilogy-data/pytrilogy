@@ -282,6 +282,17 @@ def _planned_source_pairs(
     return out
 
 
+def _forced_seed(forced: JoinType | None, ranks: dict[str, int]) -> str | None:
+    """A forced LEFT keeps the rows of the side walked first (a star's hub),
+    so the side the plan states first seeds the walk: its place is a fact
+    about rows, not a tie-break."""
+    if forced != JoinType.LEFT_OUTER or not ranks:
+        return None
+    first = min(ranks.values())
+    firsts = [key for key, rank in ranks.items() if rank == first]
+    return firsts[0] if len(firsts) == 1 else None
+
+
 def _planned_source_ranks(
     merged: Iterable[str],
     held: dict[str, frozenset[str] | None],
@@ -479,7 +490,6 @@ class MergeNode(StrategyNode):
         environment: BuildEnvironment,
         planned_pairs: dict[frozenset[str], frozenset[str]] | None = None,
         side_ranks: dict[str, int] | None = None,
-        orders_bindings: bool = False,
     ) -> list[SourceJoin | UnnestJoin]:
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
@@ -559,7 +569,7 @@ class MergeNode(StrategyNode):
                     keyspace=self.span_scope.keyspace,
                     planned_pairs=planned_pairs,
                     side_ranks=side_ranks or {},
-                    orders_bindings=orders_bindings,
+                    seed=_forced_seed(self.force_join_type, side_ranks or {}),
                 )
         elif final_joins:
             logger.info(
@@ -958,7 +968,6 @@ class MergeNode(StrategyNode):
                 self.environment,
                 planned_pairs,
                 side_ranks,
-                self.planned_pairs is not None and self.planned_pairs.orders_bindings,
             )
         else:
             joins = []

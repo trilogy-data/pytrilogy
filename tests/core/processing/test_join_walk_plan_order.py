@@ -1,15 +1,17 @@
 from dataclasses import replace
-from types import SimpleNamespace
 
 import pytest
 
+from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     PlannedPairs,
     SideFacts,
+    _binding_order,
     resolve_join_order_v2,
     scan_precedence,
 )
+from trilogy.core.processing.nodes.merge_node import _forced_seed
 from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
 
 
@@ -108,77 +110,61 @@ def test_a_scan_plan_states_rows_before_their_lookups_finer_first():
     )
 
 
-def test_a_scan_binding_its_keys_completely_comes_before_a_subset_scan():
-    keys = {
-        frozenset({"returns", "sales"}): frozenset({"item", "order"}),
-        frozenset({"sales", "items"}): frozenset({"item"}),
-        frozenset({"returns", "items"}): frozenset({"item"}),
-        # a group split into projections pairs with itself: no lookup
-        frozenset({"sales"}): frozenset({"item", "order"}),
+def _bound(partials: dict[str, set[str]], arm: bool = False) -> dict[str, SideFacts]:
+    return {
+        side: SideFacts(
+            columns=frozenset({"cust", side}),
+            partials=frozenset(partials.get(side, ())),
+            arm=arm and side in partials,
+        )
+        for side in ("customers", "fact1", "fact2")
     }
-    grains = {
-        "items": frozenset({"item"}),
-        "returns": frozenset({"item", "order"}),
-        "sales": frozenset({"item", "order"}),
-    }
-    partials = {"returns": frozenset({"item", "order"})}
-    assert scan_precedence(keys, grains, partials) == ("sales", "items", "returns")
-    assert scan_precedence(keys, grains) == ("returns", "sales", "items")
 
 
-def test_a_subset_scan_comes_after_its_anchor_even_when_the_anchor_is_a_lookup():
-    keys = {
-        frozenset({"fact1", "fact2"}): frozenset({"cust"}),
-        frozenset({"fact1", "customers"}): frozenset({"cust"}),
-        frozenset({"fact2", "customers"}): frozenset({"cust"}),
-    }
-    grains = {
-        "customers": frozenset({"cust"}),
-        "fact1": frozenset({"f1"}),
-        "fact2": frozenset({"f2"}),
-    }
-    partials = {"fact1": frozenset({"cust"}), "fact2": frozenset({"cust"})}
-    assert scan_precedence(keys, grains, partials) == ("customers", "fact1", "fact2")
-    # an arm of a union is partial on its grain too: its `~` binds no key
-    # unless a declared subset relation names it
-    arms = {s: frozenset({"cust", f"f{s[-1]}"}) for s in ("fact1", "fact2")}
-    assert scan_precedence(keys, grains, arms) == ("fact1", "fact2", "customers")
-    assert scan_precedence(keys, grains, arms, {"cust"}) == (
-        "customers",
-        "fact1",
-        "fact2",
-    )
+_CUST_PAIRS = {
+    frozenset(pair): frozenset({"cust"})
+    for pair in (("fact1", "fact2"), ("fact1", "customers"), ("fact2", "customers"))
+}
 
 
-class _Scan:
-    def __init__(self, grain: set[str], partials: frozenset[str] = frozenset()) -> None:
-        self.grain = SimpleNamespace(components=grain)
-        self.partial_concepts = [SimpleNamespace(address=a) for a in partials]
+def _order(ranks: dict[str, int]) -> list[str]:
+    return sorted(ranks, key=lambda side: (ranks[side], side))
 
 
-def _env(scoped: set[str]) -> SimpleNamespace:
-    graph = SimpleNamespace(
-        declared_subset_pairs=lambda: [("k", "k")], canonical=lambda a: a
-    )
-    return SimpleNamespace(domain_graph=graph, scoped_partial_derived=scoped)
+def test_a_subset_side_comes_after_its_anchor_wherever_the_plan_put_it():
+    plan = {"fact1": 0, "fact2": 1, "customers": 2}
+    facts = _bound({"fact1": {"cust"}, "fact2": {"cust"}})
+    ranks = _binding_order(plan, facts, _CUST_PAIRS, frozenset())
+    assert _order(ranks) == ["customers", "fact1", "fact2"]
+    # a side the plan left out keeps its place after the stated ones, however
+    # far into its order the plan put them
+    ranks = _binding_order({"fact1": 7}, facts, _CUST_PAIRS, frozenset())
+    assert _order(ranks) == ["customers", "fact1", "fact2"]
+    assert ranks["customers"] == 8
 
 
-def test_a_scan_plan_orders_only_the_bindings_its_datasources_declare():
-    keys = {frozenset({"a", "b"}): frozenset({"k", "derived"})}
-    scans = {"a": _Scan({"j"}, frozenset({"k"})), "b": _Scan({"k"})}
-    sides = {1: frozenset({"a"}), 2: frozenset({"b"})}
-    plan = PlannedPairs.over_scans(sides, keys, scans, environment=_env(set()))  # type: ignore[arg-type]
-    assert plan.orders_bindings and plan.order == ("b", "a")
-    scoped = PlannedPairs.over_scans(sides, keys, scans, environment=_env({"derived"}))  # type: ignore[arg-type]
-    assert not scoped.orders_bindings
+def test_sides_partial_on_a_pairing_key_come_after_the_rest_in_the_plans_order():
+    plan = {"fact2": 0, "fact1": 1, "customers": 2}
+    pairs = {frozenset({"fact1", "fact2"}): frozenset({"cust"})}
+    facts = _bound({"fact1": {"cust"}, "fact2": {"cust"}})
+    ranks = _binding_order(plan, facts, pairs, frozenset())
+    assert _order(ranks) == ["customers", "fact2", "fact1"]
 
 
-@pytest.mark.parametrize("orders_bindings,seed", [(False, "ds~b"), (True, "ds~a")])
-def test_the_walk_reads_no_binding_a_plan_orders(orders_bindings, seed):
-    facts = replace(
-        _star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2}),
-        orders_bindings=orders_bindings,
-    )
+def test_an_arm_of_a_union_anchors_only_on_a_declared_key():
+    plan = {"fact1": 0, "fact2": 1, "customers": 2}
+    arms = _bound({"fact1": {"cust"}}, arm=True)
+    member = _bound({"fact2": {"cust"}})
+    sides = {**member, "fact1": arms["fact1"]}
+    ranks = _binding_order(plan, sides, _CUST_PAIRS, frozenset())
+    assert _order(ranks) == ["customers", "fact1", "fact2"]
+    ranks = _binding_order(plan, sides, _CUST_PAIRS, frozenset({"cust"}))
+    assert _order(ranks) == ["customers", "fact1", "fact2"]
+    assert ranks["fact2"] - ranks["fact1"] == 1
+
+
+def test_the_scorer_reads_no_binding_above_the_stated_order():
+    facts = _star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2})
     facts = replace(
         facts,
         sides={
@@ -186,7 +172,7 @@ def test_the_walk_reads_no_binding_a_plan_orders(orders_bindings, seed):
             "ds~a": SideFacts(columns=frozenset({"c~k"}), partials=frozenset({"c~k"})),
         },
     )
-    assert resolve_join_order_v2(facts)[0].lefts.pop() == seed
+    assert resolve_join_order_v2(facts)[0].lefts.pop() == "ds~a"
 
 
 def _star_facts(ranks: dict[str, int]) -> JoinFacts:
@@ -254,3 +240,27 @@ def _hosted_star(ranks: dict[str, int]) -> JoinFacts:
 def test_hosting_breaks_only_ties_the_plan_leaves(ranks, seed):
     joins = resolve_join_order_v2(_hosted_star(ranks))
     assert joins[0].lefts.pop() == seed
+
+
+def test_a_stated_seed_starts_the_walk_whatever_the_order_says():
+    facts = replace(_star_facts({"ds~a": 0, "ds~b": 1, "ds~c": 2}), seed="ds~c")
+    joins = resolve_join_order_v2(facts)
+    assert [joins[0].lefts.pop(), *(j.right for j in joins)] == [
+        "ds~c",
+        "ds~a",
+        "ds~b",
+    ]
+
+
+@pytest.mark.parametrize(
+    "forced,ranks,seed",
+    [
+        (JoinType.LEFT_OUTER, {"hub": 0, "spoke0": 1, "spoke1": 1}, "hub"),
+        (JoinType.LEFT_OUTER, {"a": 0, "b": 0}, None),
+        (JoinType.FULL, {"hub": 0, "spoke0": 1}, None),
+        (None, {"hub": 0, "spoke0": 1}, None),
+        (JoinType.LEFT_OUTER, {}, None),
+    ],
+)
+def test_a_forced_left_seeds_the_side_the_plan_states_first(forced, ranks, seed):
+    assert _forced_seed(forced, ranks) == seed
