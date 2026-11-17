@@ -47,7 +47,10 @@ from trilogy.core.processing.condition_utility import (
     condition_implies,
     is_scalar_condition,
 )
-from trilogy.core.processing.join_key_groups import is_join_key_group
+from trilogy.core.processing.join_key_groups import (
+    is_join_key_group,
+    without_transits,
+)
 from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
@@ -2552,7 +2555,7 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
         bridge.concepts,
         bridge.assembles_axis,
         joined_rollup=bool(bridge.joined_scans),
-        planned=_bridge_plan(bridge, parents, sides, unsearched),
+        planned=_bridge_plan(bridge, parents, sides, request.environment, unsearched),
     )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
@@ -2571,6 +2574,7 @@ def _bridge_plan(
     bridge: BridgePlan,
     parents: list[StrategyNode],
     sides: Mapping[int, str],
+    environment: BuildEnvironment,
     unsearched: Mapping[str, frozenset[str]] | None = None,
 ) -> PlannedPairs:
     """The search's joins as the bridge merge's plan: each parent pairs with
@@ -2588,7 +2592,16 @@ def _bridge_plan(
             f"Bridge sides {sorted(unplanned)} are no source the search chose "
             "or the bridge planned. This is a planner bug."
         )
-    keys = dict(bridge.join_keys)
+    datasources = bridge.graph.datasources
+    keys = without_transits(
+        bridge.join_keys,
+        {
+            name: ds.identifier
+            for name in names
+            if isinstance(ds := datasources.get(name), BuildDatasource)
+        },
+        environment,
+    )
     for name, own in unsearched.items():
         for other in names - {name}:
             pair = frozenset({name, other})

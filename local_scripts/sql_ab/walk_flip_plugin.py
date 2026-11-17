@@ -1,22 +1,22 @@
-"""pytest plugin: run the suite with the join walk's shape order reversed,
-so a test whose rows move names an order that decides rows.
+"""pytest plugin: run the suite with the join walk's order changed, so a
+test whose rows move names an order that decides rows.
 
     WALK_FLIP=shape,name PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p walk_flip_plugin tests ...
 
 `shape` reverses the shape terms of the order the walk reads (`_shape_terms`:
 the `~` tiers, the plan's order, hosting); `name` reverses the side name
-that breaks its ties (`tests/helpers/walk_order.py`). The row terms stay, so
-a plan that moves moved only on shape. A test that fails under the flip and
-passes without it is a shape pin or an order that decides rows; read its
-assertion.
+that breaks its ties (`tests/helpers/walk_order.py`). A row term named
+(`authored`, `solid`, `held`, `max_held`, `holders`) is held constant
+instead. A test that fails under the flip and passes without it is a shape
+pin or an order that decides rows; read its assertion.
 """
 
 from __future__ import annotations
 
 import os
 
-from tests.helpers.walk_order import NAME_FLIPS, SHAPE_FLIPS
+from tests.helpers.walk_order import NAME_FLIPS, ROW_TERMS, SHAPE_FLIPS, held_row
 
 
 def pytest_configure(config) -> None:
@@ -25,3 +25,8 @@ def pytest_configure(config) -> None:
         if flip in flips:
             for owner, name, replacement in replacements:
                 setattr(owner, name, replacement)
+    held = flips & set(ROW_TERMS)
+    if held:
+        from trilogy.core.processing import join_resolution as jr
+
+        jr._key_row_terms = held_row(*sorted(held))

@@ -570,6 +570,9 @@ class MergeNode(StrategyNode):
                     planned_pairs=planned_pairs,
                     side_ranks=side_ranks or {},
                     seed=_forced_seed(self.force_join_type, side_ranks or {}),
+                    applied=(
+                        decompose_condition(self.conditions) if self.conditions else ()
+                    ),
                 )
         elif final_joins:
             logger.info(

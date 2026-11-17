@@ -807,3 +807,28 @@ def test_prune_outer_join_pairs_keeps_every_padded_side():
     assert status[ds_f1.identifier] == 2
     prune_outer_join_pairs(joins)
     assert len(right_join.pairs) == 2
+
+
+@pytest.mark.parametrize(
+    "rows_grain,applied,expected",
+    [
+        ({"order"}, True, (JoinType.RIGHT_OUTER, JoinType.LEFT_OUTER)),
+        ({"customer"}, True, (JoinType.RIGHT_OUTER, JoinType.LEFT_OUTER)),
+        ({"bucket"}, True, (JoinType.INNER, JoinType.INNER)),
+        ({"order"}, False, (JoinType.INNER, JoinType.INNER)),
+    ],
+)
+def test_a_filtered_total_keeps_the_rows_it_rolls_up_either_way(
+    rows_grain, applied, expected
+):
+    determined = frozenset() if rows_grain == {"bucket"} else frozenset({"customer"})
+    rows = SideFacts(grain=frozenset(rows_grain), determined=determined)
+    total = SideFacts(grain=frozenset({"customer"}), filters=("amount is null",))
+    facts = JoinFacts(
+        sides={"total": total, "rows": rows},
+        applied=("amount is null",) if applied else (),
+    )
+    assert (
+        get_join_type("total", "rows", {"customer"}, facts),
+        get_join_type("rows", "total", {"customer"}, facts),
+    ) == expected

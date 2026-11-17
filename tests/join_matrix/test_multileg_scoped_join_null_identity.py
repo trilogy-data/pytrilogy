@@ -22,6 +22,9 @@ Expected rows below are the hand-computed flat null-safe oracle: join rows
 
 from pathlib import Path
 
+import pytest
+
+from tests.helpers.walk_order import ROW_WALKS, flip_walk_spelling
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -126,9 +129,14 @@ def test_multileg_null_identity_holds(tmp_path: Path):
     assert rows == sort_rows([(10, "s1", 300, 5, 50), (20, "s1", 700, 9, 160)])
 
 
-def test_multileg_sql_parity_via_not_null(tmp_path: Path):
+@pytest.mark.parametrize("walk", ROW_WALKS)
+def test_multileg_sql_parity_via_not_null(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, walk: str
+):
     # Excluding NULL-key anchor rows restores plain-SQL `=` behavior: item 20
-    # loses its only return match and the HAVING guard drops it.
+    # loses its only return match and the HAVING guard drops it. `cs` and `sr`
+    # pair only through `ss`, whichever is walked first.
+    flip_walk_spelling(monkeypatch, walk)
     rows = _run(
         tmp_path,
         "where ss.customer.customer_sk is not null\n"

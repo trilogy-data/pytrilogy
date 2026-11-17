@@ -21,6 +21,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -331,6 +332,8 @@ class SideFacts:
     held_spans: frozenset[str] = frozenset()
     # extent-free spans the side carries every value of
     complete_spans: frozenset[str] = frozenset()
+    # the filter atoms every row of the side passed
+    filters: tuple[BoolExpr, ...] = ()
     # extent-free span or `~` key -> the leaf tables whose own `~` column
     # binds it here
     span_bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -380,6 +383,8 @@ class JoinFacts:
     # the side holding the merge's rows, when the merge states one: the walk
     # starts from it
     seed: str | None = None
+    # the filter atoms the merge applies over its joined rows
+    applied: tuple[BoolExpr, ...] = ()
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -743,7 +748,35 @@ def _nullable_join(
         ):
             return _preserving(not left_is_nullable)
         return _preserving(left_is_nullable)
+    unfiltered = _unfiltered_copy(left_facts, right_facts, facts.applied)
+    if unfiltered is not None:
+        return _preserving(unfiltered)
     return JoinType.INNER
+
+
+def _passed_all(atoms: Sequence[BoolExpr], of: Sequence[BoolExpr]) -> bool:
+    return all(any(a == b for b in atoms) for a in of)
+
+
+def _unfiltered_copy(
+    left: SideFacts, right: SideFacts, applied: Sequence[BoolExpr]
+) -> bool | None:
+    """One side past filters the other skipped, all of which the merge applies
+    itself after every join, its grain determined by the other's rows (a
+    WHERE-filtered total over them, or a filtered copy): whether the left is
+    the unfiltered one. INNER would apply those filters to the unfiltered
+    rows before a later join reads them, so the unfiltered rows are kept."""
+    left_in_right = _passed_all(right.filters, left.filters)
+    right_in_left = _passed_all(left.filters, right.filters)
+    if left_in_right == right_in_left:
+        return None
+    rows, filtered = (left, right) if left_in_right else (right, left)
+    if not filtered.grain or not filtered.grain <= rows.grain | rows.determined:
+        return None
+    extra = [a for a in filtered.filters if not any(a == b for b in rows.filters)]
+    if not _passed_all(applied, extra):
+        return None
+    return left_in_right
 
 
 def _fd_closure(
@@ -2161,6 +2194,9 @@ def _padding_guard(
                     clause = (GuardTerm(witness, merge.sources[padded_node], True),)
                     if clause not in clauses:
                         clauses.append(clause)
+    for coalesced in _coalesced_padding_clauses(join.right, pairs, presence, merge):
+        if coalesced not in clauses:
+            clauses.append(coalesced)
     right = facts.side(join.right)
     for padding in earlier:
         absent = _absent_key_groups(pairs, padding.absent)
@@ -2188,6 +2224,49 @@ def _padding_guard(
         clauses.append(tested)
         padding.absent.add(join.right)
     return tuple(clauses)
+
+
+def _coalesced_padding_clauses(
+    right: str,
+    pairs: list[ConceptPair],
+    presence: set[frozenset[str]],
+    merge: _Merge,
+) -> list[tuple[GuardTerm, ...]]:
+    """A key the join compares null-safely off several lefts (a FULL key,
+    coalesced) pairs every left's NULL so: one whose NULLs are only padding
+    (`addresses LEFT customers`) beside one whose NULL group is a value would
+    pair its padded rows with the right's value NULL group. Each such left's
+    rows pair only where it holds the key, or has no row."""
+    facts = merge.facts
+    other = facts.side(right)
+    groups: dict[str, list[ConceptPair]] = defaultdict(list)
+    for pair in pairs:
+        groups[pair.right.address].append(pair)
+    out: list[tuple[GuardTerm, ...]] = []
+    for group in groups.values():
+        key = merge.canon_node(group[0].right.address)
+        if key not in other.value_nullables or not any(p.is_nullable for p in group):
+            continue
+        sides = {
+            f"ds~{p.node.identifier}": (p, facts.side(f"ds~{p.node.identifier}"))
+            for p in group
+        }
+        if not any(key in side.value_nullables for _, side in sides.values()):
+            continue
+        for node, (pair, side) in sides.items():
+            spans = side.span_padding.get(key, frozenset())
+            if not spans or key in side.value_nullables:
+                continue
+            if _pads_beside(other, key, spans):
+                continue
+            clause: tuple[GuardTerm, ...] = (GuardTerm(pair.left, pair.node, True),)
+            if any(node not in present for present in presence):
+                absent = _row_witness(pair.node, [])
+                if absent is None:
+                    continue
+                clause += (GuardTerm(absent, pair.node, False),)
+            out.append(clause)
+    return out
 
 
 def _presence_after(
@@ -2419,6 +2498,7 @@ def _side_facts(
             for address in extent_free_spans
             if complete_key_domain(datasource, address)
         ),
+        filters=tuple(applied_atoms(datasource)),
         span_bindings={
             canon_node(address): partial_binding_sources(datasource, address)
             for address in extent_free_spans
@@ -2593,6 +2673,7 @@ def get_node_joins(
     planned_pairs: Mapping[frozenset[str], frozenset[str]],
     side_ranks: Mapping[str, int] | None = None,
     seed: str | None = None,
+    applied: Sequence[BoolExpr] = (),
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
     rowset body pads them under and its region partition. `planned_pairs` is
@@ -2707,6 +2788,7 @@ def get_node_joins(
         span_families=span_families,
         pair_keys=pair_nodes,
         seed=f"ds~{seed}" if seed else None,
+        applied=tuple(applied),
     )
     facts = replace(
         facts,

@@ -113,7 +113,9 @@ RANK_OUT=/tmp/rank PYTHONPATH=local_scripts/sql_ab python -m pytest -p rank_cens
 `walk_flip_plugin.py` asks whether the shape of the join walk's order decides
 rows. It reverses the shape terms (`shape`: the `~` tiers, the plan's order,
 hosting) and the side name that breaks their ties (`name`), through
-`tests/helpers/walk_order.py`, and leaves the row terms alone. A test that
+`tests/helpers/walk_order.py`, and leaves the row terms alone. A row term
+named instead (`authored`, `solid`, `held`, `max_held`, `holders`) is held
+constant; only `authored` and `max_held` are expected to decide rows. A test that
 fails only under the flip either pins a shape (read its assertion) or has rows
 that depend on the shape, which is a bug.
 

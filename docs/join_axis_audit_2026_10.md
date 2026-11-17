@@ -4196,6 +4196,86 @@ benchmark logs ratcheted to shorter SQL (q02 from 4,817 to 4,403
 characters), so for those queries the reversed shape renders less text
 than the stated one. Whether it is the better plan was not measured.
 
+**Holder count read a transitive pairing (part 112).** The multileg
+witness of part 111 is a plan bug, not an order. The source search pairs
+two scans on every value class both bind, and `union join` merges
+`ss.customer`, `sr.customer` and `cs.customer` into one class, so the
+bridge plan paired `cs` with `sr` on (customer, item), which no relation
+states. Walked `cs`, `sr`, `ss`, that pairing is a FULL join that pads
+before `ss` arrives: a `cs` row with no `sr` partner carries a NULL
+`sr.ticket`, so it never meets its `ss` row.
+
+A pairing implied through a third side holds only when that side holds
+every value of both: `ss ⊑ customer` and `cs ⊑ customer` imply
+`ss.c = cs.c` (q97 pairs on it), but `ss ∦ sr` and `ss ∦ cs` imply
+nothing about `cs` and `sr`. The bridge plan now drops a class two scans
+share only through a side that is no anchor of both
+(`join_key_groups.without_transits`, over the declared `subset`/`union`
+edges and each datasource's native binding). It is a plan fix: the walk
+in either order now pairs `cs` only with `ss`.
+
+**A filtered total met first was typed INNER (part 113).** Two witnesses
+of holder count and the held-span witness are one shape: a
+WHERE-filtered aggregate (`sum(amount) by customer_id` under
+`where amount is null`) beside the rows it rolls up (orders, or a filtered
+copy of products). Neither side is nullable or partial on the key, so
+`_nullable_join` typed them INNER. Walked after an outer join,
+`ensure_content_preservation` widened that INNER to LEFT; walked first,
+nothing widened it, and the INNER applied the WHERE to the orders before
+the region joined them. The region's members those orders matched (bucket
+`b`, order 102) became unmatched region rows, and a WHERE their padded NULL
+passes kept them.
+
+The pair is now typed preserving the unfiltered rows wherever it is
+walked (`_unfiltered_copy`): one side past filters the other skipped, all
+of which the merge applies itself after every join (`JoinFacts.applied`,
+the merge's own condition atoms), its grain determined by the other's
+rows. Rows the INNER dropped fail the merge's WHERE, except where a later
+join changes what they read, which is the bug. A filter the merge does
+not re-apply (a recursive walk's `_terminal`) types as before.
+
+**Coalesced null-safety reached padding (part 114).** The solid witness:
+two value-NULL aggregates (`sum(amt) by cust_sk`, `sum(pay) by cust_sk`)
+and an addresses-preserving customer side whose NULL `cust_sk` is padding.
+Walked with the padded side first, the second aggregate joins on
+`coalesce(addresses.cust, returns.cust) is not distinct from pay.cust`:
+the FULL key coalesces every left, and the null-safety the returns side's
+value NULL earned reaches the padded addresses too, pairing them with the
+payments' NULL group. The join now carries a guard for each such left
+(`_coalesced_padding_clauses`): its rows pair only where it holds the key,
+or has no row (`addresses.cust is not null or addresses.addr_sk is null`).
+It fires only when the right's NULL is a value, another left's NULL is a
+value, and the right does not pad for the same spans (the dimension-chain
+law's flight with no tail pairs its NULL group with its own count).
+
+**Most other held spans is the tree's (part 115).** Its witness is
+`count(customer_id) by bucket` beside the customers and their orders: the
+count holds both regions, and a customer with no order is in its NULL
+bucket group. That pairing exists only once customers and orders are
+stitched, so the stitch has to be in the tree before the count joins.
+Walked count first, the customer's padded NULL bucket is minted by a
+later join and nothing pairs it back. No typing restores it: like the
+authored term, it is a property of a left-deep tree.
+
+So of part 111's five row terms, holder count, solid and held span now
+decide only shape on their witnesses, which are pinned under each of them
+held constant (`tests/helpers/walk_order.ROW_WALKS`; the walk-flip plugin
+takes `WALK_FLIP=solid,held,holders`). Authored and most-held remain, both
+a stitch the tree needs first.
+
+Corpus (205 statements, against `26ee111`): 1 moved, `tpc_ds/queries`
+query 1, where a filtered per-store average joins LEFT instead of INNER
+beside rows the same WHERE keeps (row-identical). Suite (`-n 4`, without
+adventureworks/clickhouse/bigquery/cloud_live): the same 25
+credential-gated failures as `main` at `26ee111`. Fuzzer: 522/522.
+
+With all three terms held constant together
+(`WALK_FLIP=solid,held,holders`), the suite fails those 25 and 7 more,
+none on rows: three walk unit tests that pin the order they state, and the
+four shape pins part 111 named (q75's SQL budget, the q64 semi-join probe,
+a FULL lowering refused for another reason than the one pinned, the
+`DropIdentityGroup` rule-fires check).
+
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
 
@@ -4290,7 +4370,12 @@ not built yet:
    decide rows, each with a named witness (part 111): authored, solid,
    held span, most other held spans, and holder count, which had been
    read as shape. The authored one belongs to a left-deep tree; the other
-   four are typing that holds in one direction only. Ties the plan's
+   four are typing that holds in one direction only. Holder count read a
+   pairing the plan stated through a side holding no anchor (part 112),
+   held span a filtered total typed INNER against the rows it rolls up
+   (part 113), and solid a coalesced null-safe key reaching padding (part
+   114); each now holds in both directions. Most other held spans is the
+   tree's, like authored (part 115). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).
