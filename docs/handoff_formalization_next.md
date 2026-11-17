@@ -13,12 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.511.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.512.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family, new this round, to 30,000; the PR of each round holds
-its sweep totals. What they still get wrong is `OPEN` in
+`expressions` family to 60,000; the PR of each round holds its sweep totals.
+What they still get wrong is `OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` (404253) and
-`test_oracle_expressions_laws.py` (six seeds), under area 1 below.
+`test_oracle_expressions_laws.py`, under area 1 below.
 
 The `Oracle sweep` workflow re-sweeps that whole range on main every night
 (`.github/workflows/oracle_sweep.yml`), since the law suites replay only the
@@ -264,6 +264,9 @@ seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
   that key: a BASIC over grouped rows alone holds what they output.
 - A value over a partial is computed after the partial is re-summed, and a
   filter finer than a re-sum is applied below it.
+- A condition-phase group (`root_d1`, `d1`) holds rows the WHERE never
+  filtered: rank it last wherever groups are chosen by a tie on name, and a
+  regraft off a constraint-fed root drops the gate.
 - `existence_arguments` of a literal `in (...)` is `[()]`, truthy: test with
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
 - Efficiency: "summary reads lost" is a cost only where the base scans grew.
@@ -309,18 +312,20 @@ this edit no longer reproduced, so probe any lead before working on it.
 
 Open in the `expressions` family (each fails on main too):
 
-- A value over a stored count beside a `by *` total, off the summary
-  (2171, 4244, wrong rows): `count(tree_id) * min(height) by city` at `(city,
-  species, tree_form)` is bucketed at `city`, because the count is a root
-  column of a scan at tree grain and gives the BASIC no grain.
-- A gate and a row atom under a derived key (3102, 4180, 5715, 5780: `Missing
-  source reference`).
+- A gate FINAL re-applies beside a value whose side dropped the gate's keys
+  (38531, wrong rows): `max(height) by tree_form * count(tree_id) by city`
+  under `sum(height) by city, species < 6` is bridged by rows the gate never
+  filtered, and FINAL pairs the gate on `city` alone. FINAL must demand the
+  gate's keys of its contributor (`_final_gate_keys` reaches only folding).
+- Keyless joins (15826, 47126; 17715 off the summary): a gate or values at
+  two grains no side holds together.
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
 - `select species, count_distinct(tag) + 1, sum(height) by tree_form` off the
   summary raises a keyless join: the stored sum is a peel at `tree_form` and
   no side holds `species` beside it (`test_sweep_450k_shapes.py`).
 - Spellings 404253: FINAL reads `height` off a side its merge does not join.
+- The expressions family past 60,000 is unswept.
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.
 
