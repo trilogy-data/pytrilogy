@@ -6249,7 +6249,10 @@ def _assemble_sole_contributor(
         held = {o.address for o in sole_node.output_concepts}
         # a gate pairs on its whole grain: one key short, it keeps the rows
         # it rejected on another (`SelectGrain.gate_paired_short_of_its_grain`)
-        widened = _widen_to_gate_keys(sole_node, gate_keys - held, environment)
+        # the all-rows marker of a `by *` gate is no key to carry
+        widened = _widen_to_gate_keys(
+            sole_node, pairing_keys(gate_keys - held), environment
+        )
         gate_paired_feeders = bool(gate_keys & (held | widened))
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)

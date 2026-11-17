@@ -76,6 +76,15 @@ CASES = [
         ),
         [],
     ),
+    # first 22558, spellings 20968 (broken by a first version of the round):
+    # a `by *` gate's all-rows marker is no key to widen a side to
+    (
+        (
+            "select tree_form, min(height ? city = 'B') as v0 where (sum(height)"
+            " by * > 0 and avg(height) by city > 4);"
+        ),
+        [("broadleaf", 7), ("linden", 2)],
+    ),
     # expressions 89514, reduced: a constant keyed beside a gate's grain
     ("select city, 2 as v0 where max(height) by city, tree_form = 5;", [("A", 2)]),
     (
