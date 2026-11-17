@@ -28,7 +28,7 @@ from contextlib import nullcontext
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
@@ -729,15 +729,40 @@ def _filters_whole_groups(
 def coarser_than_rows(
     concept: BuildConcept, target: set[str], environment: BuildEnvironment
 ) -> bool:
-    """An aggregate grouped by a strict subset of the select's row keys that
-    does not determine them: a grain off the rows' keys (`by tree_form` beside
-    `tree_id`) has no row to join back on."""
+    """An aggregate grouped by a strict subset of the select's row keys, or by
+    properties keyed on exactly the rows' own keys (`by tree_form` beside
+    `species`), that does not determine the rows. Beside `city, species` the
+    property pairs the rows on `species` alone, and a sibling grouped by it
+    leaves the summary's pairs keyless. A grain further off the rows' keys (`by
+    tree_form` beside `tree_id`, `species` included) has no row to join back
+    on, and one mixing a row key in (`by city, tree_form` beside `city,
+    species`) pairs the rows on the property alone where no other side holds
+    them."""
     grain = set(concept.grain.components) if concept.grain else set()
+    if (
+        concept.derivation != Derivation.AGGREGATE
+        or not grain
+        or target <= set(strict_fd_closure(environment, grain))
+    ):
+        return False
+    if grain < target:
+        return True
+    own = {
+        key
+        for key in target
+        if key not in strict_fd_closure(environment, target - {key})
+    }
+    return all(_property_of(address, own, environment) for address in grain)
+
+
+def _property_of(address: str, keys: set[str], environment: BuildEnvironment) -> bool:
+    concept = environment.concepts.get(address)
     return (
-        concept.derivation == Derivation.AGGREGATE
-        and bool(grain)
-        and grain < target
-        and not target <= set(strict_fd_closure(environment, grain))
+        concept is not None
+        and concept.purpose == Purpose.PROPERTY
+        and concept.derivation == Derivation.ROOT
+        and bool(concept.keys)
+        and set(concept.keys or ()) == keys
     )
 
 

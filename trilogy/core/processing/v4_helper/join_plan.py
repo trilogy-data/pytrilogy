@@ -841,6 +841,7 @@ def _pair(
     reach: dict[str, frozenset[str]],
     scalars: frozenset[str],
     environment: BuildEnvironment,
+    merge_keys: frozenset[str] = frozenset(),
 ) -> Pairing:
     # scoped: an unscoped lookup caches on the statement's class baseline
     # one row pairs with every row: no key, whatever the sides share
@@ -861,9 +862,12 @@ def _pair(
         for a in side
         if roots.get(a, a) in other
     )
-    axes = frozenset().union(
-        *(_axis_of(a, roots, environment) for a in identity[left] | identity[right])
+    # two scans identified by nothing pair on the keys the merge is (the trees
+    # and their WHERE-filtered copy, both holding `species`)
+    named = identity[left] | identity[right] or (
+        merge_keys if not (identity[left] or identity[right]) else frozenset()
     )
+    axes = frozenset().union(*(_axis_of(a, roots, environment) for a in named))
     keys = {a for a in shared if _axis_of(a, roots, environment) & axes}
     # a relation both sides carry a member of is an axis by declaration;
     # authored when the sides hold different members of it
@@ -882,6 +886,9 @@ def _pair(
     ) - keys
     if authored:
         kind = PairingKind.AUTHORED
+    elif merge_keys and keys and not (identity[left] or identity[right]):
+        # two scans paired on the merge's keys hold the same rows there
+        kind = PairingKind.LOOKUP
     elif any(
         identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
         for gid in (left, right)
@@ -1010,7 +1017,19 @@ def plan_final_join(
         for left, right in combinations(contributors, 2)
         if (
             pairing := _pair(
-                left, right, identity, carries, reach, scalars, environment
+                left,
+                right,
+                identity,
+                carries,
+                reach,
+                scalars,
+                environment,
+                (
+                    frozenset().union(*(identity[g] for g in supplying))
+                    if attrs[left].derivation == Derivation.ROOT
+                    and attrs[right].derivation == Derivation.ROOT
+                    else frozenset()
+                ),
             )
         ).keys
         or pairing.implied
@@ -1147,7 +1166,7 @@ def _underkeyed_blends(
         if not any(
             not b <= p.keys and b <= _determined(a, environment)
             for a, b in ((left, right), (right, left))
-        ):
+        ) and not _pinned_finer(plan, p, environment):
             continue
         if not any(
             _bridges_on_identity(plan, extra, p.left)
@@ -1156,6 +1175,20 @@ def _underkeyed_blends(
         ):
             count += 1
     return count
+
+
+def _pinned_finer(plan: JoinPlan, p: Pairing, environment: BuildEnvironment) -> bool:
+    """Another supplier's rows determine both sides of blend `p` (`tree_id`
+    beside a value by species and one by city, tree_form): each merged row has
+    one partner on each side, and the shared keys alone pair it with every
+    side row that shares them."""
+    both = plan.identity[p.left] | plan.identity[p.right]
+    return not both <= p.keys and any(
+        gid not in (p.left, p.right)
+        and plan.identity[gid]
+        and both <= _determined(plan.identity[gid], environment)
+        for gid in plan.suppliers
+    )
 
 
 def _bridges_on_identity(plan: JoinPlan, bridge: str, side: str) -> bool:

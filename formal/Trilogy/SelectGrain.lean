@@ -1327,3 +1327,81 @@ theorem exposed_column_joins_nothing :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A blend beside finer rows is no pairing
+
+`select tree_id, ... having sum(x) by species != 0 or max(x) by city, form > 2`:
+the rows are trees, and each tree has one species group and one `(city, form)`
+group. The two HAVING groups share `form`, which identifies neither, so joined
+to each other on `form` alone a tree meets every species of its form
+(`blend_beside_finer_rows_fans_out`). A side unique on the key a tree holds
+meets it once (`unique_side_one_partner`): the row stream pairs each group on
+its own identity. -/
+
+/-- **A side unique on a key has one partner for a row holding it.** -/
+theorem unique_side_one_partner (side : List (Int × Int)) (k : Int)
+    (h : (side.map Prod.fst).Nodup) (hk : k ∈ side.map Prod.fst) :
+    (side.filter fun s => s.1 == k).length = 1 := by
+  induction side with
+  | nil => simp at hk
+  | cons s rest ih =>
+    simp only [List.map_cons, List.nodup_cons, List.mem_map] at h
+    simp only [List.map_cons, List.mem_cons, List.mem_map] at hk
+    by_cases hs : s.1 = k
+    · subst hs
+      have : (rest.filter fun t => t.1 == s.1) = [] := by
+        rw [List.filter_eq_nil_iff]
+        intro t ht
+        simp only [beq_iff_eq]
+        intro he
+        exact h.1 ⟨t, ht, he⟩
+      simp [this]
+    · have hk' : k ∈ rest.map Prod.fst := by
+        rcases hk with hk | ⟨t, ht, he⟩
+        · exact absurd hk.symm hs
+        · exact List.mem_map.mpr ⟨t, ht, he⟩
+      simp [hs, ih h.2 hk']
+
+/-- Three trees `(id, species, form)`, two species of form 0: the species
+groups joined to each tree on `form` give five rows, on `species` three. -/
+theorem blend_beside_finer_rows_fans_out :
+    let trees : List (Int × Int × Int) := [(1, 0, 0), (2, 1, 0), (3, 2, 1)]
+    let bySpecies : List (Int × Int) := [(0, 0), (1, 0), (2, 1)]
+    (trees.flatMap fun t => bySpecies.filter fun g => g.2 == t.2.2).length = 5 ∧
+      (trees.flatMap fun t => bySpecies.filter fun g => g.1 == t.2.1).length = 3 := by
+  decide
+
+end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A filtered copy of the rows pairs with the rows on their keys
+
+`select city, species, tree_form, sum(x) by city, tree_form, count_distinct(t)
+where max(x) by species > 6 and ...`: FINAL held the trees and the
+WHERE-filtered trees, both identified by nothing, and joined them only through
+the `(city, tree_form)` group. Every species of a kept form came back off the
+unfiltered side (`filtered_copy_paired_through_group_keeps_rejected`); paired
+on the keys the merge is identified by, the copy is a semijoin
+(`filtered_copy_paired_on_keys_exact`). -/
+
+/-- Rows `(city, species, form)`. -/
+def copyRows : List (Int × Int × Int) := [(0, 0, 0), (0, 1, 0), (1, 0, 0)]
+
+def copyKept : List (Int × Int × Int) := copyRows.filter fun r => r.2.1 == 0
+
+theorem filtered_copy_paired_on_keys_exact :
+    dedup ((copyRows.filter fun r =>
+      copyKept.any fun k => k.1 == r.1 && k.2.1 == r.2.1).map fun r => (r.1, r.2.1)) =
+      dedup (copyKept.map fun r => (r.1, r.2.1)) := by
+  decide
+
+theorem filtered_copy_paired_through_group_keeps_rejected :
+    (0, 1) ∈ dedup ((copyRows.filter fun r =>
+      copyKept.any fun k => k.1 == r.1 && k.2.2 == r.2.2).map fun r => (r.1, r.2.1)) ∧
+      (0, 1) ∉ dedup (copyKept.map fun r => (r.1, r.2.1)) := by
+  decide
+
+end Trilogy.SelectGrain
