@@ -28,12 +28,16 @@ CACHE = REPO / ".cache" / "oracle_sweep"
 FAMILIES = {
     "first": ("tests.discovery.test_oracle_sweep_laws", "shape"),
     "spellings": ("tests.discovery.test_oracle_spellings_laws", "shape2"),
+    "expressions": ("tests.discovery.test_oracle_expressions_laws", "shape3"),
 }
 GENERATOR_FILES = [
     "tests/discovery/test_rollup_resolution_laws.py",
     "tests/discovery/test_oracle_sweep_laws.py",
     "tests/discovery/test_oracle_spellings_laws.py",
 ]
+# A family's own generator, beside the shared ones: adding a family leaves the
+# others' cached records valid.
+FAMILY_FILES = {"expressions": ["tests/discovery/test_oracle_expressions_laws.py"]}
 # Bump when a record's fields or meaning change: cached records are keyed on it.
 RECORD_VERSION = 1
 MODELS = ("base", "summary")
@@ -205,7 +209,7 @@ def _digest(files: Iterable[Path], seed: str = "") -> str:
     return digest.hexdigest()[:12]
 
 
-def generator_hash() -> str:
+def generator_hash(family: str = "") -> str:
     """The generators, the record format, and the native planner every side runs."""
     spec = importlib.util.find_spec(NATIVE)
     native = [
@@ -213,7 +217,11 @@ def generator_hash() -> str:
     ]
     files = [f for d in native for f in d.rglob("*") if f.is_file()]
     return _digest(
-        [*(REPO / name for name in GENERATOR_FILES), *files], str(RECORD_VERSION)
+        [
+            *(REPO / name for name in GENERATOR_FILES + FAMILY_FILES.get(family, [])),
+            *files,
+        ],
+        str(RECORD_VERSION),
     )
 
 
@@ -320,7 +328,7 @@ def sweep(
     if not cache:
         fresh = _sweep(family, seeds, models, jobs, root, carry, quiet, right, None)
         return {(s, m): fresh[(s, m)] for s in seeds for m in models}
-    name = f"{state}-{family}-{generator_hash()}{'-carry' if carry else ''}.jsonl"
+    name = f"{state}-{family}-{generator_hash(family)}{'-carry' if carry else ''}.jsonl"
     path = CACHE / "results" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     with _locked(path):

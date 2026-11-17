@@ -1405,3 +1405,87 @@ theorem filtered_copy_paired_through_group_keeps_rejected :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A value over a group holds what the group holds
+
+`select city, species, sum(x) by city, tree_form, count(id) + 1`: the count is
+grouped by `(city, species)` and `+ 1` is computed off those rows. The plan
+said the value could be widened to `tree_form`, which its species determines,
+and paired it with the `(city, tree_form)` group on both keys. No row of a
+group reaches a column the group did not output, so the built sides joined on
+`city` alone and each species met every form of its city
+(`value_over_group_holds_no_finer_key`). Through the rows holding `(city,
+species, tree_form)` each group meets its own form
+(`value_over_group_bridged_exact`). The same holds inside one value: `max(x)
+by city, tree_form * count(id)` at `tree_id` joins its two inputs through the
+trees although they already share `city`
+(`keying_bridge_joined_whatever_the_islands`). -/
+
+/-- Rows `(city, species, form)`: species 0 and 1 are form 0, 2 is form 1, 3
+is form 2. -/
+def valueRows : List (Int × Int × Int) :=
+  [(0, 0, 0), (0, 0, 0), (0, 1, 0), (0, 2, 1), (1, 0, 0), (1, 3, 2)]
+
+/-- The `(city, species)` groups and the `(city, form)` groups. -/
+def valueGroups : List (Int × Int) := dedup (valueRows.map fun r => (r.1, r.2.1))
+def formGroups : List (Int × Int) := dedup (valueRows.map fun r => (r.1, r.2.2))
+
+theorem value_over_group_holds_no_finer_key :
+    valueGroups.length = 5 ∧
+      (valueGroups.flatMap fun g => formGroups.filter fun f => f.1 == g.1).length = 10 := by
+  decide
+
+theorem value_over_group_bridged_exact :
+    (dedup (valueRows.flatMap fun r =>
+      ((valueGroups.filter fun g => g.1 == r.1 && g.2 == r.2.1).flatMap fun g =>
+        (formGroups.filter fun f => f.1 == r.1 && f.2 == r.2.2).map fun f =>
+          (g, f)))).length = 5 := by
+  decide
+
+/-- Six trees, each one row of its own group, and the `(city, form)` groups:
+one island on `city`, twelve rows; through each tree's own keys, six. -/
+theorem keying_bridge_joined_whatever_the_islands :
+    (valueRows.flatMap fun r => formGroups.filter fun f => f.1 == r.1).length = 12 ∧
+      (valueRows.flatMap fun r =>
+        formGroups.filter fun f => f.1 == r.1 && f.2 == r.2.2).length = 6 := by
+  decide
+
+/-! ## A blend the reader's grain pins
+
+`select city, species, max(x) by species + sum(x) by city, tree_form`: the
+value is read at `(city, species)`, which determines both inputs' keys. They
+share `tree_form`; paired on it, every species of a form meets every city of
+it, and `(1, 1)`, a pair no tree has, comes back
+(`blend_under_a_finer_reader_invents_pairs`). -/
+
+theorem blend_under_a_finer_reader_invents_pairs :
+    let bySpecies := dedup (valueRows.map fun r => (r.2.1, r.2.2))
+    let paired := dedup (formGroups.flatMap fun f =>
+      (bySpecies.filter fun s => s.2 == f.2).map fun s => (f.1, s.1))
+    (1, 1) ∈ paired ∧ (1, 1) ∉ valueGroups ∧ paired.length = valueGroups.length + 1 := by
+  decide
+
+/-! ## A NULL key value is a group
+
+`select height > 2 as big, count(id) / count(id) by *`: `big` is NULL where
+the height is, and that is one of the select's groups. The total was re-summed
+off the per-`big` counts after a join back on `big`; the comparison was read
+as never NULL, so the join was a plain `=` and the NULL group's count left the
+total (`null_key_group_is_a_group`). -/
+
+/-- Counts per `big`: three true, one unknown. -/
+def bigCounts : List (Option Bool × Int) := [(some true, 3), (none, 1)]
+
+/-- SQL `=`: NULL equals nothing. -/
+def bigEq : Option Bool → Option Bool → Bool
+  | some a, some b => a == b
+  | _, _ => false
+
+theorem null_key_group_is_a_group :
+    ((bigCounts.filter fun g => bigCounts.any fun h => bigEq g.1 h.1).map (·.2)).sum = 3 ∧
+      ((bigCounts.filter fun g => bigCounts.any fun h => g.1 == h.1).map (·.2)).sum = 4 := by
+  decide
+
+end Trilogy.SelectGrain

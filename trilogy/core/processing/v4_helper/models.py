@@ -275,6 +275,9 @@ class GroupAttrs(_HeldKeys):
     # the groups this group's merge plan elects to bridge its row parents
     # (`join_plan.elect_bridges`), decided before the build
     bridges: tuple[str, ...] = ()
+    # of `bridges`, those elected to key a pairing (`JoinPlan.keying`): joined
+    # whatever the islands
+    keying_bridges: frozenset[str] = frozenset()
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()

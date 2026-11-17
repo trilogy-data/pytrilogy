@@ -350,7 +350,9 @@ FOUND_SEEDS_499 = [
     58788, 59509, 59635,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1)
-OPEN: dict[int, str] = {}
+OPEN: dict[int, str] = {
+    404253: "FINAL reads a filtered column off a side its merge does not join",
+}
 # seeds 0.3.500 fixed (each wrong on main)
 FOUND_SEEDS_500 = [1117, 30670]
 # seeds 0.3.501 fixed (each wrong or raising on main, 1554 and 31946 unparenthesized)
@@ -388,6 +390,9 @@ FOUND_SEEDS_509 = [273853, 304584, 310634]
 # with the unfiltered one (62069); a keyless INNER join kept in both
 # orientations (96191); a hoisted join mapping a column its CTE hides (153508)
 FOUND_SEEDS_510 = [356401, 62069, 96191, 153508]
+# 0.3.511: a WHERE atom applied above a summary's re-summed counts (390302);
+# a HAVING re-summing a stored sum once per tree of a finer side (430944)
+FOUND_SEEDS_511 = [390302, 430944]
 
 
 def _seed(seed: int):
@@ -420,6 +425,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_508,
             *FOUND_SEEDS_509,
             *FOUND_SEEDS_510,
+            *FOUND_SEEDS_511,
             *OPEN,
             8920,
         )

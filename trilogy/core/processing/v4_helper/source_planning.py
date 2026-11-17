@@ -87,6 +87,7 @@ from trilogy.core.processing.v4_helper.condition_injection import condition_row_
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.functional_dependency import strict_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.core.processing.v4_helper.models import pairing_keys
 from trilogy.core.processing.v4_helper.network_build import (
     absorbs_null,
     build_source_network,
@@ -2504,6 +2505,35 @@ def _filters_a_partial_derivation(request: SourceRequest, node: StrategyNode) ->
         c.address for c in condition_row_args(request.conditions) if absorbs_null(c)
     }
     return any(c.address in args for c in node.partial_concepts)
+
+
+def filters_above_a_resum(
+    conditions: BuildWhereClause, node: StrategyNode, environment: BuildEnvironment
+) -> bool:
+    """The WHERE reads a column that splits the groups `node` already re-summed
+    a summary's partials to (`city = 'B'` over counts summed by species):
+    filtered above, each kept group still counts the rows the WHERE rejects
+    (`Rollup.filter_above_resum_keeps_rejected`)."""
+    # a gate splits groups by its own grain; a total (`by *`) splits none
+    args = frozenset(
+        address
+        for c in condition_row_args(conditions)
+        for address in (
+            pairing_keys(c.grain.components) if c.is_aggregate else (c.address,)
+        )
+    )
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.parents)
+        if not isinstance(current, GroupNode) and not current.force_group:
+            continue
+        resolved = current.resolve()
+        if resolved.rollup_concepts and not args <= strict_fd_closure(
+            environment, frozenset(resolved.grain.components)
+        ):
+            return True
+    return False
 
 
 def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | None:

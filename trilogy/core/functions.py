@@ -44,7 +44,12 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
 )
-from trilogy.core.models.build import BuildConcept, BuildFunction
+from trilogy.core.models.build import (
+    BuildBetween,
+    BuildComparison,
+    BuildConcept,
+    BuildFunction,
+)
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
     ArrayType,
@@ -1428,6 +1433,14 @@ def propagates_argument_nulls(concept: "BuildConcept") -> bool:
     if concept.derivation != Derivation.BASIC:
         return False
     lineage = concept.lineage
+    # a comparison of a NULL is NULL (`height > 2`); only `is [not] null` is not
+    if isinstance(lineage, BuildComparison):
+        return lineage.operator not in (
+            ComparisonOperator.IS,
+            ComparisonOperator.IS_NOT,
+        )
+    if isinstance(lineage, BuildBetween):
+        return True
     if not isinstance(lineage, BuildFunction):
         return False
     return lineage.operator not in NULL_SUPPRESSING_FUNCTIONS

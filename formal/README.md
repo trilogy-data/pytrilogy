@@ -2195,6 +2195,79 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     nothing wrong, raising or invalid. On main, 356401 is wrong in the new
     range and 62069, 96191 and 153508 are wrong, raise or render invalid SQL
     below it.
+- **A third oracle family, and the 390k-450k sweep** (0.3.511). The
+  `expressions` family (`tests/discovery/test_oracle_expressions_laws.py`)
+  writes what the first two never do: arithmetic over aggregates at one or
+  two grains (`sum(height) / count(tree_id) by *`), an aggregate of a row
+  expression, a property or derived value as a group key (`tag`, `height > 2
+  as big`), and a totally ordered `order by ... limit`. On main 94 of its
+  first 6,000 seeds are wrong, raise or render invalid SQL; the two older
+  families hold 4 more in seeds 390,000-450,000:
+  - `count(tree_id) + 1` is computed off its group's rows, and no row of a
+    group reaches a column the group did not output. The join plan said the
+    value could be widened to `tree_form`, which its species determines, and
+    paired it with a `by city, tree_form` value on both keys; the built
+    sides joined on `city` alone, or on nothing
+    (`SelectGrain.value_over_group_holds_no_finer_key`,
+    `value_over_group_bridged_exact`). A BASIC over grouped rows alone
+    carries what they output, is a group's side when blends are counted, and
+    the row stream holding both keys bridges it. A group at its input rows'
+    own grain (`sum(height + 1)` by `tree_id`) is those rows, and still
+    widens.
+  - A bridge elected to key a pairing, not to join islands, was joined only
+    at FINAL. `max(height) by city, tree_form * count(tree_id)` at `tree_id`
+    merges its two inputs below FINAL, where the bridge was skipped because
+    they already shared `city`
+    (`SelectGrain.keying_bridge_joined_whatever_the_islands`). A BASIC's
+    merge now keeps its keying bridges; an aggregate's does not, since a
+    bridge joined whatever the islands repeats rows it would count.
+  - The all-rows marker in a side's identity (`count(tree_id) / count(tree_id)
+    by *`) was read as a key no bridge pairs on and no pairing determines, so
+    the bridge was never elected and a lookup was a blend. A side grained by
+    a value another side supplies (`v1` beside `tree_id`) is bridged on the
+    keys that determine it.
+  - A value at `(city, species)` over one input by species and one by city,
+    tree_form paired them on `tree_form`: `(B, Quercus)`, a pair no tree has,
+    came back (`SelectGrain.blend_under_a_finer_reader_invents_pairs`). A
+    blend both sides of which the reader's grain determines is underkeyed.
+  - `height > 2` is NULL where the height is. A comparison was read as never
+    NULL, so a re-sum joined back on the derived key with a plain `=` and the
+    NULL group's rows left a `by *` total
+    (`SelectGrain.null_key_group_is_a_group`). A comparison or `between` of
+    a nullable argument is nullable; `is [not] null` is not.
+  - `select tree_id, sum(height + 1) * 10` rendered `height + 1 * 10`: an
+    aggregate of one row is its argument, written bare into the expression
+    reading it (`Scalars.bare_argument_reassociates`,
+    `collapsed_argument_exact`). The collapsed argument is parenthesized.
+  - Off the summary, a value over a partial (`max(height) by * - max(height)`
+    by a derived form, `count(tree_id) * 10`) was computed on the summary's
+    rows, one value per species, and a dedup kept each
+    (`Rollup.value_off_a_partial_is_per_summary_row`). The partial is
+    re-summed to its own grain before a BASIC reads it. This also plans the
+    two shapes #929 left raising (`select g, level, scaled`).
+  - A WHERE atom finer than a re-sum was applied above it: `select
+    min(count(tree_id) by tree_form), max(height) where city = 'B' and
+    species = 'Acer'` summed the stored counts by species, then joined the
+    summary back to apply `city = 'B'` (first 446174, spellings 390302;
+    `Rollup.filter_above_resum_keeps_rejected`, `filter_below_resum_exact`).
+    The root fallback that filters above an unconditioned source declines
+    when that source re-summed partials a row atom, or a gate's grain,
+    splits; the rows answer. A total (`by *`) splits nothing and still reads
+    the summary.
+  - A HAVING `sum(height) by city, tree_form` re-summed the stored sums after
+    FINAL joined them to a per-tree side on `(city, species)`: each partial
+    counted once per tree (spellings 430944;
+    `Rollup.resum_beside_finer_rows_multiplies`). A row stream finer than the
+    partials' rows is taken once per row of theirs first.
+  - A HAVING on a value computed off a re-summed partial (`count(tree_id) +
+    min(height) by city, tree_form` off the summary, `having v1 <= 1`) was
+    rendered in the WHERE of the CTE that re-sums it, which DuckDB rejects.
+    An atom reading a value computed there off a rollup carrier is a HAVING
+    atom, as one reading the carrier already was.
+  - A/B: see the PR for the sweep totals. Left open (`OPEN` in the two
+    suites): a value over a stored count beside a `by *` total off the
+    summary (2171, 4244, wrong); a gate and a row atom under a derived key
+    (3102, 4180, 5715, 5780, raise); spellings 404253 (invalid SQL).
 
 ## Limits
 

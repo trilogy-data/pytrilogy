@@ -1,8 +1,9 @@
 # Oracle sweep
 
 Runs the random selects of `tests/discovery/test_oracle_sweep_laws.py`
-(`--family first`) and `test_oracle_spellings_laws.py` (`--family spellings`)
-past the seeds the suites commit, checks each against the raw-row oracle, and
+(`--family first`), `test_oracle_spellings_laws.py` (`--family spellings`) and
+`test_oracle_expressions_laws.py` (`--family expressions`) past the seeds the
+suites commit, checks each against the raw-row oracle, and
 records what the plan cost. It replaces the scratchpad scripts each
 formalization round rewrote (`effsweep.py` and its kin).
 
@@ -38,7 +39,9 @@ finishes, so:
 - two sweeps cannot write one side's records: the second exits at once.
 
 `--no-cache` runs every seed again. The cache key also holds the generator
-files, `RECORD_VERSION` and the built native extension, which every side
+files (the two older families' and the model's for every family, plus a
+newer family's own: editing a seed list in one of the older suites invalidates
+every family's records, so edit them before a round's sweeps), `RECORD_VERSION` and the built native extension, which every side
 shares: a ref's Python runs on the working tree's Rust, so in a round that
 changes the Rust search the base side is not quite main.
 

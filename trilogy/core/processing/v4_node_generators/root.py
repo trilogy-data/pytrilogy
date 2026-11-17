@@ -26,7 +26,11 @@ from trilogy.core.processing.v4_helper.condition_injection import (
 )
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.projection import lineage_existence_only
-from trilogy.core.processing.v4_helper.source_planning import SourceRequest, plan_source
+from trilogy.core.processing.v4_helper.source_planning import (
+    SourceRequest,
+    filters_above_a_resum,
+    plan_source,
+)
 from trilogy.core.processing.v4_helper.staged_where import (
     concept_is_cross_row,
     hosting_stage_index,
@@ -522,7 +526,7 @@ def gen_root(
             if node is not None:
                 node = _derive_join_keys(node, derived, environment)
                 fallback_outputs = fallback_outputs + derived
-        if node is None:
+        if node is None or filters_above_a_resum(conditions, node, environment):
             return None
         sources, planned = _resolve_root_condition_sources(
             node,

@@ -213,4 +213,22 @@ def baseFirst (x b : Nat) : Nat := log b x
 
 theorem base_first_misreads : log 100 10 = 2 ∧ baseFirst 100 10 = 0 := by decide
 
+/-! ## An aggregate of one row is its argument, as one operand
+
+`select tree_id, sum(height + 1) * 10`: at the row's own grain the sum is its
+argument, and the rendering wrote the argument bare. `height + 1 * 10` is
+`height + 10` (`bare_argument_reassociates`); parenthesized, it is the value
+(`collapsed_argument_exact`). -/
+
+/-- A sum over one row. -/
+def sumOne (x : Int) : Int := [x].sum
+
+theorem collapsed_argument_exact (h k : Int) : sumOne (h + 1) * k = (h + 1) * k := by
+  simp [sumOne]
+
+theorem bare_argument_reassociates :
+    sumOne (3 + 1) * 10 = 40 ∧ (3 : Int) + 1 * 10 = 13 ∧
+      (10 : Int) - sumOne (3 - 1) = 8 ∧ (10 : Int) - 3 - 1 = 6 := by
+  decide
+
 end Trilogy.Scalars

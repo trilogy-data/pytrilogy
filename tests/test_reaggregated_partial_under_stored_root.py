@@ -7,7 +7,6 @@ election together (#926)."""
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import elect_partials
 from trilogy.core.processing.concept_strategies_v4 import _nested_row_grains
@@ -66,24 +65,9 @@ def _rows(ex, query: str) -> list[tuple]:
     ]
 
 
-# recomputing `level` beside a by-region aggregate plans a keyless join, with
-# or without the stored table (#929)
-KEYLESS_RECOMPUTE = pytest.mark.xfail(raises=UnresolvableQueryException, strict=True)
-
-
-def _cases():
-    for query in QUERIES:
-        for agg in AGGREGATES:
-            for coarse in COARSE:
-                marks = (
-                    [KEYLESS_RECOMPUTE]
-                    if coarse == "region" and "select g, level," in query
-                    else []
-                )
-                yield pytest.param(query, agg, coarse, marks=marks)
-
-
-@pytest.mark.parametrize("query, agg, coarse", list(_cases()))
+@pytest.mark.parametrize("coarse", COARSE)
+@pytest.mark.parametrize("agg", AGGREGATES)
+@pytest.mark.parametrize("query", QUERIES)
 def test_stored_root_over_rolled_partial_matches_recompute(
     query: str, agg: str, coarse: str
 ):
@@ -93,6 +77,24 @@ def test_stored_root_over_rolled_partial_matches_recompute(
         recomputed = _rows(ex, query)
     assert stored == recomputed
     assert stored
+
+
+@pytest.mark.parametrize("agg", AGGREGATES)
+@pytest.mark.parametrize("stored", [True, False])
+def test_by_region_value_beside_a_by_group_value(agg: str, stored: bool):
+    """#929: `scaled` is a value of the region over an aggregate by it, `level`
+    one of the group: the plan claimed the first could be widened to `g` and
+    joined them on nothing."""
+    ex = _executor(agg, "region")
+    want = ex.execute_raw_sql(f"""
+        with p as (select g, {agg}(x) as part from rows group by 1),
+        w as (select region, {agg}(x) as whole from rows join groups using (g)
+              group by 1)
+        select p.g, case when part > 8 then 'g' else 'all' end, whole * 2
+        from p join groups using (g) join w using (region) order by 1""").fetchall()
+    query = "select g, level, scaled order by g asc;"
+    with hidden_datasources(ex.environment, [] if stored else ["levels"]):
+        assert _rows(ex, query) == [(g, lv, round(float(v), 6)) for g, lv, v in want]
 
 
 @pytest.mark.parametrize("coarse", COARSE)

@@ -2914,7 +2914,7 @@ def _carry_planned_keys(
                 and concept.derivation == Derivation.ROOT
                 and not parent.force_group
             ):
-                _widen_scan_chain(parent, concept)
+                _widen_scan_chain(parent, concept, environment=environment)
 
 
 def _project_planned_keys(
@@ -3678,6 +3678,7 @@ def _pre_merge_parents(
     origin: dict[int, str] | None = None,
     candidates: Sequence[str] = (),
     bridges: Sequence[str] = (),
+    keying: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -3742,7 +3743,10 @@ def _pre_merge_parents(
             parents,
             [(_planned_side(built, gid), plan.keys_for(gid)) for gid in plan.extras],
             environment,
-            planned=_planned_side_keys(parents, origin, plan) if origin else (),
+            frozenset(
+                id(_planned_side(built, gid)) for gid in plan.extras if gid in keying
+            ),
+            _planned_side_keys(parents, origin, plan) if origin else (),
         )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
@@ -3920,18 +3924,22 @@ def _plan_group_bridges(
             continue
         cover = _side_cover(attrs, sides, set(attrs[gid].input_concepts), environment)
         demands = _input_contract_carry_demands(attrs[gid])
-        attrs[gid].bridges = tuple(
-            elect_bridges(
-                group_graph,
-                attrs,
-                cover,
-                _bridge_candidates(group_graph, planned, gid),
-                [c for concepts in cover.values() for c in concepts],
-                environment,
-                authored,
-                contracted={side: demands.get(side, frozenset()) for side in sides},
-            ).extras
+        bridged = elect_bridges(
+            group_graph,
+            attrs,
+            cover,
+            _bridge_candidates(group_graph, planned, gid),
+            [c for concepts in cover.values() for c in concepts],
+            environment,
+            authored,
+            contracted={side: demands.get(side, frozenset()) for side in sides},
+            reader_grain=pairing_keys(attrs[gid].grain_components),
         )
+        attrs[gid].bridges = tuple(bridged.extras)
+        # joined whatever the islands, a bridge repeats a row its keys do not
+        # identify: a BASIC's repeats dedup away, an aggregate would count them
+        if attrs[gid].derivation == Derivation.BASIC:
+            attrs[gid].keying_bridges = bridged.keying
     shape_through_bridges(group_graph, group_edges, attrs, planned)
 
 
@@ -5723,6 +5731,49 @@ def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) 
     return False
 
 
+def _finish_read_partials(
+    node: StrategyNode,
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    environment: BuildEnvironment,
+) -> StrategyNode:
+    """A BASIC over a summary's partial (`max(x) by * - max(x)` by form, off
+    per-species maxima) reads the finished value: the rows are re-summed to
+    the partial's own grain first. Computed off the partial, it is one value
+    per summary row (`Rollup.value_off_a_partial_is_per_summary_row`)."""
+    resolved = node.resolve()
+    held = {o.address for o in node.output_concepts}
+    # what the node already computed rides through as itself
+    read = {
+        arg.address
+        for c in outputs
+        if c.address in primary_addrs - held and c.lineage is not None
+        for arg in c.lineage.concept_arguments
+    }
+    pending = [
+        c
+        for c in pending_rollups(resolved.rollup_concepts, resolved.grain)
+        if c.address in read
+    ]
+    grains = {pairing_keys(c.grain.components) for c in pending}
+    if len(grains) != 1 or not (keys := next(iter(grains))) or not keys <= held:
+        return node
+    closure = strict_fd_closure(environment, keys)
+    partials = {c.address for c in pending}
+    targets = [
+        o
+        for o in node.output_concepts
+        if o.address in closure
+        or o.address in partials
+        or o.granularity == Granularity.SINGLE_ROW
+    ]
+    if not (read | {c.address for c in outputs if c.address in held}) <= {
+        o.address for o in targets
+    }:
+        return node
+    return _dedup_to_targets(node.copy(), targets, environment)
+
+
 def _dedup_to_targets(
     node: StrategyNode, targets: list[BuildConcept], environment: BuildEnvironment
 ) -> StrategyNode:
@@ -6848,6 +6899,13 @@ def _assemble_final_node(
             environment,
         )
         parents = _join_gate_hosts(parents, gate_keys, extras, built)
+    parents = _dedup_beside_resummed_gates(
+        parents,
+        arg_nodes,
+        filter_only_addrs | mandatory_addresses,
+        mandatory_addresses,
+        environment,
+    )
     # a WHERE argument's producer is a lookup onto the sides' rows
     lookups = frozenset(id(node) for node in arg_nodes if node not in parents)
     parents = parents + arg_nodes
@@ -6933,6 +6991,49 @@ def _assemble_final_node(
         final_contract,
         environment,
     )
+
+
+def _dedup_beside_resummed_gates(
+    parents: list[StrategyNode],
+    arg_nodes: list[StrategyNode],
+    gates: set[str],
+    mandatory_addresses: set[str],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """A gate the FINAL re-sums off a summary's partials (`having sum(x) by
+    city, form` off per-species sums) counts each partial once per merged
+    row: a row stream finer than the partials' rows is taken once per row of
+    theirs first (`Rollup.resum_beside_finer_rows_multiplies`)."""
+    rows: set[str] = set()
+    for node in (*parents, *arg_nodes):
+        resolved = node.resolve()
+        if any(
+            c.address in gates
+            for c in pending_rollups(resolved.rollup_concepts, resolved.grain)
+        ):
+            rows |= set(resolved.grain.components)
+    if not rows:
+        return parents
+    closure = strict_fd_closure(environment, frozenset(rows))
+    out: list[StrategyNode] = []
+    for parent in parents:
+        kept = [
+            o
+            for o in parent.usable_outputs
+            if o.address in closure or o.granularity == Granularity.SINGLE_ROW
+        ]
+        held = {o.address for o in parent.usable_outputs}
+        if (
+            isinstance(parent, GroupNode)
+            or parent.force_group
+            or _resolved_grain(parent) <= closure
+            or not kept
+            or not held & mandatory_addresses <= {o.address for o in kept}
+        ):
+            out.append(parent)
+            continue
+        out.append(_forced_dedup(parent, kept, environment, closure))
+    return out
 
 
 def _at_declared_identity(
@@ -7331,6 +7432,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     origin=origin,
                     candidates=candidates,
                     bridges=a.bridges,
+                    keying=a.keying_bridges,
                 )
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
@@ -7373,6 +7475,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             origin=origin,
             candidates=candidates,
             bridges=a.bridges,
+            keying=a.keying_bridges,
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
@@ -7407,6 +7510,10 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     ):
         parents = [_filtered_rows(parents, injected, environment)]
         condition_for_generator = None
+    if derivation == Derivation.BASIC and len(parents) == 1:
+        parents = [
+            _finish_read_partials(parents[0], outputs, primary_addrs, environment)
+        ]
     if derivation == Derivation.AGGREGATE and parents:
         parents = _project_basic_aggregate_inputs(
             outputs,

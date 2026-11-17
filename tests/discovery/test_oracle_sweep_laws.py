@@ -336,11 +336,20 @@ FOUND_SEEDS_503 = [5328, 74021, 84194]
 # seeds 0.3.504 fixed: a summary-rolled root split from the WHERE's columns read
 # every row (93841)
 FOUND_SEEDS_504 = [93841]
+# seeds 0.3.511 fixed: a WHERE atom applied above a summary's re-summed counts
+FOUND_SEEDS_511 = [446174]
 
 
 @pytest.mark.parametrize("model", ["base", "summary"])
 @pytest.mark.parametrize(
-    "seed", [*range(SEEDS), *FOUND_SEEDS, *FOUND_SEEDS_503, *FOUND_SEEDS_504]
+    "seed",
+    [
+        *range(SEEDS),
+        *FOUND_SEEDS,
+        *FOUND_SEEDS_503,
+        *FOUND_SEEDS_504,
+        *FOUND_SEEDS_511,
+    ],
 )
 def test_select_matches_raw_row_oracle(seed: int, model: str):
     query, expected = shape(seed)
