@@ -4165,6 +4165,7 @@ def _apply_input_contracts(
     attrs: dict[str, GroupAttrs],
     group_attrs: GroupAttrs,
     needed: set[str],
+    rendered: Mapping[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
     parent_group_ids = {parent.group_id for parent in parent_builds}
@@ -4180,6 +4181,7 @@ def _apply_input_contracts(
         needed,
         projection_grain_components,
         environment,
+        [set(rendered.get(parent.group_id, frozenset())) for parent in parent_builds],
     )
 
 
@@ -4220,6 +4222,7 @@ def _satisfy_parent_projection_contract(
     needed: set[str],
     projection_grain_components: frozenset[str],
     environment: BuildEnvironment,
+    supplied: list[set[str]],
 ) -> list[StrategyNode]:
     """Physically satisfy a declared parent projection-grain contract.
 
@@ -4228,6 +4231,8 @@ def _satisfy_parent_projection_contract(
     already-shaped sibling; it must not infer a target grain from sibling
     outputs or group attrs. `shaped[i]` says parent `i`'s rows are already
     shaped: it is never projected, and with none shaped nothing is.
+    `supplied[i]` is what parent `i` supplies its siblings: in a per-group
+    merge, what its group renders (`renders`), not what its node outputs.
     """
     if len(parents) <= 1 or not projection_grain_components:
         return parents
@@ -4241,17 +4246,6 @@ def _satisfy_parent_projection_contract(
     if not any(shaped):
         return parents
 
-    # Two different questions, two different sets. "What is available TO this
-    # parent" is its own parents' outputs (`parent_output_addresses`): that is
-    # what `parent_needed` asks, and a leaf scan's empty answer keeps leaf
-    # scans out of this projection entirely. "What does a SIBLING supply to
-    # the merge" is that sibling's own projection: a WINDOW sibling READS
-    # `event_time` and emits only `lag(event_time)`, so crediting it with its
-    # inputs would strip `event_time` off the dimension parent and leave the
-    # consumer computing `event_time - prior_event_time` with no source.
-    own_outputs_by_parent = [
-        {output.address for output in parent.usable_outputs} for parent in parents
-    ]
     # A leaf scan reports no inputs, which keeps it whole: its rows are the
     # sibling's join partner. Beside only one-row constants (a `by *` total,
     # joined on 1=1) nothing pairs on its rows, so it is projected like a
@@ -4261,129 +4255,156 @@ def _satisfy_parent_projection_contract(
         for parent, is_shaped in zip(parents, shaped)
         if is_shaped
     )
-    outputs_by_parent = [
-        (
-            own
-            if constants_only and not parent.parents
-            else parent_output_addresses(parent)
-        )
-        for parent, own in zip(parents, own_outputs_by_parent)
-    ]
     projected: list[StrategyNode] = []
     for idx, parent in enumerate(parents):
         if shaped[idx]:
             projected.append(parent)
             continue
-        parent_needed = outputs_by_parent[idx] & needed
-        other_outputs = set().union(
-            *(outputs for j, outputs in enumerate(own_outputs_by_parent) if j != idx)
+        # What is available TO this parent is its own parents' outputs, not
+        # what a sibling supplies: a WINDOW sibling READS `event_time` and
+        # supplies only `lag(event_time)`, so crediting it with its inputs
+        # would strip `event_time` off the dimension parent.
+        own = {output.address for output in parent.usable_outputs}
+        decision = _projection_for(
+            parent,
+            needed,
+            projection_grain_components,
+            environment,
+            own if constants_only and not parent.parents else None,
+            set().union(*(held for j, held in enumerate(supplied) if j != idx)),
         )
-        fd_candidates = {
-            addr
-            for addr in parent_needed
-            if (c := _concept_at(environment, addr)) is not None
-            and _fd_at_grain(c, projection_grain_components, environment)
-        }
-        # A sibling supplies a grain key, and an attribute this parent only
-        # reads (#972: the species' fit beside a class computed off the trees):
-        # neither is this parent's to project, and a projection to a column it
-        # does not output cannot render.
-        fd_needed = {
-            addr
-            for addr in fd_candidates
-            if addr not in other_outputs
-            or (
-                addr not in projection_grain_components
-                and addr in own_outputs_by_parent[idx]
-            )
-        }
-        non_fd_needed = parent_needed - fd_candidates
-        concepts = _concepts_at(environment, sorted(fd_needed))
-        if non_fd_needed:
+        if decision is None:
             projected.append(parent)
-            continue
-        # `parent_needed` is measured off the parent's INPUTS, so a value the
-        # parent computes itself (a BASIC sibling's `revenue`, a date
-        # projection) is invisible to it, and the projection below would strip
-        # it, leaving the consuming aggregate with no source for that output.
-        # Carry those through. Restricted to FD-at-grain so the projection's
-        # row count is unchanged, and to what no sibling parent already
-        # supplies, so this never re-shapes a plain dimension re-join. One
-        # that is NOT FD at the grain (`quantity as q` beside `count(...) by
-        # item_desc`) cannot be projected to it at all: the parent stays as
-        # built, like an input in `non_fd_needed`.
-        own_needed = {
-            output.address
-            for output in parent.usable_outputs
-            if output.address in needed
-            and output.address not in parent_needed
-            and output.address not in other_outputs
-        }
-        carry = {
-            addr
-            for addr in own_needed
-            if (c := _concept_at(environment, addr)) is not None
-            and _fd_at_grain(c, projection_grain_components, environment)
-        }
-        # a value computed over finer rows, FD at the grain, is projected to
-        # it (a class by species off the trees, #972); a leaf scan reports no
-        # inputs and stays whole (see above), and rows at the grain already
-        # need no projection
-        if own_needed - carry or not (
-            concepts
-            or (
-                carry
-                and parent.parents
-                and _rows_finer_than(parent, projection_grain_components, environment)
-            )
-        ):
-            projected.append(parent)
-            continue
-        concepts.extend(_concepts_at(environment, sorted(carry)))
-        # When the dimension's projected grain (fd_needed) shares NO key with the
-        # barrier sibling, the post-projection merge has nothing to join on and
-        # cross-joins ON 1=1: the bridge between the two is a projection-grain
-        # key the sibling outputs but fd_needed dropped (an aggregate's
-        # input-grain key, `ride_date` linking `start_station.id` to the inner
-        # `daily_rides` aggregate). Keep that bridge by grouping to the combined
-        # grain, a per-(dim,key) dedup CTE. Guarded on disjointness so the
-        # normal case (a dimension that already shares its keys with the
-        # aggregate) is left to `_wrap_for_grain` untouched. The bridge may only
-        # be DERIVABLE here (the dimension carries `ride_start_time`, from which
-        # `ride_date` projects), so test satisfiability.
-        join_keys = {
-            addr
-            for addr in projection_grain_components
-            if addr not in fd_needed
-            and addr in other_outputs
-            and (c := _concept_at(environment, addr)) is not None
-            and concept_satisfiable(c, outputs_by_parent[idx])
-        }
-        if join_keys and fd_needed.isdisjoint(other_outputs):
-            # The GroupNode reads from `parent`, so its grain may only include
-            # concepts the parent actually outputs. `fd_needed` is derived from
-            # what is available to the parent (its own parents' outputs) and can
-            # contain an FD attribute the parent drops, e.g. a row key that is
-            # FD-determined by the row grain but lives only as a WHERE filter
-            # applied at the scan, never as a column here. Grouping on it would
-            # fail input validation; keep only real outputs.
-            parent_outputs = {o.address for o in parent.usable_outputs}
-            grain_concepts = _concepts_at(
-                environment, sorted((fd_needed | join_keys | carry) & parent_outputs)
-            )
+        elif decision.regroup:
             projected.append(
                 GroupNode(
-                    output_concepts=grain_concepts,
-                    input_concepts=grain_concepts,
+                    output_concepts=decision.concepts,
+                    input_concepts=decision.concepts,
                     environment=environment,
                     parents=[parent],
                 )
             )
-            continue
-        projected.extend(
-            _wrap_for_grain(parent, concepts, environment, projection_grain_components)
-        )
+        else:
+            projected.extend(
+                _wrap_for_grain(
+                    parent, decision.concepts, environment, projection_grain_components
+                )
+            )
     return projected
+
+
+@dataclass(frozen=True)
+class _ParentProjection:
+    concepts: list[BuildConcept]
+    # group to the concepts themselves, keeping a bridge key, rather than wrap
+    regroup: bool = False
+
+
+def _projection_for(
+    parent: StrategyNode,
+    needed: set[str],
+    projection_grain_components: frozenset[str],
+    environment: BuildEnvironment,
+    available: set[str] | None,
+    other_outputs: set[str],
+) -> _ParentProjection | None:
+    """How one unshaped parent is projected to the contract grain beside
+    siblings supplying `other_outputs`; None keeps it as built. `available`
+    overrides what the parent's own parents offer it."""
+    own_outputs = {output.address for output in parent.usable_outputs}
+    if available is None:
+        available = parent_output_addresses(parent)
+    parent_needed = available & needed
+    fd_candidates = {
+        addr
+        for addr in parent_needed
+        if (c := _concept_at(environment, addr)) is not None
+        and _fd_at_grain(c, projection_grain_components, environment)
+    }
+    # A sibling supplies a grain key, and an attribute this parent only
+    # reads (#972: the species' fit beside a class computed off the trees):
+    # neither is this parent's to project, and a projection to a column it
+    # does not output cannot render.
+    fd_needed = {
+        addr
+        for addr in fd_candidates
+        if addr not in other_outputs
+        or (addr not in projection_grain_components and addr in own_outputs)
+    }
+    if parent_needed - fd_candidates:
+        return None
+    concepts = _concepts_at(environment, sorted(fd_needed))
+    # `parent_needed` is measured off the parent's INPUTS, so a value the
+    # parent computes itself (a BASIC sibling's `revenue`, a date
+    # projection) is invisible to it, and the projection below would strip
+    # it, leaving the consuming aggregate with no source for that output.
+    # Carry those through. Restricted to FD-at-grain so the projection's
+    # row count is unchanged, and to what no sibling parent already
+    # supplies, so this never re-shapes a plain dimension re-join. One
+    # that is NOT FD at the grain (`quantity as q` beside `count(...) by
+    # item_desc`) cannot be projected to it at all: the parent stays as
+    # built, like an input in `non_fd_needed`.
+    own_needed = {
+        address
+        for address in own_outputs
+        if address in needed
+        and address not in parent_needed
+        and address not in other_outputs
+    }
+    carry = {
+        addr
+        for addr in own_needed
+        if (c := _concept_at(environment, addr)) is not None
+        and _fd_at_grain(c, projection_grain_components, environment)
+    }
+    # a value computed over finer rows, FD at the grain, is projected to
+    # it (a class by species off the trees, #972); a leaf scan reports no
+    # inputs and stays whole (see above), and rows at the grain already
+    # need no projection
+    if own_needed - carry or not (
+        concepts
+        or (
+            carry
+            and parent.parents
+            and _rows_finer_than(parent, projection_grain_components, environment)
+        )
+    ):
+        return None
+    concepts.extend(_concepts_at(environment, sorted(carry)))
+    # When the dimension's projected grain (fd_needed) shares NO key with the
+    # barrier sibling, the post-projection merge has nothing to join on and
+    # cross-joins ON 1=1: the bridge between the two is a projection-grain
+    # key the sibling outputs but fd_needed dropped (an aggregate's
+    # input-grain key, `ride_date` linking `start_station.id` to the inner
+    # `daily_rides` aggregate). Keep that bridge by grouping to the combined
+    # grain, a per-(dim,key) dedup CTE. Guarded on disjointness so the
+    # normal case (a dimension that already shares its keys with the
+    # aggregate) is left to `_wrap_for_grain` untouched. The bridge may only
+    # be DERIVABLE here (the dimension carries `ride_start_time`, from which
+    # `ride_date` projects), so test satisfiability.
+    join_keys = {
+        addr
+        for addr in projection_grain_components
+        if addr not in fd_needed
+        and addr in other_outputs
+        and (c := _concept_at(environment, addr)) is not None
+        and concept_satisfiable(c, available)
+    }
+    if join_keys and fd_needed.isdisjoint(other_outputs):
+        # The GroupNode reads from `parent`, so its grain may only include
+        # concepts the parent actually outputs. `fd_needed` is derived from
+        # what is available to the parent (its own parents' outputs) and can
+        # contain an FD attribute the parent drops, e.g. a row key that is
+        # FD-determined by the row grain but lives only as a WHERE filter
+        # applied at the scan, never as a column here. Grouping on it would
+        # fail input validation; keep only real outputs.
+        return _ParentProjection(
+            _concepts_at(
+                environment, sorted((fd_needed | join_keys | carry) & own_outputs)
+            ),
+            regroup=True,
+        )
+    return _ParentProjection(concepts)
 
 
 def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[str]:
@@ -6861,6 +6882,9 @@ def _assemble_final_node(
         final_needed | filter_only_addrs,
         final_merge_grain,
         environment,
+        # as built: stated (`_side_columns`), a side already holds the keys
+        # `_carry_planned_keys` widens it to only after this projection
+        [{o.address for o in p.usable_outputs} for p in parents],
     )
     # what each side holds, as stated (`_side_columns`): a side the FINAL
     # wrapped or projected holds what that projection kept, else what its
@@ -7486,7 +7510,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
             for parent in parent_builds
         )
-        parents = _apply_input_contracts(parent_builds, attrs, a, needed, environment)
+        parents = _apply_input_contracts(
+            parent_builds, attrs, a, needed, ctx.folds.rendered, environment
+        )
         narrowed = {
             id(parent): frozenset(o.address for o in parent.usable_outputs)
             for parent, build in zip(parents, parent_builds)
