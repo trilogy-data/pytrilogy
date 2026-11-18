@@ -1,0 +1,96 @@
+"""The reduced shapes of the expressions family's 200,000-350,000 sweep and the
+leads it closed (0.3.516).
+
+- A value over `sum(height) by species` and `count(tree_id) by city`, under a
+  WHERE atom reading both grains: each aggregate group hosting the atom was
+  said to hold the other grain's key, the merge paired the two on it, and the
+  join rendered ON 1=1, inventing the city-species pairs no tree holds.
+- `min(height) by city, species` beside `max(height) by species` in an OR
+  with a row atom, under a key derived from a property of `species`: the atom
+  was hosted where the min was never joined, and the min was rendered at the
+  host's `species` grain.
+- An expression of constants (`1 - 10`) beside two keys and a mixed OR gate
+  raised a keyless join: it was planned at no grain, where `1` takes the
+  select's.
+- An OR of gates at `city, tree_form` and `species` beside `city, species`
+  raised a missing parent (the 78245 lead), on the same false claim as the
+  first shape.
+
+Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
+5, NULL, 7, 2; tags x, y, x, x, y, x; forms broadleaf x4 with b1, NULL for
+Ulmus, linden for b2)."""
+
+import pytest
+
+from tests.discovery.test_oracle_sweep_laws import executor, normalize
+
+CASES = [
+    # expressions 205085, reduced
+    (
+        (
+            "select city, species, sum(height) by species / count(tree_id) by city"
+            " as v0 where species != 'Tilia' or max(height) by species ="
+            " count(tree_id) by city;"
+        ),
+        [
+            ("A", "Acer", 2.5),
+            ("A", "Quercus", 1.25),
+            ("A", "Ulmus", None),
+            ("B", "Acer", 5),
+            ("B", "Tilia", 1),
+        ],
+    ),
+    # expressions 246819 (and 333909), reduced
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc"
+            " where height = 3 or min(height) by city, species = max(height) by"
+            " species;"
+        ),
+        [("b",), ("o",)],
+    ),
+    # expressions 15826 and 89514, reduced
+    (
+        (
+            "select city, species, 1 - 10 as v0 where height = 3 or"
+            " count(tree_id) by city <= 2;"
+        ),
+        [("A", "Acer", -9), ("B", "Acer", -9), ("B", "Tilia", -9)],
+    ),
+    # expressions 78245, its WHERE loosened so that it keeps rows
+    (
+        (
+            "select city, species, count_distinct(tag) by species /"
+            " count(tree_id) by city, tree_form as v0 where (sum(height) by city,"
+            " tree_form >= 5 and sum(height) by species >= min(height) by *) or"
+            " (tree_form = 'linden' and city = 'B');"
+        ),
+        [
+            ("A", "Acer", 2 / 3),
+            ("A", "Quercus", 1 / 3),
+            ("B", "Acer", 2),
+            ("B", "Tilia", 1),
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("model", ["base", "summary"])
+@pytest.mark.parametrize("query, expected", CASES)
+def test_reduced_shape(query: str, expected: list[tuple], model: str):
+    ex = executor(model)
+    sql = ex.generate_sql(query)[-1]
+    rows = ex.execute_raw_sql(sql).fetchall()
+    assert normalize(rows) == normalize(expected), sql
+
+
+def test_constant_expression_takes_the_select_grain():
+    ex = executor("base")
+    sql = ex.generate_sql("select city, species, 1 - 10 as v0;")[-1]
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == [
+        ("A", "Acer", -9),
+        ("A", "Quercus", -9),
+        ("A", "Ulmus", -9),
+        ("B", "Acer", -9),
+        ("B", "Tilia", -9),
+    ]

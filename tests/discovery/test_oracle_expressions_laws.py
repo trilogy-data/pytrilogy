@@ -268,13 +268,14 @@ FOUND_SEEDS_515 = [
     17715, 28266, 75390, 139791, 160693, 160820, 176152, 177047, 187270,
     187859, 193139,
 ]  # fmt: skip
+# seeds 0.3.516 fixed (each failed on main): a group holds no column of an
+# atom it only passes through (205085; 78245 raised on the same claim); a ROOT
+# passes on none of its constraint feeders (246819, 333909); an expression of
+# constants is at the select's grain (15826, 89514)
+FOUND_SEEDS_516 = [15826, 78245, 89514, 205085, 246819, 333909]
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
-KEYLESS = "keyless join"
-OPEN: dict[tuple[int, str], str | None] = {
-    **{(s, m): KEYLESS for s in (15826, 89514) for m in ("base", "summary")},
-    **{(78245, m): "missing non-hidden parent" for m in ("base", "summary")},
-}
+OPEN: dict[tuple[int, str], str | None] = {}
 
 
 def cases():
@@ -287,6 +288,7 @@ def cases():
             *FOUND_SEEDS_513,
             *FOUND_SEEDS_514,
             *FOUND_SEEDS_515,
+            *FOUND_SEEDS_516,
             *(s for s, _ in OPEN),
         )
     )
