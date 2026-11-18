@@ -5,6 +5,7 @@ that grain's rows once or carries `tree_id`; it is never joined back on less
 than its own grain, and no CTE repeats a tree."""
 
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,7 @@ from tests.helpers.rows import as_float, executor_for, fetch_rows, widest_cte
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper.group_behaviors import behavior_for
 from trilogy.core.processing.v4_helper.group_graph import GroupFacts, _offered_at_grain
+from trilogy.core.processing.v4_helper.strategy_builder import _side_columns
 
 # tree_id, city, data_source, species, plant_age, height_m, lat
 TREES = [
@@ -302,3 +304,19 @@ def test_final_pairs_a_derived_grain_through_its_producer(executor) -> None:
     sql = executor.generate_sql(query)[-1]
     final = sql[sql.rindex("\nSELECT") :]
     assert '"cell"' in final.split("FROM")[1], sql
+
+
+def test_a_lookup_side_holds_what_is_stated_not_what_its_node_outputs() -> None:
+    side, folded, projected = (SimpleNamespace(parents=[]) for _ in range(3))
+    origin = {id(side): "a", id(folded): "b", id(projected): "c"}
+    rendered = {
+        "a": frozenset({"genus"}),
+        "b": frozenset({"tree_id"}),
+        "c": frozenset({"species", "height_m"}),
+    }
+    assert _side_columns(side, origin, rendered, {}, {id(side): [folded]}) == {
+        "genus",
+        "tree_id",
+    }
+    narrowed = {id(projected): frozenset({"species"})}
+    assert _side_columns(projected, origin, rendered, narrowed, {}) == {"species"}
