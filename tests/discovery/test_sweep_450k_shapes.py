@@ -27,7 +27,6 @@ import pytest
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
 from tests.discovery.test_rollup_resolution_laws import BASE
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.functions import propagates_argument_nulls
 
 FC = "case when tree_form = 'broadleaf' then 'b' else 'o' end as fc"
@@ -182,18 +181,7 @@ KEYLESS = (
 )
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        "base",
-        # the summary's `sum(height) by tree_form` is a peel at tree_form, and
-        # no side holds species beside it (handoff, area 1)
-        pytest.param(
-            "summary",
-            marks=pytest.mark.xfail(strict=True, raises=UnresolvableQueryException),
-        ),
-    ],
-)
+@pytest.mark.parametrize("model", ["base", "summary"])
 def test_value_over_group_beside_its_property(model: str):
     """expressions 6, reduced: the same claim left the two sides keyless."""
     ex = executor(model)
