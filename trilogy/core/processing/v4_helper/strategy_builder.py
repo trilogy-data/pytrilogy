@@ -3487,6 +3487,7 @@ def _pair_inside_padding_streams(
     environment: BuildEnvironment,
     origin: dict[int, str],
     plan: JoinPlan,
+    columns: Callable[[StrategyNode], set[str]],
 ) -> list[StrategyNode]:
     """A grouping contributor holding no region pairs with a stream that
     padded one inside its own merge, there and not at FINAL.
@@ -3496,9 +3497,13 @@ def _pair_inside_padding_streams(
     bucket). FINAL can only keep them apart with a column NULL exactly on the
     padded rows, and the stream need not carry one. Inside the merge the
     padded side's own keys are columns, so the earlier-padding guard
-    (`join_resolution._padding_guards`) applies."""
+    (`join_resolution._padding_guards`) applies.
+
+    `columns` are what each side holds, as stated (`_side_columns`); a
+    stream also holds what it took in."""
     keyspace = environment.span_scope.keyspace
     out = list(parents)
+    held = {id(p): columns(p) for p in parents}
     for stream in parents:
         path = _padding_path(stream)
         if not path or not region_reads(stream):
@@ -3511,7 +3516,7 @@ def _pair_inside_padding_streams(
                 or any(n is other for n in _iter_strategy_nodes(stream))
             ):
                 continue
-            shared = _visible_addresses(other) & _visible_addresses(stream)
+            shared = held[id(other)] & held[id(stream)]
             if not shared or not _pads_a_value_null_group(
                 stream, other, shared, keyspace
             ):
@@ -3519,7 +3524,7 @@ def _pair_inside_padding_streams(
             carried = [
                 o
                 for o in other.output_concepts
-                if o.address in _visible_addresses(other) - _visible_addresses(stream)
+                if o.address in held[id(other)] - held[id(stream)]
             ]
             # the merge reads `other`'s outputs already; the nodes above it
             # dropped them
@@ -3550,6 +3555,7 @@ def _pair_inside_padding_streams(
                 node.add_output_concepts(carried, rebuild=False)
             for node in reversed(path):
                 node.rebuild_cache()
+            held[id(stream)] |= {c.address for c in carried}
             out.remove(other)
     return out
 
@@ -6916,7 +6922,13 @@ def _assemble_final_node(
             for gid in bridged.keying | _sole_partners(plan, contributing)
         ),
     )
-    parents = _pair_inside_padding_streams(parents, environment, origin, plan)
+    parents = _pair_inside_padding_streams(
+        parents,
+        environment,
+        origin,
+        plan,
+        lambda p: _side_columns(p, origin, plan, reaches, narrowed, absorbed),
+    )
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available = _output_addresses(parents)
