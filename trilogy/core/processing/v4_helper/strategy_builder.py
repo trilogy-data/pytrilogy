@@ -7167,10 +7167,13 @@ def _at_declared_identity(
 ) -> StrategyNode:
     """A row stream built off rows finer than the identity its group declares
     (a filter of an item attribute sourced off the sale lines), deduplicated
-    to that identity when an independent sibling exposes the finer row key
-    too: the two would pair on the stream's row key, which no plan states. Its
-    outputs are functions of the identity, so nothing is lost. `identity`
-    holds the keys the plan pairs the stream on: they are no unstated key."""
+    to that identity when an independent sibling's rows are at that finer row
+    key too: paired on the planned keys alone, each of the stream's rows would
+    meet each of the sibling's. Its outputs are functions of the identity, so
+    nothing is lost. `identity` holds the keys the plan pairs the stream on.
+
+    Both reads are of rows, not columns: the resolved grain follows the
+    datasource each scan resolved to, which stage 2 does not choose."""
     if (
         group.derivation in GROUPING_DERIVATIONS
         or group.derivation == Derivation.ROWSET
@@ -7184,16 +7187,16 @@ def _at_declared_identity(
     closure = strict_fd_closure(environment, keys)
     finer = _resolved_grain(node) - closure
     # a sibling the stream is built on, or built on it, holds the same rows
-    exposed = set().union(
+    sibling_rows = set().union(
         *(
-            _visible_addresses(other)
+            _resolved_grain(other)
             for other in siblings
             if other is not node
             and not _derives_from(node, other)
             and not _derives_from(other, node)
         )
     )
-    if not finer & exposed or not set(group.output_concepts) <= closure:
+    if not finer & sibling_rows or not set(group.output_concepts) <= closure:
         return node
     kept = [o for o in node.usable_outputs if o.address in closure]
     return _forced_dedup(node, kept, environment, closure)

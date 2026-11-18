@@ -9,9 +9,13 @@ FINAL merge loses the join key entirely, a silent ON 1=1 cartesian before the
 keyless-join guard, an UnresolvableQueryException after it.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
+import trilogy.core.processing.v4_helper.strategy_builder as sb
 from trilogy import Dialects
+from trilogy.core.enums import Derivation
 
 FIXTURE = """
 key sk int;
@@ -78,3 +82,36 @@ def test_pivot_subset_join_rows(executor):
     # Only C1 has both an 'a' and a 'b' order; the row filter keeps 'a'
     # customers. One row per customer, no order-grain fan-out.
     assert rows == [("C1", "Alice")]
+
+
+def _node(outputs: set[str], grain: set[str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        parents=[],
+        output_concepts=[],
+        usable_outputs=[SimpleNamespace(address=a) for a in sorted(outputs)],
+        resolve=lambda: SimpleNamespace(grain=SimpleNamespace(components=grain)),
+    )
+
+
+def test_a_stream_dedups_to_its_identity_beside_rows_as_fine_as_its_own(
+    monkeypatch,
+):
+    monkeypatch.setattr(sb, "strict_fd_closure", lambda _, keys: keys | {"total"})
+    monkeypatch.setattr(sb, "_forced_dedup", lambda node, *_: ("deduped", node))
+    group = SimpleNamespace(
+        derivation=Derivation.BASIC,
+        extent_spans=frozenset(),
+        output_concepts=["cid", "total"],
+    )
+    stream = _node({"cid", "total"}, {"order_id"})
+    identity = frozenset({"cid"})
+    # an alias of the row key, not the key: the rows are what pair
+    aliased = _node({"cid", "order_tag"}, {"order_id"})
+    assert sb._at_declared_identity(
+        stream, [stream, aliased], group, identity, None
+    ) == ("deduped", stream)
+    keyed = _node({"cid", "order_id"}, {"cid"})
+    assert (
+        sb._at_declared_identity(stream, [stream, keyed], group, identity, None)
+        is stream
+    )
