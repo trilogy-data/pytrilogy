@@ -3326,15 +3326,20 @@ def _fold_covered_contributors(
     needed: set[str],
     cover_nodes: set[int],
     extent_owners: set[int],
+    columns: list[set[str]],
 ) -> list[StrategyNode]:
     """Drop a merge contributor a sibling can now render in full.
 
-    Election reads `output_concepts`, a projection boundary; join-key
-    materialization then widens a sibling PAST that boundary, down to the scan
-    that binds the key. A contributor elected as the only exposer of a key can
+    Election reads `output_concepts`, a projection boundary; the plan then
+    widens a sibling PAST that boundary to the keys it owes, down to the scan
+    that binds them. A contributor elected as the only exposer of a key can
     therefore end up rendering no column at all: the merge joins it to read
-    nothing. This is the first moment that is knowable, and it is still the
-    planner, so the join is never built rather than built and deleted.
+    nothing. The join is never built rather than built and deleted.
+
+    `columns` are what each side holds, as stated (`_side_columns`): what its
+    groups reach the merge with, what was folded into it or what a projection
+    kept, and what the plan owes it. No built side's outputs are read; its
+    resolved grain, partial bindings, regions and restrictions are.
 
     Rendering nothing is only the first condition; the rest are what make the
     drop row-identical rather than merely tidy:
@@ -3356,7 +3361,7 @@ def _fold_covered_contributors(
     if len(parents) <= 1:
         return parents
     relation_members = environment.all_scoped_join_group_members()
-    visible = [_visible_addresses(p) for p in parents]
+    visible = columns
     partials = [{c.address for c in p.partial_concepts} for p in parents]
     dropped: set[int] = set()
     for idx, parent in enumerate(parents):
@@ -6770,6 +6775,7 @@ def _assemble_final_node(
     parents: list[StrategyNode] = []
     # the ROOT contributors the FINAL itself grouped to the merge grain
     projected: set[int] = set()
+    wrapped: dict[int, frozenset[str]] = {}
     for gid in contributing:
         node = built[gid]
         if attrs[gid].derivation != Derivation.ROOT:
@@ -6809,6 +6815,11 @@ def _assemble_final_node(
         )
         origin.update((id(wrap), gid) for wrap in wraps)
         projected.update(id(wrap) for wrap in wraps if wrap is not source)
+        wrapped.update(
+            (id(wrap), frozenset(o.address for o in wrap.usable_outputs))
+            for wrap in wraps
+            if wrap is not source
+        )
         parents.extend(wraps)
 
     parents = [
@@ -6837,6 +6848,7 @@ def _assemble_final_node(
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
     parents = _fold_constant_parents(parents, final_needed)
     # the FINAL WHERE reads its filter-only args off these parents
+    contracted = parents
     parents = _satisfy_parent_projection_contract(
         parents,
         [_final_parent_shaped(p, origin, attrs, projected) for p in parents],
@@ -6844,6 +6856,15 @@ def _assemble_final_node(
         final_merge_grain,
         environment,
     )
+    # what each side holds, as stated (`_side_columns`): a side the FINAL
+    # wrapped or projected holds what that projection kept, else what its
+    # groups reach the FINAL with
+    narrowed = wrapped | {
+        id(new): frozenset(o.address for o in new.usable_outputs)
+        for new, old in zip(parents, contracted)
+        if new is not old
+    }
+    reaches = {gid: cover.holds(gid) for gid in built}
     absorbed: dict[int, list[StrategyNode]] = {}
     parents = _fold_passthrough_parents(parents, absorbed)
     # a survivor holds its absorbed sibling's rows, and pairs as it did (the
@@ -6884,6 +6905,7 @@ def _assemble_final_node(
         final_needed | filter_only_addrs | _final_gate_keys(attrs, environment),
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
+        [_side_columns(p, origin, plan, reaches, narrowed, absorbed) for p in parents],
     )
     parents = _join_elected_bridges(
         parents,
