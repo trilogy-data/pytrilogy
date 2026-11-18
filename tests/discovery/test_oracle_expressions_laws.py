@@ -260,11 +260,13 @@ FOUND_SEEDS_513 = [
 FOUND_SEEDS_514 = [62974, 66824, 105627, 112406, 127542, 147680]
 # seeds 0.3.515 fixed (each failed on main): a value over groups looks up a
 # root property its keys hold (17715); an island bridge is widened to the key
-# it joins on (139791, 160693, 160820, 177047, 187270, 187859); a wrap keeps
+# it joins on (139791, 160693, 160820, 177047, 187270, 187859; 28266, 75390
+# raised the same way); a wrap keeps
 # the keys its side pairs on (193139); a gated side whose gate holds on its
 # padding is joined INNER (176152)
 FOUND_SEEDS_515 = [
-    17715, 139791, 160693, 160820, 176152, 177047, 187270, 187859, 193139,
+    17715, 28266, 75390, 139791, 160693, 160820, 176152, 177047, 187270,
+    187859, 193139,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows

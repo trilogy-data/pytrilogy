@@ -2337,6 +2337,26 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     `SelectGrain.bridge_joined_whole_repeats_its_pairs`). A value over groups
     alone whose built rows are finer than its outputs is deduped to them
     before FINAL pairs it.
+- **The expressions family to 200,000** (0.3.515). On main 4 of the
+  100,000 queries over seeds 150,000-200,000 are wrong and 5 raise, and 10
+  of 300,000 over seeds 0-150,000 raise; the branch leaves 0 wrong and 6
+  raises (the `OPEN` leads), breaks none, and plans 1,369 fewer joins and 96
+  fewer scans. Fixed:
+  - A value over groups by `species` beside a value `by tree_form`, off the
+    summary, was never widened to the sibling's key and no row stream held
+    `tree_form` to bridge (17715). It looks the root property up off a scan
+    beside its keys, unless another side holds the two together.
+  - A per-tree value beside a value `by tree_form`, off the summary: the
+    bridge holds `tree_form` below but never carried it (139791, 160693,
+    160820, 177047, 187270, 187859, 28266, 75390). An island bridge is
+    widened to the ROOT keys it joins on.
+  - Beside a constant, the trees were wrapped and deduped to `city`,
+    dropping the `species` they pair with `tree_form` on (193139;
+    `SelectGrain.wrap_without_pair_key_crosses`). A wrap keeps the keys its
+    side pairs on.
+  - FINAL LEFT-joined a value gated by `sum(height) by tree_form is null`
+    and re-applied the gate, which its padding passes (176152;
+    `NullReject.gated_side_padding_passes_gate`). Such a side is joined INNER.
 
 ## Limits
 
