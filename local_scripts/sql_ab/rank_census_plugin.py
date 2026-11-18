@@ -6,8 +6,8 @@
 The walk reads one order, stated once per merge (`_stated_order`). Every
 merge of three or more sides is walked again once per variant, each with one
 term of that order held constant: a term of the key placement
-(`_key_terms`: `authored`, or one of the key's shape; `solid` drops the
-solid holders), the holders' shape
+(`_key_terms`: one of the key's shape; `solid` drops the solid
+holders), the holders' shape
 places (`holder_shape`), or a shape term (`_shape_terms`). A variant whose
 join order differs is counted as deciding that merge.
 Writes `<RANK_OUT>.<worker>.json`: {counts, hits: [{variant, nodeid}]}.
@@ -32,7 +32,7 @@ _hits: list[dict[str, Any]] = []
 _nodeid: list[str | None] = [None]
 
 # variant -> the key's shape term held constant
-KEY_TERMS = {"solid": 0, "held": 1, "max_held": 2, "holders": 3}
+KEY_TERMS = {"authored": 0, "solid": 1, "held": 2, "max_held": 3, "holders": 4}
 # variant -> the shape term held constant
 SHAPE_TERMS = {"binding_tiers": 0, "plan_order": 1, "hosts": 2}
 
@@ -55,20 +55,16 @@ def _held(term: tuple, index: int) -> tuple:
 
 
 def _keys_held(name: str) -> Callable[..., list]:
-    """`_key_terms` with one term held constant: `authored`, or one of the
-    key's shape (`KEY_TERMS`)."""
-    index = KEY_TERMS.get(name)
+    """`_key_terms` with one of the key's shape (`KEY_TERMS`) held
+    constant."""
+    index = KEY_TERMS[name]
 
     def keys(facts, holders):
         return [
-            (
-                True if name == "authored" else authored,
-                shape if index is None else _held(shape, index),
-                held_by,
-            )
-            for authored, shape, held_by in _keys(facts, holders)
+            (_held(shape, index), held_by)
+            for shape, held_by in _keys(facts, holders)
             # the solid holders are a term of their own
-            if name != "solid" or shape[0]
+            if name != "solid" or shape[1]
         ]
 
     return keys
@@ -120,7 +116,7 @@ def _census(ranks, facts, declared) -> dict[str, int]:
     _counts["merges"] = _counts.get("merges", 0) + 1
     args = (ranks, facts, declared)
     base = _walked(facts, out)
-    for name in ("authored", *KEY_TERMS):
+    for name in KEY_TERMS:
         if _walked(facts, _variant("_key_terms", _keys_held(name), args)) != base:
             _hit(name)
     for name, index in SHAPE_TERMS.items():

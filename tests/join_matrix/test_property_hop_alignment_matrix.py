@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.join_matrix.harness import make_engine, sort_rows
 
 # (sk, id) per side; same business ids, different surrogates
@@ -76,7 +77,7 @@ key b_order int;
 property b_order.b_amount int;
 datasource b_facts (
     o: b_order,
-    cust: b_cust_sk,
+    cust: ~b_cust_sk,
     sku: sku,
     amt: b_amount,
 ) grain (b_order) query '''{_fact_sql(B_FACTS)}''';
@@ -113,8 +114,12 @@ def _b_rows_matching(cid: str, sku: int) -> list[tuple[int, int, int, int]]:
     return [row for row in B_FACTS if B_SK_TO_ID[row[1]] == cid and row[2] == sku]
 
 
+@pytest.mark.parametrize("walk", WALKS)
 @pytest.mark.parametrize("join", ["union join", "subset join"])
-def test_member_projected_two_side_rollup(tmp_path: Path, join: str):
+def test_member_projected_two_side_rollup(
+    tmp_path: Path, join: str, walk: str, monkeypatch: pytest.MonkeyPatch
+):
+    flip_walk_spelling(monkeypatch, walk)
     # member-grain rollup: both sides preserved (side-a ids ⊆ side-b domain,
     # so subset and union agree cell-for-cell here); an unmatched b row still
     # belongs to its own id's group via the projection coalesce
@@ -132,8 +137,12 @@ def test_member_projected_two_side_rollup(tmp_path: Path, join: str):
     assert rows == expected, rows
 
 
+@pytest.mark.parametrize("walk", WALKS)
 @pytest.mark.parametrize("join", ["union join", "subset join"])
-def test_member_unprojected_cross_side_grain(tmp_path: Path, join: str):
+def test_member_unprojected_cross_side_grain(
+    tmp_path: Path, join: str, walk: str, monkeypatch: pytest.MonkeyPatch
+):
+    flip_walk_spelling(monkeypatch, walk)
     # THE q25 shape: the authored key appears nowhere in the output, and the
     # shared `sku` gives discovery a cheaper fact-to-fact path. Each a_order
     # row's b_total must still be its (customer, sku)-matched total — the

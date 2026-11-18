@@ -372,7 +372,7 @@ def test_a_side_holding_several_regions_comes_after_they_are_stitched():
     assert ranks["by_bucket"] > ranks["customers"]
 
 
-def test_a_flipped_shape_keeps_the_row_terms(monkeypatch):
+def test_a_flipped_shape_reverses_the_authored_key_too(monkeypatch):
     facts = replace(
         _keyed({("a", "b"): {"k"}, ("b", "c"): {"k"}, ("a", "c"): {"k", "x"}}),
         authored_join_keys=frozenset({"x"}),
@@ -380,7 +380,7 @@ def test_a_flipped_shape_keeps_the_row_terms(monkeypatch):
     plan = {"a": 0, "b": 1, "c": 2}
     assert _order(_stated_order(plan, facts, frozenset())) == ["a", "c", "b"]
     flip_walk_spelling(monkeypatch, "shape_flipped")
-    assert _order(_stated_order(plan, facts, frozenset())) == ["c", "a", "b"]
+    assert _order(_stated_order(plan, facts, frozenset())) == ["c", "b", "a"]
 
 
 def _stitch_facts(count_rank: int) -> JoinFacts:
@@ -450,3 +450,60 @@ def test_a_complete_or_nullable_side_pairs_a_coarser_one_directly(returns: dict)
     facts = _returns_facts(**returns)
     assert not facts.transits
     assert resolve_join_order_v2(facts)[0].right == "ds~orders"
+
+
+def _hop_facts() -> JoinFacts:
+    sku, a_sk, b_sk, cid = "c~sku", "c~a_sk", "c~b_sk", "c~cid"
+    return JoinFacts(
+        sides={
+            "ds~a_facts": SideFacts(
+                columns=frozenset({"c~a_order", a_sk, sku}),
+                grain=frozenset({"c~a_order"}),
+                determined=frozenset({"c~a_order", a_sk, sku, cid}),
+            ),
+            "ds~b_facts": SideFacts(
+                columns=frozenset({"c~b_order", b_sk, sku}),
+                grain=frozenset({"c~b_order"}),
+                determined=frozenset({"c~b_order", b_sk, sku, cid}),
+            ),
+            "ds~a_customers": SideFacts(
+                columns=frozenset({a_sk, cid}),
+                grain=frozenset({a_sk}),
+                determined=frozenset({a_sk, cid}),
+            ),
+            "ds~b_customers": SideFacts(
+                columns=frozenset({b_sk, cid}),
+                grain=frozenset({b_sk}),
+                determined=frozenset({b_sk, cid}),
+            ),
+        },
+        pair_keys={
+            frozenset({"ds~a_facts", "ds~b_facts"}): frozenset({sku}),
+            frozenset({"ds~a_facts", "ds~a_customers"}): frozenset({a_sk}),
+            frozenset({"ds~b_facts", "ds~b_customers"}): frozenset({b_sk}),
+            frozenset({"ds~a_customers", "ds~b_customers"}): frozenset({cid}),
+        },
+        side_ranks={"ds~a_facts": 0, "ds~b_facts": 1, "ds~a_customers": 2},
+    )
+
+
+def test_a_pairing_leaving_out_a_key_both_sides_determine_waits_for_it():
+    facts = _hop_facts()
+    assert facts.chords == {
+        frozenset({"ds~a_facts", "ds~b_facts"}): frozenset({"c~cid"})
+    }
+    joins = resolve_join_order_v2(facts)
+    assert [j.right for j in joins] == [
+        "ds~a_customers",
+        "ds~b_customers",
+        "ds~b_facts",
+    ]
+    assert set(joins[-1].keys) == {"ds~a_facts", "ds~b_customers"}
+
+
+def test_a_pairing_on_a_sides_whole_grain_leaves_nothing_out():
+    facts = _hop_facts()
+    a_facts = replace(facts.sides["ds~a_facts"], grain=frozenset({"c~sku"}))
+    facts = replace(facts, sides={**facts.sides, "ds~a_facts": a_facts})
+    assert not facts.chords
+    assert resolve_join_order_v2(facts)[0].right == "ds~b_facts"

@@ -1,11 +1,9 @@
 """The join walk with its shape order reversed.
 
-The walk joins a merge's sides in one stated order (`_stated_order`): two
-facts about a key's rows (whether it is authored, how many sides pair on
-it) amid shape (each key's and the plan's), then the side's name. Shape and
-name are no fact about rows, so a plan walked the other way round on either
-must return the same rows. `flip_walk_spelling` reverses one of them; the
-row terms stay.
+The walk joins a merge's sides in one stated order (`_stated_order`): shape
+(each key's and the plan's), then the side's name. Neither is a fact about
+rows, so a plan walked the other way round on either must return the same
+rows. `flip_walk_spelling` reverses one of them.
 """
 
 from __future__ import annotations
@@ -56,7 +54,7 @@ _keys = jr._key_terms
 
 
 def flipped_keys(facts, holders):
-    return [(a, _Rev(shape), held) for a, shape, held in _keys(facts, holders)]
+    return [(_Rev(shape), held) for shape, held in _keys(facts, holders)]
 
 
 # what each flip replaces: (owner, attribute, replacement)
