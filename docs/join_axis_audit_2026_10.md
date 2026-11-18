@@ -4659,14 +4659,87 @@ Gates, against `e759a34`:
   how many statements a session's earlier tests leave it.
 - Suite (`-n 4`): the same 25 credential-gated failures as `e759a34`.
 
-**Open.** One stage-3 decision read a built node until part 125, and two
-still do. Each rebuilds parents after the build:
-`_fold_covered_contributors` drops a contributor a widened sibling now
-renders (30 firings over 5 test files), and `_pair_inside_padding_streams`
-moves a grouping contributor into the merge of the stream that padded it
-(7, one file). Each reads output columns the build widened, which no
-stage-2 fact states yet. `_hold_lookup_sides` reads no output column since
-part 127, only the built rows' grain. What §6 designs and is
+**A covered contributor folds on stated columns (part 128).**
+`_fold_covered_contributors` drops a FINAL contributor elected to cover a
+concept when the plan has since widened a sibling to render all it
+contributes. Its column reads (what the contributor contributes, what the
+survivors hold, what they share, whether the drop islands them) were off
+each side's built outputs. They are now off `_side_columns`, the rule part
+127 states for a lookup side, with the FINAL's own facts in place of a
+consumer's:
+
+- what each group reaches the FINAL with (`_FinalCover.holds`: its stage-2
+  `renders` plus the projections and passthroughs the election owes on it);
+- plus the groups `_fold_passthrough_parents` absorbed into the side;
+- or, for a side the FINAL itself projected, what the projection kept: a
+  ROOT wrap `_wrap_for_grain` bucketed, or a side the FINAL's projection
+  contract narrowed;
+- plus what the plan owes it (`JoinPlan.owed_by`).
+
+The census compared the built and stated decisions over the whole suite
+(`*_laws.py` aside): 3,533 decisions, 31 drops, 2 disagreements. Both were
+a ROOT contributor split into several wraps (`test_property_beside_key`,
+`test_where_gate_pairing`), where the stated set read the group's whole
+render instead of each wrap's bucket. With the wraps recorded as projected,
+stated and built agree on all 7,648 decisions (103 drops) over the firing
+files and all of `tests/discovery`, laws included. The fold still reads
+four built facts, each physical or a restriction rather than a column: the
+side's resolved grain (the drop needs the shared keys to be exactly its
+rows' identity), its partial bindings, the regions it reads and the
+conditions under it.
+
+`test_a_covered_contributor_folds_on_what_its_siblings_are_stated_to_hold`
+(`tests/optimization/test_no_invisible_contributor_joins.py`) pins it: the
+same two sides fold or stay by what they are stated to hold.
+
+**A padding stream pairs on stated columns (part 129).**
+`_pair_inside_padding_streams` moves a grouping contributor into the merge
+of a stream that padded a `?` key it shares, and carries the contributor's
+other columns up the stream's path. Both reads, what the two share and
+what is carried, are now off `_side_columns`, and a stream also holds what
+it has taken in (the build widened it; the rule now says so). Over the six
+files that pad (484 checks, 50 that share a padded key) the rules disagree
+once: `test_a_coalesced_inner_key_pairs_value_nulls_null_safely`'s customer
+scan hosts `name = 'ann'` and lists `name` among its outputs, though its CTE
+never renders it. The built rule carried `name` up; the stated one does
+not, and the SQL is the same. The padding path, regions, value-NULL
+provenance and the grouping keys along the path stay built: they are the
+merge's physical shape.
+
+Gates for parts 128-129, against `8369d50`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`) of part 128: every
+  moved file that is not checkout-path or port noise was recaptured
+  single-process on `8369d50` and on part 129 (the oracle and sweep laws
+  and gates, `test_cluster_key_lookup`, `test_where_hosts`, the total
+  gates, `test_region_dimension_attributes`, `test_dashboard_queries`):
+  0 plans moved once the checkout path is normalized. So were the files
+  where either rule fires or the censuses disagreed (the padding files,
+  `test_reaggregated_partial_under_stored_root`, `test_final_gate_lookups`,
+  `test_property_beside_key`, `test_where_gate_pairing`,
+  `test_padded_population_gate`): 0 moved.
+- Suite (`-n 4`): the same 25 credential-gated failures as `8369d50`.
+
+**Not stated: `_at_declared_identity`.** It dedups a row stream to its
+group's declared identity when a sibling exposes the stream's finer row
+key. Over the suite it fires 35 times in 32,209 decisions. Read off
+`_side_columns`, it disagrees on 10: in each (8 in
+`test_duckdb_subset_join_pivot_axis`) a FILTER group's node exposes its
+input row key (`order_id`, under a group stated at `cid, id, name, sk`),
+and the dedup exists because the sibling leaks it. The stated rule would
+leave both streams at order grain. That leak is a build exposing more than
+its group renders, which §6 calls a bug to surface; the dedup stays on the
+built read until the FILTER build stops exposing it.
+
+**Open.** Since part 129 the three stage-3 decisions that rebuilt parents
+off built output columns (`_hold_lookup_sides`, `_fold_covered_contributors`,
+`_pair_inside_padding_streams`) read what each side holds from
+`_side_columns`. What they still read is physical: resolved grain, regions,
+partial bindings, restrictions and the padding path. One dedup,
+`_at_declared_identity`, still reads built columns, because a FILTER build
+exposes a row key its group does not render. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
