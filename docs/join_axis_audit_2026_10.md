@@ -4475,10 +4475,16 @@ stamped partial on `cust_id`: `merge_partial_addresses` read `cust_id` off
 
 The join keeps `b_customers` only where a `~b_cust_sk` sale has a row, so
 every column read off it alone holds a subset of its values
-(`_narrowed_sources`). A side the tree does not preserve, paired on a key its
-partner binds `~`, is narrowed. The FINAL now reads the b totals as partial
-on `cust_id` and preserves the a side. The test binds `~b_cust_sk` and is
-pinned under every walk.
+(`_narrowed_sources`). A side is narrowed where the join pairing it with a
+partner that binds the key `~` drops its unmatched rows, and it binds the key
+complete itself. Both conditions are per join. A first cut read the
+tree-wide preserved set, and `test_cluster_key_lookup` showed why that is
+wrong. There, trees LEFT JOIN `~mods` keep every tree, but a later INNER on
+another key leaves trees out of the preserved set. And two projections of
+one `~tree_id` binding met INNER cover the same subset, so neither narrows
+the other. The FINAL now reads the b totals as partial on `cust_id` and
+preserves the a side. The test binds `~b_cust_sk` and is pinned under every
+walk.
 
 **Authored is the key's shape (part 124).** With the chord gated and the
 witness's data honest, holding the authored key constant moves no rows in
@@ -4488,7 +4494,19 @@ order is the one `_stated_order` already read, so no plan moves. The walk
 reads no row term of a key: what decides rows is the seed, the stitch, the
 transit and the chord, each a gate the walk waits for in any order.
 
-GATES_PLACEHOLDER
+Gates, against `e5ff3ab`:
+
+- Corpus (205 statements): 0 moved. A first cut of the chord, without the
+  whole-grain exclusion, moved five INNER-only TPC statements.
+- Suite (`-n 3`, without adventureworks/clickhouse/bigquery/cloud_live/databricks):
+  25 failures, all credential-gated or failing on `main` too.
+- Whole suite under `WALK_FLIP=shape,name`, which now reverses authored
+  too: 101 failures, `main`'s flip had 102. Every failure but one also fails
+  under `main`'s flip. The exception is the walk unit test that pins the
+  reversal itself (`test_a_flipped_shape_reverses_the_authored_key_too`),
+  which the plugin flips a second time. The three witnesses of part 111's
+  authored row pass under every walk.
+- Fuzzer: 522/522.
 
 **Open.** No stage-3 decision reads a built node. What §6 designs and is
 not built yet:
