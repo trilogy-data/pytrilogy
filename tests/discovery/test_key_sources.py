@@ -10,6 +10,8 @@ filters carries the gate's keys itself. Rows checked by hand against `ROWS` of
 import pytest
 
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
+from trilogy.core.enums import Derivation
+from trilogy.core.processing.v4_helper import strategy_builder
 
 KEPT_PAIRS = [("A", "Acer"), ("A", "Quercus"), ("B", "Acer"), ("B", "Tilia")]
 
@@ -98,3 +100,24 @@ def test_key_sources(query: str, expected: list[tuple], model: str):
     sql = executor(model).generate_sql(query)[-1]
     rows = executor(model).execute_raw_sql(sql).fetchall()
     assert normalize(rows) == normalize(expected), f"{query}\n{sql}"
+
+
+def test_an_aggregate_merge_never_joins_a_bridge_elected_to_key_a_blend(monkeypatch):
+    recorded: list = []
+    plan_bridges = strategy_builder._plan_group_bridges
+
+    def record(group_graph, group_edges, attrs, order, aggregate_inputs, env):
+        plan_bridges(group_graph, group_edges, attrs, order, aggregate_inputs, env)
+        recorded.extend(attrs[gid] for gid in order if attrs[gid].bridges)
+
+    monkeypatch.setattr(strategy_builder, "_plan_group_bridges", record)
+    query, expected = CASES[0]
+    rows = executor("base").execute_text(query)[-1].fetchall()
+    assert normalize(rows) == normalize(expected)
+    blends = [
+        group
+        for group in recorded
+        if group.derivation != Derivation.BASIC
+        and set(group.bridges) - set(group.joined_bridges)
+    ]
+    assert blends and not any(group.keying_bridges for group in blends)

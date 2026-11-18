@@ -3679,6 +3679,7 @@ def _pre_merge_parents(
     origin: dict[int, str] | None = None,
     candidates: Sequence[str] = (),
     bridges: Sequence[str] = (),
+    joined: Sequence[str] = (),
     keying: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
@@ -3742,12 +3743,15 @@ def _pre_merge_parents(
     if plan is not None and built is not None:
         parents = _join_elected_bridges(
             parents,
-            [(_planned_side(built, gid), plan.keys_for(gid)) for gid in plan.extras],
+            [
+                (_planned_side(built, gid), plan.keys_for(gid))
+                for gid in plan.extras
+                if gid in joined
+            ],
             environment,
             frozenset(
                 id(_planned_side(built, gid)) for gid in plan.extras if gid in keying
             ),
-            _planned_side_keys(parents, origin, plan) if origin else (),
         )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
@@ -3937,10 +3941,15 @@ def _plan_group_bridges(
             reader_grain=pairing_keys(attrs[gid].grain_components),
         )
         attrs[gid].bridges = tuple(bridged.extras)
-        # joined whatever the islands, a bridge repeats a row its keys do not
-        # identify: a BASIC's repeats dedup away, an aggregate would count them
-        if attrs[gid].derivation == Derivation.BASIC:
+        # a bridge elected to key a pairing joins no islands and repeats a row
+        # its keys do not identify: a BASIC's repeats dedup away, an
+        # aggregate would count them, so its merge never joins one
+        basic = attrs[gid].derivation == Derivation.BASIC
+        if basic:
             attrs[gid].keying_bridges = bridged.keying
+        attrs[gid].joined_bridges = tuple(
+            b for b in bridged.extras if basic or b not in bridged.keying
+        )
     shape_through_bridges(group_graph, group_edges, attrs, planned)
 
 
@@ -5179,45 +5188,11 @@ def _wrap_for_grain(
     return wraps
 
 
-def _pairing_addresses(node: StrategyNode, environment: BuildEnvironment) -> set[str]:
-    """Addresses a merge can pair this parent on, as join resolution sees them:
-    its outputs plus every alias of the same axis. Two sides of an authored
-    relation (`subset join kb = ka`) name one axis under two addresses, so a raw
-    address comparison reads them as sharing nothing."""
-    addresses: set[str] = set()
-    for concept in node.output_concepts:
-        addresses.add(concept.address)
-        for pseudonym in concept.pseudonyms:
-            addresses.add(pseudonym)
-            origin = environment.alias_origin_lookup.get(pseudonym)
-            if origin is not None:
-                addresses.add(origin.address)
-    for relation in environment.scoped_join_relations():
-        if addresses & relation:
-            addresses |= relation
-    return addresses
-
-
-def _pairing_islands(outputs: list[set[str]]) -> list[set[int]]:
-    """Parent indices grouped by what pairs them: two parents sharing a
-    pairing column, directly or through a third, are one island."""
-    islands: list[tuple[set[int], set[str]]] = []
-    for index, own in enumerate(outputs):
-        members, columns = {index}, set(own)
-        for island in [i for i in islands if i[1] & own]:
-            islands.remove(island)
-            members |= island[0]
-            columns |= island[1]
-        islands.append((members, columns))
-    return [members for members, _ in islands]
-
-
 def _join_elected_bridges(
     parents: list[StrategyNode],
     bridges: Sequence[tuple[StrategyNode, frozenset[str]]],
     environment: BuildEnvironment,
     keying: frozenset[int] = frozenset(),
-    planned: Sequence[frozenset[str] | None] = (),
 ) -> list[StrategyNode]:
     """Join the bridges the join plan elected (`join_plan.elect_bridges`),
     each with the keys the plan pairs it on, so the merge below joins on an
@@ -5226,76 +5201,25 @@ def _join_elected_bridges(
     `select id, min(x) by id, min(y) by cell` leaves two aggregates, one keyed
     on `id` and one on `cell`: the row stream holding both keys bridges them.
 
-    The plan elects only bridges whose every pairing is keyed. A bridge that
-    no longer joins two islands as built (a member widened to its key pairs
-    directly) is not joined. A keying bridge (`JoinPlan.keying`) joins
-    whatever the islands: it holds the key one side's grain determines and
-    the other side's is grouped by.
-
-    `planned` is, per parent, the keys the plan pairs its side on (None for
-    rows no planned group holds): the merge pairs on nothing else, so a
-    column a side merely exposes (`tree_form` a peel carries for the WHERE)
-    connects no island."""
+    Each bridge joins two of the plan's islands, or keys a pairing
+    (`JoinPlan.keying`): the plan states which, so no built side is read. A
+    keying bridge also reaches below for a key it holds, which is what it
+    exists to hold."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
-    outputs = [_pairing_addresses(parent, environment) for parent in parents]
-    for index, keys in enumerate(planned):
-        if keys is not None:
-            outputs[index] &= keys
     for bridge, keys in bridges:
-        islands = _pairing_islands(outputs)
         if any(bridge is parent for parent in parents):
             continue
-        if id(bridge) in keying:
-            if keys:
-                concepts = _join_key_concepts([bridge], environment, set(keys))
-                _carry_join_keys([bridge], concepts, environment)
-                # a keying bridge exists to hold the key: reach for it below
+        if keys:
+            concepts = _join_key_concepts([bridge], environment, set(keys))
+            _carry_join_keys([bridge], concepts, environment)
+            if id(bridge) in keying:
                 for concept in concepts:
                     if concept.derivation == Derivation.ROOT:
                         _widen_scan_chain(bridge, concept, environment=environment)
-            parents.append(bridge)
-            outputs.append(_pairing_addresses(bridge, environment))
-            continue
-        if len(islands) < 2:
-            continue
-        if keys:
-            _carry_join_keys(
-                [bridge],
-                _join_key_concepts([bridge], environment, set(keys)),
-                environment,
-            )
-        exposed = _pairing_addresses(bridge, environment)
-        # the merge pairs a bridge only on its planned keys: a column it
-        # merely exposes beside them connects no island
-        if keys:
-            exposed &= keys
-        touched = [
-            island
-            for island in islands
-            if exposed & set().union(*(outputs[i] for i in island))
-        ]
-        if len(touched) < 2:
-            continue
         parents.append(bridge)
-        outputs.append(exposed)
     return parents
-
-
-def _planned_side_keys(
-    parents: list[StrategyNode], origin: dict[int, str], plan: JoinPlan
-) -> list[frozenset[str] | None]:
-    """Per parent, the keys `plan` pairs the groups it holds on."""
-    out: list[frozenset[str] | None] = []
-    for parent in parents:
-        side = side_members(parent, origin)
-        out.append(
-            None
-            if side is None
-            else frozenset().union(*(plan.keys_for(gid) for gid in side))
-        )
-    return out
 
 
 def _sole_partners(plan: JoinPlan, contributors: Sequence[str]) -> frozenset[str]:
@@ -6843,7 +6767,6 @@ def _assemble_final_node(
             id(_planned_side(built, gid))
             for gid in bridged.keying | _sole_partners(plan, contributing)
         ),
-        _planned_side_keys(parents, origin, plan),
     )
     parents = _pair_inside_padding_streams(parents, environment, origin, plan)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
@@ -7471,6 +7394,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     origin=origin,
                     candidates=candidates,
                     bridges=a.bridges,
+                    joined=a.joined_bridges,
                     keying=a.keying_bridges,
                 )
             outputs, named_arguments = _name_inline_arguments(
@@ -7514,6 +7438,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             origin=origin,
             candidates=candidates,
             bridges=a.bridges,
+            joined=a.joined_bridges,
             keying=a.keying_bridges,
         )
     # ROOT scans source columns from datasources directly, not from their
