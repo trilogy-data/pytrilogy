@@ -272,7 +272,18 @@ FOUND_SEEDS_515 = [
 # atom it only passes through (205085; 78245 raised on the same claim); a ROOT
 # passes on none of its constraint feeders (246819, 333909); an expression of
 # constants is at the select's grain (15826, 89514)
-FOUND_SEEDS_516 = [15826, 78245, 89514, 205085, 246819, 333909]
+FOUND_SEEDS_516 = [
+    15826,
+    67331,
+    78245,
+    89514,
+    104893,
+    205085,
+    225055,
+    246819,
+    333909,
+    349206,
+]
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
 OPEN: dict[tuple[int, str], str | None] = {}

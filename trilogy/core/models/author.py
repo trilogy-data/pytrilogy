@@ -2850,7 +2850,11 @@ def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str],
 
 
 def _grain_reads(grain: Grain, address: str, environment: Environment) -> bool:
-    """Whether a component of `grain` is computed from `address`."""
+    """Whether a component of `grain` is computed from `address`. Never the
+    all-rows constant: it only groups an aggregate (`count(x) by *`), which is
+    at its own grain, inlined into a computed component or not."""
+    if address == ALL_ROWS_ADDRESS:
+        return False
     seen: set[str] = set()
     stack = list(grain.components)
     while stack:

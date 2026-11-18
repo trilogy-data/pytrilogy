@@ -2911,7 +2911,17 @@ def build_concept_graph(
                 else [dst]
             )
         )
-        for dst in targets:
+        # a constant is the same value on every row: the rowed outputs carry
+        # a condition its grain has no key for, which it would join on no key
+        # (`4` at `big, city` beside `min(height) by species`)
+        rowed = [
+            d
+            for d in targets
+            if attrs[d].derivation != Derivation.CONSTANT
+            or attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+            <= attrs[d].grain_components
+        ]
+        for dst in rowed or targets:
             if graph.has_edge(src, dst):
                 continue
             if _constraint_crosses_rowset(attrs, src, dst):

@@ -15,6 +15,11 @@ leads it closed (0.3.516).
 - An OR of gates at `city, tree_form` and `species` beside `city, species`
   raised a missing parent (the 78245 lead), on the same false claim as the
   first shape.
+- A literal at the select's grain beside a WHERE aggregate its grain has no
+  key for was constrained by that aggregate alone, and joined it on no key
+  (on main too, for a bare `4`).
+- A `by *` aggregate inlined into a selected value made the all-rows constant
+  look read by the select's grain, so it lost that grain.
 
 Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
 5, NULL, 7, 2; tags x, y, x, x, y, x; forms broadleaf x4 with b1, NULL for
@@ -70,6 +75,45 @@ CASES = [
             ("A", "Quercus", 1 / 3),
             ("B", "Acer", 2),
             ("B", "Tilia", 1),
+        ],
+    ),
+    # expressions 67331, with a literal
+    (
+        (
+            "select city, tree_form, 4 as v0 where sum(height) by city, tree_form"
+            " < 0 or height is not null;"
+        ),
+        [("A", "broadleaf", 4), ("B", "broadleaf", 4), ("B", "linden", 4)],
+    ),
+    # expressions 104893, with a literal
+    (
+        (
+            "select tree_id, 11 as v0 where count_distinct(tag) by tree_form -"
+            " count_distinct(tag) by * < 2;"
+        ),
+        [(t, 11) for t in ("a1", "a2", "a3", "a4", "b1", "b2")],
+    ),
+    # expressions 349206, with a literal
+    (
+        (
+            "select city, height > 2 as big, 4 as v0 where count_distinct(tag) by"
+            " city - min(height) by species = 3 or tree_form is not null;"
+        ),
+        [("A", None, 4), ("A", True, 4), ("B", False, 4), ("B", True, 4)],
+    ),
+    # expressions 225055
+    (
+        (
+            "select tree_id, count(tree_id) by city, tree_form + count(tree_id) by"
+            " * as v0, min(height) by city, species as v1, count(tree_id) as v2"
+            " where avg(height) by tree_form is not null;"
+        ),
+        [
+            ("a1", 8, 3, 1),
+            ("a2", 8, 3, 1),
+            ("a3", 8, 5, 1),
+            ("b1", 6, 7, 1),
+            ("b2", 6, 2, 1),
         ],
     ),
 ]

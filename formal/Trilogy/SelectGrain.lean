@@ -63,7 +63,9 @@ nor the tuple it ranks.
   the two groups joined on nothing it invents pairs
   (`two_grain_value_without_its_pairs_invents`). An aggregate `by` keys its
   host's grain does not determine, rendered there, is read at the host's
-  grain (`host_grain_pin_misreads`).
+  grain (`host_grain_pin_misreads`). A constant holds per row kept: gated by
+  such a value's groups alone, it keeps a city no row passes
+  (`constant_gated_off_its_rows_invents`).
 -/
 
 namespace Trilogy.SelectGrain
@@ -244,6 +246,20 @@ theorem host_grain_pin_misreads :
     let species : Int × Int × Int → Key := fun r => [r.2.1]
     eval (.by_ pair) species x rows (1, 0, 7) = 7 ∧
       eval .bare species x rows (1, 0, 7) = 10 := by
+  decide
+
+/-- `select city, 4 where <gate over by city and by species>`: the constant
+holds per row kept. Constrained by the gate's two groups alone it pairs every
+city with every species: the gate `species = 2` keeps city 0, and the cross
+keeps city 1 too, which holds no species 2. -/
+theorem constant_gated_off_its_rows_invents :
+    let rows : List (Int × Int) := [(0, 1), (0, 2), (1, 1)]
+    let gate : Int × Int → Bool := fun r => r.2 == 2
+    let cities := dedup (rows.map (·.1))
+    let species := dedup (rows.map (·.2))
+    let cross := cities.flatMap fun c => species.map fun s => (c, s)
+    dedup ((rows.filter gate).map (·.1)) = [0] ∧
+      dedup ((cross.filter gate).map (·.1)) = [0, 1] := by
   decide
 
 /-! ## An aggregate `by` fixed keys in a select -/
