@@ -5440,15 +5440,37 @@ def _filter_arg_producer(
     """The most derived of `candidates` outputting `addr`; beside a region's
     rows, one carrying every span first. A one-row value comes from a group
     computing it at its own grain, never off rows that merely carry it (a
-    `count(tree_id) by *` beside every tree joins on nothing)."""
+    `count(tree_id) by *` beside every tree joins on nothing). A group gated
+    by an atom over `addr` that holds on absent is no producer of it."""
     return max(
-        (gid for gid in candidates if addr in attrs[gid].output_concepts),
+        (
+            gid
+            for gid in candidates
+            if addr in attrs[gid].output_concepts
+            and addr not in _gated_args(group_graph, attrs, gid)
+        ),
         key=lambda gid: (
             spans <= set(attrs[gid].output_concepts),
             attrs[gid].grain_components == {ALL_ROWS_ADDRESS},
             sum(1 for a in nx.ancestors(group_graph, gid) if a in candidates),
         ),
         default=None,
+    )
+
+
+def _gated_args(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> frozenset[str]:
+    """The arguments of atoms gating `gid` or a group below it that can hold
+    on an absent group (`sum(x) by k is null`): its rows hold only the kept
+    groups' value, and a side padding them would pass the atom at FINAL."""
+    return frozenset().union(
+        *(
+            args_holding_on_absent(atom)
+            for g in (gid, *nx.ancestors(group_graph, gid))
+            if g != FINAL_NODE_ID and g in attrs
+            for atom in attrs[g].condition_atoms
+        )
     )
 
 
@@ -5509,6 +5531,7 @@ def _final_extra_sides(
                 else set(attrs[gid].output_concepts)
                 | _merged_spellings(attrs[gid], environment)
             )
+            - _gated_args(group_graph, attrs, gid)
             for gid in sides
         )
     )
@@ -6741,7 +6764,9 @@ def _assemble_final_node(
         # row-level source-table grain (often much wider than the merge wants),
         # and a SELECT DISTINCT-style projection is always safe. Wrapping an
         # intermediate aggregate is not: it would re-aggregate partial sums.
-        carry = plan.carry_demands[gid]
+        # a carried key, and the keys it pairs on, must survive the wrap:
+        # grouping to a grain without one dedups it straight back out
+        carry = plan.carry_demands[gid] | plan.keys_for(gid)
         group_concepts = list(per_group[gid])
         seen_group_concepts = {concept.address for concept in group_concepts}
         group_concepts.extend(
@@ -6750,8 +6775,6 @@ def _assemble_final_node(
             if (c := _concept_at(environment, address)) is not None
             and address not in seen_group_concepts
         )
-        # A carried key must survive the wrap: grouping to a grain without the
-        # key it was re-sourced to carry dedups it straight back out.
         source, wraps = _resourced_root_contributor(
             gid,
             node,
@@ -6773,7 +6796,11 @@ def _assemble_final_node(
     parents = [
         (
             _at_declared_identity(
-                parent, parents, attrs[side], plan.identity[side], environment
+                parent,
+                parents,
+                attrs[side],
+                plan.identity[side] | plan.keys_for(side),
+                environment,
             )
             if (side := origin.get(id(parent))) is not None
             else parent
@@ -7090,7 +7117,8 @@ def _at_declared_identity(
     (a filter of an item attribute sourced off the sale lines), deduplicated
     to that identity when an independent sibling exposes the finer row key
     too: the two would pair on the stream's row key, which no plan states. Its
-    outputs are functions of the identity, so nothing is lost."""
+    outputs are functions of the identity, so nothing is lost. `identity`
+    holds the keys the plan pairs the stream on: they are no unstated key."""
     if (
         group.derivation in GROUPING_DERIVATIONS
         or group.derivation == Derivation.ROWSET
