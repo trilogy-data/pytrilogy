@@ -3037,15 +3037,17 @@ def _sourced_lookup(
 ) -> tuple[StrategyNode, frozenset[str]] | None:
     """A lookup of `key` off a fresh scan of it beside its own keys, when the
     parent holds all of them: each parent row looks one value up."""
-    if source is None or key.derivation != Derivation.ROOT:
-        return None
     keys: set[str] = set(key.keys or ())
-    if not keys or not keys <= outputs:
+    if (
+        source is None
+        or key.derivation != Derivation.ROOT
+        or not keys
+        or not keys <= outputs
+    ):
         return None
     producer = source([environment.concepts[k] for k in sorted(keys)] + [key])
-    if producer is None:
-        return None
-    return _key_lookup(key, parent, determined, [producer], environment)
+    producers = [producer] if producer is not None else []
+    return _key_lookup(key, parent, determined, producers, environment)
 
 
 def _key_lookup(
