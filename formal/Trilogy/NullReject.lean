@@ -482,8 +482,8 @@ theorem not_null_column_stores_zero :
 `sum(height) by tree_form` per form; `sum is null` gates the rows. Read off
 the whole side, the WHERE rejects a species whose form's sum is 15. Read off
 the side filtered by the same gate, the outer join pads that species and the
-gate holds on the padding: the rejected row returns. A gate holding on NULL
-reads its argument off an ungated producer. -/
+gate holds on the padding: the rejected row returns. Beside the rows that
+determine its grain, the gated side is joined INNER. -/
 theorem gated_side_padding_passes_gate :
     let on : Row → Row → Bool := fun l r => l 0 == r 0
     let gate := Cond.isNull (.col 3)

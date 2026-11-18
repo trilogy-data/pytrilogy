@@ -783,6 +783,8 @@ def _nullable_join(
     (get_modifiers) pairs the NULL groups, and a nullable side with no
     null-safe partner keeps the join preserving toward it."""
     left_facts, right_facts = facts.side(left), facts.side(right)
+    if _gate_passes_padding(left_facts, right_facts, facts.applied):
+        return JoinType.INNER
     left_is_nullable = bool(keys & left_facts.nullables)
     right_is_nullable = bool(keys & right_facts.nullables)
     if left_is_nullable and right_is_nullable:
@@ -849,6 +851,24 @@ def _nullable_join(
     if unfiltered is not None:
         return _preserving(unfiltered)
     return JoinType.INNER
+
+
+def _gate_passes_padding(
+    left: SideFacts, right: SideFacts, applied: Sequence[BoolExpr]
+) -> bool:
+    """One side past filters the other skipped, which the merge re-applies,
+    its grain determined by the other's rows, and one of them holds on its
+    padding (`sum(x) by k is null`): a row the gated side lacks failed the
+    gate, and preserved it would pass it
+    (`NullReject.gated_side_padding_passes_gate`)."""
+    left_in_right = _passed_all(right.filters, left.filters)
+    if left_in_right == _passed_all(left.filters, right.filters):
+        return False
+    rows, filtered = (left, right) if left_in_right else (right, left)
+    if not filtered.grain or not filtered.grain <= rows.grain | rows.determined:
+        return False
+    extra = [a for a in filtered.filters if not any(a == b for b in rows.filters)]
+    return _passed_all(applied, extra) and any(map(_passes_on_padding, extra))
 
 
 def _passed_all(atoms: Sequence[BoolExpr], of: Sequence[BoolExpr]) -> bool:

@@ -5443,37 +5443,15 @@ def _filter_arg_producer(
     """The most derived of `candidates` outputting `addr`; beside a region's
     rows, one carrying every span first. A one-row value comes from a group
     computing it at its own grain, never off rows that merely carry it (a
-    `count(tree_id) by *` beside every tree joins on nothing). A group gated
-    by an atom over `addr` that holds on absent is no producer of it."""
+    `count(tree_id) by *` beside every tree joins on nothing)."""
     return max(
-        (
-            gid
-            for gid in candidates
-            if addr in attrs[gid].output_concepts
-            and addr not in _gated_args(group_graph, attrs, gid)
-        ),
+        (gid for gid in candidates if addr in attrs[gid].output_concepts),
         key=lambda gid: (
             spans <= set(attrs[gid].output_concepts),
             attrs[gid].grain_components == {ALL_ROWS_ADDRESS},
             sum(1 for a in nx.ancestors(group_graph, gid) if a in candidates),
         ),
         default=None,
-    )
-
-
-def _gated_args(
-    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
-) -> frozenset[str]:
-    """The arguments of atoms gating `gid` or a group below it that can hold
-    on an absent group (`sum(x) by k is null`): its rows hold only the kept
-    groups' value, and a side padding them would pass the atom at FINAL."""
-    return frozenset().union(
-        *(
-            args_holding_on_absent(atom)
-            for g in (gid, *nx.ancestors(group_graph, gid))
-            if g != FINAL_NODE_ID and g in attrs
-            for atom in attrs[g].condition_atoms
-        )
     )
 
 
@@ -5534,7 +5512,6 @@ def _final_extra_sides(
                 else set(attrs[gid].output_concepts)
                 | _merged_spellings(attrs[gid], environment)
             )
-            - _gated_args(group_graph, attrs, gid)
             for gid in sides
         )
     )
