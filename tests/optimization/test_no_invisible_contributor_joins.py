@@ -11,12 +11,16 @@ final statement joins must appear in its projection.
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL, QUERY
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    _fold_covered_contributors,
+)
 from trilogy.dialect.config import DuckDBConfig
 
 THELOOK = Path(__file__).parents[1] / "modeling" / "thelook_duckdb"
@@ -53,3 +57,27 @@ def test_thelook_adhoc_joins_nothing_it_does_not_read(name: str):
     sql = engine.generate_sql((THELOOK / f"{name}.preql").read_text())[-1]
 
     assert not _unread_joins(sql), sql
+
+
+def _stub(grain: set[str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        parents=[],
+        partial_concepts=[],
+        region_spans=frozenset(),
+        region_boundary=False,
+        conditions=None,
+        existence_concepts=[],
+        limit=None,
+        resolve=lambda: SimpleNamespace(grain=SimpleNamespace(components=grain)),
+    )
+
+
+def test_a_covered_contributor_folds_on_what_its_siblings_are_stated_to_hold() -> None:
+    environment = SimpleNamespace(all_scoped_join_group_members=frozenset)
+    lookup, rows = _stub({"customer_id"}), _stub({"order_id"})
+    parents = [lookup, rows]
+    args = (environment, {"customer_id", "order_id"}, {id(lookup)}, set())
+    owed = [{"customer_id"}, {"order_id", "customer_id"}]
+    assert _fold_covered_contributors(parents, *args, owed) == [rows]
+    short = [{"customer_id"}, {"order_id"}]
+    assert _fold_covered_contributors(parents, *args, short) == parents
