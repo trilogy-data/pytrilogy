@@ -1024,7 +1024,7 @@ def plan_final_join(
         for gid in contributors
     }
     members = environment.all_scoped_join_group_members()
-    carries = {}
+    carries: dict[str, frozenset[str]] = {}
     for gid in contributors:
         # an extra side is joined as built, never widened to a sibling's key
         sibling_keys = frozenset().union(
