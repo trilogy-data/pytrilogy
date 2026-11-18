@@ -4650,7 +4650,14 @@ Gates, against `e759a34`:
 
 - Corpus (209 statements): 0 moved.
 - Fuzzer: 522/522.
-- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): pending.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): every moved file
+  that is not checkout-path or port noise was recaptured single-process on
+  both trees (the oracle and sweep laws and gates, `test_cluster_key_lookup`,
+  `test_padded_population_gate`, `test_where_hosts`, the total gates,
+  `test_window_laws`, `test_duckdb_validate`): 0 plans moved. Under xdist
+  those differ only in run-to-run ordering, and `test_duckdb_validate` in
+  how many statements a session's earlier tests leave it.
+- Suite (`-n 4`): the same 25 credential-gated failures as `e759a34`.
 
 **Open.** One stage-3 decision read a built node until part 125, and two
 still do. Each rebuilds parents after the build:
