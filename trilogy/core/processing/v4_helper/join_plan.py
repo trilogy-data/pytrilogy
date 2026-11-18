@@ -1036,8 +1036,10 @@ def plan_final_join(
             siblings = _looked_up_keys(
                 sibling_keys,
                 identity[gid],
+                # a side already planned holds what it looks up
                 (
-                    _held(
+                    carries.get(o)
+                    or _held(
                         group_graph, attrs, o, carry_demands, environment, identity[o]
                     )
                     for o in contributors
