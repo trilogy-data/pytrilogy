@@ -4596,14 +4596,231 @@ tree, not of its pairings, so the rewalk stays. Of the 67 rewalk seeds, 36
 are the merge's sole host, 29 hold no region at all, and 2 hold one without
 hosting, so no side fact names the seed either.
 
-**Open.** One stage-3 decision read a built node until part 125, and three
-still do. Each rebuilds parents after the build:
-`_fold_covered_contributors` drops a contributor a widened sibling now
-renders (30 firings over 5 test files), `_pair_inside_padding_streams`
-moves a grouping contributor into the merge of the stream that padded it
-(7, one file), and `_hold_lookup_sides` holds a coarser row step at its
-lookup keys (152, 5 files). Each reads output columns the build widened,
-which no stage-2 fact states yet. What §6 designs and is
+**A lookup side's columns are stated (part 127).** `_hold_lookup_sides`
+holds a coarser BASIC row step at its planned keys when the keys determine
+its grain, its rows are finer than the keys, and nothing finer it holds is
+needed unless another side supplies it. It read that last test, what each
+side holds, off the built nodes' `usable_outputs`. Over one suite run
+(`*_laws.py` ignored) it held 162 sides in 5 files: 122 in
+`test_cluster_key_lookup`, 35 in `test_keyed_class_beside_trees`, and 5
+across `test_constants_are_not_columns`, `test_derived_key_partial_lookup`
+and `test_pushdown_hidden_source_column`.
+
+The census compared the built decision with candidate rules over those
+files and `test_class_value_beside_partial_lookups`, 1,599 decisions in
+all. Four things separated them, each a fact the plan already holds:
+
+- Stage 2's side list is not the merge's. `_fold_passthrough_parents` folds
+  a sibling into a row-preserving side, which then holds the sibling's rows
+  and columns (a genus step absorbing the per-tree filter carries `tree_id`
+  and is no lookup). The fold already records what each survivor absorbed.
+  The side's columns now include the absorbed groups' renders.
+- A side the consumer's input contract projected
+  (`_satisfy_parent_projection_contract`) holds what the projection kept: a
+  species step beside a shaped sibling drops `height_m`, since the sibling
+  supplies it. Those columns are the contract's own output, recorded at
+  `_apply_input_contracts`.
+- A side held earlier supplies only what its keys determine, as the built
+  rule's sequential read of `held` did.
+- A side carries what its pairings owe (`JoinPlan.owed_by`), which
+  `_carry_planned_keys` has widened it to just before. Without it, a ROOT
+  wrap carrying the derived `crown_fallback_class` key it pairs on looked
+  short of that key, and a species step was left whole
+  (`test_derived_key_partial_lookup`). The census missed this one; the
+  suite capture caught it.
+
+The rule now reads each side's columns from `_side_columns`: the
+`renders` of its groups (`_FoldPlan.rendered`, a stage-2 fact), plus what
+was folded into it, or what the input contract projected it to, plus what
+the plan owes it. With those, stated and built agree on all 1,599 decisions
+in the six files, and the suite capture shows no plan moving. One read of a built node is left, and it is physical:
+whether the side's rows are finer than the keys (`_rows_finer_than`, the
+resolved grain). That follows the datasource the scan resolved to, which
+stage 2 does not choose (part 45). Rules that guessed it from the plan's
+identity, the row parents' grain or the keys a side renders disagreed on
+22 to 36 decisions: the source rows behind a ROOT are at `tree_id`, whatever
+columns the step projects.
+
+`test_a_lookup_side_holds_what_is_stated_not_what_its_node_outputs`
+(`test_keyed_class_beside_trees.py`) pins the statement. A side holds what
+its group renders plus what was folded into it, and a projected side holds
+only what its projection kept.
+
+Gates, against `e759a34`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): every moved file
+  that is not checkout-path or port noise was recaptured single-process on
+  both trees (the oracle and sweep laws and gates, `test_cluster_key_lookup`,
+  `test_padded_population_gate`, `test_where_hosts`, the total gates,
+  `test_window_laws`, `test_duckdb_validate`): 0 plans moved. Under xdist
+  those differ only in run-to-run ordering, and `test_duckdb_validate` in
+  how many statements a session's earlier tests leave it.
+- Suite (`-n 4`): the same 25 credential-gated failures as `e759a34`.
+
+**A covered contributor folds on stated columns (part 128).**
+`_fold_covered_contributors` drops a FINAL contributor elected to cover a
+concept when the plan has since widened a sibling to render all it
+contributes. Its column reads (what the contributor contributes, what the
+survivors hold, what they share, whether the drop islands them) were off
+each side's built outputs. They are now off `_side_columns`, the rule part
+127 states for a lookup side, with the FINAL's own facts in place of a
+consumer's:
+
+- what each group reaches the FINAL with (`_FinalCover.holds`: its stage-2
+  `renders` plus the projections and passthroughs the election owes on it);
+- plus the groups `_fold_passthrough_parents` absorbed into the side;
+- or, for a side the FINAL itself projected, what the projection kept: a
+  ROOT wrap `_wrap_for_grain` bucketed, or a side the FINAL's projection
+  contract narrowed;
+- plus what the plan owes it (`JoinPlan.owed_by`).
+
+The census compared the built and stated decisions over the whole suite
+(`*_laws.py` aside): 3,533 decisions, 31 drops, 2 disagreements. Both were
+a ROOT contributor split into several wraps (`test_property_beside_key`,
+`test_where_gate_pairing`), where the stated set read the group's whole
+render instead of each wrap's bucket. With the wraps recorded as projected,
+stated and built agree on all 7,648 decisions (103 drops) over the firing
+files and all of `tests/discovery`, laws included. The fold still reads
+four built facts, each physical or a restriction rather than a column: the
+side's resolved grain (the drop needs the shared keys to be exactly its
+rows' identity), its partial bindings, the regions it reads and the
+conditions under it.
+
+`test_a_covered_contributor_folds_on_what_its_siblings_are_stated_to_hold`
+(`tests/optimization/test_no_invisible_contributor_joins.py`) pins it: the
+same two sides fold or stay by what they are stated to hold.
+
+**A padding stream pairs on stated columns (part 129).**
+`_pair_inside_padding_streams` moves a grouping contributor into the merge
+of a stream that padded a `?` key it shares, and carries the contributor's
+other columns up the stream's path. Both reads, what the two share and
+what is carried, are now off `_side_columns`, and a stream also holds what
+it has taken in (the build widened it; the rule now says so). Over the six
+files that pad (484 checks, 50 that share a padded key) the rules disagree
+once: `test_a_coalesced_inner_key_pairs_value_nulls_null_safely`'s customer
+scan hosts `name = 'ann'` and lists `name` among its outputs, though its CTE
+never renders it. The built rule carried `name` up; the stated one does
+not, and the SQL is the same. The padding path, regions, value-NULL
+provenance and the grouping keys along the path stay built: they are the
+merge's physical shape.
+
+Gates for parts 128-129, against `8369d50`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`) of part 128: every
+  moved file that is not checkout-path or port noise was recaptured
+  single-process on `8369d50` and on part 129 (the oracle and sweep laws
+  and gates, `test_cluster_key_lookup`, `test_where_hosts`, the total
+  gates, `test_region_dimension_attributes`, `test_dashboard_queries`):
+  0 plans moved once the checkout path is normalized. So were the files
+  where either rule fires or the censuses disagreed (the padding files,
+  `test_reaggregated_partial_under_stored_root`, `test_final_gate_lookups`,
+  `test_property_beside_key`, `test_where_gate_pairing`,
+  `test_padded_population_gate`): 0 moved.
+- Suite (`-n 4`): the same 25 credential-gated failures as `8369d50`.
+
+**A stream dedups beside rows, not columns (part 130).**
+`_at_declared_identity` dedups a row stream built off rows finer than its
+group's declared identity (a filter of an item attribute sourced off the
+sale lines). It fired when an independent sibling *exposed* the stream's
+finer row key as a column. Part 129 left it on that built read: stated
+columns missed 10 of its firings, in each of which a FILTER group stated at
+`cid, id, name, sk` exposes `order_id` (8 in
+`test_duckdb_subset_join_pivot_axis`). That was read as a leak to fix in the
+FILTER build. It is not one: the FILTER's rows are at order grain, and it
+keeps the key so it never advertises a coarser grain than its rows
+(`test_filter_node_retains_row_grain_keys`, TPC-DS q74). What the dedup
+guards is rows. Paired on the planned keys alone, a stream and a sibling
+both at the finer key meet row by row. The rule now reads each independent
+sibling's resolved grain, the physical fact the lookup hold and the fold
+already read, and no sibling columns.
+
+A census logged both reads at each of the 2,451 decisions over the suite
+that reach the sibling test (`*_laws.py` aside): they disagree once. In
+`test_two_namespace_import_merge_hidden_output` a sibling whose rows are at
+`id` outputs it only as the alias `launch_tag`, so the column read missed it
+by spelling (§7: identity compares by value class, never spelling). The
+stream is now deduped there, which adds one CTE and one join. The rows are
+the same, also with a second launch sharing the first's code, site and
+organization. Both plans are correct: the two streams render off one merge,
+which resolve collapses when nothing dedups either. The pivot witnesses agree.
+
+`test_a_stream_dedups_to_its_identity_beside_rows_as_fine_as_its_own`
+(`tests/engine/test_duckdb_subset_join_pivot_axis.py`) pins the rule both
+ways. A sibling at the finer rows under an alias triggers the dedup. A sibling
+exposing the finer key as a column over coarser rows does not.
+
+**A per-group projection reads what its siblings render (part 131).**
+`_satisfy_parent_projection_contract` projects an unshaped parent to the
+consumer's projection grain beside a shaped sibling. Before deciding, it asks
+what the siblings supply: a grain key or an attribute a sibling holds is not
+this parent's to project (#972), and with no shared key it groups to a
+bridge key instead. It read that off the siblings' built `usable_outputs`.
+The decision is now `_projection_for`, a pure function over the parent and
+what its siblings supply. In a per-group merge the supply is stated: what
+each sibling's group renders (`_FoldPlan.rendered`, the set
+`_side_columns` starts from).
+
+A census logged both reads at each decision over the suite: 4,431 decisions,
+84 disagreements in 24 files. In those files, 47 of 694 per-group decisions
+and 37 of 232 FINAL ones disagree. Nearly every disagreement is a sibling
+stated to render a key its node did not yet output (`orbit_code`, `ka`,
+`species`). Recaptured single-process over the 24 files:
+
+| read | plans moved | more CTEs or joins | fewer |
+|---|---|---|---|
+| stated, per-group only (landed) | 17 | 0 | 7 |
+| stated, FINAL only | 27 | 4 | 11 |
+| stated, FINAL without owed keys | 34 | 13 | 10 |
+
+Per-group, no plan grows. The largest drops are
+`test_each_tree_once_at_its_own_values[columns1-where]` (14 to 12 CTEs, 10 to
+8 joins) and `test_derived_key_over_partial_lookup_keeps_unmatched_rows`
+(10 to 8 CTEs, 9 to 8 joins). Every moved test passes, and all but
+`test_the_final_spine_reads_the_previous_statement` assert rows. That one
+compiles the shape `test_source_as_tree_property_builds_the_same_rows` runs.
+
+**Not stated: the FINAL's projection supply.** The FINAL keeps the built
+read. There a sibling's stated columns include the keys the plan owes it
+(`JoinPlan.owed_by`), and `_carry_planned_keys` widens it to those only after
+this projection. Crediting them earlier grows 4 plans, each a rowset FULL
+joined to a complete dimension (`test_rowset_full_join_to_complete_dimension_key_yields_all_rows`,
+`test_full_readback_row_identical_under_narrowing`,
+`test_rowset_key_readback_full_k_aw` twice): the dimension is kept whole and
+paired through an extra FULL join. Leaving the owed keys out moves more
+plans (13 grow). Stating this read needs the projection after the widening,
+or a supply that names the keys a sibling holds before it.
+
+`test_parent_projection_uses_declared_contract_not_shape_barrier` pins the
+stated read: the same two built parents group the dimension to a bridge key
+when the aggregate's group is stated to render it, and only wrap it when
+the group is not.
+
+Gates for parts 130-131, against `45c83e7`:
+
+- Corpus (209 statements): 0 moved, at each part.
+- Fuzzer: 522/522 with both parts.
+- Suite capture (`sqlcap`, `-n 8`, `PYTHONHASHSEED=0`), paths normalized
+  and statements compared as line sets. Part 130: once the files that move
+  under xdist were recaptured single-process on both trees, only the witness
+  above moved. Part 131: the moves above. Single-process recaptures of
+  `test_cluster_key_lookup`, `test_rank_beside_partial_merge`,
+  `test_dashboard_queries`, `test_derived_key_domain`,
+  `test_padded_null_pairing` and `test_nullability` show no moves. The
+  rest is checkout-path, port and temp-name noise.
+- Suite (`-n 8`): the same 25 credential-gated failures as `45c83e7`.
+
+**Open.** Since part 131 no stage-3 decision rebuilds a per-group parent off
+its siblings' built output columns. `_hold_lookup_sides`,
+`_fold_covered_contributors` and `_pair_inside_padding_streams` read
+`_side_columns`, the per-group projection reads its siblings' renders, and
+`_at_declared_identity` reads rows. What they still read is physical:
+resolved grain, regions, partial bindings, restrictions and the padding
+path. One column read is left: the FINAL's projection supply, which runs
+before the FINAL widens its sides (above). What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the

@@ -17,10 +17,9 @@ def _ensure_dataset(import_path: Path, sf: float) -> None:
     uv_run macro into the exported schema.sql)."""
     import duckdb
 
-    # schema.sql / load.sql are committed for the smaller scale factors but
-    # *.parquet is gitignored, so on a fresh checkout the schema files exist
-    # while the data files don't. Gate on a representative parquet to detect
-    # a partially-populated directory and regenerate.
+    # the export is gitignored (load.sql holds absolute paths). Gate on a
+    # representative parquet to detect a partially-populated directory and
+    # regenerate.
     if (import_path / "call_center.parquet").exists():
         return
     import_path.mkdir(parents=True, exist_ok=True)

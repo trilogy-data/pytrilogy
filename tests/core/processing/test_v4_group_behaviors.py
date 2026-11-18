@@ -1639,11 +1639,16 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         grain_components=frozenset({store_id.address}),
     )
 
+    rendered = {
+        "dim": frozenset({store_id.address, station_name.address}),
+        "agg": frozenset({store_id.address, daily_rides.address}),
+    }
     projected = _apply_input_contracts(
         parent_builds,
         attrs,
         no_contract_attrs,
         needed={station_name.address},
+        rendered=rendered,
         environment=env,
     )
 
@@ -1670,6 +1675,7 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         attrs,
         contracted_attrs,
         needed={station_name.address},
+        rendered=rendered,
         environment=env,
     )
 
@@ -1678,6 +1684,20 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
         store_id.address,
         station_name.address,
     }
+
+    # the aggregate's node outputs `store.id`, but its group is not stated to
+    # render it: the dimension is not grouped to keep a bridge key for it
+    unkeyed = rendered | {"agg": frozenset({daily_rides.address})}
+    projected = _apply_input_contracts(
+        parent_builds,
+        attrs,
+        contracted_attrs,
+        needed={station_name.address},
+        rendered=unkeyed,
+        environment=env,
+    )
+
+    assert not isinstance(projected[0], GroupNode)
 
 
 def test_a_parent_whose_stage_two_rows_are_shaped_is_never_projected():
@@ -1739,6 +1759,10 @@ def test_a_parent_whose_stage_two_rows_are_shaped_is_never_projected():
         attrs,
         consumer,
         needed={station_name.address},
+        rendered={
+            "dim": frozenset({store_id.address, station_name.address}),
+            "over_rowset": frozenset({store_id.address}),
+        },
         environment=env,
     )
 
@@ -1810,6 +1834,10 @@ def _dim_beside_a_forced_group(
         attrs,
         consumer,
         needed={station_name.address},
+        rendered={
+            "dim": frozenset({store_id.address, station_name.address}),
+            "deduplicated": frozenset({store_id.address}),
+        },
         environment=env,
     )
     return projected, dim_parent
