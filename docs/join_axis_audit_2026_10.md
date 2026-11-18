@@ -4813,15 +4813,92 @@ Gates for parts 130-131, against `45c83e7`:
   rest is checkout-path, port and temp-name noise.
 - Suite (`-n 8`): the same 25 credential-gated failures as `45c83e7`.
 
-**Open.** Since part 131 no stage-3 decision rebuilds a per-group parent off
-its siblings' built output columns. `_hold_lookup_sides`,
-`_fold_covered_contributors` and `_pair_inside_padding_streams` read
-`_side_columns`, the per-group projection reads its siblings' renders, and
-`_at_declared_identity` reads rows. What they still read is physical:
-resolved grain, regions, partial bindings, restrictions and the padding
-path. One column read is left: the FINAL's projection supply, which runs
-before the FINAL widens its sides (above). What §6 designs and is
-not built yet:
+**The FINAL's projection supply is stated (part 132).** Part 131 left the
+FINAL on the built read, since crediting a sibling the keys the plan owes it
+grew 4 rowset FULL plans. All 4 are one case. A coalescing relation is one
+axis every side presents under all its names (`JoinPlan.keys_for`), so the
+rowset side of `union join web_rs.wc = customer.customer_id` is owed
+`customer.customer_id`. It never holds that column before the widening; it
+pairs through `wc`. Credited with it, the dimension is not grouped to its
+key and is kept whole. The supply is now `_final_supply`: what the side
+holds as stated (`_side_columns`, the plan's widening included), less any
+authored relation member it does not hold before the widening
+(`_held_columns`). `_side_columns` is now the owed keys over `_held_columns`.
+
+A census logged the built read and three stated reads at each of the 5,810
+FINAL projection decisions over the suite:
+
+| supply | decisions that differ from built |
+|---|---|
+| stated, owed keys credited | 37 |
+| stated, no owed keys | 14 |
+| stated, less unheld authored members (landed) | 15 |
+
+The 23 disagreements only the first read has are the authored members
+above. The 15 left are in four files:
+
+- 8 in `test_derived_key_domain` and `test_total_beside_lookup_gate`: the
+  built supply holds a `by *` total's `all_rows` marker, which no group
+  renders. The dimension is wrapped instead of regrouped. The SQL is the same
+  except for CTE names.
+- 4 more in `test_derived_key_domain` (the by-star aggregate output)
+  differ the other way. The sibling is stated to render `order_id`, so the
+  parent keeps its own rows. The FINAL then reads `c2` off one stream, not a
+  stream joined back to the customers on `customer_id = c2`. That is one
+  fewer join (`test_a_renamed_key_beside_a_total_is_read_off_one_stream`).
+- 2 in `test_keyed_class_beside_trees`: a sibling is stated to render a
+  key (`genus`, `species`), so the parent projects fewer columns. 1 in
+  `test_duckdb_union_join_rowset_grain`. Neither moves a plan.
+
+**A finer passenger's supply is stated (part 133).** `_drop_finer_passengers`
+drops a row scan finer than an aggregate's input grain when its siblings
+supply everything it would. It read that supply off their built outputs. A
+census of 59,776 decisions read it two ways. Read off the siblings'
+*renders* (`_held_columns`), it disagrees 6 times, in
+`test_unmodelled_regions` and `test_duckdb_partial_key_assembly`. Each time
+the sibling is a dimension read by `order_id` (or `ticket`) that renders
+`user_id` (or `sale_year`) off the same rows but does not output it.
+Dropping the passenger there leaves nothing to supply the column, and
+`test_forked_with_status` cannot build its aggregate. A passenger is
+redundant beside what its siblings *emit*, not what they could render. The
+read is now `_emitted_columns`: each sibling's stated group outputs, or what
+the consumer's input contract projected it to. No plan moves.
+
+**A gate host joins off the plan (part 134).** Since a FINAL gate's grain
+keys are those no side outputs, a side holds one only once
+`_carry_asked_keys` widens it to the condition plan's asks.
+`_join_gate_hosts` used to re-read every side's built outputs after that
+widening to decide which elected host to join. It now joins the host of
+each gate key the condition plan has no side carry. The suite reaches that
+decision 8 times, and both reads agree each time. No plan moves.
+
+Gates for parts 132-134, against `d90a589`:
+
+- Corpus (205 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): checkout paths,
+  temp names and ports normalized. Moved files off the known-noise list
+  were recaptured single-process on both trees:
+  `test_padded_population_gate`, `test_total_beside_lookup_gate`,
+  `test_derived_key_domain`, `test_unbuilt_sources`,
+  `test_cluster_key_lookup`, `test_region_dimension_attributes`,
+  `test_unmodelled_regions`, `test_duckdb_partial_key_assembly`. Only part
+  132 moves plans: the by-star aggregate above (2 tests, both twins, one
+  fewer join each), plus CTE renames in 7 more of `test_derived_key_domain`
+  and `test_total_beside_lookup_gate`. Everything else is noise.
+- Suite (`-n 4`): the same 25 credential-gated failures as `d90a589`.
+
+**Open.** Since part 134 no stage-3 decision reads a sibling's built output
+columns. `_hold_lookup_sides`, `_fold_covered_contributors` and
+`_pair_inside_padding_streams` read `_side_columns`. Both projections read
+stated supplies (per-group renders, `_final_supply`), a passenger reads
+`_emitted_columns`, `_at_declared_identity` reads rows, and a gate host
+follows the condition plan. What they still read is physical: resolved
+grain, regions, partial bindings, restrictions and the padding path. One
+built column read is left upstream of a decision: the FINAL's gate keys
+are the gate arguments' grain keys that no assembled side outputs
+(`available`, the merge's own output set). What §6 designs and is not
+built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an

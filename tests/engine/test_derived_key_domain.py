@@ -2044,3 +2044,13 @@ def test_group_by_the_customer_pairs_every_customer_with_its_statuses():
         (2, "delivered"),
         (3, "in-transit"),
     ]
+
+
+def test_a_renamed_key_beside_a_total_is_read_off_one_stream(
+    derived: Executor, materialized: Executor
+):
+    query = "select customer_id as c2, status, count(customer_id) by * as total;"
+    for executor in (derived, materialized):
+        final = executor.generate_sql(query)[-1].rsplit("SELECT", 1)[-1]
+        assert final.count("JOIN") == 1
+        assert "on 1=1" in final
