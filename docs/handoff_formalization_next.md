@@ -13,9 +13,9 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.513.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.514.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family to 100,000; the PR of each round holds its sweep totals.
+`expressions` family to 150,000; the PR of each round holds its sweep totals.
 What they still get wrong is `OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` (404253) and
 `test_oracle_expressions_laws.py`, under area 1 below.
@@ -318,14 +318,13 @@ this edit no longer reproduced, so probe any lead before working on it.
 
 Open in the `expressions` family (each fails on main too):
 
-- Off the summary, `species` beside a value `by tree_form` and an expression
-  over a bare aggregate raises a keyless join (17715, 62974, 66824;
-  `select species, count(tree_id) by tree_form, max(height) + 1`). The plan
-  says the BASIC side, over a summary rollup by `species`, carries
-  `tree_form` (`species` determines it), but the built side is a group and
-  `_project_planned_keys` finds no producer to look it up from. Either the
-  plan reads the side as grouped (`_over_groups_only` does not see a rolled
-  ROOT parent) and elects a bridge, or the lookup sources the dimension.
+- Off the summary, `species` (17715) or `tree_id` (139791) beside a value
+  `by tree_form` raises a keyless join where the side is a value over real
+  aggregates (`count_distinct(tag) + 1`): it owes no `tree_form`, so the two
+  are islands, and the only bridge candidate, the trees' row stream, holds
+  no `tree_form` (it is a rolled root's, not the row stream's, read). The
+  bridge would have to be widened to a key it does not read; 0.3.514's
+  sourced lookup covers only a side the plan already pairs on the key.
 - A row atom OR'd or NOT'd with aggregates at a grain beside the select's
   (15826, 89514): a gate or values at two grains no side holds together.
   89514's constant (`2 * 1`) is grouped at `city` beside the `species` rows;
@@ -338,7 +337,7 @@ Open in the `expressions` family (each fails on main too):
   summary raises a keyless join: the stored sum is a peel at `tree_form` and
   no side holds `species` beside it (`test_sweep_450k_shapes.py`).
 - Spellings 404253: FINAL reads `height` off a side its merge does not join.
-- The expressions family past 100,000 is unswept.
+- The expressions family past 150,000 is unswept.
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.
 

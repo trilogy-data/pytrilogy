@@ -2924,12 +2924,15 @@ def _project_planned_keys(
     plan: JoinPlan,
     environment: BuildEnvironment,
     producers: Sequence[StrategyNode] = (),
+    source: Callable[[list[BuildConcept]], StrategyNode | None] | None = None,
 ) -> list[StrategyNode]:
     """Hand each parent the planned keys widening in place could not. One its
     outputs render is projected over it: the plan pairs `min(x) by row_key`
     with an aggregate by `tree_id` on `row_key`. One they determine but do
     not render (`cluster_id`, computed off other aggregates) is looked up from
-    a built producer keyed within the parent's outputs."""
+    a built producer keyed within the parent's outputs; with none, from a
+    scan `source` plans of the key beside its own keys the parent holds
+    (`tree_form` by `species` beside a summary's rows by `species`)."""
     out: list[StrategyNode] = []
     authored = environment.all_scoped_join_group_members()
     for parent in parents:
@@ -2966,7 +2969,17 @@ def _project_planned_keys(
             and c.address in determined
             and c.address not in authored
             and c.derivation != Derivation.ROWSET
-            and (lookup := _key_lookup(c, parent, determined, producers, environment))
+            and (
+                lookup := _key_lookup(c, parent, determined, producers, environment)
+                or _sourced_lookup(
+                    c,
+                    parent,
+                    determined,
+                    outputs,
+                    source if not _held_beside_keys(c, parent, parents) else None,
+                    environment,
+                )
+            )
             is not None
         ]
         if not rendered and not lookups:
@@ -2997,6 +3010,64 @@ def _project_planned_keys(
             origin[id(node)] = gid
         out.append(node)
     return out
+
+
+def _rows_once(
+    node: StrategyNode,
+    plan: JoinPlan,
+    origin: dict[int, str],
+    environment: BuildEnvironment,
+) -> StrategyNode:
+    """A value over groups alone (`JoinPlan.over_groups`) is one row per tuple
+    of what it outputs. Built over a bridge finer than its grain (a value at
+    `city, tree_form` bridged by the rows by `city, species`) its rows repeat,
+    and FINAL would pair each repeat: it is deduped to its outputs."""
+    gid = _origin_group(node, origin)
+    if gid is None or gid not in plan.over_groups:
+        return node
+    outputs = {o.address for o in node.output_concepts}
+    if set(node.resolve().grain.components) <= outputs:
+        return node
+    node.unhide_output_concepts(list(node.output_concepts))
+    deduped = _forced_dedup(node, list(node.output_concepts), environment)
+    origin[id(deduped)] = gid
+    return deduped
+
+
+def _held_beside_keys(
+    key: BuildConcept, parent: StrategyNode, parents: list[StrategyNode]
+) -> bool:
+    """Another side holds `key` beside its own keys: the merge pairs through
+    it, and a scan of the key would be a second copy of that side."""
+    wanted = {key.address, *(key.keys or ())}
+    return any(
+        wanted <= {o.address for o in other.output_concepts}
+        for other in parents
+        if other is not parent
+    )
+
+
+def _sourced_lookup(
+    key: BuildConcept,
+    parent: StrategyNode,
+    determined: frozenset[str],
+    outputs: set[str],
+    source: Callable[[list[BuildConcept]], StrategyNode | None] | None,
+    environment: BuildEnvironment,
+) -> tuple[StrategyNode, frozenset[str]] | None:
+    """A lookup of `key` off a fresh scan of it beside its own keys, when the
+    parent holds all of them: each parent row looks one value up."""
+    keys: set[str] = set(key.keys or ())
+    if (
+        source is None
+        or key.derivation != Derivation.ROOT
+        or not keys
+        or not keys <= outputs
+    ):
+        return None
+    producer = source([environment.concepts[k] for k in sorted(keys)] + [key])
+    producers = [producer] if producer is not None else []
+    return _key_lookup(key, parent, determined, producers, environment)
 
 
 def _key_lookup(
@@ -6750,8 +6821,18 @@ def _assemble_final_node(
     # rows determine) is looked up from the step computing it: left unheld,
     # the sides pair on whatever else they share (#977)
     parents = _project_planned_keys(
-        parents, origin, plan, environment, list(built.values())
+        parents,
+        origin,
+        plan,
+        environment,
+        list(built.values()),
+        lambda outputs: plan_source(
+            SourceRequest(
+                outputs=outputs, environment=environment, graph=graph, history=history
+            )
+        ),
     )
+    parents = [_rows_once(p, plan, origin, environment) for p in parents]
     parents = _fold_covered_contributors(
         parents,
         environment,

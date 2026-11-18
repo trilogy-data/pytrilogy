@@ -1636,4 +1636,27 @@ theorem resum_reads_partial_rows :
         (keptRows.filter fun r => r.1 == f).length).sum = keptRows.length := by
   decide
 
+
+/-! ## A value over groups is one row per tuple
+
+`select city, species, form, count(id) / count(id), count(id) by form /
+count(id) by city`: the value at `(city, form)` reads two aggregates that hold
+neither pair, so the rows by `(city, species)` bridge them. Built over the
+bridge, the value is one row per species, so it repeated each `(city, form)`
+once per species, and FINAL, joining it back to the rows on `(city, form)`,
+gave every row as many partners as its form has species in its city
+(`bridge_joined_whole_repeats_its_pairs`). Deduped to its tuples, each row
+meets its value once (`unique_side_one_partner`). -/
+
+/-- The `(city, species, form)` rows of `valueRows` bridge the value at `(city,
+form)`: five rows, seven partners off the whole bridge, five off its pairs. -/
+theorem bridge_joined_whole_repeats_its_pairs :
+    let bridge : List (Int × Int × Int) := dedup valueRows
+    let whole := bridge.map fun r => (r.1, r.2.2)
+    let pairs := dedup whole
+    bridge.length = 5 ∧
+      (bridge.flatMap fun r => whole.filter fun v => v == (r.1, r.2.2)).length = 7 ∧
+      (bridge.flatMap fun r => pairs.filter fun v => v == (r.1, r.2.2)).length = 5 := by
+  decide
+
 end Trilogy.SelectGrain
