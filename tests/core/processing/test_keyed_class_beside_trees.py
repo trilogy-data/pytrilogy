@@ -309,14 +309,20 @@ def test_final_pairs_a_derived_grain_through_its_producer(executor) -> None:
 def test_a_lookup_side_holds_what_is_stated_not_what_its_node_outputs() -> None:
     side, folded, projected = (SimpleNamespace(parents=[]) for _ in range(3))
     origin = {id(side): "a", id(folded): "b", id(projected): "c"}
+    plan = SimpleNamespace(
+        owed_by=lambda gid: frozenset({"fallback_class"} if gid == "c" else ())
+    )
     rendered = {
         "a": frozenset({"genus"}),
         "b": frozenset({"tree_id"}),
         "c": frozenset({"species", "height_m"}),
     }
-    assert _side_columns(side, origin, rendered, {}, {id(side): [folded]}) == {
+    assert _side_columns(side, origin, plan, rendered, {}, {id(side): [folded]}) == {
         "genus",
         "tree_id",
     }
     narrowed = {id(projected): frozenset({"species"})}
-    assert _side_columns(projected, origin, rendered, narrowed, {}) == {"species"}
+    assert _side_columns(projected, origin, plan, rendered, narrowed, {}) == {
+        "species",
+        "fallback_class",
+    }

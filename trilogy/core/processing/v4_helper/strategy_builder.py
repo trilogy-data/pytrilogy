@@ -3746,7 +3746,9 @@ def _pre_merge_parents(
                 needed,
                 environment,
                 [
-                    _side_columns(parent, origin, rendered, narrowed or {}, absorbed)
+                    _side_columns(
+                        parent, origin, plan, rendered, narrowed or {}, absorbed
+                    )
                     for parent in parents
                 ],
             )
@@ -3793,19 +3795,21 @@ def _pre_merge_parents(
 def _side_columns(
     side: StrategyNode,
     origin: dict[int, str],
+    plan: JoinPlan,
     rendered: Mapping[str, frozenset[str]],
     narrowed: Mapping[int, frozenset[str]],
     absorbed: Mapping[int, list[StrategyNode]],
 ) -> set[str]:
     """What a merge side holds, as stated: what its groups render, a sibling
     folded into it included, or what the consumer's input contract projected
-    it to."""
-    if id(side) in narrowed:
-        return set(narrowed[id(side)])
+    it to; and what the plan widens it to carry (`_carry_planned_keys`)."""
     groups = (side_members(side, origin) or frozenset()) | frozenset(
         side_groups(absorbed.get(id(side), []), origin)
     )
-    return set().union(*(rendered.get(gid, frozenset()) for gid in groups))
+    owed = set().union(*(plan.owed_by(gid) for gid in groups))
+    if id(side) in narrowed:
+        return set(narrowed[id(side)]) | owed
+    return owed.union(*(rendered.get(gid, frozenset()) for gid in groups))
 
 
 def _hold_lookup_sides(
@@ -3849,7 +3853,8 @@ def _hold_lookup_sides(
         if wanted - determined - supplied:
             continue
         columns[idx] &= determined
-        concepts = [o for o in parent.usable_outputs if o.address in determined]
+        exposed = {o.address: o for o in parent.usable_outputs}
+        concepts = [c for address, c in exposed.items() if address in determined]
         held[idx] = _forced_dedup(parent, concepts, environment, determined)
     return held
 

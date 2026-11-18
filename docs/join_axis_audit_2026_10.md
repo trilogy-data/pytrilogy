@@ -4608,7 +4608,7 @@ and `test_pushdown_hidden_source_column`.
 
 The census compared the built decision with candidate rules over those
 files and `test_class_value_beside_partial_lookups`, 1,599 decisions in
-all. Three things separated them, each a fact the plan already holds:
+all. Four things separated them, each a fact the plan already holds:
 
 - Stage 2's side list is not the merge's. `_fold_passthrough_parents` folds
   a sibling into a row-preserving side, which then holds the sibling's rows
@@ -4622,12 +4622,18 @@ all. Three things separated them, each a fact the plan already holds:
   `_apply_input_contracts`.
 - A side held earlier supplies only what its keys determine, as the built
   rule's sequential read of `held` did.
+- A side carries what its pairings owe (`JoinPlan.owed_by`), which
+  `_carry_planned_keys` has widened it to just before. Without it, a ROOT
+  wrap carrying the derived `crown_fallback_class` key it pairs on looked
+  short of that key, and a species step was left whole
+  (`test_derived_key_partial_lookup`). The census missed this one; the
+  suite capture caught it.
 
 The rule now reads each side's columns from `_side_columns`: the
 `renders` of its groups (`_FoldPlan.rendered`, a stage-2 fact), plus what
-was folded into it, or what the input contract projected it to. With those,
-stated and built agree on all 1,599 decisions, and every one of the 162
-holds is the same. One read of a built node is left, and it is physical:
+was folded into it, or what the input contract projected it to, plus what
+the plan owes it. With those, stated and built agree on all 1,599 decisions
+in the six files, and the suite capture shows no plan moving. One read of a built node is left, and it is physical:
 whether the side's rows are finer than the keys (`_rows_finer_than`, the
 resolved grain). That follows the datasource the scan resolved to, which
 stage 2 does not choose (part 45). Rules that guessed it from the plan's
