@@ -4722,24 +4722,105 @@ Gates for parts 128-129, against `8369d50`:
   `test_padded_population_gate`): 0 moved.
 - Suite (`-n 4`): the same 25 credential-gated failures as `8369d50`.
 
-**Not stated: `_at_declared_identity`.** It dedups a row stream to its
-group's declared identity when a sibling exposes the stream's finer row
-key. Over the suite it fires 35 times in 32,209 decisions. Read off
-`_side_columns`, it disagrees on 10: in each (8 in
-`test_duckdb_subset_join_pivot_axis`) a FILTER group's node exposes its
-input row key (`order_id`, under a group stated at `cid, id, name, sk`),
-and the dedup exists because the sibling leaks it. The stated rule would
-leave both streams at order grain. That leak is a build exposing more than
-its group renders, which §6 calls a bug to surface; the dedup stays on the
-built read until the FILTER build stops exposing it.
+**A stream dedups beside rows, not columns (part 130).**
+`_at_declared_identity` dedups a row stream built off rows finer than its
+group's declared identity (a filter of an item attribute sourced off the
+sale lines). It fired when an independent sibling *exposed* the stream's
+finer row key as a column. Part 129 left it on that built read: stated
+columns missed 10 of its firings, in each of which a FILTER group stated at
+`cid, id, name, sk` exposes `order_id` (8 in
+`test_duckdb_subset_join_pivot_axis`). That was read as a leak to fix in the
+FILTER build. It is not one: the FILTER's rows are at order grain, and it
+keeps the key so it never advertises a coarser grain than its rows
+(`test_filter_node_retains_row_grain_keys`, TPC-DS q74). What the dedup
+guards is rows. Paired on the planned keys alone, a stream and a sibling
+both at the finer key meet row by row. The rule now reads each independent
+sibling's resolved grain, the physical fact the lookup hold and the fold
+already read, and no sibling columns.
 
-**Open.** Since part 129 the three stage-3 decisions that rebuilt parents
-off built output columns (`_hold_lookup_sides`, `_fold_covered_contributors`,
-`_pair_inside_padding_streams`) read what each side holds from
-`_side_columns`. What they still read is physical: resolved grain, regions,
-partial bindings, restrictions and the padding path. One dedup,
-`_at_declared_identity`, still reads built columns, because a FILTER build
-exposes a row key its group does not render. What §6 designs and is
+A census logged both reads at each of the 2,451 decisions over the suite
+that reach the sibling test (`*_laws.py` aside): they disagree once. In
+`test_two_namespace_import_merge_hidden_output` a sibling whose rows are at
+`id` outputs it only as the alias `launch_tag`, so the column read missed it
+by spelling (§7: identity compares by value class, never spelling). The
+stream is now deduped there, which adds one CTE and one join. The rows are
+the same, also with a second launch sharing the first's code, site and
+organization. Both plans are correct: the two streams render off one merge,
+which resolve collapses when nothing dedups either. The pivot witnesses agree.
+
+`test_a_stream_dedups_to_its_identity_beside_rows_as_fine_as_its_own`
+(`tests/engine/test_duckdb_subset_join_pivot_axis.py`) pins the rule both
+ways. A sibling at the finer rows under an alias triggers the dedup. A sibling
+exposing the finer key as a column over coarser rows does not.
+
+**A per-group projection reads what its siblings render (part 131).**
+`_satisfy_parent_projection_contract` projects an unshaped parent to the
+consumer's projection grain beside a shaped sibling. Before deciding, it asks
+what the siblings supply: a grain key or an attribute a sibling holds is not
+this parent's to project (#972), and with no shared key it groups to a
+bridge key instead. It read that off the siblings' built `usable_outputs`.
+The decision is now `_projection_for`, a pure function over the parent and
+what its siblings supply. In a per-group merge the supply is stated: what
+each sibling's group renders (`_FoldPlan.rendered`, the set
+`_side_columns` starts from).
+
+A census logged both reads at each decision over the suite: 4,431 decisions,
+84 disagreements in 24 files. In those files, 47 of 694 per-group decisions
+and 37 of 232 FINAL ones disagree. Nearly every disagreement is a sibling
+stated to render a key its node did not yet output (`orbit_code`, `ka`,
+`species`). Recaptured single-process over the 24 files:
+
+| read | plans moved | more CTEs or joins | fewer |
+|---|---|---|---|
+| stated, per-group only (landed) | 17 | 0 | 7 |
+| stated, FINAL only | 27 | 4 | 11 |
+| stated, FINAL without owed keys | 34 | 13 | 10 |
+
+Per-group, no plan grows. The largest drops are
+`test_each_tree_once_at_its_own_values[columns1-where]` (14 to 12 CTEs, 10 to
+8 joins) and `test_derived_key_over_partial_lookup_keeps_unmatched_rows`
+(10 to 8 CTEs, 9 to 8 joins). Every moved test passes, and all but
+`test_the_final_spine_reads_the_previous_statement` assert rows. That one
+compiles the shape `test_source_as_tree_property_builds_the_same_rows` runs.
+
+**Not stated: the FINAL's projection supply.** The FINAL keeps the built
+read. There a sibling's stated columns include the keys the plan owes it
+(`JoinPlan.owed_by`), and `_carry_planned_keys` widens it to those only after
+this projection. Crediting them earlier grows 4 plans, each a rowset FULL
+joined to a complete dimension (`test_rowset_full_join_to_complete_dimension_key_yields_all_rows`,
+`test_full_readback_row_identical_under_narrowing`,
+`test_rowset_key_readback_full_k_aw` twice): the dimension is kept whole and
+paired through an extra FULL join. Leaving the owed keys out moves more
+plans (13 grow). Stating this read needs the projection after the widening,
+or a supply that names the keys a sibling holds before it.
+
+`test_parent_projection_uses_declared_contract_not_shape_barrier` pins the
+stated read: the same two built parents group the dimension to a bridge key
+when the aggregate's group is stated to render it, and only wrap it when
+the group is not.
+
+Gates for parts 130-131, against `45c83e7`:
+
+- Corpus (209 statements): 0 moved, at each part.
+- Fuzzer: 522/522 with both parts.
+- Suite capture (`sqlcap`, `-n 8`, `PYTHONHASHSEED=0`), paths normalized
+  and statements compared as line sets. Part 130: once the files that move
+  under xdist were recaptured single-process on both trees, only the witness
+  above moved. Part 131: the moves above. Single-process recaptures of
+  `test_cluster_key_lookup`, `test_rank_beside_partial_merge`,
+  `test_dashboard_queries`, `test_derived_key_domain`,
+  `test_padded_null_pairing` and `test_nullability` show no moves. The
+  rest is checkout-path, port and temp-name noise.
+- Suite (`-n 8`): the same 25 credential-gated failures as `45c83e7`.
+
+**Open.** Since part 131 no stage-3 decision rebuilds a per-group parent off
+its siblings' built output columns. `_hold_lookup_sides`,
+`_fold_covered_contributors` and `_pair_inside_padding_streams` read
+`_side_columns`, the per-group projection reads its siblings' renders, and
+`_at_declared_identity` reads rows. What they still read is physical:
+resolved grain, regions, partial bindings, restrictions and the padding
+path. One column read is left: the FINAL's projection supply, which runs
+before the FINAL widens its sides (above). What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
