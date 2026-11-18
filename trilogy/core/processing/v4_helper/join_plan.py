@@ -554,8 +554,10 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
     outputs (`date = max_date` on the `max(date)` group): it is decided after
     the value exists, against rows that still hold those arguments. An atom
     over inputs alone (`id > 2`, `city = 'B' or ...` on a group by city) filters
-    before and leaves nothing behind."""
-    outputs = set(group.output_concepts) - set(group.grain_components)
+    before and leaves nothing behind, as does one over a value the group only
+    passes through (a `by city` count its rows carry beside `max(x) by
+    species`)."""
+    outputs = set(group.primary_members) - set(group.grain_components)
     held: set[str] = set()
     for atom in group.condition_atoms:
         args = {c.address for c in atom.row_arguments}
