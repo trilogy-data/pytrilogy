@@ -2971,7 +2971,14 @@ def _project_planned_keys(
             and c.derivation != Derivation.ROWSET
             and (
                 lookup := _key_lookup(c, parent, determined, producers, environment)
-                or _sourced_lookup(c, parent, determined, outputs, source, environment)
+                or _sourced_lookup(
+                    c,
+                    parent,
+                    determined,
+                    outputs,
+                    source if not _held_beside_keys(c, parent, parents) else None,
+                    environment,
+                )
             )
             is not None
         ]
@@ -3025,6 +3032,19 @@ def _rows_once(
     deduped = _forced_dedup(node, list(node.output_concepts), environment)
     origin[id(deduped)] = gid
     return deduped
+
+
+def _held_beside_keys(
+    key: BuildConcept, parent: StrategyNode, parents: list[StrategyNode]
+) -> bool:
+    """Another side holds `key` beside its own keys: the merge pairs through
+    it, and a scan of the key would be a second copy of that side."""
+    wanted = {key.address, *(key.keys or ())}
+    return any(
+        wanted <= {o.address for o in other.output_concepts}
+        for other in parents
+        if other is not parent
+    )
 
 
 def _sourced_lookup(
