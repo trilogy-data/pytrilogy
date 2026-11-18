@@ -202,6 +202,20 @@ theorem property_without_its_key_misjoins :
     joined.length = 4 ∧ (joined.filter fun t => t.2.2 != form t.2.1).length = 2 := by
   decide
 
+/-- `select city, form, 12 where ...`: the trees `(city, species)` pair with
+the kept species' forms on `species`. Wrapped to `city` alone the trees lose
+that key, and the two sides cross: city 0 meets form 0, which only city 1's
+kept species has. Two kept pairs become four. -/
+theorem wrap_without_pair_key_crosses :
+    let rows : List (Int × Int) := [(0, 1), (0, 3), (1, 2)]
+    let form : Int → Int := fun s => s % 2
+    let kept := (rows.filter fun r => r.2 != 3)
+    let pairs := dedup (kept.map fun r => (r.1, form r.2))
+    let cities := dedup (rows.map (·.1))
+    let forms := dedup (kept.map fun r => form r.2)
+    pairs.length = 2 ∧ (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 := by
+  decide
+
 /-! ## An aggregate `by` fixed keys in a select -/
 
 /-- The tuple `select dims, s` projects, `s` an aggregate `by key`. -/

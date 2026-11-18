@@ -258,15 +258,22 @@ FOUND_SEEDS_513 = [
 # 127542, 147680); a value over groups built over a finer bridge is deduped to
 # its outputs before FINAL pairs it (112406)
 FOUND_SEEDS_514 = [62974, 66824, 105627, 112406, 127542, 147680]
+# seeds 0.3.515 fixed (each failed on main): a value over groups looks up a
+# root property its keys hold (17715); an island bridge is widened to the key
+# it joins on (139791, 160693, 160820, 177047, 187270, 187859; 28266, 75390
+# raised the same way); a wrap keeps
+# the keys its side pairs on (193139); a gated side whose gate holds on its
+# padding is joined INNER (176152)
+FOUND_SEEDS_515 = [
+    17715, 28266, 75390, 139791, 160693, 160820, 176152, 177047, 187270,
+    187859, 193139,
+]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
 KEYLESS = "keyless join"
 OPEN: dict[tuple[int, str], str | None] = {
     **{(s, m): KEYLESS for s in (15826, 89514) for m in ("base", "summary")},
     **{(78245, m): "missing non-hidden parent" for m in ("base", "summary")},
-    # `species` (or `tree_id`) beside a value `by tree_form`, off the summary,
-    # with no row stream holding both to bridge them
-    **{(s, "summary"): KEYLESS for s in (17715, 139791)},
 }
 
 
@@ -279,6 +286,7 @@ def cases():
             *FOUND_SEEDS_512,
             *FOUND_SEEDS_513,
             *FOUND_SEEDS_514,
+            *FOUND_SEEDS_515,
             *(s for s, _ in OPEN),
         )
     )

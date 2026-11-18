@@ -5275,7 +5275,7 @@ def _join_elected_bridges(
     Each bridge joins two of the plan's islands, or keys a pairing
     (`JoinPlan.keying`): the plan states which, so no built side is read. A
     keying bridge also reaches below for a key it holds, which is what it
-    exists to hold."""
+    exists to hold; an island bridge, for one it does not."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
@@ -5285,10 +5285,13 @@ def _join_elected_bridges(
         if keys:
             concepts = _join_key_concepts([bridge], environment, set(keys))
             _carry_join_keys([bridge], concepts, environment)
-            if id(bridge) in keying:
-                for concept in concepts:
-                    if concept.derivation == Derivation.ROOT:
-                        _widen_scan_chain(bridge, concept, environment=environment)
+            held = {o.address for o in bridge.output_concepts}
+            for concept in concepts:
+                # an island bridge joins on nothing without its keys
+                if concept.derivation == Derivation.ROOT and (
+                    id(bridge) in keying or concept.address not in held
+                ):
+                    _widen_scan_chain(bridge, concept, environment=environment)
         parents.append(bridge)
     return parents
 
@@ -6741,7 +6744,12 @@ def _assemble_final_node(
         # row-level source-table grain (often much wider than the merge wants),
         # and a SELECT DISTINCT-style projection is always safe. Wrapping an
         # intermediate aggregate is not: it would re-aggregate partial sums.
-        carry = plan.carry_demands[gid]
+        # a carried key, and the keys it pairs on, must survive the wrap:
+        # grouping to a grain without one dedups it straight back out. An
+        # authored relation's member pairs as authored, never as a column.
+        carry = plan.carry_demands[gid] | (
+            plan.keys_for(gid) - environment.all_scoped_join_group_members()
+        )
         group_concepts = list(per_group[gid])
         seen_group_concepts = {concept.address for concept in group_concepts}
         group_concepts.extend(
@@ -6750,8 +6758,6 @@ def _assemble_final_node(
             if (c := _concept_at(environment, address)) is not None
             and address not in seen_group_concepts
         )
-        # A carried key must survive the wrap: grouping to a grain without the
-        # key it was re-sourced to carry dedups it straight back out.
         source, wraps = _resourced_root_contributor(
             gid,
             node,
@@ -6773,7 +6779,11 @@ def _assemble_final_node(
     parents = [
         (
             _at_declared_identity(
-                parent, parents, attrs[side], plan.identity[side], environment
+                parent,
+                parents,
+                attrs[side],
+                plan.identity[side] | plan.keys_for(side),
+                environment,
             )
             if (side := origin.get(id(parent))) is not None
             else parent
@@ -7090,7 +7100,8 @@ def _at_declared_identity(
     (a filter of an item attribute sourced off the sale lines), deduplicated
     to that identity when an independent sibling exposes the finer row key
     too: the two would pair on the stream's row key, which no plan states. Its
-    outputs are functions of the identity, so nothing is lost."""
+    outputs are functions of the identity, so nothing is lost. `identity`
+    holds the keys the plan pairs the stream on: they are no unstated key."""
     if (
         group.derivation in GROUPING_DERIVATIONS
         or group.derivation == Derivation.ROWSET

@@ -478,4 +478,19 @@ theorem not_null_column_stores_zero :
       ([none, some 6] : List Val).countP (·.isSome) = 1 := by
   decide
 
+/-- A gate read off the side it already filtered. The right side holds
+`sum(height) by tree_form` per form; `sum is null` gates the rows. Read off
+the whole side, the WHERE rejects a species whose form's sum is 15. Read off
+the side filtered by the same gate, the outer join pads that species and the
+gate holds on the padding: the rejected row returns. Beside the rows that
+determine its grain, the gated side is joined INNER. -/
+theorem gated_side_padding_passes_gate :
+    let on : Row → Row → Bool := fun l r => l 0 == r 0
+    let gate := Cond.isNull (.col 3)
+    let sums : List Row := [fun i => if i = 0 then some 1 else some 15]
+    let gated := sums.filter fun r => isT ((Cond.isNull (.col 1)).eval r)
+    keep gate (leftJoin on [fun _ => some 1] sums) = [] ∧
+      (keep gate (leftJoin on [fun _ => some 1] gated)).length = 1 := by
+  simp [keep, leftJoin, Cond.eval, Expr.eval, JRow.view, isT, ofBool]
+
 end Trilogy.NullReject
