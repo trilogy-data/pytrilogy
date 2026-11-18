@@ -325,9 +325,9 @@ Only a candidate whose every pairing is keyed is elected (a filter pairing
 an aggregate on its value multiplies both); with none, the plan stays
 islanded and the keyless-join guard names the gap. Stage 3 joins the
 elected bridges in the plan's order, each widened to the keys the plan pairs
-it on (`_join_elected_bridges`), skipping one that no longer joins two
-islands as built; it neither searches built nodes for a bridge nor repairs
-a member's pairing. Over all of `tests/` the
+it on (`_join_elected_bridges`). Which bridges it joins is the plan's too
+(part 125): it neither reads built nodes to skip one, nor searches them for
+a bridge, nor repairs a member's pairing. Over all of `tests/` the
 search had added exactly the elected bridges at 442 of 454 islanded merges;
 the other 9 were an elected condition-phase basic whose rows hold the key it
 bridges on but whose built node did not project it (an OR of gates by
@@ -4508,7 +4508,102 @@ Gates, against `e5ff3ab`:
   authored row pass under every walk.
 - Fuzzer: 522/522.
 
-**Open.** No stage-3 decision reads a built node. What §6 designs and is
+**The plan states which bridges a merge joins (part 125).** Stage 3 joined
+the elected bridges (`_join_elected_bridges`), but it decided *whether* to
+join each one by reading built nodes. It recomputed the islands from each
+built parent's output addresses and pseudonyms (`_pairing_addresses`,
+`_pairing_islands`), restricted to the plan's keys, and skipped a bridge
+when the built parents already formed one island or when the bridge touched
+fewer than two. That was a stage-3 decision read off a built node, which
+§7's open list had claimed no longer existed.
+
+A census over one suite run (`-m "not adventureworks_execution and not
+clickhouse_server and not bigquery_execution and not cloud_live"`,
+`*_laws.py` ignored) took 237 bridge decisions. 210 joined and 26 skipped
+(one bridge was already a parent). Every skip but one unit test's was the
+same shape. A per-group merge whose consumer is not a BASIC had elected a
+bridge only to key an under-keyed blend (`JoinPlan.keying`: its election
+left the islands as they were), and stage 2 had deliberately not marked it
+keying, since an aggregate would count the rows it repeats. Built, it joined
+no islands, so it was skipped. The plan already knows all of this. An
+elected bridge either reduced the islands or was elected keying, so the
+election alone states which ones a merge joins. Predicting each decision
+that way agreed with the built-island test on all 68 per-group decisions.
+At FINAL it agreed on every decision but one, where `_fold_covered_contributors`
+had left a single parent, so there was nothing to bridge. That is the merge's
+shape, not a read of a built side, and the function still returns early
+below two parents.
+
+- `GroupAttrs.joined_bridges` states, at stage 2 (`_plan_group_bridges`),
+  the bridges a per-group merge joins: every elected one, less the keying
+  ones for a consumer that is not a BASIC. `bridges` still holds them all,
+  since a keying bridge shapes the plan (its pairings widen the sides it
+  pairs with) whether or not it is joined.
+- `_join_elected_bridges` joins exactly the bridges it is handed, each
+  widened to its planned keys, and reaches below for a keying bridge's key
+  as before. It no longer reads built outputs, and `_pairing_addresses`,
+  `_pairing_islands` and `_planned_side_keys` are deleted. FINAL hands it
+  every elected bridge; a per-group merge hands it `joined_bridges`.
+
+What can move: nothing. The skip test and the stated rule agree on every
+decision in the suite. One difference remains in the code. A bridge skipped
+because it touched a single island had already been widened to its keys,
+and the stated rule never reaches it. Only the unit test skipped a bridge
+that way, and the capture below shows no plan reading such a widening.
+
+`test_an_aggregate_merge_never_joins_a_bridge_elected_to_key_a_blend`
+(`test_key_sources.py`) pins the statement: over the first case's model, an
+aggregate consumer elects a keying bridge, leaves it out of `joined_bridges`
+and marks no `keying_bridges`, and the rows hold.
+`test_an_elected_bridge_joins_once_whatever_the_built_sides_share` replaces
+the built-island unit test: a bridge already among the parents is not
+joined twice, and an elected bridge is joined even where a built parent
+already shares its key.
+
+Gates, against `d9130d5`:
+
+- Corpus (209 statements): 0 moved.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): read with CTE names
+  canonicalized and checkout paths, temp paths and local ports stripped,
+  37 tests differ. Every file among them that is not listed noise was rerun
+  single-process on both trees: `test_rank_beside_partial_merge`,
+  `test_staged_publish`, `test_unbuilt_sources`, `test_derived_key_domain`,
+  `test_where_hosts`, the TPC-DS queries, `test_complete_binding_lookup`
+  and `tree_reporting`. They differ only in the worktree's fixture paths and
+  a local server's port: 0 plans moved.
+- Suite (`-n 4`): the same 25 credential-gated failures as `main`.
+- Whole suite under `WALK_FLIP=shape,name`: the same 97 failures as
+  `main`'s flip.
+- Fuzzer: 522/522.
+
+**A seed stated before the walk does not replace the rewalk (part 126,
+measured, not landed).** The rewalk (`_preserved_past_inner`, part 74) is
+the last place resolve walks a merge twice. It fires in 67 merges over 23
+tests. A side the join walk preserves (RIGHT OUTER) past a keyed INNER
+seeds a second walk. The candidate replacement stated the seed up front.
+Each planned pairing is typed alone, and the one side some pairing keeps and
+none drops seeds the walk, when an INNER pairing elsewhere could drop its
+partners first. In the stated order every walk then held the shape no
+rewalk was needed for, and the corpus moved 4 statements, all INNER-only
+reorders.
+
+The reversed walk refuted it. Under `WALK_FLIP=shape,name`, 17 tests still
+walked the hazard, and `test_sweep_390k_shape[query1]` lost rows in both
+models. There the RIGHT OUTER appears only once several lefts' types reduce
+together in one join (`_join_onto`). Pairwise, the preserved side is INNER
+with each of its partners. Which side the merge keeps is a fact of the
+tree, not of its pairings, so the rewalk stays. Of the 67 rewalk seeds, 36
+are the merge's sole host, 29 hold no region at all, and 2 hold one without
+hosting, so no side fact names the seed either.
+
+**Open.** One stage-3 decision read a built node until part 125, and three
+still do. Each rebuilds parents after the build:
+`_fold_covered_contributors` drops a contributor a widened sibling now
+renders (30 firings over 5 test files), `_pair_inside_padding_streams`
+moves a grouping contributor into the merge of the stream that padded it
+(7, one file), and `_hold_lookup_sides` holds a coarser row step at its
+lookup keys (152, 5 files). Each reads output columns the build widened,
+which no stage-2 fact states yet. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
@@ -4617,7 +4712,9 @@ not built yet:
    shape, leaving authored as the one row term (part 121). A side now joins
    on all that relates it to the tree (part 122), a column read off a side
    a `~` partner narrows is partial (part 123), and authored is the key's
-   shape, so the walk's order has no row term (part 124). Ties the plan's
+   shape, so the walk's order has no row term (part 124). The rewalk of a
+side preserved past an INNER cannot be stated before the walk: under the
+reversed order a pairwise seed loses rows (part 126). Ties the plan's
    terms leave are still broken by the position the plan lists them in
    (cover order, scan name), and stating them as ties costs plan quality
    (part 99).

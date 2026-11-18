@@ -1525,7 +1525,7 @@ def _scan(
     )
 
 
-def test_bridge_already_joined_or_pairing_one_island_is_not_joined():
+def test_an_elected_bridge_joins_once_whatever_the_built_sides_share():
     env = BuildEnvironment()
     a = _build_concept("a.id", Purpose.KEY)
     b = _build_concept("b.id", Purpose.KEY)
@@ -1540,7 +1540,7 @@ def test_bridge_already_joined_or_pairing_one_island_is_not_joined():
         env,
     )
 
-    assert merged == [left, right, joined]
+    assert merged == [left, right, joined, one_sided]
 
 
 def test_elide_passthrough_tree_collapses_linear_identity_projection():
