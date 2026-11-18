@@ -20,6 +20,10 @@ leads it closed (0.3.516).
   (on main too, for a bare `4`).
 - A `by *` aggregate inlined into a selected value made the all-rows constant
   look read by the select's grain, so it lost that grain.
+- Reading stated columns (#1038), the FINAL fold dropped the side rendering a
+  literal folded onto a sibling, and the side rendering a key another side
+  was owed but never given (`tag`, owed to a value by `city, tag` computed
+  off aggregates alone).
 
 Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
 5, NULL, 7, 2; tags x, y, x, x, y, x; forms broadleaf x4 with b1, NULL for
@@ -100,6 +104,23 @@ CASES = [
             " city - min(height) by species = 3 or tree_form is not null;"
         ),
         [("A", None, 4), ("A", True, 4), ("B", False, 4), ("B", True, 4)],
+    ),
+    # expressions 99561, a literal folded onto a sibling
+    (
+        (
+            "select species, tag, 2 * 2 as v0 where tag = 'x' and max(height) by"
+            " city is not null;"
+        ),
+        [("Acer", "x", 4), ("Quercus", "x", 4), ("Tilia", "x", 4), ("Ulmus", "x", 4)],
+    ),
+    # expressions 21365, a key owed and never delivered
+    (
+        (
+            "select city, tag, sum(height) by * / count(tree_id) by city as v0,"
+            " sum(height) by * + min(height) by * as v1 where coalesce(tree_form,"
+            " 'none') = 'broadleaf';"
+        ),
+        [("A", "x", 5, 18), ("A", "y", 5, 18), ("B", "y", 15, 18)],
     ),
     # expressions 225055
     (

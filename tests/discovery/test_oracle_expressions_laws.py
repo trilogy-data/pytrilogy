@@ -272,6 +272,14 @@ FOUND_SEEDS_515 = [
 # atom it only passes through (205085; 78245 raised on the same claim); a ROOT
 # passes on none of its constraint feeders (246819, 333909); an expression of
 # constants is at the select's grain (15826, 89514)
+# seeds the FINAL fold dropped a column of once it read stated columns
+# (#1038): a folded constant, or a planned key no widening delivered
+STATED_FOLD_SEEDS = [
+    495, 21365, 44910, 48534, 51313, 99561, 113950, 157548, 159532, 161625,
+    169401, 171221, 178007, 187840, 193759, 194640, 223720, 224643, 232110,
+    244806, 246368, 321037, 323499, 349966,
+]  # fmt: skip
+
 FOUND_SEEDS_516 = [
     15826,
     67331,
@@ -300,6 +308,7 @@ def cases():
             *FOUND_SEEDS_514,
             *FOUND_SEEDS_515,
             *FOUND_SEEDS_516,
+            *STATED_FOLD_SEEDS,
             *(s for s, _ in OPEN),
         )
     )

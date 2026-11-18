@@ -1553,13 +1553,16 @@ def _raise_on_discarded_parent_atoms(
 
 
 def _fold_constant_parents(
-    parents: list[StrategyNode], needed: set[str]
+    parents: list[StrategyNode],
+    needed: set[str],
+    folded: dict[int, set[str]] | None = None,
 ) -> list[StrategyNode]:
     """Fold a constant-only parent into a non-constant sibling instead of
     cross-joining it ON 1=1. A constant is a literal rendered inline, valid in
     any projection, so its needed constants are appended to a sibling's outputs
     and the constant scan is dropped. Constants not in `needed` (the `by
-    all_rows` grand-total marker) are just dropped."""
+    all_rows` grand-total marker) are just dropped. `folded` records what each
+    sibling took on: a column it holds that no group of its own states."""
     if len(parents) <= 1:
         return parents
     targets = [p for p in parents if not _is_constant_only(p)]
@@ -1573,6 +1576,8 @@ def _fold_constant_parents(
         keep = [c for c in p.output_concepts if c.address in needed]
         if keep:
             widen_projection(target, keep)
+            if folded is not None:
+                folded.setdefault(id(target), set()).update(c.address for c in keep)
         dropped.add(id(p))
     return [p for p in parents if id(p) not in dropped]
 
@@ -3892,6 +3897,43 @@ def _side_columns(
     if id(side) in narrowed:
         return set(narrowed[id(side)]) | owed
     return owed.union(*(rendered.get(gid, frozenset()) for gid in groups))
+
+
+def _final_side_columns(
+    side: StrategyNode,
+    origin: dict[int, str],
+    plan: JoinPlan,
+    reaches: Mapping[str, frozenset[str]],
+    narrowed: Mapping[int, frozenset[str]],
+    absorbed: Mapping[int, list[StrategyNode]],
+    constants: Mapping[int, set[str]],
+) -> set[str]:
+    """`_side_columns` at FINAL, with the constants folded onto the side. A
+    planned key is held only once a widening delivered it: one neither
+    `_carry_planned_keys` nor `_project_planned_keys` could source (`tag`
+    owed to a value by `city, tag` computed off aggregates alone) is owed,
+    not held, and a sibling rendering it must stay."""
+    groups = (side_members(side, origin) or frozenset()) | frozenset(
+        side_groups(absorbed.get(id(side), []), origin)
+    )
+    owed = set().union(*(plan.owed_by(gid) for gid in groups))
+    undelivered = owed - {o.address for o in side.output_concepts}
+    stated = _side_columns(side, origin, plan, reaches, narrowed, absorbed)
+    return (stated - undelivered) | constants.get(id(side), set())
+
+
+def _folded_constants(
+    folded: Mapping[int, set[str]],
+    replaced: Iterable[tuple[StrategyNode, StrategyNode]],
+    absorbed: Mapping[int, list[StrategyNode]],
+) -> dict[int, set[str]]:
+    """The constants `_fold_constant_parents` widened onto each side, keyed
+    by the side as it now stands: projected in its place, or absorbing it."""
+    out = {id(new): set(folded.get(id(old), set())) for new, old in replaced}
+    for key, nodes in absorbed.items():
+        for node in nodes:
+            out.setdefault(key, set()).update(out.get(id(node), set()))
+    return {key: cols for key, cols in out.items() if cols}
 
 
 def _hold_lookup_sides(
@@ -6873,7 +6915,8 @@ def _assemble_final_node(
     # joining (same passthrough logic the per-group `_pre_merge_parents`
     # uses).
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
-    parents = _fold_constant_parents(parents, final_needed)
+    folded: dict[int, set[str]] = {}
+    parents = _fold_constant_parents(parents, final_needed, folded)
     # the FINAL WHERE reads its filter-only args off these parents
     contracted = parents
     parents = _satisfy_parent_projection_contract(
@@ -6895,8 +6938,12 @@ def _assemble_final_node(
         if new is not old
     }
     reaches = {gid: cover.holds(gid) for gid in built}
+    replaced = list(zip(parents, contracted))
     absorbed: dict[int, list[StrategyNode]] = {}
     parents = _fold_passthrough_parents(parents, absorbed)
+    # a folded constant is held by the side it was widened onto, through any
+    # projection or fold that side went through since
+    constants = _folded_constants(folded, replaced, absorbed)
     # a survivor holds its absorbed sibling's rows, and pairs as it did (the
     # trees folded into a class step still pair with a flag by city, species)
     also_holds = {
@@ -6929,13 +6976,22 @@ def _assemble_final_node(
         ),
     )
     parents = [_rows_once(p, plan, origin, environment) for p in parents]
+    side_cols = partial(
+        _final_side_columns,
+        origin=origin,
+        plan=plan,
+        reaches=reaches,
+        narrowed=narrowed,
+        absorbed=absorbed,
+        constants=constants,
+    )
     parents = _fold_covered_contributors(
         parents,
         environment,
         final_needed | filter_only_addrs | _final_gate_keys(attrs, environment),
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
-        [_side_columns(p, origin, plan, reaches, narrowed, absorbed) for p in parents],
+        [side_cols(p) for p in parents],
     )
     parents = _join_elected_bridges(
         parents,
@@ -6951,7 +7007,7 @@ def _assemble_final_node(
         environment,
         origin,
         plan,
-        lambda p: _side_columns(p, origin, plan, reaches, narrowed, absorbed),
+        side_cols,
     )
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
