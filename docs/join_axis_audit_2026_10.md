@@ -4596,14 +4596,77 @@ tree, not of its pairings, so the rewalk stays. Of the 67 rewalk seeds, 36
 are the merge's sole host, 29 hold no region at all, and 2 hold one without
 hosting, so no side fact names the seed either.
 
-**Open.** One stage-3 decision read a built node until part 125, and three
+**A lookup side's columns are stated (part 127).** `_hold_lookup_sides`
+holds a coarser BASIC row step at its planned keys when the keys determine
+its grain, its rows are finer than the keys, and nothing finer it holds is
+needed unless another side supplies it. It read that last test, what each
+side holds, off the built nodes' `usable_outputs`. Over one suite run
+(`*_laws.py` ignored) it held 162 sides in 5 files: 122 in
+`test_cluster_key_lookup`, 35 in `test_keyed_class_beside_trees`, and 5
+across `test_constants_are_not_columns`, `test_derived_key_partial_lookup`
+and `test_pushdown_hidden_source_column`.
+
+The census compared the built decision with candidate rules over those
+files and `test_class_value_beside_partial_lookups`, 1,599 decisions in
+all. Four things separated them, each a fact the plan already holds:
+
+- Stage 2's side list is not the merge's. `_fold_passthrough_parents` folds
+  a sibling into a row-preserving side, which then holds the sibling's rows
+  and columns (a genus step absorbing the per-tree filter carries `tree_id`
+  and is no lookup). The fold already records what each survivor absorbed.
+  The side's columns now include the absorbed groups' renders.
+- A side the consumer's input contract projected
+  (`_satisfy_parent_projection_contract`) holds what the projection kept: a
+  species step beside a shaped sibling drops `height_m`, since the sibling
+  supplies it. Those columns are the contract's own output, recorded at
+  `_apply_input_contracts`.
+- A side held earlier supplies only what its keys determine, as the built
+  rule's sequential read of `held` did.
+- A side carries what its pairings owe (`JoinPlan.owed_by`), which
+  `_carry_planned_keys` has widened it to just before. Without it, a ROOT
+  wrap carrying the derived `crown_fallback_class` key it pairs on looked
+  short of that key, and a species step was left whole
+  (`test_derived_key_partial_lookup`). The census missed this one; the
+  suite capture caught it.
+
+The rule now reads each side's columns from `_side_columns`: the
+`renders` of its groups (`_FoldPlan.rendered`, a stage-2 fact), plus what
+was folded into it, or what the input contract projected it to, plus what
+the plan owes it. With those, stated and built agree on all 1,599 decisions
+in the six files, and the suite capture shows no plan moving. One read of a built node is left, and it is physical:
+whether the side's rows are finer than the keys (`_rows_finer_than`, the
+resolved grain). That follows the datasource the scan resolved to, which
+stage 2 does not choose (part 45). Rules that guessed it from the plan's
+identity, the row parents' grain or the keys a side renders disagreed on
+22 to 36 decisions: the source rows behind a ROOT are at `tree_id`, whatever
+columns the step projects.
+
+`test_a_lookup_side_holds_what_is_stated_not_what_its_node_outputs`
+(`test_keyed_class_beside_trees.py`) pins the statement. A side holds what
+its group renders plus what was folded into it, and a projected side holds
+only what its projection kept.
+
+Gates, against `e759a34`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): every moved file
+  that is not checkout-path or port noise was recaptured single-process on
+  both trees (the oracle and sweep laws and gates, `test_cluster_key_lookup`,
+  `test_padded_population_gate`, `test_where_hosts`, the total gates,
+  `test_window_laws`, `test_duckdb_validate`): 0 plans moved. Under xdist
+  those differ only in run-to-run ordering, and `test_duckdb_validate` in
+  how many statements a session's earlier tests leave it.
+- Suite (`-n 4`): the same 25 credential-gated failures as `e759a34`.
+
+**Open.** One stage-3 decision read a built node until part 125, and two
 still do. Each rebuilds parents after the build:
 `_fold_covered_contributors` drops a contributor a widened sibling now
-renders (30 firings over 5 test files), `_pair_inside_padding_streams`
+renders (30 firings over 5 test files), and `_pair_inside_padding_streams`
 moves a grouping contributor into the merge of the stream that padded it
-(7, one file), and `_hold_lookup_sides` holds a coarser row step at its
-lookup keys (152, 5 files). Each reads output columns the build widened,
-which no stage-2 fact states yet. What §6 designs and is
+(7, one file). Each reads output columns the build widened, which no
+stage-2 fact states yet. `_hold_lookup_sides` reads no output column since
+part 127, only the built rows' grain. What §6 designs and is
 not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the

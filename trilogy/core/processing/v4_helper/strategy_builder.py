@@ -3752,6 +3752,8 @@ def _pre_merge_parents(
     bridges: Sequence[str] = (),
     joined: Sequence[str] = (),
     keying: frozenset[str] = frozenset(),
+    rendered: Mapping[str, frozenset[str]] | None = None,
+    narrowed: Mapping[int, frozenset[str]] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -3774,7 +3776,8 @@ def _pre_merge_parents(
     parents = _fold_constant_parents(parents, needed or set())
     if len(parents) <= 1:
         return parents
-    parents = _fold_passthrough_parents(parents)
+    absorbed: dict[int, list[StrategyNode]] = {}
+    parents = _fold_passthrough_parents(parents, absorbed)
     if len(parents) <= 1:
         return parents
     parents = _drop_ancestor_parents(parents)
@@ -3805,9 +3808,20 @@ def _pre_merge_parents(
             environment,
             [built[gid] for gid in candidates if built and gid in built],
         )
-        if attrs is not None:
+        if attrs is not None and rendered is not None:
             parents = _hold_lookup_sides(
-                parents, attrs, origin, plan, needed, environment
+                parents,
+                attrs,
+                origin,
+                plan,
+                needed,
+                environment,
+                [
+                    _side_columns(
+                        parent, origin, plan, rendered, narrowed or {}, absorbed
+                    )
+                    for parent in parents
+                ],
             )
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
@@ -3849,6 +3863,26 @@ def _pre_merge_parents(
     return [merged]
 
 
+def _side_columns(
+    side: StrategyNode,
+    origin: dict[int, str],
+    plan: JoinPlan,
+    rendered: Mapping[str, frozenset[str]],
+    narrowed: Mapping[int, frozenset[str]],
+    absorbed: Mapping[int, list[StrategyNode]],
+) -> set[str]:
+    """What a merge side holds, as stated: what its groups render, a sibling
+    folded into it included, or what the consumer's input contract projected
+    it to; and what the plan widens it to carry (`_carry_planned_keys`)."""
+    groups = (side_members(side, origin) or frozenset()) | frozenset(
+        side_groups(absorbed.get(id(side), []), origin)
+    )
+    owed = set().union(*(plan.owed_by(gid) for gid in groups))
+    if id(side) in narrowed:
+        return set(narrowed[id(side)]) | owed
+    return owed.union(*(rendered.get(gid, frozenset()) for gid in groups))
+
+
 def _hold_lookup_sides(
     parents: list[StrategyNode],
     attrs: dict[str, GroupAttrs],
@@ -3856,13 +3890,19 @@ def _hold_lookup_sides(
     plan: JoinPlan,
     needed: set[str] | None,
     environment: BuildEnvironment,
+    columns: list[set[str]],
 ) -> list[StrategyNode]:
     """A row step claiming a coarser grain than the rows it reads, paired on
     keys that hold that grain, is a lookup on them: it holds each of their
     rows once. Left one row per source row, every row of a key meets every
     other (a class by species off the trees beside the per-tree step it is
     joined to on species, #977). It keeps what the keys determine; anything
-    finer the reader needs, another side has to supply, or it stays whole."""
+    finer the reader needs, another side has to supply, or it stays whole.
+
+    `columns` are what each side holds (`_side_columns`); a side held before
+    supplies only what its keys determine. Whether the built rows are finer
+    than the keys is the one physical read: it follows the datasource the
+    scan resolved to."""
     held = list(parents)
     for idx, parent in enumerate(parents):
         gid = _origin_group(parent, origin)
@@ -3879,17 +3919,12 @@ def _hold_lookup_sides(
             or not _rows_finer_than(parent, keys, environment)
         ):
             continue
-        exposed = {o.address: o for o in parent.usable_outputs}
-        supplied = set().union(
-            *(
-                {o.address for o in other.usable_outputs}
-                for j, other in enumerate(held)
-                if j != idx
-            )
-        )
-        wanted = set(exposed) if needed is None else set(exposed) & needed
+        supplied = set().union(*(c for j, c in enumerate(columns) if j != idx))
+        wanted = columns[idx] if needed is None else columns[idx] & needed
         if wanted - determined - supplied:
             continue
+        columns[idx] &= determined
+        exposed = {o.address: o for o in parent.usable_outputs}
         concepts = [c for address, c in exposed.items() if address in determined]
         held[idx] = _forced_dedup(parent, concepts, environment, determined)
     return held
@@ -7415,6 +7450,11 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             for parent in parent_builds
         )
         parents = _apply_input_contracts(parent_builds, attrs, a, needed, environment)
+        narrowed = {
+            id(parent): frozenset(o.address for o in parent.usable_outputs)
+            for parent, build in zip(parents, parent_builds)
+            if parent is not build.node
+        }
         origin = {id(node): pgid for pgid, node in built.items()} | {
             id(build.node): build.group_id for build in parent_builds
         }
@@ -7488,6 +7528,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     bridges=a.bridges,
                     joined=a.joined_bridges,
                     keying=a.keying_bridges,
+                    rendered=ctx.folds.rendered,
+                    narrowed=narrowed,
                 )
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
@@ -7532,6 +7574,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             bridges=a.bridges,
             joined=a.joined_bridges,
             keying=a.keying_bridges,
+            rendered=ctx.folds.rendered,
+            narrowed=narrowed,
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
