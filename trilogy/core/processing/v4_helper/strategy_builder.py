@@ -6745,8 +6745,11 @@ def _assemble_final_node(
         # and a SELECT DISTINCT-style projection is always safe. Wrapping an
         # intermediate aggregate is not: it would re-aggregate partial sums.
         # a carried key, and the keys it pairs on, must survive the wrap:
-        # grouping to a grain without one dedups it straight back out
-        carry = plan.carry_demands[gid] | plan.keys_for(gid)
+        # grouping to a grain without one dedups it straight back out. An
+        # authored relation's member pairs as authored, never as a column.
+        carry = plan.carry_demands[gid] | (
+            plan.keys_for(gid) - environment.all_scoped_join_group_members()
+        )
         group_concepts = list(per_group[gid])
         seen_group_concepts = {concept.address for concept in group_concepts}
         group_concepts.extend(
