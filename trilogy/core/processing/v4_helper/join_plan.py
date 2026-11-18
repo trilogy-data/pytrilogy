@@ -924,6 +924,23 @@ def _pair(
     return Pairing(left, right, frozenset(keys), kind, frozenset(implied))
 
 
+def _looked_up_keys(
+    keys: frozenset[str], identity: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Of `keys`, the ROOT properties whose own keys `identity` holds: a value
+    over groups alone reaches no column its groups lack, save one a scan of
+    the property beside its keys looks up per row (`tree_form` by `species`)."""
+    return frozenset(
+        a
+        for a in keys
+        if (c := environment.concepts.get(a)) is not None
+        and c.derivation == Derivation.ROOT
+        and c.purpose == Purpose.PROPERTY
+        and c.keys
+        and set(c.keys) <= identity
+    )
+
+
 def _delivered_keys(
     group: GroupAttrs, concepts: Sequence[BuildConcept]
 ) -> frozenset[str]:
@@ -1004,11 +1021,15 @@ def plan_final_join(
     carries = {}
     for gid in contributors:
         # an extra side is joined as built, never widened to a sibling's key
-        siblings = (
-            frozenset().union(*(identity[o] for o in contributors if o != gid))
-            if gid in supplying and not _over_groups_only(group_graph, attrs, gid)
-            else frozenset()
+        sibling_keys = frozenset().union(
+            *(identity[o] for o in contributors if o != gid)
         )
+        if gid not in supplying:
+            siblings: frozenset[str] = frozenset()
+        elif _over_groups_only(group_graph, attrs, gid):
+            siblings = _looked_up_keys(sibling_keys, identity[gid], environment)
+        else:
+            siblings = sibling_keys
         held = _held(
             group_graph, attrs, gid, carry_demands, environment, identity[gid], siblings
         )
