@@ -2855,20 +2855,18 @@ def _grain_reads(grain: Grain, address: str, environment: Environment) -> bool:
     at its own grain, inlined into a computed component or not."""
     if address == ALL_ROWS_ADDRESS:
         return False
-    seen: set[str] = set()
-    stack = list(grain.components)
+    seen = set(grain.components)
+    stack = list(seen)
     while stack:
-        current = stack.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        concept = environment.concepts.get(current)
+        concept = environment.concepts.get(stack.pop())
         if concept is None or concept.lineage is None:
             continue
         for arg in concept.lineage.concept_arguments:
             if arg.address == address:
                 return True
-            stack.append(arg.address)
+            if arg.address not in seen:
+                seen.add(arg.address)
+                stack.append(arg.address)
     return False
 
 

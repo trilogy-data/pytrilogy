@@ -174,35 +174,13 @@ def _reachable_input(
     # none of them on: a group reading the ROOT reaches them only through
     # its other parents (`max(x) by species` beside `min(x) by city, species`).
     root = buckets.get(gid) is not None and buckets[gid].derivation == Derivation.ROOT
-    ancestors = _passing_ancestors(
-        lineage_ancestors_graph if root else host_graph, gid, buckets
-    )
+    ancestors = nx.ancestors(lineage_ancestors_graph if root else host_graph, gid)
     if not ancestors:
         return own | set(group_members.get(gid, set()))
     reachable: set[str] = set(own)
     for anc in ancestors:
         reachable |= group_members.get(anc, set())
     return reachable
-
-
-def _passing_ancestors(
-    graph: nx.DiGraph, gid: str, buckets: dict[str, GroupBucket]
-) -> set[str]:
-    """Ancestors whose values reach `gid`: an aggregate passes on only its
-    own outputs, never the rows above it (`height` under `sum(height) by
-    city`)."""
-    seen: set[str] = set()
-    stack = list(graph.predecessors(gid))
-    while stack:
-        current = stack.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        bucket = buckets.get(current)
-        if bucket is not None and bucket.derivation == Derivation.AGGREGATE:
-            continue
-        stack.extend(graph.predecessors(current))
-    return seen
 
 
 def _merged_elements(
@@ -273,7 +251,15 @@ def _candidate_groups(
         ):
             continue
         hosts.append(gid)
-    return hosts
+    # A constant has no rows of its own to filter: hosting the atom, it
+    # would read the atom's inputs off its parents, past any aggregate
+    # between them and the rows (`height` under `sum(height) by city`).
+    rowed = [
+        gid
+        for gid in hosts
+        if gid not in buckets or buckets[gid].derivation != Derivation.CONSTANT
+    ]
+    return rowed or hosts
 
 
 def _entity_peels_beside_row_stream(
