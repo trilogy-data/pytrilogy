@@ -5275,7 +5275,7 @@ def _join_elected_bridges(
     Each bridge joins two of the plan's islands, or keys a pairing
     (`JoinPlan.keying`): the plan states which, so no built side is read. A
     keying bridge also reaches below for a key it holds, which is what it
-    exists to hold."""
+    exists to hold; an island bridge, for one it does not."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
@@ -5285,10 +5285,13 @@ def _join_elected_bridges(
         if keys:
             concepts = _join_key_concepts([bridge], environment, set(keys))
             _carry_join_keys([bridge], concepts, environment)
-            if id(bridge) in keying:
-                for concept in concepts:
-                    if concept.derivation == Derivation.ROOT:
-                        _widen_scan_chain(bridge, concept, environment=environment)
+            held = {o.address for o in bridge.output_concepts}
+            for concept in concepts:
+                # an island bridge joins on nothing without its keys
+                if concept.derivation == Derivation.ROOT and (
+                    id(bridge) in keying or concept.address not in held
+                ):
+                    _widen_scan_chain(bridge, concept, environment=environment)
         parents.append(bridge)
     return parents
 
