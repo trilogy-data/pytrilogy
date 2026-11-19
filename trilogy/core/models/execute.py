@@ -1984,12 +1984,14 @@ class QueryDatasource:
         )
         if outer:
             preserving = f"_preserving_{string_to_hash('|'.join(outer))}"
+        members = sorted(
+            self._child_identifier(d, include_extent) for d in self.datasources
+        )
+        # Bracketed, or a join of a wrapped side reads as a wrapped join:
+        # `A_join_B_at_g` + `_at_g` == `A_join_` + `B_at_g_at_g`.
+        joined = "_join_".join(members)
         return (
-            "_join_".join(
-                sorted(
-                    self._child_identifier(d, include_extent) for d in self.datasources
-                )
-            )
+            (f"({joined})" if len(members) > 1 else joined)
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
