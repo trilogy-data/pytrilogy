@@ -9,6 +9,8 @@ concept-graph node id, mirroring production; the graph itself carries only
 topology + lineage edges. ``_cg`` builds both from a compact spec.
 """
 
+from collections import defaultdict
+
 import pytest
 
 from trilogy.core import graph as nx
@@ -98,9 +100,12 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _merge_sides,
     _parent_nodes_for,
     _pre_merge_parents,
+    _region_reads_by_side,
     _required_final_contract,
     side_members,
 )
+
+_NO_READS: defaultdict[int, frozenset[str]] = defaultdict(frozenset)
 
 
 def _demand(
@@ -1343,7 +1348,7 @@ def test_pre_merge_without_a_plan_widens_no_parent():
         environment=env,
     )
 
-    merged = _pre_merge_parents([row_projection, ratio_projection], env)
+    merged = _pre_merge_parents([row_projection, ratio_projection], env, _NO_READS)
 
     assert len(merged) == 1
     assert isinstance(merged[0], MergeNode)
@@ -1354,6 +1359,7 @@ def test_pre_merge_without_a_plan_widens_no_parent():
     merged = _pre_merge_parents(
         [row_projection, ratio_projection],
         env,
+        _NO_READS,
         carry_demands={"ratio": frozenset({part_name.address})},
     )
 
@@ -1392,13 +1398,74 @@ def test_fold_passthrough_only_drops_row_preserving_redundant_parent():
         environment=env,
     )
 
-    folded = _fold_passthrough_parents([redundant, carrier])
+    folded = _fold_passthrough_parents([redundant, carrier], _NO_READS)
 
     assert len(folded) == 1
     assert {concept.address for concept in folded[0].output_concepts} == {
         name.address,
         metric.address,
     }
+
+
+def _redundant_beside_carrier() -> tuple[SelectNode, SelectNode]:
+    env = BuildEnvironment()
+    key = _build_concept("item.id", Purpose.KEY)
+    name = _build_concept(
+        "item.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={key.address},
+        keys={key.address},
+    )
+    metric = _build_concept("metric", Purpose.METRIC)
+    source = StrategyNode(
+        input_concepts=[], output_concepts=[key, name, metric], environment=env
+    )
+    redundant = SelectNode(
+        input_concepts=[name], output_concepts=[name], parents=[source], environment=env
+    )
+    carrier = SelectNode(
+        input_concepts=[metric],
+        output_concepts=[metric],
+        parents=[source],
+        environment=env,
+    )
+    return redundant, carrier
+
+
+def test_fold_passthrough_keeps_a_parent_whose_group_reads_another_region():
+    redundant, carrier = _redundant_beside_carrier()
+    reads = {id(redundant): frozenset({"item.id"}), id(carrier): frozenset()}
+
+    assert _fold_passthrough_parents([redundant, carrier], reads) == [
+        redundant,
+        carrier,
+    ]
+    assert redundant.region_spans == carrier.region_spans == frozenset()
+
+
+def test_a_sides_region_reads_are_its_groups():
+    redundant, carrier = _redundant_beside_carrier()
+    graph = nx.DiGraph()
+    graph.add_edge("domain", "reader")
+    graph.add_node("rows")
+    attrs = {
+        "domain": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            extent_spans=frozenset({"item.id"}),
+        ),
+        "reader": GroupAttrs(depth_label=DepthLabel.STAR, derivation=Derivation.BASIC),
+        "rows": GroupAttrs(depth_label=DepthLabel.ROOT, derivation=Derivation.ROOT),
+    }
+    origin = {id(redundant): "reader", id(carrier): "rows"}
+
+    assert _region_reads_by_side(graph, attrs, [redundant, carrier], origin) == {
+        id(redundant): frozenset({"item.id"}),
+        id(carrier): frozenset(),
+    }
+    with pytest.raises(ValueError, match="no planned group"):
+        _region_reads_by_side(graph, attrs, [redundant, carrier], {})
 
 
 def test_fold_passthrough_keeps_shape_barrier_parent():
@@ -1431,7 +1498,7 @@ def test_fold_passthrough_keeps_shape_barrier_parent():
         environment=env,
     )
 
-    folded = _fold_passthrough_parents([barrier, carrier])
+    folded = _fold_passthrough_parents([barrier, carrier], _NO_READS)
 
     assert folded == [barrier, carrier]
 
@@ -1478,7 +1545,7 @@ def test_fold_passthrough_absorbs_scan_reading_under_its_own_where():
         environment=env,
     )
 
-    folded = _fold_passthrough_parents([scan, carrier])
+    folded = _fold_passthrough_parents([scan, carrier], _NO_READS)
 
     assert folded == [carrier]
     assert {c.address for c in carrier.output_concepts} == {key.address, bucket.address}
@@ -1505,7 +1572,7 @@ def test_fold_passthrough_keeps_scan_with_a_filter_beyond_its_where():
         environment=env,
     )
 
-    assert _fold_passthrough_parents([scan, carrier]) == [scan, carrier]
+    assert _fold_passthrough_parents([scan, carrier], _NO_READS) == [scan, carrier]
 
 
 def _scan(

@@ -1617,6 +1617,7 @@ def _drop_finer_passengers(
     origin: dict[int, str],
     environment: BuildEnvironment,
     columns: Sequence[set[str]],
+    reads: Sequence[frozenset[str]],
 ) -> list[StrategyNode]:
     """An unfiltered row scan finer than an aggregate's input grain, beside
     parents supplying everything it would, adds only its multiplicity: a
@@ -1626,8 +1627,9 @@ def _drop_finer_passengers(
     filters is a passenger too when a root beside it applies the same atoms:
     the rows it keeps are the keys the other already kept
     (`Rollup.filtered_passenger_multiplies`). `columns` are what each parent
-    emits, as stated (`_emitted_columns`)."""
-    if any(region_reads(p) for p in parents):
+    emits, as stated (`_emitted_columns`), and `reads` the regions each reads
+    (`_planned_region_reads`)."""
+    if any(reads):
         return parents
     held = {id(p): cols for p, cols in zip(parents, columns)}
     kept = list(parents)
@@ -1673,7 +1675,9 @@ def _filter_applied_beside(
     return False
 
 
-def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _drop_ancestor_parents(
+    parents: list[StrategyNode], reads: Mapping[int, frozenset[str]]
+) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
     The planner can hand a consumer both a derived node and the very relation
@@ -1688,7 +1692,9 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     neither filter nor fan out. The `<=` guard makes that exact: the
     descendant must already expose every column the ancestor would contribute,
     so dropping it removes a join and nothing else. Never a region's rows: a
-    descendant that paired the ancestor on solid keys holds fewer rows."""
+    descendant that paired the ancestor on solid keys holds fewer rows.
+    `reads` are the regions each parent reads, off its group
+    (`_region_reads_by_side`)."""
     if len(parents) <= 1:
         return parents
     dropped: set[int] = set()
@@ -1701,7 +1707,7 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
                 continue
             if not ancestor_outputs <= {c.address for c in descendant.output_concepts}:
                 continue
-            if not region_reads(ancestor) <= region_reads(descendant):
+            if not reads[id(ancestor)] <= reads[id(descendant)]:
                 continue
             if not _derives_from(descendant, ancestor):
                 continue
@@ -1819,10 +1825,14 @@ def _crosses_unsourced_aggregate(
 
 
 def _fold_passthrough_parents(
-    parents: list[StrategyNode], absorbed: dict[int, list[StrategyNode]] | None = None
+    parents: list[StrategyNode],
+    reads: Mapping[int, frozenset[str]],
+    absorbed: dict[int, list[StrategyNode]] | None = None,
 ) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it;
     `absorbed` takes each survivor's absorbed parents, by the survivor's id.
+    Only parents reading the same regions fold, as `reads` states them off
+    their groups (`_region_reads_by_side`).
 
     When a plain projection B (a non-grouping SelectNode) can render every one
     of another parent A's outputs from B's own source (each output is either
@@ -1851,11 +1861,11 @@ def _fold_passthrough_parents(
             continue
         available = parent_output_addresses(b)
         coalescing = b.environment.domain_graph.coalescing_relation_members()
-        b_regions = region_reads(b)
+        b_regions = reads[id(b)]
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            if region_reads(a) != b_regions:
+            if reads[id(a)] != b_regions:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # a SelectNode or non-grouping MergeNode whose WHERE, if any, `b`'s
@@ -3335,6 +3345,7 @@ def _fold_covered_contributors(
     cover_nodes: set[int],
     extent_owners: set[int],
     columns: list[set[str]],
+    reads: list[frozenset[str]],
 ) -> list[StrategyNode]:
     """Drop a merge contributor a sibling can now render in full.
 
@@ -3346,8 +3357,10 @@ def _fold_covered_contributors(
 
     `columns` are what each side holds, as stated (`_side_columns`): what its
     groups reach the merge with, what was folded into it or what a projection
-    kept, and what the plan owes it. No built side's outputs are read; its
-    resolved grain, partial bindings, regions and restrictions are.
+    kept, and what the plan owes it. `reads` are the regions each side reads,
+    off its group (`_planned_region_reads`). No built side's outputs or
+    regions are read; its resolved grain, partial bindings and restrictions
+    are.
 
     Rendering nothing is only the first condition; the rest are what make the
     drop row-identical rather than merely tidy:
@@ -3382,9 +3395,7 @@ def _fold_covered_contributors(
         live = [j for j in range(len(parents)) if j not in dropped]
         others = [j for j in live if j != idx]
         # its rows are a region's: only a survivor holding them can stand in
-        if (parent_spans := region_reads(parent)) and not any(
-            parent_spans <= region_reads(parents[j]) for j in others
-        ):
+        if reads[idx] and not any(reads[idx] <= reads[j] for j in others):
             continue
         contribution = visible[idx] & needed
         # Nothing at all in `needed` means this is an axis contributor whose
@@ -3477,11 +3488,14 @@ def _carries_through(
 
 
 def _pads_a_value_null_group(
-    stream: StrategyNode, contributor: StrategyNode, keys: set[str], keyspace: Keyspace
+    spans: frozenset[str],
+    contributor: StrategyNode,
+    keys: set[str],
+    keyspace: Keyspace,
 ) -> bool:
-    """`stream` NULLs one of `keys` on a region's rows it holds, and
-    `contributor`, holding no region, has a value-NULL group on it."""
-    regions = keyspace.live_regions_within(region_reads(stream))
+    """A stream reading the regions of `spans` NULLs one of `keys` on a
+    region's rows, and `contributor` has a value-NULL group on it."""
+    regions = keyspace.live_regions_within(spans)
     value_nulls = {c.address for c in contributor.nullable_concepts}
     return any(
         key in value_nulls
@@ -3496,6 +3510,7 @@ def _pair_inside_padding_streams(
     origin: dict[int, str],
     plan: JoinPlan,
     columns: Callable[[StrategyNode], set[str]],
+    reads: list[frozenset[str]],
 ) -> list[StrategyNode]:
     """A grouping contributor holding no region pairs with a stream that
     padded one inside its own merge, there and not at FINAL.
@@ -3508,13 +3523,15 @@ def _pair_inside_padding_streams(
     (`join_resolution._padding_guards`) applies.
 
     `columns` are what each side holds, as stated (`_side_columns`); a
-    stream also holds what it took in."""
+    stream also holds what it took in. `reads` are the regions each side
+    reads, off its group (`_planned_region_reads`)."""
     keyspace = environment.span_scope.keyspace
     out = list(parents)
     held = {id(p): columns(p) for p in parents}
+    spans = {id(p): read for p, read in zip(parents, reads)}
     for stream in parents:
         path = _padding_path(stream)
-        if not path or not region_reads(stream):
+        if not path or not spans[id(stream)]:
             continue
         merge = path[-1]
         for other in list(out):
@@ -3526,7 +3543,7 @@ def _pair_inside_padding_streams(
                 continue
             shared = held[id(other)] & held[id(stream)]
             if not shared or not _pads_a_value_null_group(
-                stream, other, shared, keyspace
+                spans[id(stream)], other, shared, keyspace
             ):
                 continue
             carried = [
@@ -3544,7 +3561,7 @@ def _pair_inside_padding_streams(
                 not in_merge
                 and not (
                     isinstance(other, GroupNode)
-                    and not region_reads(other)
+                    and not spans[id(other)]
                     and _row_preserving(path)
                 )
             ) or not _carries_through(path, carried, environment):
@@ -3759,6 +3776,7 @@ def _reads_only_values_defined_everywhere(atom: BoolExpr, keyspace: Keyspace) ->
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
+    reads: Mapping[int, frozenset[str]],
     carry_demands: Mapping[str, frozenset[str]] | None = None,
     needed: set[str] | None = None,
     group_graph: nx.DiGraph | None = None,
@@ -3796,10 +3814,10 @@ def _pre_merge_parents(
     if len(parents) <= 1:
         return parents
     absorbed: dict[int, list[StrategyNode]] = {}
-    parents = _fold_passthrough_parents(parents, absorbed)
+    parents = _fold_passthrough_parents(parents, reads, absorbed)
     if len(parents) <= 1:
         return parents
-    parents = _drop_ancestor_parents(parents)
+    parents = _drop_ancestor_parents(parents, reads)
     if len(parents) <= 1:
         return parents
     plan = _merge_plan(
@@ -4184,12 +4202,14 @@ def _union_arm_parents(
     by_arm: dict[str, list[StrategyNode]] = {}
     for parent in parent_builds:
         by_arm.setdefault(attrs[parent.group_id].label, []).append(parent.node)
+    origin = {id(parent.node): parent.group_id for parent in parent_builds}
     arms: list[StrategyNode] = []
     for arm_parents in by_arm.values():
         arms.extend(
             _pre_merge_parents(
                 arm_parents,
                 environment,
+                _region_reads_by_side(group_graph, attrs, arm_parents, origin),
                 needed=needed,
                 group_graph=group_graph,
                 built=built,
@@ -5774,6 +5794,17 @@ def _group_region_reads(
     return frozenset(out)
 
 
+def _region_reads_by_side(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    parents: Sequence[StrategyNode],
+    origin: dict[int, str],
+) -> dict[int, frozenset[str]]:
+    """`_planned_region_reads`, by side."""
+    reads = _planned_region_reads(group_graph, attrs, parents, origin)
+    return {id(parent): read for parent, read in zip(parents, reads)}
+
+
 def _planned_region_reads(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -7011,7 +7042,9 @@ def _assemble_final_node(
     }
     replaced = list(zip(parents, contracted))
     absorbed: dict[int, list[StrategyNode]] = {}
-    parents = _fold_passthrough_parents(parents, absorbed)
+    parents = _fold_passthrough_parents(
+        parents, _region_reads_by_side(group_graph, attrs, parents, origin), absorbed
+    )
     # a folded constant is held by the side it was widened onto, through any
     # projection or fold that side went through since
     constants = _folded_constants(folded, replaced, absorbed)
@@ -7063,6 +7096,7 @@ def _assemble_final_node(
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
         [side_cols(p) for p in parents],
+        _planned_region_reads(group_graph, attrs, parents, origin),
     )
     parents = _join_elected_bridges(
         parents,
@@ -7079,6 +7113,7 @@ def _assemble_final_node(
         origin,
         plan,
         side_cols,
+        _planned_region_reads(group_graph, attrs, parents, origin),
     )
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
@@ -7663,6 +7698,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 origin,
                 environment,
                 [_emitted_columns(p, origin, attrs, narrowed) for p in parents],
+                _planned_region_reads(group_graph, attrs, parents, origin),
             )
         # A ROOT scan hosting a null-rejecting request atom emits exactly
         # the atom's population, so the merge may claim it. A grouping
@@ -7716,9 +7752,13 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     group_scope, extent_free=group_scope.extent_free | domain_spans
                 ),
             ):
+                solid_parents = [
+                    p for p in parents if p not in domains and p not in feeders
+                ]
                 solid = _pre_merge_parents(
-                    [p for p in parents if p not in domains and p not in feeders],
+                    solid_parents,
                     environment,
+                    _region_reads_by_side(group_graph, attrs, solid_parents, origin),
                     carry_demands=carry_demands,
                     needed=needed,
                     group_graph=group_graph,
@@ -7761,9 +7801,11 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             element_filters = _element_filters(
                 parents, parent_builds, a, group_edges, gid
             )
+        merged = [p for p in parents if p not in element_filters]
         parents = _pre_merge_parents(
-            [p for p in parents if p not in element_filters],
+            merged,
             environment,
+            _region_reads_by_side(group_graph, attrs, merged, origin),
             carry_demands=carry_demands,
             needed=needed,
             group_graph=group_graph,
