@@ -2399,6 +2399,24 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     ungrouped, unjoined scan into a twin of the same table, condition and
     grain.
 
+- **The expressions family to 650,000** (0.3.520). On main its 300,000
+  queries (seeds 500,000-650,000) hold 2 wrong and 1 raising beside the 68
+  the generator rejects; the branch fixes all three, breaks none, and plans
+  6,808 fewer scans. Fixed:
+  - A group never marked an aggregate over a nullable argument nullable, so
+    FINAL's re-join of the `(city, tree_form)` group paired `max(height) +
+    1` with `=` and dropped the group whose heights are all NULL (645783;
+    `Nullability.max_of_null_group_is_null`,
+    `Nullability.plain_rejoin_drops_null_value`). Any aggregate but a count
+    over a nullable argument, and what propagates it, is nullable at its
+    group.
+  - A projection took a `by *` total's grain key that its merge parent hid
+    as an input and raised (564837, summary model). `parent_outputs_needed`
+    reads only a parent's usable outputs.
+  - A grouped scan beside its ungrouped twin under one WHERE read the table
+    again (500002; `Identity.group_reads_twin_rows`). `MergeTwinScans` groups
+    it over the twin's rows; a summary re-sum stays on its own scan.
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
