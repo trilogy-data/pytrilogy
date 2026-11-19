@@ -212,8 +212,9 @@ Rowset assembly:
 - Two rowset boundaries flowing straight to FINAL defer their WHERE to FINAL
   (`rowset_final_groups`): a derived-key union join leaks next-year-only rows
   (`test_independent_rowset_matrix.py::test_union_join_derived_key_filtered_on_derived_side`).
-- `_synthesizes_handle` (a handle is computable only on its own boundary):
-  3 row pins; this is the generic rule the deleted sites restated.
+- A handle is computable only on its own boundary: 3 row pins. Was
+  `_synthesizes_handle`, an after-the-fact refusal; now the leaf rule and
+  `projection.renders_at` (seam 3).
 - The passthrough fold veto for a rowset-bearing side, the partial stamps on
   keys carried onto a rowset-bearing parent and on a licensed handle over a
   coalescing scan, rowset islanding and the bridge-rowset diagnosis, the
@@ -235,7 +236,7 @@ Rowset assembly:
 - `query_processor`: ORDER BY on a non-projected rowset measure carried as
   hidden grain (1 pin).
 
-## Design seams (not built)
+## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes:
 
@@ -252,18 +253,41 @@ Ranked by lines a seam would free, across the axes:
    had at `get_join_type` time in 24 of 34 corpus firings; the 10 it could
    not decide are same-address origin arbitrations that need a per-side
    node. This is the seam `docs/domain_graph_design.md` step 5 names.
-3. **A rowset handle as a leaf in `projection.row_lineage_arguments`**
-   (about 170 lines: `_raise_if_rowset_islanded` and the bridge diagnosis,
-   `_mangled_rowset_content_addresses`, `_synthesizes_handle`, the
-   grain-change walk stop, `_crosses_outer_aggregate`). The concept graph
-   already treats a ROWSET concept as a leaf, but `BuildRowsetItem.
-   concept_arguments` is `[content]`, so every assembly row-lineage walk sees
-   through the handle and each site re-imposes leaf-ness after the fact. A
-   handle was judged satisfiable through its content in 46 tests; those are
-   the gate. A first step (`row_lineage_arguments` returns `[]` for a
-   ROWSET) is corpus byte-identical but disconnects
-   `test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column`: a
-   union's hidden ORDER BY key reaches its arms only through handle content.
+3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
+   returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
+   through one, and `concept_satisfiable` no longer judges a handle
+   renderable off its content (it did in 46 tests). The one place a handle is
+   computed off its content, its own boundary, says so:
+   - `projection.renders_at`: a `RowsetNode` vouches for its rowset's
+     handles, and for what is computed over them (`case agg.k ...`). They
+     are seeded into the satisfiability cache, not added to the available
+     addresses, so a `union join` mate never matches one as a pseudonym
+     (added as addresses, q64 widened both `agg_*` boundaries with
+     `ss.item.sk`, `ss.store.sk`, +2 CTEs).
+   - `satisfiable_outputs(boundary=True)` for a ROWSET group's own build
+     (the union TVF's handles off its arms' columns).
+   - `widen_projection` on a `RowsetNode` takes a bounded handle's content
+     as the input, never the handle.
+
+   With it went `_synthesizes_handle` and its three call sites, and
+   `_crosses_outer_aggregate`'s own handle stop (now `iter_row_lineage`).
+   `literal_producible` reads a handle as it reads a ROOT: no row parent
+   produces it. The first cut's failure,
+   `test_tvf_union_order_by_grouped_away_column`, was a BASIC over a handle
+   on the union's boundary; `renders_at` covers it.
+
+   Measured and kept, because the leaf rule does not cover them:
+   - the cross-rowset guard in `_carry_join_keys`: a handle carried onto
+     another rowset's boundary under its `union join` mate's column, by
+     pseudonym, not by content. Dropped, q64 re-exposes two mates as
+     `agg_00` handles on the `ss` boundary.
+   - `_raise_if_rowset_islanded`, `_mangled_rowset_content_addresses`:
+     pseudonym connectivity, not row lineage.
+   - `_carry_needs_own_node`'s handle stop and
+     `concept_graph._lineage_leaves`: they walk existence arguments, which
+     the row-lineage walk skips.
+
+   Gates: GATES_PLACEHOLDER
 4. **Rowset witness from the body plan** (about 335 lines). `_witness`
    rebuilds the body's concept graph separately from `resolve_rowset`; a body
    plan that handed back its keyspace would delete the recomputation and the

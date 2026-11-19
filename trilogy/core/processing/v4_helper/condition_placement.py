@@ -68,7 +68,7 @@ from .models import (
     RootReason,
     nulls_grouping_keys,
 )
-from .projection import decided_at_output_grain, literal_producible
+from .projection import decided_at_output_grain, iter_row_lineage, literal_producible
 from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -2147,22 +2147,10 @@ def _pin_input_placements(
 
 
 def _crosses_outer_aggregate(concept: BuildConcept) -> bool:
-    """Whether ``concept``'s lineage in THIS statement crosses an aggregate; a
-    rowset handle is a leaf, its body planned apart."""
-    stack = [concept]
-    seen: set[str] = set()
-    while stack:
-        current = stack.pop()
-        if current.address in seen:
-            continue
-        seen.add(current.address)
-        lineage = current.lineage
-        if lineage is None or isinstance(lineage, BuildRowsetItem):
-            continue
-        if isinstance(lineage, BuildAggregateWrapper):
-            return True
-        stack.extend(lineage.concept_arguments)
-    return False
+    """Whether ``concept``'s lineage in THIS statement crosses an aggregate."""
+    return any(
+        isinstance(c.lineage, BuildAggregateWrapper) for c in iter_row_lineage(concept)
+    )
 
 
 def _check_final_atoms_precede_aggregates(
