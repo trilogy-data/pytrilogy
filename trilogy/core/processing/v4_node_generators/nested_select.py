@@ -16,6 +16,7 @@ from trilogy.core.enums import JoinType
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
+    BuildConcept,
     BuildMultiSelectLineage,
     BuildRowsetLineage,
     BuildSelectLineage,
@@ -215,6 +216,13 @@ def build_nested_select(
     return result
 
 
+def body_mandatory(
+    built: BuildSelectLineage | BuildMultiSelectLineage, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """What a nested select's plan is asked for."""
+    return list(built.output_components) + having_presence_probes(built, environment)
+
+
 def plan_nested_select(
     select: SelectLineage | MultiSelectLineage,
     history: V4History,
@@ -265,7 +273,7 @@ def plan_nested_select(
     try:
         try:
             node = search_parent(
-                list(built.output_components) + having_presence_probes(built, env),
+                body_mandatory(built, env),
                 env,
                 history,
                 graph,

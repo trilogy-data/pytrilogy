@@ -291,10 +291,38 @@ Ranked by lines a seam would free, across the axes:
    aggregates included); fuzzer 522/522; every test file naming a rowset
    (3,261) green. `test_v4_rowset_handle_leaf.py` pins the leaf, the
    boundary and the ROWSET group's build.
-4. **Rowset witness from the body plan** (about 335 lines). `_witness`
-   rebuilds the body's concept graph separately from `resolve_rowset`; a body
-   plan that handed back its keyspace would delete the recomputation and the
-   recursion guard.
+4. **Rowset witness from the body plan (landed, recomputation half).**
+   `_witness` built the body's concept graph and keyspace itself, and the
+   body's plan built them again when `resolve_rowset` planned it, from
+   inputs that had drifted apart: the witness asked for the body's outputs
+   without its HAVING presence probes, and built the graph without the
+   scan-filtered and coarse-rolled roots or the union datasources that
+   pick the first materialized roots. Now both ask
+   `concept_strategies_v4.plan_front` (concept graph plus keyspace, the
+   part of a plan before it groups) with the same request
+   (`nested_select.body_mandatory`, `first_materialized_roots`). The
+   witness builds it and leaves it on `V4History.plan_fronts`, and the
+   body's first `_build_from_graph` takes it, so the witness reads exactly
+   the keyspace the body's plan groups over, and the body is never built
+   twice. A front is kept under the same rule as its witness: one that read
+   an enclosing computation's placeholder is dropped with it.
+
+   Not landed: the recursion guard (`live_witnesses`, `witness_floor`).
+   Planning the body first so it could hand its keyspace up does not work:
+   the outer keyspace needs the witness, the outer span scope needs that
+   keyspace, and the body is planned under the spans the outer plan owns.
+   What the guard handles is a cycle (a body reading its own rowset), not a
+   second computation, so it stays wherever the keyspace is built.
+   The respelling in `keyspace.rowset_witness` stays too: the reader
+   names the body's regions by its handles.
+
+   Gates, against `a1bf436`: corpus 0 moved (207 statements, tpc-ds
+   aggregates included). Over every test file naming a rowset (11,168
+   tests, green), the body plan took the witness's front 4,879 times, out
+   of 30,402 front builds, and each one matched a fresh rebuild of the
+   graph, attributes, edges and keyspace. `test_v4_rowset_witness_front.py`
+   pins that the body's plan groups over the keyspace its witness read; it
+   fails on `main`.
 5. **Provenance stamped by the producer** (about 500 lines across
    `null_provenance.py`, `join_resolution.py` side-fact assembly and the
    `value_set_join_upgrade` padding walks). Corpus evidence says the stamp

@@ -22,7 +22,7 @@ from trilogy.core.processing.nodes import BuildCaches, StrategyNode
 
 from .constants import NO_WITNESS_FLOOR
 from .keyspace import RowsetWitness
-from .models import BuildInfo
+from .models import BuildInfo, PlanFront, PlanFrontKey
 from .network_model import SearchResult
 
 # (built lineage, its build env, its WHERE, the reference graph it plans in)
@@ -87,6 +87,9 @@ class V4History:
     # The shallowest live placeholder read since the innermost computation
     # began: a result that read one above its own frame understates it.
     witness_floor: int = NO_WITNESS_FLOOR
+    # A rowset body's plan front, built for its witness and taken by the
+    # body's own plan (`concept_strategies_v4.plan_front`).
+    plan_fronts: dict[PlanFrontKey, PlanFront] = field(default_factory=dict)
     # `build_nested_select` results; the select itself is held so its id is
     # never recycled.
     nested_builds: dict[
