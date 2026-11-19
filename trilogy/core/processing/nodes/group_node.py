@@ -1,12 +1,11 @@
 from trilogy.constants import logger
-from trilogy.core.enums import ZERO_ON_EMPTY_AGGREGATES, Derivation, SourceType
+from trilogy.core.enums import ZERO_ON_EMPTY_AGGREGATES, SourceType
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
-    BuildFunction,
     BuildOrderBy,
     nonstandard_grouping_lineage,
 )
@@ -30,15 +29,6 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
 
-def _aggregate_operator(concept: BuildConcept):
-    lineage = concept.lineage
-    if isinstance(lineage, BuildAggregateWrapper):
-        return lineage.function.operator
-    if isinstance(lineage, BuildFunction):
-        return lineage.operator
-    return None
-
-
 def null_on_null_group(
     concept: BuildConcept, nullable: set[str], memo: dict[str, bool]
 ) -> bool:
@@ -50,9 +40,12 @@ def null_on_null_group(
     memo[concept.address] = False
     if concept.equivalent_addresses & nullable:
         result = True
-    elif concept.derivation == Derivation.AGGREGATE:
-        result = _aggregate_operator(concept) not in ZERO_ON_EMPTY_AGGREGATES and any(
-            null_on_null_group(a, nullable, memo) for a in concept.concept_arguments
+    elif isinstance(concept.lineage, BuildAggregateWrapper):
+        result = (
+            concept.lineage.function.operator not in ZERO_ON_EMPTY_AGGREGATES
+            and any(
+                null_on_null_group(a, nullable, memo) for a in concept.concept_arguments
+            )
         )
     else:
         result = propagates_argument_nulls(concept) and any(
