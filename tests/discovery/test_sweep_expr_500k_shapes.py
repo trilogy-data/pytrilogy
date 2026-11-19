@@ -1,5 +1,5 @@
 """The reduced shapes of the expressions family's 350,000-500,000 sweep and the
-leads it closed (0.3.517).
+leads it closed (0.3.519).
 
 - A per-tree value over a gated count and a filtered `max(height)`, beside a
   renamed column and a HAVING at `tree_form` (spellings 404253): wrapping a

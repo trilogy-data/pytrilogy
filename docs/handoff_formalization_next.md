@@ -13,7 +13,7 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.517.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.519.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
 `expressions` family to 500,000; the PR of each round holds its sweep totals.
 No family has an `OPEN` seed left (`OPEN` in

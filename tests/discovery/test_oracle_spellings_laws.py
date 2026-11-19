@@ -391,9 +391,9 @@ FOUND_SEEDS_510 = [356401, 62069, 96191, 153508]
 # 0.3.511: a WHERE atom applied above a summary's re-summed counts (390302);
 # a HAVING re-summing a stored sum once per tree of a finer side (430944)
 FOUND_SEEDS_511 = [390302, 430944]
-# 0.3.517: a wrapped join and a join of a wrapped side spelled one identifier,
+# 0.3.519: a wrapped join and a join of a wrapped side spelled one identifier,
 # so FINAL folded the two and read a column off a side it never joined (404253)
-FOUND_SEEDS_517 = [404253]
+FOUND_SEEDS_519 = [404253]
 
 
 def _seed(seed: int):
@@ -427,7 +427,7 @@ def _seed(seed: int):
             *FOUND_SEEDS_509,
             *FOUND_SEEDS_510,
             *FOUND_SEEDS_511,
-            *FOUND_SEEDS_517,
+            *FOUND_SEEDS_519,
             *OPEN,
             8920,
         )

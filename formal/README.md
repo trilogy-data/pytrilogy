@@ -2382,7 +2382,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     never given (24 seeds, e.g. 495, 21365, 99561). Folded constants count
     as the side's columns; undelivered owed keys do not.
 
-- **The expressions family to 500,000** (0.3.517). On main its 300,000
+- **The expressions family to 500,000** (0.3.519). On main its 300,000
   queries (seeds 350,000-500,000) are all right but for 68 the generator
   rejects; the branch breaks none, at 1,270 fewer scans and 2,313 fewer
   CTEs. Fixed:

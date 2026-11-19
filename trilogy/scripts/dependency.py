@@ -110,12 +110,18 @@ class ManagedRefreshNode:
 
     `datasource_ids`: every datasource at this physical address. Used to drive
     per-node deferred staleness evaluation when `assets` is empty.
+
+    `unbuilt_addresses`: other managed addresses that had nothing behind them
+    at preview. Whichever of them is still unbuilt when this node runs is
+    hidden from its build, so it cannot read through a sibling output the same
+    refresh has yet to create (#963).
     """
 
     address: str
     owner_script: ScriptNode
     assets: list[StaleAsset]
     datasource_ids: tuple[str, ...] = ()
+    unbuilt_addresses: frozenset[str] = frozenset()
 
     def __hash__(self):
         return hash(self.address)
