@@ -49,7 +49,7 @@ def test_join_identifier_order_independent_after_mutation():
     ab.datasources = [_DS("z_alpha"), _DS("a_beta")]
     ba.datasources = [_DS("a_beta"), _DS("z_alpha")]
     assert ab.identifier == ba.identifier
-    assert ab.identifier.startswith("a_beta_join_z_alpha")
+    assert ab.identifier.startswith("(a_beta_join_z_alpha)")
 
 
 def test_union_arm_order_preserved_for_except():
