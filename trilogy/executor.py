@@ -26,7 +26,7 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import ConfigurationException, QueryTimeoutException
 from trilogy.core.models.author import Comment, Comparison, Concept, Function
 from trilogy.core.models.build import BuildDatasource, BuildFunction
-from trilogy.core.models.core import ListWrapper, MapWrapper
+from trilogy.core.models.core import DataType, ListWrapper, MapWrapper
 from trilogy.core.models.datasource import (
     Address,
     Datasource,
@@ -219,6 +219,16 @@ _SETUP_CONFLICT_ATTEMPTS = 5
 
 def _is_catalog_write_conflict(error: BaseException) -> bool:
     return _CATALOG_WRITE_CONFLICT in str(error)
+
+
+# The physical type a managed parquet write pins each numeric kind to. Integers
+# go to BIGINT, not the declared `int`, so a wide id or count cannot overflow.
+_PARQUET_WRITE_TYPES: dict[DataType, str] = {
+    DataType.INTEGER: "BIGINT",
+    DataType.BIGINT: "BIGINT",
+    DataType.FLOAT: "DOUBLE",
+    DataType.DOUBLE: "DOUBLE",
+}
 
 
 def _copy_format_options(
@@ -1114,24 +1124,47 @@ class Executor:
             )
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
-        """Build SQL with column aliases for file output."""
+        """Build SQL with column aliases and declared-type casts for file output."""
         base_sql = self.compile_for_execution(query)
-        if not query.column_aliases:
+        casts = self._copy_casts(query)
+        if not query.column_aliases and not casts:
             return base_sql
         quote = self.generator.QUOTE_CHARACTER
         alias_clauses = []
         for col in query.output_columns:
             if col.address in query.hidden_columns:
                 continue
-            target_name = query.column_aliases.get(col.address)
-            if target_name:
-                alias_clauses.append(
-                    f"{quote}{col.safe_address}{quote} as {quote}{target_name}{quote}"
-                )
-            else:
-                alias_clauses.append(f"{quote}{col.safe_address}{quote}")
+            ref = f"{quote}{col.safe_address}{quote}"
+            cast = casts.get(col.address)
+            name = query.column_aliases.get(col.address, col.safe_address)
+            expr = f"CAST({ref} AS {cast})" if cast else ref
+            alias_clauses.append(f"{expr} as {quote}{name}{quote}")
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
+
+    def _copy_casts(self, query: ProcessedCopyStatement) -> dict[str, str]:
+        """Physical types for a managed parquet write's numeric columns.
+
+        DuckDB widens on its own (a re-aggregated count is HUGEINT, which its
+        parquet writer stores as DOUBLE), so a file would not match its
+        declaration and every refresh would see schema drift and rebuild."""
+        if (
+            query.datasource is None
+            or query.target_type != IOType.PARQUET
+            or self.dialect != Dialects.DUCK_DB
+        ):
+            return {}
+        casts: dict[str, str] = {}
+        concepts = self.environment.concepts
+        for col in query.output_columns:
+            # The persist's build columns can be untyped; the declaration is not.
+            declared = concepts.get(col.address)
+            physical = declared and _PARQUET_WRITE_TYPES.get(
+                declared.datatype.data_type
+            )
+            if physical:
+                casts[col.address] = physical
+        return casts
 
     def _drop_external_file_cache(self) -> None:
         """A file this connection read was just replaced, and DuckDB's external
