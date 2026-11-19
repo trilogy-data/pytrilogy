@@ -4975,7 +4975,22 @@ Gates for part 138, against `2b4aeac`:
 
 - Corpus (209 statements): 0 moved.
 - Fuzzer: 522/522.
-- SUITE_CAPTURE_PLACEHOLDER
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`, `*_laws.py`
+  ignored): checkout paths, temp names and ports normalized, CTE names
+  canonicalized by order of appearance. The first capture caught the merged
+  side above: a solid merge below an aggregate over a region reads no group of
+  its own, and raised in 34 tests. With it read off `side_members`, the files
+  that moved off the known-noise list (`test_complete_binding_lookup`,
+  `test_derived_key_domain`, `test_rank_beside_partial_merge`,
+  `test_where_hosts`, `test_staged_publish`, `test_total_summary_reads`,
+  `test_duckdb_validate`, the tpc-ds and tpc-h queries) were recaptured
+  single-process on both trees. No statement moved: what is left is
+  staging-table names, `test_validate_fix`'s chunked statement and how many
+  times the tpc-ds timing reruns compile a query.
+- Suite (`-n 4`): the same 25 credential-gated failures as `2b4aeac`. In the
+  capture worktree `test_source_pushdown` also failed, because `uv run` could
+  not resolve `pyarrow` for a script at that checkout's path; it passes in the
+  base worktree and in the main checkout.
 
 **Open.** Since part 138 no stage-3 merge step reads a built node's regions
 either; `_carries_through` still reads the spans stamped on the nodes along a
