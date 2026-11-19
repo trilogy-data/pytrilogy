@@ -63,6 +63,7 @@ a design decision or a bug.
 | `Writings.lean` | a float, a decimal or an instant cast to a string: shortest digits laid out as `repr`, a declared scale, a fraction without trailing zeros, a timestamp at UTC; a decimal quotient | a decimal's text reads back as its value and carries its scale (`decimal_read_write`, `decimal_scale_written`, bounded); `repr`'s layout reads back as the digits and exponent it laid out (`layout_read_exact`, bounded) and is fixed exactly for an exponent in [-4, 16) (`fixed_iff`); rounding to 15 places keeps a value of 15 digits or fewer (`round15_exact`, bounded); the stripped fraction reads back and does not depend on the precision the engine holds (`fraction_read_write`, `fraction_precision_free`, bounded) (checked by `tests/core/test_text_write_laws.py` on DuckDB, SQLite and ClickHouse) |
 | `Sharing.lean` | a rendering's operand: how many times a cast or a clamped substring names it, its size when nested, the draws a volatile operand reads, SQLite's flattener | inlined, `n` levels hold `k ^ n` copies of the operand (`inline_nested_ge`) and bound they grow linearly (`bound_nested`), so binding wins once its own text is under the copies it saves (`bound_le_inline`); bound, every use reads one draw (`bind_draws_once`), and a binding that reads its row's column draws per row (`correlated_per_row`); flattening a binding is inlining it (`flattened_is_inline`) (checked by `tests/core/test_bound_operand_laws.py` on DuckDB, SQLite and ClickHouse, and on SQLite 3.45 where `/usr/bin/python3` has it) |
 | `ValueSet.lean` | aggregates of a column a table stores at its own grain: a complete binding's values, repeat-blind and repeat-sensitive aggregates, `count` of a column against a stored row count | `min`, `max` and `count_distinct` are functions of their input's set of values (`value_set_min_exact`, `value_set_max_exact`, `value_set_count_distinct_exact`), and so is a scalar of the column alone (`SameValues.map`), so a complete binding answers them at any grain, and a column its table's grain determines holds the base rows' values under any predicate on that grain (`grain_column_values`, `grain_column_min_exact`); `count` and `sum` read repeats (`value_set_misses_repeats`); `count(cls)` is the re-sum of `count(id) by cls` over the non-null classes (`count_column_from_row_count`), and over every class it counts the NULL class's rows (`count_column_counts_null_group`) | (checked by `tests/discovery/test_value_set_laws.py`, with the row table in scope and hidden) |
+| `Identity.lean` | a planned source's identifier, spelled from its members and grains; a scan's projection under a condition | unbracketed, wrapping a join and joining a wrapped side spell one identifier (`naive_wrap_of_join_collides`); with a join's members bracketed, no two sources to depth 2 share one (`bracketed_injective_bounded`); two projections of one table under one condition are projections of one read carrying both (`twin_scans_share_one_read`) | (checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and `tests/optimization/test_merge_twin_scans.py`) |
 
 Every bug a law or oracle sweep finds is fixed with a regression test outside
 the formalization suites too: the reduced shape, with rows checked by hand, in
@@ -2380,6 +2381,22 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     a literal folded onto a sibling, or a key another side was owed but
     never given (24 seeds, e.g. 495, 21365, 99561). Folded constants count
     as the side's columns; undelivered owed keys do not.
+
+- **The expressions family to 500,000** (0.3.519). On main its 300,000
+  queries (seeds 350,000-500,000) are all right but for 68 the generator
+  rejects; the branch breaks none, at 1,270 fewer scans and 2,313 fewer
+  CTEs. Fixed:
+  - Wrapping a join and joining a wrapped side spelled one identifier
+    (`A_join_B_at_g` + `_at_g` is `A_join_` + `B_at_g_at_g`), so FINAL's
+    merge folded its two parents into one, kept one of their joins, and read
+    a column off a CTE it never joined (spellings 404253, the last open
+    seed; `Identity.naive_wrap_of_join_collides`). A join's members are
+    bracketed.
+  - A scan filtered at plan time and its twin filtered by pushdown read one
+    table under one WHERE twice (362641, 364578;
+    `Identity.twin_scans_share_one_read`). `MergeTwinScans` folds an
+    ungrouped, unjoined scan into a twin of the same table, condition and
+    grain.
 
 ## Limits
 

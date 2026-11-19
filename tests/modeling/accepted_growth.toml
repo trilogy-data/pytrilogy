@@ -77,7 +77,7 @@ reason = "A string concept cast to a date (`date.date`, bound to `_date_string`)
 reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
 
 ["tpc_ds_duckdb/zquery83.log"]
-reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing); and human CTE names are hashed from the planned source's identifier, which now brackets a join's members so a wrapped join and a join of a wrapped side stay distinct; the plan is unchanged, its names longer (formal/Trilogy/Identity.lean, naive_wrap_of_join_collides)"
 
 ["tpc_ds_duckdb/zquery87.log"]
 reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
@@ -96,3 +96,6 @@ reason = "A string concept cast to a date (`date.date`, bound to `_date_string`)
 
 ["tpc_ds_duckdb/zquery99.log"]
 reason = "A string concept cast to a date (`date.date`, bound to `_date_string`) is read by a guard that is NULL where the string has no reading, repeated at each inlined read (formal/Trilogy/Readings.lean, read_null_introducing)"
+
+["tpc_ds_duckdb/zquery58.log"]
+reason = "Human CTE names are hashed from the planned source's identifier, which now brackets a join's members so a wrapped join and a join of a wrapped side stay distinct; the plan is unchanged, its names longer (formal/Trilogy/Identity.lean, naive_wrap_of_join_collides)"

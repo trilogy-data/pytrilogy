@@ -6,6 +6,7 @@ from .inline_datasource import InlineDatasource
 from .join_hoist import JoinHoist
 from .join_upgrade import UpgradeJoinOnGuards
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
+from .merge_twin_scans import MergeTwinScans
 from .null_safe_join import SimplifyNullSafeJoins
 from .order_inner_joins import OrderInnerJoinsFirst
 from .predicate_pushdown import PredicatePushdown, PredicatePushdownRemove
@@ -20,6 +21,7 @@ __all__ = [
     "InlineDatasource",
     "JoinHoist",
     "MergeIrrelevantGroupBy",
+    "MergeTwinScans",
     "MergedCTEMap",
     "OptimizationRule",
     "OrderInnerJoinsFirst",

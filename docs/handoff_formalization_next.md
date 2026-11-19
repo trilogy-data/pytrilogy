@@ -13,12 +13,11 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.516.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.519.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family to 350,000; the PR of each round holds its sweep totals.
-What they still get wrong is `OPEN` in
-`tests/discovery/test_oracle_spellings_laws.py` (404253); the `expressions`
-family has no `OPEN` seed left.
+`expressions` family to 500,000; the PR of each round holds its sweep totals.
+No family has an `OPEN` seed left (`OPEN` in
+`tests/discovery/test_oracle_spellings_laws.py` is empty).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -326,8 +325,12 @@ Open in the `expressions` family (each fails on main too):
 
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
-- Spellings 404253: FINAL reads `height` off a side its merge does not join.
-- The expressions family past 350,000 is unswept.
+- The expressions family past 500,000 is unswept.
+- Efficiency: the base model still reads the trees twice in about 5,000 of
+  the 300,000 queries at 350,000-500,000. `MergeTwinScans` folds only
+  ungrouped, unjoined twins under one WHERE; the rest are a grouped scan
+  beside a row scan under one WHERE (one read could feed both), or scans
+  under different WHEREs (a `by *` total beside filtered rows needs both).
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.
 
