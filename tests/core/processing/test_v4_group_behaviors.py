@@ -2382,3 +2382,37 @@ def test_a_gate_host_joins_for_each_key_the_plan_has_no_side_carry():
     assert strategy_builder._join_gate_hosts([side], frozenset(), extras, built) == [
         side
     ]
+
+
+def test_a_side_carries_what_the_bridge_its_merge_joins_carries(monkeypatch):
+    attrs = {
+        "value": GroupAttrs(
+            depth_label=DepthLabel.D1,
+            derivation=Derivation.BASIC,
+            bridges=("trees", "flags"),
+            joined_bridges=("trees",),
+        ),
+        "trees": GroupAttrs(depth_label=DepthLabel.D0, derivation=Derivation.ROOT),
+    }
+    rows = {
+        "value": frozenset({"city"}),
+        "trees": frozenset({"city", "species"}),
+        "flags": frozenset({"genus"}),
+    }
+    monkeypatch.setattr(
+        strategy_builder,
+        "carryable",
+        lambda graph, attrs, gid, keys, env: keys & rows[gid],
+    )
+    keys = frozenset({"city", "species", "genus"})
+
+    assert strategy_builder._bridged_carryable(
+        nx.DiGraph(), attrs, "value", keys, BuildEnvironment()
+    ) == {"city", "species"}
+    assert strategy_builder._bridged_carryable(
+        nx.DiGraph(), attrs, "trees", keys, BuildEnvironment()
+    ) == {"city", "species"}
+    attrs["value"].joined_bridges = ()
+    assert strategy_builder._bridged_carryable(
+        nx.DiGraph(), attrs, "value", keys, BuildEnvironment()
+    ) == {"city"}

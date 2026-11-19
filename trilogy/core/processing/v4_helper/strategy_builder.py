@@ -5490,6 +5490,24 @@ def _widen_to_gate_keys(
     )
 
 
+def _bridged_carryable(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    keys: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """Of `keys`, what `gid` can carry, or a bridge its merge joins can: the
+    merge's rows are that bridge's (a value by `city, tree_form` paired
+    through the tree rows carries their `species`)."""
+    return frozenset().union(
+        *(
+            carryable(group_graph, attrs, side, keys, environment)
+            for side in (gid, *attrs[gid].joined_bridges)
+        )
+    )
+
+
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
     return frozenset(
         key
@@ -6369,14 +6387,14 @@ def _assemble_sole_contributor(
         # a gate's producer pairs on its grain, which the dedup would strip
         missing = _concepts_at(environment, filter_only_addrs - sole_avail)
         gate_keys = _gate_grain_keys(missing)
-        held = {o.address for o in sole_node.output_concepts}
         # a gate pairs on its whole grain: one key short, it keeps the rows
         # it rejected on another (`SelectGrain.gate_paired_short_of_its_grain`)
         # the all-rows marker of a `by *` gate is no key to carry
-        widened = _widen_to_gate_keys(
-            sole_node, pairing_keys(gate_keys - held), environment
+        asked = _bridged_carryable(
+            group_graph, attrs, gid, pairing_keys(gate_keys - sole_avail), environment
         )
-        gate_paired_feeders = bool(gate_keys & (held | widened))
+        _widen_to_gate_keys(sole_node, asked, environment)
+        gate_paired_feeders = bool(gate_keys & (sole_avail | asked))
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)
             for feeder in _filter_arg_producers(
@@ -6519,8 +6537,6 @@ def _apply_final_conditions(
             group_graph,
             attrs,
             environment,
-            # the contributor as built: widened to a gate key its rows hold
-            {gid: asks & {o.address for o in node.output_concepts}},
         )
         if asks:
             _carry_asked_keys([node, *arg_nodes], origin, plan, environment)
@@ -6582,11 +6598,10 @@ def _condition_join_plan(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
-    built_holds: dict[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The join plan of a merge hosting a FINAL condition: `cover` beside the
-    `extras` joined to filter it, each side contracted to the `asks`, or to
-    the asks `built_holds` says its built node already carries."""
+    `extras` joined to filter it, each side contracted to the `asks` it or a
+    bridge its merge joins can carry."""
     return plan_final_join(
         group_graph,
         attrs,
@@ -6595,8 +6610,7 @@ def _condition_join_plan(
         environment,
         _required_final_contract(attrs).authored_axes,
         contracted={
-            side: carryable(group_graph, attrs, side, asks, environment)
-            | (built_holds or {}).get(side, frozenset())
+            side: _bridged_carryable(group_graph, attrs, side, asks, environment)
             for side in (*cover, *extras)
         },
         extras=extras,
@@ -7088,7 +7102,10 @@ def _assemble_final_node(
     # A gate keyed by a column no contributor projects (`count(id) by genus`,
     # genus derived from a scanned column) pairs on that key, as in
     # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
-    if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
+    stated = set().union(
+        *(_side_columns(p, origin, plan, reaches, narrowed, absorbed) for p in parents)
+    )
+    if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - stated):
         asks = _condition_join_plan(
             per_group,
             [*bridges, *extras.groups],
