@@ -1466,6 +1466,15 @@ def test_a_sides_region_reads_are_its_groups():
     }
     with pytest.raises(ValueError, match="no planned group"):
         _region_reads_by_side(graph, attrs, [redundant, carrier], {})
+    merged = MergeNode(
+        input_concepts=[],
+        output_concepts=[],
+        parents=[redundant, carrier],
+        environment=redundant.environment,
+    )
+    assert _region_reads_by_side(graph, attrs, [merged], origin) == {
+        id(merged): frozenset({"item.id"})
+    }
 
 
 def test_fold_passthrough_keeps_shape_barrier_parent():

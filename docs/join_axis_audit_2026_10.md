@@ -4953,7 +4953,9 @@ already states the same fact, the extent spans a group and its lineage read
 (`_group_region_reads`), and stage 3 read it at the aggregate's domain split
 and the FINAL's filter arguments. Each step now takes the reads off the
 side's group (`_planned_region_reads`, or `_region_reads_by_side` keyed by
-node). A side that maps to no group raises, as it already did there. A union
+node). A merge assembled below the consumer (the solid side of an aggregate
+over a region) reads what the groups it joins read (`side_members`); a side
+that maps to no group raises, as it already did there. A union
 arm's merge is still unplanned (`_merge_plan` takes no groups for it), but
 its sides' reads come off their groups like every other merge's.
 
