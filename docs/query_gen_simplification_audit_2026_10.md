@@ -238,7 +238,9 @@ Rowset assembly:
 
 ## Design seams (not built unless marked landed)
 
-Ranked by lines a seam would free, across the axes:
+Ranked by lines a seam would free, across the axes. Status as of seam 6:
+3, 4, 6 and 7 landed, 8 closed, 9 half done; 1, 2 and 5 remain, and hold
+nearly all of the estimated lines.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -327,10 +329,43 @@ Ranked by lines a seam would free, across the axes:
    `null_provenance.py`, `join_resolution.py` side-fact assembly and the
    `value_set_join_upgrade` padding walks). Corpus evidence says the stamp
    could start as `value | extent`.
-6. **Drop the `narrow_equal_domain_joins` knob** (about 230 lines). Under
-   model trust `merge a into b` makes one key; the planner's FULL-for-every-
-   EQUAL-key rule plus the optimizer's `_upgrade_to_inner` exist to make that
-   trust switchable.
+6. **A merge key is one key (landed; measured smaller than estimated).**
+   An EQUAL declaration (`merge a into b`, `equal join`) sat in the
+   planner's FULL-forcing set (`JoinFacts.full_join_keys`), and the
+   optimizer narrowed it back when both sides proved complete; the
+   `narrow_equal_domain_joins` knob made that trust switchable. Now
+   `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL ones)
+   is the one owner of "an authored FULL preserves this key", read by
+   `get_node_joins`, `MergeNode`'s coalescing veto and
+   `UpgradeOuterFromKeySetEquivalence`, each of which had recomputed it; an
+   EQUAL key is typed by the planner like any other, and the knob is gone.
+
+   Measured and kept: the optimizer's EQUAL proof
+   (`_pair_equal_declared` in `_pair_values_equal`). With the planner
+   change in, dropping it still moves q04's agent shape: fact-to-customer
+   joins the planner types LEFT because the fact's FK is a `?` value NULL
+   (rule `nullable`) narrow to INNER only through it. That is the
+   nullability seam's question, not the merge's.
+
+   The FULL had been hiding a defect: an UNNEST drops every owner row whose
+   array is empty or NULL, and an aggregate over the unnested rows read as
+   complete over the owner wherever the owner's other source binds it `~`
+   too, because `partial_binding_sources` named only the leaf (`_one_binding`
+   then called the two sides one binding and typed the pair INNER). An
+   UNNEST now names itself beside the leaf, as a rowset boundary already
+   did. `tree_reporting::test_native_range_build_matches_fixture` caught it;
+   `tests/engine/test_duckdb_merged_unnest_owner_rows.py` pins it (green on
+   `main`, red with the planner change alone).
+
+   Gates, against `242dfaf`: corpus 5 moved, rows checked. q44 and the q04
+   agent shape are row-identical at sf=1; hackernews adhoc03 and adhoc05
+   (BigQuery) are row-identical by construction (a coalesce over an
+   INNER-equated pair; an INNER join onto the complete id scan the other
+   side's keys come from). hackernews adhoc02 was wrong on `main`: its FULL
+   join on `id` let every item outside `create_time.year = 2024` through
+   with a NULL root parent; it is INNER now
+   (`tests/engine/test_duckdb_merged_recursion_filter.py`, red on `main`).
+   Fuzzer 522/522.
 7. **One padding walk (landed; measured smaller than estimated).** The
    walks already shared `left_deep_joins` and `padded_by`; what each restated
    was the accumulation. `utility.padded_sources` (every source the joins
@@ -344,9 +379,11 @@ Ranked by lines a seam would free, across the axes:
    where a join extends, `_full_join_concepts` reads FULL joins' shared
    columns, and `narrow_join_types` visits UNNEST joins too. Corpus 0
    moved, fuzzer 522/522.
-8. **`DomainKind` as a trace label.** No behavioural consumer reads
-   `RegionDomain.kind`; every reader keys on whether a bucket exists. The
-   BOUNDARY decision is load-bearing, the label is not.
+8. **`DomainKind` as a trace label (closed: already one).** No behavioural
+   consumer reads `RegionDomain.kind`; `root_partition`'s trace is its only
+   reader, and every decision keys on whether the domain has a bucket. The
+   enum is the trace's vocabulary and the root-partition tests', so turning
+   it into a string frees nothing.
 9. **A boundary scope id** in place of `ConceptAttrs.rowset_name`: the one
    non-derivable fact it carries (a non-handle node that belongs to a
    boundary) is the same thing a union arm scope is. The three partition
