@@ -50,7 +50,7 @@ an explicit author predicate (`where x is not null`).
   `process_query`; rowset-BODY scoped joins are folded in via
   `_collect_rowset_scoped_joins`.
 - **EQUAL narrowing is unconditional** (the `narrow_equal_domain_joins` knob
-  is gone; the planner no longer forces FULL on an EQUAL key).
+  is gone).
   The adversarial merge-form matrix cells were re-ruled to intersection
   semantics (lying declaration = author error). EQUAL evidence extends past
   classic key-set equivalence: value-completeness on both sides + equivalent

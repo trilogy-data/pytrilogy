@@ -975,6 +975,22 @@ def _trace_join_type(
     )
 
 
+def _independent_full_keys(
+    left: str, right: str, keys: set[str], facts: JoinFacts
+) -> bool:
+    """A FULL-declared key the pair joins on as an axis of its own. One both
+    sides' grains, among the pair's other keys, determine (`parent` beside
+    `id`) pairs no row the grain does not, and the pairing drops it."""
+    full = keys & facts.full_join_keys
+    if not full:
+        return False
+    rest = keys - full
+    return not all(
+        side.grain and side.grain <= rest and full <= side.determined
+        for side in (facts.side(left), facts.side(right))
+    )
+
+
 def _decide_join_type(
     left: str,
     right: str,
@@ -986,7 +1002,7 @@ def _decide_join_type(
     # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
     # merges): neither domain contains the other, so FULL with the key
     # coalesced; the registry also vetoes narrowing, and keeps the key complete.
-    if all_connecting_keys & facts.full_join_keys:
+    if _independent_full_keys(left, right, all_connecting_keys, facts):
         return JoinType.FULL, "full_join_keys"
 
     region_type, region_hosts_equally = _region_contract_join(
@@ -1470,18 +1486,10 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
         out |= partial_binding_sources(sub, address)
     # a rowset boundary built not to extend a span (its reader holds the
     # region) is partial on the handle with no leaf `~` behind it: the
-    # boundary is the binding, and two projections of it are one. An UNNEST
-    # binds on its own beside any leaf under it: it drops each row whose
-    # array is empty or NULL.
-    if (not out or _unnests(ds)) and any(
-        c.address == address for c in ds.partial_concepts
-    ):
-        return out | {ds.identifier}
+    # boundary is the binding, and two projections of it are one
+    if not out and any(c.address == address for c in ds.partial_concepts):
+        return frozenset({ds.identifier})
     return out
-
-
-def _unnests(ds: QueryDatasource) -> bool:
-    return any(isinstance(j, UnnestJoin) for j in ds.joins)
 
 
 def complete_key_domain(ds: DataSource, address: str) -> bool:
@@ -2946,8 +2954,11 @@ def get_node_joins(
         is_coalescing_axis,
     )
 
+    # an EQUAL key (`merge a into b`) stays FULL here: a selected merged key
+    # pads the members only one side lists (`test_unnest_filter_laws`); the
+    # optimizer narrows it once both sides prove complete
     full_join_keys = {
-        canon_node(a) for a in environment.domain_graph.full_relation_keys()
+        canon_node(a) for a in environment.domain_graph.outer_relation_keys()
     }
     if full_join_keys:
         # a scalar of a coalescing axis pairs its arms as the axis does

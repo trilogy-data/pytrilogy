@@ -483,10 +483,9 @@ class DomainGraph:
         } - self.incomparable_keys()
 
     def full_relation_keys(self) -> set[str]:
-        """The outer-relation keys an authored FULL preserves: the planner
-        types their joins FULL and no narrowing collapses them. An EQUAL key
-        (`merge a into b`, `equal join`) is one key, typed and narrowed like
-        any other."""
+        """The outer-relation keys no narrowing may collapse: an EQUAL key
+        (`merge a into b`, `equal join`) narrows once both sides prove
+        complete; an INCOMPARABLE one never does."""
         return self.outer_relation_keys() - self.equal_narrowable_keys()
 
     def left_anchor_keys(self) -> set[str]:

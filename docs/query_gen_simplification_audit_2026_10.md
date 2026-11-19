@@ -239,8 +239,9 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 6:
-3, 4, 6 and 7 landed, 8 closed, 9 half done; 1, 2 and 5 remain, and hold
-nearly all of the estimated lines.
+3, 4 and 7 landed, 6's knob landed (its planner half waits on a language
+decision), 8 closed, 9 half done; 1, 2 and 5 remain, and hold nearly all of
+the estimated lines.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -329,43 +330,41 @@ nearly all of the estimated lines.
    `null_provenance.py`, `join_resolution.py` side-fact assembly and the
    `value_set_join_upgrade` padding walks). Corpus evidence says the stamp
    could start as `value | extent`.
-6. **A merge key is one key (landed; measured smaller than estimated).**
-   An EQUAL declaration (`merge a into b`, `equal join`) sat in the
-   planner's FULL-forcing set (`JoinFacts.full_join_keys`), and the
-   optimizer narrowed it back when both sides proved complete; the
-   `narrow_equal_domain_joins` knob made that trust switchable. Now
-   `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL ones)
-   is the one owner of "an authored FULL preserves this key", read by
-   `get_node_joins`, `MergeNode`'s coalescing veto and
-   `UpgradeOuterFromKeySetEquivalence`, each of which had recomputed it; an
-   EQUAL key is typed by the planner like any other, and the knob is gone.
+6. **Drop the `narrow_equal_domain_joins` knob (knob landed; the planner
+   half is refused by a law).** The knob is gone, and
+   `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL
+   ones) is the one owner of "no narrowing collapses this key", read by
+   `MergeNode`'s coalescing veto and `UpgradeOuterFromKeySetEquivalence`,
+   each of which had recomputed it.
 
-   Measured and kept: the optimizer's EQUAL proof
-   (`_pair_equal_declared` in `_pair_values_equal`). With the planner
-   change in, dropping it still moves q04's agent shape: fact-to-customer
-   joins the planner types LEFT because the fact's FK is a `?` value NULL
-   (rule `nullable`) narrow to INNER only through it. That is the
-   nullability seam's question, not the merge's.
+   The planner half (type an EQUAL key like any other instead of FULL) is
+   NOT landed: it contradicts a pinned semantics, not a conservatism.
+   `tests/unnest/test_unnest_filter_laws.py::test_element_pairs_with_the_row_it_expands[*-equal]`
+   holds that a selected `merge into` key pads the members of its table no
+   row lists (`(None, k)`), which only the FULL produces. Whether `merge a
+   into b` means "one key" (the audit's premise) or "the union of both
+   members" (the law's) is a language decision; until it is made, the
+   planner keeps `outer_relation_keys`. Measured while it was in: corpus 5
+   moved, the law's 6 cells red, and one latent defect exposed: an UNNEST
+   drops owner rows whose array is empty or NULL, yet
+   `partial_binding_sources` names only the leaf `~` under it, so an
+   aggregate over the unnested rows reads as one binding with its owner's
+   `~` source (`tree_reporting::test_native_range_build_matches_fixture`
+   goes red). The FULL on the merged key hides it today.
 
-   The FULL had been hiding a defect: an UNNEST drops every owner row whose
-   array is empty or NULL, and an aggregate over the unnested rows read as
-   complete over the owner wherever the owner's other source binds it `~`
-   too, because `partial_binding_sources` named only the leaf (`_one_binding`
-   then called the two sides one binding and typed the pair INNER). An
-   UNNEST now names itself beside the leaf, as a rowset boundary already
-   did. `tree_reporting::test_native_range_build_matches_fixture` caught it;
-   `tests/engine/test_duckdb_merged_unnest_owner_rows.py` pins it (green on
-   `main`, red with the planner change alone).
+   Also measured: the optimizer's EQUAL proof (`_pair_equal_declared`)
+   narrows q04's agent-shape fact-to-customer LEFT joins (typed LEFT for a
+   `?` value-NULL FK); that is the nullability seam's question.
 
-   Gates, against `242dfaf`: corpus 5 moved, rows checked. q44 and the q04
-   agent shape are row-identical at sf=1; hackernews adhoc03 and adhoc05
-   (BigQuery) are row-identical by construction (a coalesce over an
-   INNER-equated pair; an INNER join onto the complete id scan the other
-   side's keys come from). hackernews adhoc02 was wrong on `main`: its FULL
-   join on `id` let every item outside `create_time.year = 2024` through
-   with a NULL root parent; it is INNER now
-   (`tests/engine/test_duckdb_merged_recursion_filter.py`, red on `main`).
-   Fuzzer 522/522.
+   Landed beside it, a bug on `main`: the `full_join_keys` rule fired on any
+   connecting key, including a FULL key both sides' grains determine among
+   the pair's other keys (`merge parent into direct_parent.id` beside `id`),
+   which the pairing then drops. The join was typed FULL on a key it never
+   rendered, padding every unfiltered row past the WHERE (hackernews adhoc02
+   returned items outside `create_time.year = 2024`).
+   `_independent_full_keys` asks for a FULL key that is an axis of its own;
+   `tests/engine/test_duckdb_merged_recursion_filter.py` pins it (red on
+   `main`). Corpus: adhoc02 alone moved (FULL to INNER). Fuzzer 522/522.
 7. **One padding walk (landed; measured smaller than estimated).** The
    walks already shared `left_deep_joins` and `padded_by`; what each restated
    was the accumulation. `utility.padded_sources` (every source the joins

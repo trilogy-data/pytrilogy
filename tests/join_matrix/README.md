@@ -44,9 +44,8 @@ those relations keep their preserving FULL.
 - `union join a = b` (≡ legacy `full join a = b`): neither domain contains the
   other; never narrows (`full_join_keys` veto), cells rule `expected_full`.
 - `equal join a = b` (≡ `merge equal a = b` ≡ non-partial `merge a into b`):
-  the EQUAL declaration. The key is one key: the planner types it like any
-  other and the optimizer narrows it to INNER wherever both sides prove
-  value-complete; on the
+  the EQUAL declaration. The optimizer narrows it to INNER wherever both
+  sides prove value-complete; on the
   adversarial rows that DROPS the side-exclusive rows (lying declaration =
   author error), so the equal cells rule intersection (`expected_equal`).
 - `merge union a = b` is `union join a = b` for every statement: the union
