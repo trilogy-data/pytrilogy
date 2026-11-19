@@ -67,7 +67,7 @@ from trilogy.core.processing.utility import (
     collect_applied_conditions,
     find_nullable_concepts,
     left_deep_joins,
-    padded_by,
+    padded_sources,
 )
 from trilogy.core.union_find import find
 from trilogy.utility import unique
@@ -90,15 +90,16 @@ def _join_padded_addresses(
 ) -> frozenset[str]:
     """Addresses an outer join here leaves NULL on some row: every source of
     the address is padded, and no FULL join coalesces it as its key."""
-    padded_ids: set[str] = set()
-    full_keys: set[str] = set()
-    for join, left in left_deep_joins(joins):
-        padded_ids |= padded_by(join, left)
-        if join.join_type == JoinType.FULL:
-            for pair in join.pairs or []:
-                full_keys |= {pair.left.address, pair.right.address}
+    padded_ids = padded_sources(joins)
     if not padded_ids:
         return frozenset()
+    full_keys = {
+        address
+        for join in joins
+        if isinstance(join, Join) and join.join_type == JoinType.FULL
+        for pair in join.pairs or []
+        for address in (pair.left.address, pair.right.address)
+    }
     return frozenset(
         address
         for address, sources in source_map.items()

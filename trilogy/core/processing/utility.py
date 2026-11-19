@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -189,6 +189,28 @@ def padded_by(join: SourceJoin, left: frozenset[str]) -> set[str]:
     return padded
 
 
+def padded_before(
+    joins: list[SourceJoin | UnnestJoin], base_ids: Collection[str] = ()
+) -> Iterator[tuple[SourceJoin, frozenset[str], set[str]]]:
+    """`left_deep_joins`, each with the sources the joins before it pad. A
+    join's own padding is read once the caller is done with it, so a caller
+    that retypes the join pads by its new type."""
+    padded: set[str] = set()
+    for join, left in left_deep_joins(joins, base_ids):
+        yield join, left, padded
+        padded |= padded_by(join, left)
+
+
+def padded_sources(
+    joins: list[SourceJoin | UnnestJoin], base_ids: Collection[str] = ()
+) -> set[str]:
+    """Every source some join in `joins` NULL-pads."""
+    padded: set[str] = set()
+    for join, left in left_deep_joins(joins, base_ids):
+        padded |= padded_by(join, left)
+    return padded
+
+
 def unpadded_join_type(
     current: JoinType, left_present: bool, right_present: bool
 ) -> JoinType:
@@ -218,9 +240,7 @@ def collect_applied_conditions(
     if isinstance(source, QueryDatasource):
         if source.condition is not None:
             out.append(source.condition)
-        padded: set[str] = set()
-        for join, left in left_deep_joins(source.joins):
-            padded |= padded_by(join, left)
+        padded = padded_sources(source.joins)
         for parent in source.datasources:
             if parent.identifier not in padded:
                 out.extend(collect_applied_conditions(parent))
@@ -284,11 +304,10 @@ def find_nullable_concepts(
     # Only an outer join introduces NULLs: it pads the extended side. A join
     # keyed on a nullable column leaves the other side's columns as they are,
     # whether the NULL keys pair (null-safe) or drop (plain equality).
-    for join, accumulated in left_deep_joins(joins, base_ids):
-        for padded in padded_by(join, accumulated):
-            padded_ds = datasource_map.get(padded)
-            if padded_ds is not None:
-                nullable_datasources.add(padded_ds)
+    for padded in padded_sources(joins, base_ids):
+        padded_ds = datasource_map.get(padded)
+        if padded_ds is not None:
+            nullable_datasources.add(padded_ds)
     final_nullable = set()
 
     for k, v in source_map.items():

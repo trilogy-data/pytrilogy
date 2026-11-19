@@ -331,8 +331,19 @@ Ranked by lines a seam would free, across the axes:
    model trust `merge a into b` makes one key; the planner's FULL-for-every-
    EQUAL-key rule plus the optimizer's `_upgrade_to_inner` exist to make that
    trust switchable.
-7. **One padding walk.** Six left-deep "who gets padded" walks over the same
-   `left_deep_joins` primitive (about 120 lines).
+7. **One padding walk (landed; measured smaller than estimated).** The
+   walks already shared `left_deep_joins` and `padded_by`; what each restated
+   was the accumulation. `utility.padded_sources` (every source the joins
+   pad) and `utility.padded_before` (each join with what the joins before it
+   pad, read lazily so a caller that retypes the join pads by the new type)
+   now serve `collect_applied_conditions`, `find_nullable_concepts`,
+   `MergeNode._join_padded_addresses`, `prune_outer_join_pairs` and
+   `restore_unpadded_joins`. The other walks each read a different fact, so
+   no single walk subsumes them: `compute_outer_null_status` ranks a padded
+   right past its lefts, `null_provenance._padded_addresses` pads only
+   where a join extends, `_full_join_concepts` reads FULL joins' shared
+   columns, and `narrow_join_types` visits UNNEST joins too. Corpus 0
+   moved, fuzzer 522/522.
 8. **`DomainKind` as a trace label.** No behavioural consumer reads
    `RegionDomain.kind`; every reader keys on whether a bucket exists. The
    BOUNDARY decision is load-bearing, the label is not.
