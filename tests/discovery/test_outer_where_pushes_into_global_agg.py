@@ -1,3 +1,5 @@
+import re
+
 from trilogy import Dialects, Environment
 
 # An outer WHERE row predicate must push into a `by *` global aggregate's INPUT
@@ -102,11 +104,18 @@ def test_cross_grain_predicate_stays_in_aggregate_scan():
     exec = Dialects.DUCK_DB.default_executor(environment=Environment())
     exec.parse_text(CROSS_GRAIN)
     sql = exec.generate_sql(CROSS_GRAIN_QUERY)[-1]
-    # isolate the CTE that computes the global avg (up to the next CTE header)
-    avg_at = sql.index("avg(")
-    next_cte = sql.find(" as (", avg_at)
-    avg_cte = sql[avg_at:next_cte] if next_cte != -1 else sql[avg_at:]
-    assert "item_id" in avg_cte and "> 5" in avg_cte, avg_cte
+    avg_cte = _cte_body(sql, sql.index("avg("))
+    if "> 5" not in avg_cte:
+        # grouped over its filtered row twin (MergeTwinScans)
+        source = re.search(r'FROM\s+"(\w+)"', avg_cte).group(1)
+        header = f"{source} as ("
+        avg_cte = _cte_body(sql, sql.index(header) + len(header))
+    assert "item_id" in avg_cte and "> 5" in avg_cte, sql
+
+
+def _cte_body(sql: str, at: int) -> str:
+    next_cte = sql.find(" as (", at)
+    return sql[at:next_cte] if next_cte != -1 else sql[at:]
 
 
 def test_gated_global_agg_is_one_value_beside_rows():

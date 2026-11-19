@@ -1,11 +1,11 @@
 query_id = "08"
-gen_length = 2738
+gen_length = 2667
 preql_size = 7495
 comp_size = 19155
 generated_sql = """
 
 WITH 
-thoughtful as (
+wakeful as (
 SELECT
     \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\" as \"customer_current_address_sk\",
     \"customer_current_address_customer_address\".\"CA_ZIP\" as \"customer_current_address_zip\",
@@ -14,44 +14,44 @@ SELECT
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-questionable as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"customer_current_address_zip\" as \"customer_current_address_zip\",
-    count(CASE WHEN \"thoughtful\".\"customer_preferred_cust_flag\" = 'Y' THEN \"thoughtful\".\"customer_sk\" ELSE NULL END) as \"zip_p_count\"
+    \"wakeful\".\"customer_current_address_zip\" as \"customer_current_address_zip\",
+    count(CASE WHEN \"wakeful\".\"customer_preferred_cust_flag\" = 'Y' THEN \"wakeful\".\"customer_sk\" ELSE NULL END) as \"zip_p_count\"
 FROM
-    \"thoughtful\"
+    \"wakeful\"
 GROUP BY
     1),
-cooperative as (
+cheerful as (
 SELECT
-    \"thoughtful\".\"customer_current_address_zip\" as \"customer_current_address_zip\"
+    \"wakeful\".\"customer_current_address_zip\" as \"customer_current_address_zip\"
 FROM
-    \"thoughtful\"
+    \"wakeful\"
 GROUP BY
     1,
-    \"thoughtful\".\"customer_current_address_sk\"),
-abundant as (
+    \"wakeful\".\"customer_current_address_sk\"),
+cooperative as (
 SELECT
-    SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"cooperative\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    SUBSTRING(CASE WHEN \"thoughtful\".\"zip_p_count\" > 10 THEN \"cheerful\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"customer_current_address_zip\" is not distinct from \"questionable\".\"customer_current_address_zip\"
+    \"cheerful\"
+    INNER JOIN \"thoughtful\" on \"cheerful\".\"customer_current_address_zip\" is not distinct from \"thoughtful\".\"customer_current_address_zip\"
 GROUP BY
     1),
-quizzical as (
+yummy as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
-highfalutin as (
+juicy as (
 SELECT
-    SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) as \"zips\"
+    SUBSTRING(cast(\"yummy\".\"zips_pre\" as string),1,5) as \"zips\"
 FROM
-    \"quizzical\"),
+    \"yummy\"),
 vacuous as (
 SELECT
-    SUBSTRING(CASE WHEN exists (select 1 from abundant where abundant.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END,1,2) as \"final_zips\"
+    SUBSTRING(CASE WHEN exists (select 1 from cooperative where cooperative.\"_virt_func_substring_4293448550966409\" is not distinct from \"juicy\".\"zips\") THEN \"juicy\".\"zips\" ELSE NULL END,1,2) as \"final_zips\"
 FROM
-    \"highfalutin\"
+    \"juicy\"
 GROUP BY
     1)
 SELECT
