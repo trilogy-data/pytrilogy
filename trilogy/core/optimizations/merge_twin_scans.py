@@ -131,7 +131,13 @@ class MergeTwinScans(OptimizationRule):
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         read = _read(cte)
-        if read is None or _inlined_anywhere(cte.name, inverse_map[cte.name]):
+        if (
+            read is None
+            # a re-sum reads stored partials through its own source map
+            or cte.rollup_concepts
+            or cte.partial_sources
+            or _inlined_anywhere(cte.name, inverse_map[cte.name])
+        ):
             return False, None
         for consumers in inverse_map.values():
             for consumer in consumers:

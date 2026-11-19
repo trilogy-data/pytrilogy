@@ -67,3 +67,17 @@ def test_grouped_total_counts_repeated_rows():
     assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(
         [("broadleaf", 4, 7), (None, 4, None)]
     )
+
+
+def test_summary_resum_keeps_its_partial_source():
+    ex = executor("summary")
+    sql = ex.generate_sql(
+        "select city, species, tree_form, max(height) by city as v0 where city = 'A';"
+    )[-1]
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(
+        [
+            ("A", "Acer", "broadleaf", 5),
+            ("A", "Quercus", "broadleaf", 5),
+            ("A", "Ulmus", None, 5),
+        ]
+    )
