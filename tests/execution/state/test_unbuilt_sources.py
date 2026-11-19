@@ -3,7 +3,9 @@ rather than reading through it (#963).
 
 Parse cannot stat a remote address and assumes it exists, so the planner may
 route a sibling through it; only staleness puts it in the plan, where pending
-assets are hidden from each other's builds.
+assets are hidden from each other's builds. A directory refresh plans each
+output address separately, so there the unbuilt siblings are hidden by the
+orchestrator instead.
 """
 
 import threading
@@ -152,3 +154,51 @@ def test_dialect_without_file_schema_is_not_missing(tmp_path, served):
     executor = _executor(tmp_path, served)
     with patch.object(type(executor.generator), "get_file_columns", return_value=None):
         assert not is_missing_file(executor.environment.datasources["wide"], executor)
+
+
+# Directory mode builds one output after another in declaration order, so
+# declaring the target first is what lets its build read through the unbuilt
+# sibling; in MODEL's order the sibling is simply built first.
+_HEAD, _REST = MODEL.split("datasource wide")
+_WIDE, _TARGET = _REST.split("datasource target")
+TARGET_FIRST = (
+    f"{_HEAD}datasource target{_TARGET.rstrip()}\n\n"
+    f"datasource wide{_WIDE.rstrip()}\n"
+)
+
+
+def _workspace(tmp_path, served):
+    root, url = served
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "model.preql").write_text(
+        TARGET_FIRST.format(
+            wide_read=f"{url}/wide.parquet",
+            wide_write=(root / "wide.parquet").as_posix(),
+            target=(tmp_path / "target.parquet").as_posix(),
+        ),
+        encoding="utf-8",
+    )
+    (ws / "trilogy.toml").write_text(
+        '[engine]\ndialect = "duck_db"\n', encoding="utf-8"
+    )
+    return ws
+
+
+@pytest.mark.parametrize("entry", ["directory", "file"])
+def test_fresh_model_first_cli_refresh_builds(tmp_path, served, entry):
+    """Directory mode builds each output address as its own node, so the
+    hiding of pending siblings has to reach across nodes, not only within one
+    plan."""
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    ws = _workspace(tmp_path, served)
+    target = ws if entry == "directory" else ws / "model.preql"
+
+    result = CliRunner().invoke(cli, ["refresh", str(target)])
+
+    assert result.exit_code == 0, result.output
+    assert (served[0] / "wide.parquet").exists()
+    assert (tmp_path / "target.parquet").exists()
