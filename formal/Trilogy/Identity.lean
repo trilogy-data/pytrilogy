@@ -18,6 +18,12 @@ grain to the other's.
   condition are projections of a single scan carrying both, so a scan
   filtered at plan time and its pushdown-filtered twin fold into one
   (`MergeTwinScans`; expressions 362641, 364578).
+- `group_reads_twin_rows`: an aggregate of the table under a condition is the
+  aggregate of its row twin's read, so a grouped scan beside an ungrouped one
+  under one WHERE groups the twin instead of reading the table again (a `by *`
+  total beside the select's rows, expressions 500002).
+- `grouped_twin_drops_repeats`: the twin must be ungrouped; grouping a
+  deduplicated read undercounts repeated rows.
 
 Checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and
 `tests/optimization/test_merge_twin_scans.py`.
@@ -78,6 +84,15 @@ theorem twin_scans_share_one_read {α β γ : Type} (rows : List α) (p : α →
     (rows.filter p).map f = (twinRead rows p f g).map Prod.fst ∧
       (rows.filter p).map g = (twinRead rows p f g).map Prod.snd := by
   simp [twinRead, List.map_map, Function.comp_def]
+
+theorem group_reads_twin_rows {α β γ δ : Type} (rows : List α) (p : α → Bool)
+    (f : α → β) (g : α → γ) (agg : List β → δ) :
+    agg ((rows.filter p).map f) = agg ((twinRead rows p f g).map Prod.fst) := by
+  rw [(twin_scans_share_one_read rows p f g).1]
+
+theorem grouped_twin_drops_repeats :
+    ([1, 1].filter (fun _ => true)).length ≠ ([1, 1].eraseDups.filter (fun _ => true)).length := by
+  decide
 
 end Identity
 end Trilogy

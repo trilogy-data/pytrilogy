@@ -40,3 +40,30 @@ def test_twin_scans_without_the_rule_read_it_twice():
         CONFIG.optimizations.merge_twin_scans = True
     assert _scans(sql) == 2
     assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(ROWS)
+
+
+GROUPED = (
+    "select tree_form, max(height) by * / count(tree_id) by tree_form as v0,"
+    " min(height) as v1 where city = 'B';"
+)
+
+
+def test_grouped_scan_groups_its_row_twin():
+    ex = executor("base")
+    sql = ex.generate_sql(GROUPED)[-1]
+    assert _scans(sql) == 1, sql
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(
+        [("broadleaf", 7, 7), ("linden", 7, 2)]
+    )
+
+
+def test_grouped_total_counts_repeated_rows():
+    ex = executor("base")
+    sql = ex.generate_sql(
+        "select tree_form, count(tree_id) by * as n, max(height) as m"
+        " where species in ('Acer', 'Ulmus');"
+    )[-1]
+    assert _scans(sql) == 1, sql
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(
+        [("broadleaf", 4, 7), (None, 4, None)]
+    )
