@@ -2,7 +2,6 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
-    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -18,6 +17,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
 )
 from trilogy.core.processing.v4_helper.projection import (
     renderable_addresses,
+    renders_at,
     widen_projection,
 )
 
@@ -29,30 +29,15 @@ def _expose_boundary_handle(node: StrategyNode, handle: BuildConcept) -> bool:
     its content: a boundary carries the columns its reader demands, so a grain
     key nobody selected is materialized only when a reader needs the row
     identity."""
-    lineage = handle.lineage
-    if not isinstance(lineage, BuildRowsetItem):
-        return False
     for boundary in node.parents:
         if not isinstance(boundary, RowsetNode) or not boundary.parents:
-            continue
-        if not any(
-            isinstance(o.lineage, BuildRowsetItem)
-            and o.lineage.rowset.name == lineage.rowset.name
-            for o in boundary.output_concepts
-        ):
             continue
         if handle.address in {o.address for o in boundary.output_concepts}:
             return True
         produced = {o.address for o in boundary.parents[0].usable_outputs}
-        if lineage.content.address not in produced:
-            return False
-        widen_projection(
-            boundary,
-            [handle],
-            input_candidates=[lineage.content],
-            available_addresses=produced,
-        )
-        return True
+        if renders_at(boundary, handle, produced):
+            widen_projection(boundary, [handle], available_addresses=produced)
+            return True
     return False
 
 

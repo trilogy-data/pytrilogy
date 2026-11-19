@@ -93,7 +93,6 @@ from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
     MergeNode,
-    RowsetNode,
     SelectNode,
     StrategyNode,
     UnionNode,
@@ -189,6 +188,7 @@ from .projection import (
     literal_producible,
     parent_output_addresses,
     renderable_addresses,
+    renders_at,
     row_lineage_arguments,
     satisfiable_from,
     satisfiable_outputs,
@@ -1726,28 +1726,6 @@ def _is_row_preserving_filter(node: StrategyNode) -> bool:
     )
 
 
-def _synthesizes_handle(
-    concept: BuildConcept, node: StrategyNode, available: set[str]
-) -> bool:
-    """Rendering rowset handle `concept` on `node` would compute it from the
-    handle's content over `node`'s rows. A handle is its body's rows, so
-    anywhere but that rowset's own boundary this pairs the body with `node`'s
-    rows on no declared join."""
-    lineage = concept.lineage
-    if not isinstance(lineage, BuildRowsetItem):
-        return False
-    if concept.address in available or available.intersection(concept.pseudonyms):
-        return False
-    return not (
-        isinstance(node, RowsetNode)
-        and any(
-            isinstance(o.lineage, BuildRowsetItem)
-            and o.lineage.rowset.name == lineage.rowset.name
-            for o in node.output_concepts
-        )
-    )
-
-
 def _merges_coalesced_sides(node: StrategyNode) -> bool:
     """A merge pairing the sides of a `union`/`full` relation holds every side's
     rows: no single sibling's rows render it (`union join ticket = rs.t` keeps
@@ -1884,8 +1862,6 @@ def _fold_passthrough_parents(
                 o.derivation == Derivation.ROWSET for o in b.output_concepts
             ) and any(o.derivation != Derivation.ROWSET for o in a.output_concepts):
                 continue
-            if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
-                continue
             if id(a) in coalesced_merges:
                 continue
             # A `union join` mate answers for the member only on its own
@@ -1899,7 +1875,7 @@ def _fold_passthrough_parents(
                 _crosses_unsourced_aggregate(o, available) for o in a.output_concepts
             ):
                 continue
-            if not all(concept_satisfiable(o, available) for o in a.output_concepts):
+            if not all(renders_at(b, o, available) for o in a.output_concepts):
                 continue
             if not _renders_no_less_completely(b, a):
                 continue
@@ -2640,7 +2616,7 @@ def _widen_scan_chain(
     ):
         return False
     available = renderable_addresses(node)
-    if not concept_satisfiable(concept, available):
+    if not renders_at(node, concept, available):
         if depth >= _JOIN_KEY_CHAIN_LIMIT:
             return False
         # A single-stream projection (SelectNode, FilterNode) would change what
@@ -2662,9 +2638,7 @@ def _widen_scan_chain(
         available = renderable_addresses(node)
     # an aggregate or window computed here would read this node's rows, not
     # the statement's (a rank over a scan's raw launches)
-    if _synthesizes_handle(concept, node, available) or _carry_needs_own_node(
-        concept, available
-    ):
+    if _carry_needs_own_node(concept, available):
         return False
     widen_projection(
         node,
@@ -3198,24 +3172,16 @@ def _carry_join_keys(
             # row column, so it can't be carried as a widenable output.
             if concept.address in existence:
                 continue
-            # A rowset handle names a column of ITS OWN boundary. Row lineage
-            # alone makes it look satisfiable from any scan over the same base
-            # (`agg.period` and `fut.period` both descend from `s.period`), but
-            # synthesizing it on ANOTHER rowset's boundary emits a different value
-            # under that address: `subset join fut.period + 53 = agg.period` then
-            # joins `agg.period = agg.period` off the fut side and pairs every
-            # period with itself. A non-rowset parent (a plain scan the relation
-            # substitutes the handle onto) is unaffected; `_synthesizes_handle`
-            # below keeps it from computing a handle it does not already carry.
+            # A handle names a column of its own boundary. Another rowset's
+            # boundary holding a mate of it (`union join agg.item = ss.item`)
+            # would render the mate's value under the handle's address.
             if (
                 parent_rowsets
                 and isinstance(concept.lineage, BuildRowsetItem)
                 and concept.lineage.rowset.name not in parent_rowsets
             ):
                 continue
-            if not concept_satisfiable(concept, available) or _synthesizes_handle(
-                concept, parent, available
-            ):
+            if not renders_at(parent, concept, available):
                 continue
             # Carrying a key the parent does not already emit means SYNTHESIZING
             # it from that parent's row inputs. A grain-collapsing derivation
@@ -7840,7 +7806,12 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # build.
     if derivation not in (Derivation.ROOT, Derivation.UNNEST):
         wanted = outputs
-        outputs = satisfiable_outputs(outputs, parents, environment.partial_sources)
+        outputs = satisfiable_outputs(
+            outputs,
+            parents,
+            environment.partial_sources,
+            boundary=derivation == Derivation.ROWSET,
+        )
         if not outputs:
             ctx.unbuilt[gid] = wanted
             return None

@@ -20,6 +20,7 @@ from trilogy.core.models.build_environment import (
 )
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
+from trilogy.core.processing.nodes.select_node_v2 import RowsetNode
 
 from .constants import ROW_SHAPE_BARRIER_DERIVATIONS, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
@@ -52,6 +53,45 @@ def renderable_addresses(node: StrategyNode) -> set[str]:
     return available
 
 
+def renders_at(node: StrategyNode, concept: BuildConcept, available: set[str]) -> bool:
+    """`concept` renders on `node` from `available`. A handle is a leaf there,
+    except on its own rowset's boundary, which computes it off its content.
+    The boundary vouches for its handles, not their addresses: a `union join`
+    mate still pairs as authored, never as a pseudonym of one."""
+    if not isinstance(node, RowsetNode):
+        return concept_satisfiable(concept, available)
+    handles = boundary_handles(_bounded_handles(node), available)
+    return concept_satisfiable(concept, available, cache=dict.fromkeys(handles, True))
+
+
+def _bounded_handles(node: RowsetNode) -> list[BuildConcept]:
+    """Every handle of the rowsets `node` is the boundary of."""
+    concepts = node.environment.concepts
+    rowsets = {
+        o.lineage.rowset.name: o.lineage.rowset
+        for o in node.output_concepts
+        if isinstance(o.lineage, BuildRowsetItem)
+    }
+    return [
+        concepts[address]
+        for rowset in rowsets.values()
+        for address in rowset.derived_concepts
+        if address in concepts
+    ]
+
+
+def boundary_handles(handles: Iterable[BuildConcept], available: set[str]) -> set[str]:
+    """The handles a rowset's own boundary renders from `available`: there a
+    handle is computed off its content. Anywhere else it is a leaf
+    (`row_lineage_arguments`), whose value exists only on its boundary."""
+    return {
+        h.address
+        for h in handles
+        if isinstance(h.lineage, BuildRowsetItem)
+        and concept_satisfiable(h.lineage.content, available)
+    }
+
+
 def lineage_existence_parts(concept: BuildConcept) -> tuple[set[str], set[str]]:
     """The existence args of the concept's lineage, and the addresses its row
     reads. Two shapes: a FILTER (its where, plus the filtered content), and a
@@ -81,7 +121,9 @@ def lineage_existence_only(concept: BuildConcept) -> set[str]:
 
 
 def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
-    if concept.lineage is None:
+    # a rowset handle is a leaf: its value is its body's rows, never computed
+    # off another relation's (`boundary_handles` is the one exception)
+    if concept.lineage is None or concept.derivation == Derivation.ROWSET:
         return []
     args = list(concept.lineage.concept_arguments)
     existence = lineage_existence_only(concept)
@@ -191,7 +233,10 @@ def literal_producible(concept: BuildConcept, _seen: set[str] | None = None) -> 
     still render, so it needs its own rule rather than a shared one."""
     if concept.derivation == Derivation.CONSTANT:
         return True
-    if concept.lineage is None or concept.derivation == Derivation.ROOT:
+    if concept.lineage is None or concept.derivation in (
+        Derivation.ROOT,
+        Derivation.ROWSET,
+    ):
         return False
     seen = _seen if _seen is not None else set()
     if concept.address in seen:
@@ -204,7 +249,10 @@ def satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
     partials: Mapping[str, BuildConcept] = MappingProxyType({}),
+    boundary: bool = False,
 ) -> list[BuildConcept]:
+    """What `outputs` render over `parents`; a rowset's `boundary` also
+    computes its handles off their content."""
     # A parentless group keeps its outputs here even when it cannot source them.
     # That looks wrong, but it is load-bearing: the bogus node has to survive
     # long enough for the post-assembly checks (`_has_unsourced_leaf`) and the
@@ -223,6 +271,8 @@ def satisfiable_outputs(
         if (partial := partials.get(c.address)) is not None
         and partial.address in available
     }
+    if boundary:
+        reaggregated |= boundary_handles(outputs, available)
     return satisfiable_from(outputs, available, reaggregated)
 
 
@@ -286,6 +336,19 @@ def widen_projection(
         # never the arms' source columns.
         input_candidates = arm_outputs
         available_addresses = parent_output_addresses(node)
+    if isinstance(node, RowsetNode):
+        # the boundary computes its handles off their content, its inputs
+        output_concepts = list(output_concepts)
+        bounded = {h.address for h in _bounded_handles(node)}
+        input_candidates = [
+            content
+            for c in [*input_candidates, *output_concepts]
+            for content in (
+                iter_row_lineage(c.lineage.content)
+                if c.address in bounded and isinstance(c.lineage, BuildRowsetItem)
+                else (c,)
+            )
+        ]
     in_addrs = {concept.address for concept in node.input_concepts}
     out_addrs = {concept.address for concept in node.output_concepts}
     for concept in input_candidates:
