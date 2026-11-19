@@ -2331,3 +2331,54 @@ def test_a_merge_side_covered_by_its_descendant_is_not_a_side(monkeypatch):
     assert sides() == ["agg"]
     demand.add("local.zone")
     assert sides() == ["root", "agg"]
+
+
+def _leaf(env: BuildEnvironment, *concepts: BuildConcept) -> StrategyNode:
+    return StrategyNode(
+        input_concepts=[], output_concepts=list(concepts), environment=env
+    )
+
+
+def test_a_side_emits_its_groups_outputs_not_what_they_could_render():
+    env = BuildEnvironment()
+    order_id = _build_concept("order_id", Purpose.KEY)
+    amount = _build_concept("amount", Purpose.PROPERTY)
+    dim = _leaf(env, order_id, amount)
+    projected = _leaf(env, order_id)
+    origin = {id(dim): "dim", id(projected): "agg"}
+    attrs = {
+        "dim": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.ROOT,
+            output_concepts=(order_id.address,),
+        ),
+        "agg": GroupAttrs(depth_label=DepthLabel.D1, derivation=Derivation.AGGREGATE),
+    }
+
+    assert strategy_builder._emitted_columns(dim, origin, attrs, {}) == {
+        order_id.address
+    }
+    narrowed = {id(projected): frozenset({order_id.address, amount.address})}
+    assert strategy_builder._emitted_columns(projected, origin, attrs, narrowed) == {
+        order_id.address,
+        amount.address,
+    }
+
+
+def test_a_gate_host_joins_for_each_key_the_plan_has_no_side_carry():
+    env = BuildEnvironment()
+    genus = _build_concept("genus", Purpose.KEY)
+    tree_id = _build_concept("tree_id", Purpose.KEY)
+    side = _leaf(env, tree_id, genus)
+    host = _leaf(env, tree_id, genus)
+    extras = strategy_builder._FinalExtras({}, {genus.address: "host"})
+    built = {"side": side, "host": host}
+
+    # the side's node outputs `genus`, but the plan did not have it carry it
+    joined = strategy_builder._join_gate_hosts(
+        [side], frozenset({genus.address}), extras, built
+    )
+    assert joined == [side, host]
+    assert strategy_builder._join_gate_hosts([side], frozenset(), extras, built) == [
+        side
+    ]

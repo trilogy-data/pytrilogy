@@ -1616,6 +1616,7 @@ def _drop_finer_passengers(
     attrs: dict[str, GroupAttrs],
     origin: dict[int, str],
     environment: BuildEnvironment,
+    columns: Sequence[set[str]],
 ) -> list[StrategyNode]:
     """An unfiltered row scan finer than an aggregate's input grain, beside
     parents supplying everything it would, adds only its multiplicity: a
@@ -1624,9 +1625,11 @@ def _drop_finer_passengers(
     the scan may be what pairs a member the others lack. A scan the WHERE
     filters is a passenger too when a root beside it applies the same atoms:
     the rows it keeps are the keys the other already kept
-    (`Rollup.filtered_passenger_multiplies`)."""
+    (`Rollup.filtered_passenger_multiplies`). `columns` are what each parent
+    emits, as stated (`_emitted_columns`)."""
     if any(region_reads(p) for p in parents):
         return parents
+    held = {id(p): cols for p, cols in zip(parents, columns)}
     kept = list(parents)
     for parent in parents:
         gid = _origin_group(parent, origin)
@@ -1639,7 +1642,7 @@ def _drop_finer_passengers(
         others = [p for p in kept if p is not parent]
         if not _filter_applied_beside(parent, gid, others, attrs, origin):
             continue
-        supplied = {o.address for p in others for o in p.usable_outputs}
+        supplied = set().union(*(held[id(p)] for p in others))
         own = {o.address for o in parent.usable_outputs} & needed
         if others and own <= supplied:
             kept = others
@@ -3887,16 +3890,71 @@ def _side_columns(
     narrowed: Mapping[int, frozenset[str]],
     absorbed: Mapping[int, list[StrategyNode]],
 ) -> set[str]:
-    """What a merge side holds, as stated: what its groups render, a sibling
-    folded into it included, or what the consumer's input contract projected
-    it to; and what the plan widens it to carry (`_carry_planned_keys`)."""
-    groups = (side_members(side, origin) or frozenset()) | frozenset(
+    """What a merge side holds, as stated (`_held_columns`), and what the
+    plan widens it to carry (`_carry_planned_keys`)."""
+    groups = _held_groups(side, origin, absorbed)
+    owed = set().union(*(plan.owed_by(gid) for gid in groups))
+    return owed | _held_columns(side, origin, rendered, narrowed, absorbed)
+
+
+def _held_groups(
+    side: StrategyNode,
+    origin: dict[int, str],
+    absorbed: Mapping[int, list[StrategyNode]],
+) -> frozenset[str]:
+    return (side_members(side, origin) or frozenset()) | frozenset(
         side_groups(absorbed.get(id(side), []), origin)
     )
-    owed = set().union(*(plan.owed_by(gid) for gid in groups))
+
+
+def _held_columns(
+    side: StrategyNode,
+    origin: dict[int, str],
+    rendered: Mapping[str, frozenset[str]],
+    narrowed: Mapping[int, frozenset[str]],
+    absorbed: Mapping[int, list[StrategyNode]],
+) -> set[str]:
+    """What a merge side holds before any planned widening, as stated: what
+    its groups render, a sibling folded into it included, or what the
+    consumer's input contract projected it to."""
     if id(side) in narrowed:
-        return set(narrowed[id(side)]) | owed
-    return owed.union(*(rendered.get(gid, frozenset()) for gid in groups))
+        return set(narrowed[id(side)])
+    groups = _held_groups(side, origin, absorbed)
+    return set().union(*(rendered.get(gid, frozenset()) for gid in groups))
+
+
+def _emitted_columns(
+    side: StrategyNode,
+    origin: dict[int, str],
+    attrs: dict[str, GroupAttrs],
+    narrowed: Mapping[int, frozenset[str]],
+) -> set[str]:
+    """What a merge side emits, as stated: its groups' outputs, or what the
+    consumer's input contract projected it to. Not what its groups could
+    render: a dimension read by `order_id` renders `user_id` off the same
+    rows, but supplies it only once something widens it to."""
+    if id(side) in narrowed:
+        return set(narrowed[id(side)])
+    return set().union(
+        *(attrs[gid].output_concepts for gid in side_members(side, origin) or ())
+    )
+
+
+def _final_supply(
+    side: StrategyNode,
+    origin: dict[int, str],
+    plan: JoinPlan,
+    rendered: Mapping[str, frozenset[str]],
+    narrowed: Mapping[int, frozenset[str]],
+    environment: BuildEnvironment,
+) -> set[str]:
+    """What a FINAL side supplies its siblings' projection: what it holds as
+    stated, widening included, less an authored relation member it does not
+    hold before it. That member pairs through the relation, never as a
+    column (a rowset's `wc` meets `customer_id` on `union join`)."""
+    held = _held_columns(side, origin, rendered, narrowed, {})
+    authored = environment.all_scoped_join_group_members() - held
+    return _side_columns(side, origin, plan, rendered, narrowed, {}) - authored
 
 
 def _final_side_columns(
@@ -3913,9 +3971,7 @@ def _final_side_columns(
     `_carry_planned_keys` nor `_project_planned_keys` could source (`tag`
     owed to a value by `city, tag` computed off aggregates alone) is owed,
     not held, and a sibling rendering it must stay."""
-    groups = (side_members(side, origin) or frozenset()) | frozenset(
-        side_groups(absorbed.get(id(side), []), origin)
-    )
+    groups = _held_groups(side, origin, absorbed)
     owed = set().union(*(plan.owed_by(gid) for gid in groups))
     undelivered = owed - {o.address for o in side.output_concepts}
     stated = _side_columns(side, origin, plan, reaches, narrowed, absorbed)
@@ -5671,10 +5727,10 @@ def _join_gate_hosts(
     extras: _FinalExtras,
     built: dict[str, StrategyNode],
 ) -> list[StrategyNode]:
-    """`parents` plus the row stream the plan elected for each gate key none
-    of them carries (a key pinned to columns their rows lack)."""
-    carried = _output_addresses(parents)
-    for address in sorted(gate_keys - carried):
+    """`parents` plus the row stream the plan elected for each of `gate_keys`,
+    which the plan has none of them carry (a key pinned to columns their rows
+    lack)."""
+    for address in sorted(gate_keys):
         host = extras.gate_hosts.get(address)
         if host and (node := _planned_side(built, host)) not in parents:
             parents = parents + [node]
@@ -6919,15 +6975,17 @@ def _assemble_final_node(
     parents = _fold_constant_parents(parents, final_needed, folded)
     # the FINAL WHERE reads its filter-only args off these parents
     contracted = parents
+    reaches = {gid: cover.holds(gid) for gid in built}
     parents = _satisfy_parent_projection_contract(
         parents,
         [_final_parent_shaped(p, origin, attrs, projected) for p in parents],
         final_needed | filter_only_addrs,
         final_merge_grain,
         environment,
-        # as built: stated (`_side_columns`), a side already holds the keys
-        # `_carry_planned_keys` widens it to only after this projection
-        [{o.address for o in p.usable_outputs} for p in parents],
+        [
+            _final_supply(p, origin, plan, reaches, wrapped, environment)
+            for p in parents
+        ],
     )
     # what each side holds, as stated (`_side_columns`): a side the FINAL
     # wrapped or projected holds what that projection kept, else what its
@@ -6937,7 +6995,6 @@ def _assemble_final_node(
         for new, old in zip(parents, contracted)
         if new is not old
     }
-    reaches = {gid: cover.holds(gid) for gid in built}
     replaced = list(zip(parents, contracted))
     absorbed: dict[int, list[StrategyNode]] = {}
     parents = _fold_passthrough_parents(parents, absorbed)
@@ -7086,21 +7143,24 @@ def _assemble_final_node(
     # genus derived from a scanned column) pairs on that key, as in
     # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
     if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
-        _carry_asked_keys(
-            [*parents, *arg_nodes],
-            origin,
-            _condition_join_plan(
-                per_group,
-                [*bridges, *extras.groups],
-                gate_keys,
-                mandatory_list,
-                group_graph,
-                attrs,
-                environment,
-            ),
+        asks = _condition_join_plan(
+            per_group,
+            [*bridges, *extras.groups],
+            gate_keys,
+            mandatory_list,
+            group_graph,
+            attrs,
             environment,
         )
-        parents = _join_gate_hosts(parents, gate_keys, extras, built)
+        _carry_asked_keys([*parents, *arg_nodes], origin, asks, environment)
+        carried = frozenset().union(
+            *(
+                asks.carry_demands.get(gid, frozenset())
+                for parent in parents
+                for gid in side_members(parent, origin) or ()
+            )
+        )
+        parents = _join_gate_hosts(parents, gate_keys - carried, extras, built)
     parents = _dedup_beside_resummed_gates(
         parents,
         arg_nodes,
@@ -7579,7 +7639,13 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         }
         if derivation == Derivation.AGGREGATE and a.aggregate_input_grain and not atoms:
             parents = _drop_finer_passengers(
-                parents, needed, a.aggregate_input_grain, attrs, origin, environment
+                parents,
+                needed,
+                a.aggregate_input_grain,
+                attrs,
+                origin,
+                environment,
+                [_emitted_columns(p, origin, attrs, narrowed) for p in parents],
             )
         # A ROOT scan hosting a null-rejecting request atom emits exactly
         # the atom's population, so the merge may claim it. A grouping
