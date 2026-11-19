@@ -9,6 +9,11 @@ leads it closed (0.3.520).
 - Two `by *` totals in the select beside two in the WHERE, on the summary
   model (expressions 564837): the FINAL projection took a total's grain key
   as an input that its merge parent hid, and raised building its source map.
+- Two shapes the fixes broke before the law suites caught them: a city group
+  whose `sum(height)` is now nullable beside rows a WHERE proved it non-null
+  on was preserved for its NULL group and invented city B (spellings 7067);
+  a stored `max` bound under another address was grouped over a row twin
+  that could not read it (first 517, summary model).
 
 Rows checked by hand against `test_oracle_sweep_laws.ROWS` (heights 3, NULL,
 5, NULL, 7, 2; tags x, y, x, x, y, x; forms broadleaf x4 with b1, NULL for
@@ -50,6 +55,25 @@ CASES = [
             " where count_distinct(tag) by * > sum(height) by *;"
         ),
         [],
+    ),
+    # spellings 7067
+    (
+        (
+            "select city, species, max(height ? count(tree_id) by city >= 3) as v0"
+            " where (coalesce(tree_form, 'none') = 'none' and count_distinct(tag)"
+            " by tree_form != sum(height) by city) and (min(height) by city is not"
+            " null or species in ('Acer', 'Ulmus'));"
+        ),
+        [("A", "Ulmus", None)],
+    ),
+    # first 517
+    (
+        (
+            "select species, tree_form, min(height ? tree_form is null) as v0,"
+            " count(max(height) by city, species, tree_form) as v1"
+            " where species in ('Acer', 'Ulmus');"
+        ),
+        [("Acer", "broadleaf", None, 2), ("Ulmus", None, None, 0)],
     ),
 ]
 

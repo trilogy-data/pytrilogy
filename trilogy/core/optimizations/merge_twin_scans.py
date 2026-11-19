@@ -10,6 +10,8 @@ projections.
 
 from __future__ import annotations
 
+from trilogy.core.constants import ALL_ROWS_ADDRESS
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import CTE, DatasourceCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import repoint_consumers
@@ -67,12 +69,30 @@ def _absorb(keep: DatasourceCTE, drop: DatasourceCTE) -> None:
     keep.hidden_concepts = keep.hidden_concepts & drop.hidden_concepts
 
 
-def _rebase_group(group: DatasourceCTE, rows: DatasourceCTE) -> None:
+def _group_reads(group: DatasourceCTE) -> list[BuildConcept] | None:
+    """The table columns `group` reads, when each output is one of them or
+    computed directly from them; None when one is read another way (a stored
+    aggregate bound under another address)."""
+    reads = [
+        c for c in group.datasource.output_concepts if group.source_map.get(c.address)
+    ]
+    names = {c.address for c in reads}
+    for output in group.output_columns:
+        if output.address in names:
+            continue
+        if (
+            not {a.address for a in output.concept_arguments} - {ALL_ROWS_ADDRESS}
+            <= names
+        ):
+            return None
+    return reads
+
+
+def _rebase_group(
+    group: DatasourceCTE, rows: DatasourceCTE, reads: list[BuildConcept]
+) -> None:
     """`group` aggregates the rows `rows` already reads: it groups `rows`
     instead of scanning the table again. The shared condition stays on `rows`."""
-    reads = [
-        c for c in rows.datasource.output_concepts if group.source_map.get(c.address)
-    ]
     present = {c.address for c in rows.output_columns}
     for column in reads:
         rows.hidden_concepts.discard(column.address)
@@ -131,8 +151,10 @@ class MergeTwinScans(OptimizationRule):
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         read = _read(cte)
+        reads = _group_reads(cte)
         if (
             read is None
+            or reads is None
             # a re-sum reads stored partials through its own source map
             or cte.rollup_concepts
             or cte.partial_sources
@@ -151,7 +173,7 @@ class MergeTwinScans(OptimizationRule):
                     ):
                         continue
                     self.log(f"Grouping {cte.name} over its twin rows {rows.name}")
-                    _rebase_group(cte, rows)
+                    _rebase_group(cte, rows, reads)
                     inverse_map[rows.name].append(cte)
                     return True, None
         return False, None

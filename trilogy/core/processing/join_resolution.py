@@ -785,8 +785,13 @@ def _nullable_join(
     left_facts, right_facts = facts.side(left), facts.side(right)
     if _gate_passes_padding(left_facts, right_facts, facts.applied):
         return JoinType.INNER
-    left_is_nullable = bool(keys & left_facts.nullables)
-    right_is_nullable = bool(keys & right_facts.nullables)
+    # a NULL key on one side is a row the other side's own filters rejected
+    left_is_nullable = bool(
+        keys & left_facts.nullables - _rejected_nulls(right_facts, left_facts)
+    )
+    right_is_nullable = bool(
+        keys & right_facts.nullables - _rejected_nulls(left_facts, right_facts)
+    )
     if left_is_nullable and right_is_nullable:
         # Null-pairing is only sound when the padded rows name the same thing.
         # The host's padding is the grain-bearing extension family; the feeder's
@@ -851,6 +856,20 @@ def _nullable_join(
     if unfiltered is not None:
         return _preserving(unfiltered)
     return JoinType.INNER
+
+
+def _rejected_nulls(passed: SideFacts, skipped: SideFacts) -> set[str]:
+    """The keys, as join nodes, that filters `passed` went through and
+    `skipped` did not force non-null: a NULL there is a row they rejected."""
+    # local import: grain_utility imports this module
+    from trilogy.core.processing.grain_utility import non_null_proofs
+
+    return {
+        f"c~{a}"
+        for atom in passed.filters
+        if not any(atom == b for b in skipped.filters)
+        for a in non_null_proofs(atom)
+    }
 
 
 def _gate_passes_padding(
