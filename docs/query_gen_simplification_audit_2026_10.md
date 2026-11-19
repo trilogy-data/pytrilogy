@@ -287,7 +287,10 @@ Ranked by lines a seam would free, across the axes:
      `concept_graph._lineage_leaves`: they walk existence arguments, which
      the row-lineage walk skips.
 
-   Gates: GATES_PLACEHOLDER
+   Gates, against `5daf4ca`: corpus 0 moved (207 statements, tpc-ds
+   aggregates included); fuzzer 522/522; every test file naming a rowset
+   (3,261) green. `test_v4_rowset_handle_leaf.py` pins the leaf, the
+   boundary and the ROWSET group's build.
 4. **Rowset witness from the body plan** (about 335 lines). `_witness`
    rebuilds the body's concept graph separately from `resolve_rowset`; a body
    plan that handed back its keyspace would delete the recomputation and the
