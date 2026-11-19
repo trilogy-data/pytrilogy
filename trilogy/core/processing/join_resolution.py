@@ -64,6 +64,7 @@ from trilogy.core.processing.utility import (
     join_left_sources,
     joined_right_ids,
     left_deep_joins,
+    padded_before,
     padded_by,
 )
 from trilogy.utility import string_to_hash
@@ -127,28 +128,24 @@ def prune_outer_join_pairs(joins: list[SourceJoin | UnnestJoin]) -> None:
     coalesce IS the key, and all pairs stay. A join keyed off other lefts
     than it was typed against keeps no type of its own to restore: the left
     walked first, now pruned, decided it (`restore_unpadded_joins`)."""
-    padded: set[str] = set()
-    for join, left in left_deep_joins(joins):
+    for join, _, padded in padded_before(joins):
         if join.pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
             kept = preserved_key_pairs(join.pairs, padded, _pair_source)
             if len(kept) < len(join.pairs):
                 join.own_type = None
             join.pairs = kept
-        padded |= padded_by(join, left)
 
 
 def restore_unpadded_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
     """A join widened to keep the rows an earlier join padded takes back its
     own type once narrowing made every such earlier join pad nothing: the
     widening only held rows that no longer arrive."""
-    padded: set[str] = set()
-    for join, left in left_deep_joins(joins):
+    for join, _, padded in padded_before(joins):
         own = join.own_type
         if own is not None and own != join.join_type:
             lefts = {source.identifier for source in join_left_sources(join)}
             if not lefts & padded and own in _NARROWER.get(join.join_type, ()):
                 join.join_type = own
-        padded |= padded_by(join, left)
 
 
 _NARROWER: dict[JoinType, frozenset[JoinType]] = {

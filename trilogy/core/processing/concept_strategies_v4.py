@@ -97,6 +97,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     strict_fd_determines,
     strict_fd_determines_all,
 )
+from trilogy.core.processing.v4_helper.models import PlanFront, PlanFrontKey
 from trilogy.core.processing.v4_helper.projection import lineage_existence_parts
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
 from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
@@ -1443,6 +1444,84 @@ def _summary_leaves(
     return [c for c in reached if c.lineage is None or c.canonical_address in bound]
 
 
+def first_materialized_roots(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    conditions: list[BuildWhereClause],
+    g: ReferenceGraph,
+) -> frozenset[str]:
+    """The roots a plan tries first (`_search_concepts` falls back without
+    them when they do not combine)."""
+    return materialized_root_addresses(
+        mandatory_list,
+        environment,
+        conditions,
+        g.scope.datasources,
+        [ds for ds in g.datasources.values() if isinstance(ds, BuildUnionDatasource)],
+    )
+
+
+def plan_front_key(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    conditions: list[BuildWhereClause],
+    materialized_roots: frozenset[str],
+    staged_conditions: list[BuildWhereClause] | None,
+) -> PlanFrontKey:
+    return (
+        id(environment),
+        tuple(c.address for c in mandatory_list),
+        str(conditions),
+        str(staged_conditions or []),
+        tuple(sorted(materialized_roots)),
+    )
+
+
+def plan_front(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    g: ReferenceGraph,
+    history: V4History,
+    conditions: list[BuildWhereClause],
+    materialized_roots: frozenset[str],
+    staged_conditions: list[BuildWhereClause] | None,
+) -> PlanFront:
+    """The plan's concept graph and keyspace. A rowset body's was built
+    already, for the rowset's witness: its plan takes that one."""
+    key = plan_front_key(
+        mandatory_list, environment, conditions, materialized_roots, staged_conditions
+    )
+    if (cached := history.plan_fronts.pop(key, None)) is not None:
+        return cached
+    concept_graph, concept_attrs, concept_edges = build_concept_graph(
+        mandatory_list,
+        environment,
+        conditions,
+        materialized_roots,
+        staged_conditions=staged_conditions,
+        datasources=g.scope.datasources,
+        scan_filtered_roots=scan_filtered_roots(
+            mandatory_list, materialized_roots, conditions, environment
+        ),
+        coarse_rolled_roots=coarse_rolled_roots(
+            mandatory_list,
+            materialized_roots,
+            conditions,
+            environment,
+            g.scope.datasources,
+            [
+                ds
+                for ds in g.datasources.values()
+                if isinstance(ds, BuildUnionDatasource)
+            ],
+        ),
+    )
+    keyspace = statement_keyspace(
+        concept_attrs, mandatory_list, environment, conditions, history, g.scope
+    )
+    return PlanFront(concept_graph, concept_attrs, concept_edges, keyspace)
+
+
 def _build_from_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -1504,28 +1583,20 @@ def _build_from_graph_traced(
                 environment=plan_trace.environment(environment, g.scope.datasources),
             ),
         )
-    concept_graph, concept_attrs, concept_edges = build_concept_graph(
+    front = plan_front(
         mandatory_list,
         environment,
+        g,
+        history,
         conditions,
         materialized_roots,
-        staged_conditions=staged_conditions,
-        datasources=g.scope.datasources,
-        scan_filtered_roots=scan_filtered_roots(
-            mandatory_list, materialized_roots, conditions, environment
-        ),
-        coarse_rolled_roots=coarse_rolled_roots(
-            mandatory_list,
-            materialized_roots,
-            conditions,
-            environment,
-            g.scope.datasources,
-            [
-                ds
-                for ds in g.datasources.values()
-                if isinstance(ds, BuildUnionDatasource)
-            ],
-        ),
+        staged_conditions,
+    )
+    concept_graph, concept_attrs, concept_edges, keyspace = (
+        front.concept_graph,
+        front.concept_attrs,
+        front.concept_edges,
+        front.keyspace,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -1535,9 +1606,6 @@ def _build_from_graph_traced(
                 concepts=plan_trace.graph_concepts(environment, concept_attrs),
             ),
         )
-    keyspace = statement_keyspace(
-        concept_attrs, mandatory_list, environment, conditions, history, g.scope
-    )
     if len(keyspace.regions) > 1 and logger.isEnabledFor(logging.INFO):
         logger.info(
             "%s%s keyspace: %s",
@@ -1682,12 +1750,8 @@ def _search_concepts(
     # materializes at grain. If treating those as roots can't be sourced (the
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
-    materialized_roots = materialized_root_addresses(
-        mandatory_list,
-        environment,
-        conditions,
-        g.scope.datasources,
-        [ds for ds in g.datasources.values() if isinstance(ds, BuildUnionDatasource)],
+    materialized_roots = first_materialized_roots(
+        mandatory_list, environment, conditions, g
     )
     info = _build_from_graph(
         mandatory_list,

@@ -18,7 +18,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
-from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.core.processing.v4_helper.constants import NO_WITNESS_FLOOR
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.keyspace import (
@@ -26,10 +25,14 @@ from trilogy.core.processing.v4_helper.keyspace import (
     build_keyspace,
     rowset_witness,
 )
-from trilogy.core.processing.v4_helper.models import ConceptAttrs
+from trilogy.core.processing.v4_helper.models import (
+    ConceptAttrs,
+    PlanFront,
+    PlanFrontKey,
+)
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 
-from .nested_select import build_nested_select
+from .nested_select import body_mandatory, build_nested_select
 
 
 def statement_keyspace(
@@ -100,18 +103,19 @@ def _computed_witness(
     # A body reading its own rowset (a membership over the rowset inside its
     # own body) cannot witness itself, so it reads an empty placeholder.
     # A result that read the placeholder of an enclosing computation
-    # understates it and is not cached: mutually recursive bodies would
-    # otherwise persist each other's partial answer for the rest of the build.
-    # Every other result is, or a chain of rowsets each reading an earlier one
-    # twice recomputes it once per path. A raising `_witness` must not leave
-    # the placeholder standing as the answer.
+    # understates it and is not cached, nor is the body's plan front it was
+    # read off: mutually recursive bodies would otherwise persist each other's
+    # partial answer for the rest of the build. Every other result is, or a
+    # chain of rowsets each reading an earlier one twice recomputes it once
+    # per path. A raising `_witness` must not leave the placeholder standing
+    # as the answer.
     depth = len(history.live_witnesses)
     outer_floor = history.witness_floor
     history.witness_floor = NO_WITNESS_FLOOR
     history.live_witnesses[name] = depth
     history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
     try:
-        witness = _witness(lineage, environment, history)
+        witness, front = _witness(lineage, environment, history)
     finally:
         floor = history.witness_floor
         history.witness_floor = min(outer_floor, floor)
@@ -119,43 +123,42 @@ def _computed_witness(
         history.rowset_witnesses.pop(name, None)
     if floor >= depth:
         history.rowset_witnesses[name] = witness
+        if front is not None:
+            history.plan_fronts[front[0]] = front[1]
     return witness
 
 
 def _witness(
     rowset: BuildRowsetLineage, environment: BuildEnvironment, history: V4History
-) -> RowsetWitness:
-    """The body's keyspace under its plan's first choice of materialized
-    roots. When that plan builds nothing, the body's plan retries without them
-    (`_search_concepts`); the witness cannot, since it never plans, so a body
-    whose summary source does not combine is witnessed over a concept graph
-    its plan abandons."""
+) -> tuple[RowsetWitness, tuple[PlanFrontKey, PlanFront] | None]:
+    """The body's keyspace, as its own plan's first attempt builds it (the
+    plan takes the front built here). When that attempt builds nothing, the
+    body's plan retries without its materialized roots (`_search_concepts`);
+    the witness cannot, since it never plans, so a body whose summary source
+    does not combine is witnessed over a concept graph its plan abandons."""
     from trilogy.core.processing.concept_strategies_v4 import (  # cycle
-        materialized_root_addresses,
+        first_materialized_roots,
+        plan_front,
+        plan_front_key,
     )
 
     # a multiselect body is planned arm by arm, with no keyspace of its own
     if not isinstance(rowset.select, SelectLineage):
-        return RowsetWitness(name=rowset.name, regions=())
+        return RowsetWitness(name=rowset.name, regions=()), None
     built, env, where, graph = build_nested_select(
         rowset.select, history, exclude_derived=rowset.derived_concepts
     )
     assert isinstance(built, BuildSelectLineage)
-    outputs = list(built.output_components)
+    mandatory = body_mandatory(built, env)
     conditions = [where] if where else []
-    datasources = graph.scope.datasources
-    _, attrs, _ = build_concept_graph(
-        outputs,
-        env,
-        conditions,
-        materialized_root_addresses(outputs, env, conditions, datasources),
-        staged_conditions=built.where_clauses or None,
-        datasources=datasources,
-    )
-    body = statement_keyspace(attrs, outputs, env, conditions, history, graph.scope)
+    staged = built.where_clauses or None
+    roots = first_materialized_roots(mandatory, env, conditions, graph)
+    front = plan_front(mandatory, env, graph, history, conditions, roots, staged)
     handles = [
         concept
         for address in rowset.derived_concepts
         if (concept := environment.concepts.get(address)) is not None
     ]
-    return rowset_witness(rowset.name, handles, body, env, graph.scope)
+    witness = rowset_witness(rowset.name, handles, front.keyspace, env, graph.scope)
+    key = plan_front_key(mandatory, env, conditions, roots, staged)
+    return witness, (key, front)

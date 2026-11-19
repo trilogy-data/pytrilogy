@@ -435,6 +435,22 @@ class ConceptAttrs:
         return not self.grain_components and self.derivation == Derivation.FILTER
 
 
+@dataclass(frozen=True)
+class PlanFront:
+    """A plan's concept graph and keyspace: what it reads before it groups.
+    Read-only once built, so a rowset's witness and its body's plan share one
+    (`V4History.plan_fronts`)."""
+
+    concept_graph: nx.DiGraph
+    concept_attrs: dict[str, ConceptAttrs]
+    concept_edges: EdgeMap
+    keyspace: Keyspace
+
+
+# (build env id, mandatory addresses, conditions, staged conditions, roots)
+PlanFrontKey = tuple[int, tuple[str, ...], str, str, tuple[str, ...]]
+
+
 @dataclass
 class BuildInfo:
     """Result bundle for discovery: the raw concept graph, the grouped graph,
