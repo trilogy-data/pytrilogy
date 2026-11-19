@@ -4940,14 +4940,76 @@ Gates for parts 135-137, against `082aad2`:
   and how many times the tpc-ds timing reruns compile a query.
 - Suite (`-n 4`): the same 25 credential-gated failures as `082aad2`.
 
-**Open.** Since part 137 no stage-3 decision reads a built output column
+**A merge side's regions are stated (part 138).** Which region domains a
+side reads decided six stage-3 merge steps, each off the built node
+(`region_reads`, a walk of its tree for stamped spans): whether a FINAL
+contributor folds into a sibling holding its regions
+(`_fold_covered_contributors`), which stream pads and which contributor pairs
+inside it (`_pair_inside_padding_streams`, `_pads_a_value_null_group`),
+whether an aggregate drops a finer passenger (`_drop_finer_passengers`), and
+whether a per-group or FINAL merge folds a passthrough parent or drops an
+ancestor (`_fold_passthrough_parents`, `_drop_ancestor_parents`). Stage 2
+already states the same fact, the extent spans a group and its lineage read
+(`_group_region_reads`), and stage 3 read it at the aggregate's domain split
+and the FINAL's filter arguments. Each step now takes the reads off the
+side's group (`_planned_region_reads`, or `_region_reads_by_side` keyed by
+node). A merge assembled below the consumer (the solid side of an aggregate
+over a region) reads what the groups it joins read (`side_members`); a side
+that maps to no group raises, as it already did there. A union
+arm's merge is still unplanned (`_merge_plan` takes no groups for it), but
+its sides' reads come off their groups like every other merge's.
+
+A census over one suite run (`*_laws.py` ignored) recorded both reads at
+every decision: 29,181 that a group answers. They agree at 29,039. The 142
+that differ, and the 11,782 the census could not attribute, are the census's
+own: it kept the last group graph a plan read, and a rowset body planned
+inside its reader reuses the reader's group ids (`grp:root:root:∅`) over a
+different graph. The suite capture below is the gate for those.
+
+`test_a_sides_region_reads_are_its_groups` pins the read and the raise;
+`test_fold_passthrough_keeps_a_parent_whose_group_reads_another_region` pins
+that the folds read it: two built nodes with no stamped span stay apart when
+their groups read different regions.
+
+Gates for part 138, against `2b4aeac`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`, `*_laws.py`
+  ignored): checkout paths, temp names and ports normalized, CTE names
+  canonicalized by order of appearance. The first capture caught the merged
+  side above: a solid merge below an aggregate over a region reads no group of
+  its own, and raised in 34 tests. With it read off `side_members`, the files
+  that moved off the known-noise list (`test_complete_binding_lookup`,
+  `test_derived_key_domain`, `test_rank_beside_partial_merge`,
+  `test_where_hosts`, `test_staged_publish`, `test_total_summary_reads`,
+  `test_duckdb_validate`, the tpc-ds and tpc-h queries) were recaptured
+  single-process on both trees. No statement moved: what is left is
+  staging-table names, `test_validate_fix`'s chunked statement and how many
+  times the tpc-ds timing reruns compile a query.
+- Suite (`-n 4`): the same 25 credential-gated failures as `2b4aeac`. In the
+  capture worktree `test_source_pushdown` also failed, because `uv run` could
+  not resolve `pyarrow` for a script at that checkout's path; it passes in the
+  base worktree and in the main checkout.
+
+**Open.** Since part 138 no stage-3 merge step reads a built node's regions
+either; `_carries_through` still reads the spans stamped on the nodes along a
+stream's own padding path, which is the stream's built shape, not a side.
+The resolved-grain reads beside them were censused in the same run and stay
+physical. `_rows_once` dedups a value over groups 1 time in 112: its
+rows are finer only through a bridge its merge joins, and the bridge's rows
+are what its datasource resolved to (a bridge stated at `∅` resolves at
+`city, species`); a joined bridge alone over-reads it twice. The covered
+fold's grain test disagrees with the side's planned identity at 16 of 37
+reads, all ROOT and BASIC sides grained by their scans.
+Since part 137 no stage-3 decision reads a built output column
 set, a sibling's or a side's own. `_hold_lookup_sides`,
 `_fold_covered_contributors` and `_pair_inside_padding_streams` read
 `_side_columns`. Both projections read stated supplies (per-group renders,
 `_final_supply`), a passenger reads `_emitted_columns`,
 `_at_declared_identity` reads rows, a gate host follows the condition plan,
 and a gate's keys and its pairing follow stage 2. What they still read is
-physical: resolved grain, regions, partial bindings, restrictions and the
+physical: resolved grain, partial bindings, restrictions and the
 padding path. The FINAL merge still reads its parents' outputs
 (`available`) to decide what it *emits*: the mandatory columns, a filter
 argument a side already supplies, an axis mate, a region span. That is the

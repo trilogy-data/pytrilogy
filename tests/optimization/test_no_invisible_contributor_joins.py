@@ -77,7 +77,8 @@ def test_a_covered_contributor_folds_on_what_its_siblings_are_stated_to_hold() -
     lookup, rows = _stub({"customer_id"}), _stub({"order_id"})
     parents = [lookup, rows]
     args = (environment, {"customer_id", "order_id"}, {id(lookup)}, set())
+    unread = [frozenset(), frozenset()]
     owed = [{"customer_id"}, {"order_id", "customer_id"}]
-    assert _fold_covered_contributors(parents, *args, owed) == [rows]
+    assert _fold_covered_contributors(parents, *args, owed, unread) == [rows]
     short = [{"customer_id"}, {"order_id"}]
-    assert _fold_covered_contributors(parents, *args, short) == parents
+    assert _fold_covered_contributors(parents, *args, short, unread) == parents
