@@ -1136,14 +1136,9 @@ class Executor:
                 continue
             ref = f"{quote}{col.safe_address}{quote}"
             cast = casts.get(col.address)
-            target_name = query.column_aliases.get(col.address)
-            if not cast and not target_name:
-                alias_clauses.append(ref)
-                continue
+            name = query.column_aliases.get(col.address, col.safe_address)
             expr = f"CAST({ref} AS {cast})" if cast else ref
-            alias_clauses.append(
-                f"{expr} as {quote}{target_name or col.safe_address}{quote}"
-            )
+            alias_clauses.append(f"{expr} as {quote}{name}{quote}")
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
 
