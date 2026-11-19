@@ -14,7 +14,13 @@ grain to the other's.
 - `bracketed_injective_bounded`: with a join's members bracketed, no two
   sources up to depth 2 (the colliding pair's) share a spelling.
 
-Checked by `tests/discovery/test_sweep_expr_500k_shapes.py`.
+- `twin_scans_share_one_read`: two projections of one table under one
+  condition are projections of a single scan carrying both, so a scan
+  filtered at plan time and its pushdown-filtered twin fold into one
+  (`MergeTwinScans`; expressions 362641, 364578).
+
+Checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and
+`tests/optimization/test_merge_twin_scans.py`.
 -/
 
 namespace Trilogy
@@ -61,6 +67,17 @@ def upTo : Nat → List Src
 theorem bracketed_injective_bounded :
     ∀ a ∈ upTo 2, ∀ b ∈ upTo 2, bracketed a = bracketed b → a = b := by
   decide +kernel
+
+/-- One read of `rows` under `p`, carrying what `f` and `g` project. -/
+def twinRead {α β γ : Type} (rows : List α) (p : α → Bool) (f : α → β) (g : α → γ) :
+    List (β × γ) :=
+  (rows.filter p).map fun r => (f r, g r)
+
+theorem twin_scans_share_one_read {α β γ : Type} (rows : List α) (p : α → Bool)
+    (f : α → β) (g : α → γ) :
+    (rows.filter p).map f = (twinRead rows p f g).map Prod.fst ∧
+      (rows.filter p).map g = (twinRead rows p f g).map Prod.snd := by
+  simp [twinRead, List.map_map, Function.comp_def]
 
 end Identity
 end Trilogy

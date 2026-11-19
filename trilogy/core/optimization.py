@@ -15,6 +15,7 @@ from trilogy.core.optimizations import (
     InlineDatasource,
     JoinHoist,
     MergeIrrelevantGroupBy,
+    MergeTwinScans,
     OptimizationRule,
     OrderInnerJoinsFirst,
     PredicatePushdown,
@@ -525,6 +526,17 @@ _PHASES: tuple[_Phase, ...] = (
             "it reads settled INNER joins and the aggregate's final "
             "WHERE, and runs before output pruning hides the dimension "
             "columns the rebased scan keeps"
+        ),
+    ),
+    _Phase(
+        "merge_twin_scans",
+        lambda o: o.merge_twin_scans,
+        lambda c: MergeTwinScans(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "pushdown has moved every WHERE onto its scan, so two scans of "
+            "one table under one condition read the same rows; runs before "
+            "output pruning, which reads the merged scan's consumers"
         ),
     ),
     _Phase(
