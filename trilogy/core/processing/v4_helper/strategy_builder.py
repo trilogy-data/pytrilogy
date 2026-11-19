@@ -5800,9 +5800,19 @@ def _region_reads_by_side(
     parents: Sequence[StrategyNode],
     origin: dict[int, str],
 ) -> dict[int, frozenset[str]]:
-    """`_planned_region_reads`, by side."""
-    reads = _planned_region_reads(group_graph, attrs, parents, origin)
-    return {id(parent): read for parent, read in zip(parents, reads)}
+    """The region domains each side reads, off the groups it holds
+    (`side_members`): a merge assembled below the consumer reads its sides'."""
+    reads: dict[int, frozenset[str]] = {}
+    for parent in parents:
+        if (members := side_members(parent, origin)) is None:
+            raise ValueError(
+                f"[v4] {type(parent).__name__} parent maps to no planned group; "
+                "its region reads are unplanned."
+            )
+        reads[id(parent)] = frozenset().union(
+            *(_group_region_reads(group_graph, attrs, gid) for gid in members)
+        )
+    return reads
 
 
 def _planned_region_reads(
