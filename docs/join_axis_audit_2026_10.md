@@ -4888,17 +4888,71 @@ Gates for parts 132-134, against `d90a589`:
   and `test_total_beside_lookup_gate`. Everything else is noise.
 - Suite (`-n 4`): the same 25 credential-gated failures as `d90a589`.
 
-**Open.** Since part 134 no stage-3 decision reads a sibling's built output
-columns. `_hold_lookup_sides`, `_fold_covered_contributors` and
-`_pair_inside_padding_streams` read `_side_columns`. Both projections read
-stated supplies (per-group renders, `_final_supply`), a passenger reads
-`_emitted_columns`, `_at_declared_identity` reads rows, and a gate host
-follows the condition plan. What they still read is physical: resolved
-grain, regions, partial bindings, restrictions and the padding path. One
-built column read is left upstream of a decision: the FINAL's gate keys
-are the gate arguments' grain keys that no assembled side outputs
-(`available`, the merge's own output set). What §6 designs and is not
-built yet:
+**The FINAL's gate keys are stated (part 135).** Part 134 left one built
+column read upstream of a decision: the FINAL's gate keys were the gate
+arguments' grain keys that no assembled side output (`available`, the
+merge's own output set). They are now the keys no side holds as stated
+(`_side_columns`, the plan's widening included). A census at each of the
+492 FINAL gate decisions over the suite compared the two reads, and the
+projection's stated supply (`_final_supply`) beside them. All three agree
+every time. No plan moves.
+
+**A sole contributor pairs its gate on what it holds as stated (part 136).**
+The FINAL with one contributor decided whether a gate's feeder pairs on the
+gate's grain (`gate_paired_feeders`) off the contributor's built outputs,
+and widened its built node to the keys it lacked. A census of the 690
+decisions read it off stage 2 instead: what the contributor reaches the
+FINAL with (`_FinalCover.holds`) and what it can be asked to carry
+(`carryable`). It disagrees 6 times, in `test_oracle_expressions_laws`
+(seeds 47126, 73006) and `test_sweep_expr_100k_shapes`. Each is one shape:
+`count(tree_id) by tree_form / count(tree_id) by city` under `where
+max(height) by species != 5`. The BASIC is identified by `(city,
+tree_form)` and reads two aggregates, so stage 2 says its rows cannot carry
+`species`. But its merge pairs the two through the tree rows, a bridge it
+joins (`GroupAttrs.joined_bridges`), so its rows are trees and do hold
+`species`. The read is now `_bridged_carryable`: what the side, or any bridge
+its merge joins, can carry. With it the census agrees at every decision.
+The widening follows the stated ask; its built outcome decides nothing.
+
+**A condition plan reads no built holds (part 137).** `_apply_final_conditions`
+contracted its contributor to the asks its built node already output
+(`built_holds`), beside what stage 2 says it can carry. Over the 603
+condition plans the built holds exceed `carryable` 10 times, all the
+bridged shape above, widened by the sole path before the plan. Each side
+of a condition plan is now contracted to `_bridged_carryable`, and
+`built_holds` is gone. No plan moves.
+
+`test_a_side_carries_what_the_bridge_its_merge_joins_carries` pins the read:
+a joined bridge's carry is the side's, an elected bridge its merge does not
+join adds nothing.
+
+Gates for parts 135-137, against `082aad2`:
+
+- Corpus (209 statements): 0 moved.
+- Fuzzer: 522/522.
+- Suite capture (`sqlcap`, `-n 4`, `PYTHONHASHSEED=0`): checkout paths,
+  temp names and ports normalized, CTE names canonicalized by order of
+  appearance. The 18 files off the known-noise list that still moved
+  (the spellings, sweep and window laws, `test_cluster_key_lookup`, the
+  tpc-ds queries, `test_where_hosts`, `test_staged_publish`,
+  `test_unbuilt_sources`) were recaptured single-process on both trees.
+  No statement moved: what is left is staging-table names, server ports
+  and how many times the tpc-ds timing reruns compile a query.
+- Suite (`-n 4`): the same 25 credential-gated failures as `082aad2`.
+
+**Open.** Since part 137 no stage-3 decision reads a built output column
+set, a sibling's or a side's own. `_hold_lookup_sides`,
+`_fold_covered_contributors` and `_pair_inside_padding_streams` read
+`_side_columns`. Both projections read stated supplies (per-group renders,
+`_final_supply`), a passenger reads `_emitted_columns`,
+`_at_declared_identity` reads rows, a gate host follows the condition plan,
+and a gate's keys and its pairing follow stage 2. What they still read is
+physical: resolved grain, regions, partial bindings, restrictions and the
+padding path. The FINAL merge still reads its parents' outputs
+(`available`) to decide what it *emits*: the mandatory columns, a filter
+argument a side already supplies, an axis mate, a region span. That is the
+merge projecting the columns it was handed, and a stated read there could
+only name a column no parent carries. What §6 designs and is not built yet:
 
 1. The MergeNode is given its keys pair by pair, but resolve still orders the
    joins; `node_joins` are not built from the pairings. A pair with an
