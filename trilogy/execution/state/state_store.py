@@ -61,6 +61,12 @@ LOGGER_PREFIX = "[STATE_STORE]"
 #: the tests that pin it, since a snapshot consumer reads this string.
 UNREADABLE_SOURCE_REASON = "source unreadable: file exists but could not be parsed"
 
+#: Staleness verdicts for an asset with nothing at its address yet. A refresh
+#: must never read through one (#963).
+FILE_NOT_FOUND_REASON = "file not found"
+TABLE_NOT_FOUND_REASON = "table not found"
+UNBUILT_REASONS = frozenset({FILE_NOT_FOUND_REASON, TABLE_NOT_FOUND_REASON})
+
 
 @runtime_checkable
 class StateStore(Protocol):
@@ -618,14 +624,14 @@ class BaseStateStore:
         if is_missing_file(ds, executor, cache=self._cache):
             return StaleAsset(
                 datasource_id=ds_id,
-                reason="file not found",
+                reason=FILE_NOT_FOUND_REASON,
                 filters=UpdateKeys(),
             )
 
         if is_missing_table(ds, executor, cache=self._cache):
             return StaleAsset(
                 datasource_id=ds_id,
-                reason="table not found",
+                reason=TABLE_NOT_FOUND_REASON,
                 filters=UpdateKeys(),
             )
 
@@ -1239,6 +1245,7 @@ def execute_refresh_plan(
     dry_run: bool = False,
     state_store: "StateStore | None" = None,
     cascade: bool = True,
+    hidden: frozenset[str] = frozenset(),
 ) -> RefreshResult:
     """Execute a refresh plan with deferred staleness for cross-script cascade.
 
@@ -1255,6 +1262,9 @@ def execute_refresh_plan(
     `state_store=None` builds one seeded from the plan's watermarks.
     `cascade=False` skips step 3 — used by directory-mode managed nodes where
     cross-managed-node cascade is the orchestrator's responsibility.
+    `hidden` names datasources outside the plan that no SQL build may read
+    through: directory mode passes the unbuilt outputs of other managed nodes,
+    which a single plan would have hidden as pending.
     """
 
     store = state_store
@@ -1275,6 +1285,7 @@ def execute_refresh_plan(
         key=lambda a: 0 if a.kind == RefreshKind.SCRIPT else 1,
     )
     pending_sql = {a.datasource_id for a in initial if a.kind != RefreshKind.SCRIPT}
+    pending_sql |= hidden
 
     for asset in initial:
         if asset.datasource_id in handled:

@@ -41,6 +41,8 @@ from trilogy.execution.state import (
     partition_key_addresses,
     target_partition_selector,
 )
+from trilogy.execution.state.state_store import UNBUILT_REASONS
+from trilogy.execution.state.watermarks import is_missing_file, is_missing_table
 from trilogy.scripts.click_utils import (
     dry_run_option,
     report_options,
@@ -673,6 +675,16 @@ def _preview_directory_refresh(
         if addr in probe_addrs:
             addr_ds_ids[addr].append(ds_id)
 
+    # Outputs with nothing behind them yet. Each node hides the others' from
+    # its build while they stay unbuilt: one file's plan hides its pending
+    # siblings, but here each address is its own plan, so a target built first
+    # could otherwise read through a sibling only a later node creates (#963).
+    unbuilt_addrs = frozenset(
+        address_map.get(asset.datasource_id, asset.datasource_id)
+        for asset in refresh_assets
+        if asset.reason in UNBUILT_REASONS
+    )
+
     for addr in probe_addrs:
         owner_script = addr_to_owner.get(addr)
         if owner_script is None:
@@ -689,6 +701,7 @@ def _preview_directory_refresh(
             owner_script=owner_script,
             assets=list(seen_assets.values()),
             datasource_ids=tuple(addr_ds_ids[addr]),
+            unbuilt_addresses=unbuilt_addrs - {addr},
         )
 
     stale_known = sum(1 for n in physical_nodes.values() if n.assets)
@@ -774,6 +787,7 @@ def _run_refresh_plan(
     quiet: bool,
     dry_run: bool,
     cascade: bool = True,
+    hidden: frozenset[str] = frozenset(),
 ) -> RefreshResult:
     from trilogy.scripts.display import print_info, show_asset_assertions
 
@@ -806,6 +820,23 @@ def _run_refresh_plan(
         on_refresh_query=on_refresh_query,
         dry_run=dry_run,
         cascade=cascade,
+        hidden=hidden,
+    )
+
+
+def _unbuilt_siblings(executor: Executor, node: ManagedRefreshNode) -> frozenset[str]:
+    """Datasources at another managed address that is still unbuilt.
+
+    Only addresses the preview found missing are probed, and each is probed
+    live: one built earlier in this pass is a legitimate source again."""
+    if not node.unbuilt_addresses:
+        return frozenset()
+    return frozenset(
+        ds.identifier
+        for ds in list(executor.environment.datasources.values())
+        if not ds.is_root
+        and ds.safe_address in node.unbuilt_addresses
+        and (is_missing_file(ds, executor) or is_missing_table(ds, executor))
     )
 
 
@@ -889,7 +920,15 @@ def execute_managed_node_for_refresh(
     # cascade=False: the orchestrator handles cross-managed-node cascade via
     # phys_graph topo order. Per-node cascade would double-refresh dependents
     # that are already separate managed nodes.
-    result = _run_refresh_plan(executor, plan, stats, quiet, dry_run, cascade=False)
+    result = _run_refresh_plan(
+        executor,
+        plan,
+        stats,
+        quiet,
+        dry_run,
+        cascade=False,
+        hidden=_unbuilt_siblings(executor, node),
+    )
     stats.update_count = result.refreshed_count
     if not quiet and result.refreshed_count > 0:
         from trilogy.scripts.display import print_success
