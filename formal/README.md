@@ -2357,6 +2357,29 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   - FINAL LEFT-joined a value gated by `sum(height) by tree_form is null`
     and re-applied the gate, which its padding passes (176152;
     `NullReject.gated_side_padding_passes_gate`). Such a side is joined INNER.
+- **The expressions family to 350,000** (0.3.516). On main 2 of its 700,000
+  queries (seeds 0-350,000) are wrong, 79 raise and 2 render invalid SQL;
+  the branch leaves 0 of each and breaks none, at 407 more joins and 91
+  more scans (over 50 queries). Fixed:
+  - A value over aggregates at two grains, under a WHERE atom reading both:
+    each group hosting the atom was said to hold the other's key, and the
+    merge joined them ON 1=1 (205085, 78245;
+    `SelectGrain.two_grain_value_without_its_pairs_invents`). A group holds
+    no column of an atom it only passes through.
+  - An atom hosted where `min(height) by city, species` was never joined,
+    rendering the min at the host's grain (246819, 333909;
+    `SelectGrain.host_grain_pin_misreads`).
+  - An expression of constants was planned at no grain, and a `by *`
+    aggregate inlined into a value made the all-rows constant look read by
+    the select's grain; both take the select's grain.
+  - A literal beside a WHERE aggregate its grain has no key for was gated by
+    that aggregate alone and joined it on no key (67331, 104893, 349206;
+    `SelectGrain.constant_gated_off_its_rows_invents`). A constant takes all
+    of a WHERE's row feeders or none, and never hosts its atoms.
+  - Reading stated columns (#1038), the FINAL fold dropped a side rendering
+    a literal folded onto a sibling, or a key another side was owed but
+    never given (24 seeds, e.g. 495, 21365, 99561). Folded constants count
+    as the side's columns; undelivered owed keys do not.
 
 ## Limits
 
