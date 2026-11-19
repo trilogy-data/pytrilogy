@@ -28,6 +28,8 @@ from trilogy.core.models.author import (
     Grain,
     Metadata,
     OrderBy,
+    UndefinedConcept,
+    UndefinedConceptFull,
     WhereClause,
 )
 from trilogy.core.models.core import DataType, ListWrapper
@@ -750,6 +752,40 @@ def _validate_assertions(
             )
 
 
+def _undefined_hint(
+    name: str, address: str, columns: list[ColumnAssignment], context: RuleContext
+) -> str:
+    leaf = address.rsplit(".", 1)[-1]
+    for col in columns:
+        if col.alias in (address, leaf):
+            return (
+                f" '{leaf}' is a column of '{name}'; order by the concept it"
+                f" binds, '{col.concept.address}'."
+            )
+    matches = context.environment.concepts._find_similar_concepts(
+        address, extra_keys=[c.address for c in context.concepts.values()]
+    )
+    return f" Suggestions: {matches}" if matches else ""
+
+
+def _validate_order_by_defined(
+    node: SyntaxNode,
+    context: RuleContext,
+    name: str,
+    order_by: OrderBy,
+    columns: list[ColumnAssignment],
+) -> None:
+    """Bare order identifiers defer undefined names to a placeholder rather than
+    raising; a datasource has no later finalize pass to catch them."""
+    for ref in order_by.concept_arguments:
+        if isinstance(ref, (UndefinedConcept, UndefinedConceptFull)):
+            raise fail(
+                node,
+                f"Datasource '{name}' `order by` references undefined concept"
+                f" '{ref.address}'.{_undefined_hint(name, ref.address, columns, context)}",
+            )
+
+
 def _validate_order_by(
     node: SyntaxNode,
     context: RuleContext,
@@ -759,6 +795,7 @@ def _validate_order_by(
 ) -> None:
     """The write sorts the rows it already holds, so each order term must be
     computable from the datasource's own columns."""
+    _validate_order_by_defined(node, context, name, order_by, columns)
     stored = {col.concept.address for col in columns}
     unresolved = sorted(
         {
