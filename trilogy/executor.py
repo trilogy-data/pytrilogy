@@ -1163,10 +1163,10 @@ class Executor:
         concepts = self.environment.concepts
         for col in query.output_columns:
             # The persist's build columns can be untyped; the declaration is not.
-            if col.address not in concepts:
-                continue
-            declared = concepts[col.address].datatype.data_type
-            physical = _PARQUET_WRITE_TYPES.get(declared)
+            declared = concepts.get(col.address)
+            physical = declared and _PARQUET_WRITE_TYPES.get(
+                declared.datatype.data_type
+            )
             if physical:
                 casts[col.address] = physical
         return casts
