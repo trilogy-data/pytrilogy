@@ -431,10 +431,7 @@ _PHASES: tuple[_Phase, ...] = (
     _Phase(
         "upgrade_outer_key_set_equivalence",
         lambda o: o.upgrade_outer_key_set_equivalence,
-        lambda c: UpgradeOuterFromKeySetEquivalence(
-            domain_graph=c.domain_graph,
-            narrow_equal_domain_joins=c.opts.narrow_equal_domain_joins,
-        ),
+        lambda c: UpgradeOuterFromKeySetEquivalence(domain_graph=c.domain_graph),
         depends_on=("upgrade_join_on_guards.final",),
         reason=(
             "needs upstream filters in their final position so the "

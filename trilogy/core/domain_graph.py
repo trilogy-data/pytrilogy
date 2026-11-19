@@ -482,6 +482,13 @@ class DomainGraph:
             for addr in (e.source, e.target)
         } - self.incomparable_keys()
 
+    def full_relation_keys(self) -> set[str]:
+        """The outer-relation keys an authored FULL preserves: the planner
+        types their joins FULL and no narrowing collapses them. An EQUAL key
+        (`merge a into b`, `equal join`) is one key, typed and narrowed like
+        any other."""
+        return self.outer_relation_keys() - self.equal_narrowable_keys()
+
     def left_anchor_keys(self) -> set[str]:
         """Canonicalized superset anchors of declared SUBSET relations
         (historical scoped_left_anchor_keys)."""

@@ -1470,10 +1470,18 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
         out |= partial_binding_sources(sub, address)
     # a rowset boundary built not to extend a span (its reader holds the
     # region) is partial on the handle with no leaf `~` behind it: the
-    # boundary is the binding, and two projections of it are one
-    if not out and any(c.address == address for c in ds.partial_concepts):
-        return frozenset({ds.identifier})
+    # boundary is the binding, and two projections of it are one. An UNNEST
+    # binds on its own beside any leaf under it: it drops each row whose
+    # array is empty or NULL.
+    if (not out or _unnests(ds)) and any(
+        c.address == address for c in ds.partial_concepts
+    ):
+        return out | {ds.identifier}
     return out
+
+
+def _unnests(ds: QueryDatasource) -> bool:
+    return any(isinstance(j, UnnestJoin) for j in ds.joins)
 
 
 def complete_key_domain(ds: DataSource, address: str) -> bool:
@@ -2939,7 +2947,7 @@ def get_node_joins(
     )
 
     full_join_keys = {
-        canon_node(a) for a in environment.domain_graph.outer_relation_keys()
+        canon_node(a) for a in environment.domain_graph.full_relation_keys()
     }
     if full_join_keys:
         # a scalar of a coalescing axis pairs its arms as the axis does

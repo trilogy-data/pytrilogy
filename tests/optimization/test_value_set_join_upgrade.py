@@ -592,29 +592,17 @@ def test_equal_join_key_still_requires_completeness():
     assert root.joins[0].join_type == JoinType.FULL
 
 
-def test_narrow_equal_domain_joins_config_gates_plan():
-    """`narrow_equal_domain_joins` (default ON) controls whether the rule plan
-    honors EQUAL declarations — off, an EQUAL-declared key keeps the FULL
-    veto."""
-    from trilogy.constants import CONFIG
+def test_rule_plan_holds_no_veto_on_an_equal_key():
     from trilogy.core.optimization import build_optimization_rule_plan
 
-    graph = _equal_declared_graph("test.CLASS")
-
-    def _rule(plan):
-        return next(
-            p for p in plan if p.name == "upgrade_outer_key_set_equivalence"
-        ).rule_factory()
-
-    assert CONFIG.optimizations.narrow_equal_domain_joins is True
-    on = _rule(build_optimization_rule_plan(domain_graph=graph))
-    assert on.full_join_keys == set()
-    CONFIG.optimizations.narrow_equal_domain_joins = False
-    try:
-        off = _rule(build_optimization_rule_plan(domain_graph=graph))
-        assert off.full_join_keys == {"test.CLASS"}
-    finally:
-        CONFIG.optimizations.narrow_equal_domain_joins = True
+    plan = build_optimization_rule_plan(
+        domain_graph=_equal_declared_graph("test.CLASS")
+    )
+    rule = next(
+        p for p in plan if p.name == "upgrade_outer_key_set_equivalence"
+    ).rule_factory()
+    assert rule.full_join_keys == set()
+    assert rule.equal_join_keys == {"test.CLASS"}
 
 
 _TWO_SOURCE_MODEL = """
@@ -638,28 +626,12 @@ def _generated_sql(model: str, query: str) -> str:
     return executor.generate_sql(query)[-1]
 
 
-def _with_narrowing(model: str, query: str) -> str:
-    return _generated_sql(model, query)
-
-
-def _without_narrowing(model: str, query: str) -> str:
-    from trilogy.constants import CONFIG
-
-    CONFIG.optimizations.narrow_equal_domain_joins = False
-    try:
-        return _generated_sql(model, query)
-    finally:
-        CONFIG.optimizations.narrow_equal_domain_joins = True
-
-
-def test_equal_merge_narrows_full_to_inner_end_to_end():
-    """A non-partial `merge` declares EQUAL domains: by default the merged
-    key's FULL join between two authoritative scans renders INNER; opting out
-    of `narrow_equal_domain_joins` keeps the preserving FULL."""
+def test_equal_merge_joins_inner_end_to_end():
+    """A non-partial `merge` declares EQUAL domains: the merged key is one
+    key, so two authoritative scans of it join INNER."""
     model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
     query = "select ka, sum(va) -> ta, sum(vb) -> tb;"
-    assert "FULL JOIN" in _without_narrowing(model, query)
-    narrowed = _with_narrowing(model, query)
+    narrowed = _generated_sql(model, query)
     assert "FULL JOIN" not in narrowed
     assert "INNER JOIN" in narrowed
 
@@ -669,7 +641,7 @@ def test_union_join_never_narrows_end_to_end():
     other — the FULL join must survive narrowing even under the flag."""
     query = "select ka, va, vb union join ka = kb;"
     assert "FULL JOIN" in _generated_sql(_TWO_SOURCE_MODEL, query)
-    assert "FULL JOIN" in _with_narrowing(_TWO_SOURCE_MODEL, query)
+    assert "FULL JOIN" in _generated_sql(_TWO_SOURCE_MODEL, query)
 
 
 def test_union_join_veto_beats_equal_merge_on_same_key():
@@ -677,7 +649,7 @@ def test_union_join_veto_beats_equal_merge_on_same_key():
     the preservation veto — the stronger in-query declaration wins."""
     model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
     query = "select ka, va, vb union join ka = kb;"
-    assert "FULL JOIN" in _with_narrowing(model, query)
+    assert "FULL JOIN" in _generated_sql(model, query)
 
 
 def test_pair_helper_resolves_canonical_concept_aliases():

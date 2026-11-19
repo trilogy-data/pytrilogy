@@ -61,7 +61,7 @@ written.
   edges + author binding facts); the five-registry plumbing
   (`full_join_keys`, `equal_join_keys`, `subset_join_map`,
   `scoped_canonical` parameters) is deleted.
-  `UpgradeOuterFromKeySetEquivalence(domain_graph, narrow_equal_domain_joins)`
+  `UpgradeOuterFromKeySetEquivalence(domain_graph)`
   derives what it still needs internally.
 - Directional narrowing's declared-counterpart check is a `relation()`
   traversal (`_proven_subset_of`): chained relations and EQUAL hops
