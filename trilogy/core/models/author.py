@@ -1386,6 +1386,12 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         )
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
+        # a constant is at the select's grain, unless that grain is computed
+        # from it (`union(amt, zero)` selected beside `zero`): it keeps its own
+        if self.purpose == Purpose.CONSTANT and _grain_reads(
+            grain, self.address, environment
+        ):
+            final_grain = self.grain
         if not new_lineage:
             return new_lineage, final_grain, keys
 
@@ -1458,7 +1464,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             # a renamed key keeps its source's rows
             final_grain = Grain(components={self.address})
             keys = None
-        elif self.derivation == Derivation.BASIC:
+        # an expression of constants (`1 - 10`) is a constant: at the
+        # select's grain, as `1` is, never at the empty grain of no inputs
+        elif self.derivation == Derivation.BASIC and self.purpose != Purpose.CONSTANT:
             assert new_lineage
             by_refs, has_by_aggregate = _aggregate_by_grain_refs(
                 new_lineage, environment
@@ -2839,6 +2847,27 @@ def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str],
             has_by = has_by or arg_by
         return refs, has_by
     return refs, False
+
+
+def _grain_reads(grain: Grain, address: str, environment: Environment) -> bool:
+    """Whether a component of `grain` is computed from `address`. Never the
+    all-rows constant: it only groups an aggregate (`count(x) by *`), which is
+    at its own grain, inlined into a computed component or not."""
+    if address == ALL_ROWS_ADDRESS:
+        return False
+    seen = set(grain.components)
+    stack = list(seen)
+    while stack:
+        concept = environment.concepts.get(stack.pop())
+        if concept is None or concept.lineage is None:
+            continue
+        for arg in concept.lineage.concept_arguments:
+            if arg.address == address:
+                return True
+            if arg.address not in seen:
+                seen.add(arg.address)
+                stack.append(arg.address)
+    return False
 
 
 def _row_grain(pkeys: set[str], grain: Grain, environment: Environment) -> Grain:

@@ -268,13 +268,33 @@ FOUND_SEEDS_515 = [
     17715, 28266, 75390, 139791, 160693, 160820, 176152, 177047, 187270,
     187859, 193139,
 ]  # fmt: skip
+# seeds 0.3.516 fixed (each failed on main): a group holds no column of an
+# atom it only passes through (205085; 78245 raised on the same claim); a ROOT
+# passes on none of its constraint feeders (246819, 333909); an expression of
+# constants is at the select's grain (15826, 89514)
+# seeds the FINAL fold dropped a column of once it read stated columns
+# (#1038): a folded constant, or a planned key no widening delivered
+STATED_FOLD_SEEDS = [
+    495, 21365, 44910, 48534, 51313, 99561, 113950, 157548, 159532, 161625,
+    169401, 171221, 178007, 187840, 193759, 194640, 223720, 224643, 232110,
+    244806, 246368, 321037, 323499, 349966,
+]  # fmt: skip
+
+FOUND_SEEDS_516 = [
+    15826,
+    67331,
+    78245,
+    89514,
+    104893,
+    205085,
+    225055,
+    246819,
+    333909,
+    349206,
+]
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises or DuckDB rejects, or None for wrong rows
-KEYLESS = "keyless join"
-OPEN: dict[tuple[int, str], str | None] = {
-    **{(s, m): KEYLESS for s in (15826, 89514) for m in ("base", "summary")},
-    **{(78245, m): "missing non-hidden parent" for m in ("base", "summary")},
-}
+OPEN: dict[tuple[int, str], str | None] = {}
 
 
 def cases():
@@ -287,6 +307,8 @@ def cases():
             *FOUND_SEEDS_513,
             *FOUND_SEEDS_514,
             *FOUND_SEEDS_515,
+            *FOUND_SEEDS_516,
+            *STATED_FOLD_SEEDS,
             *(s for s, _ in OPEN),
         )
     )

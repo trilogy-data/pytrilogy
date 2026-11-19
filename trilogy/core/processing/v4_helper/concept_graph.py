@@ -66,6 +66,7 @@ from .constants import (
 )
 from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
 from .functional_dependency import (
+    concept_attr_fd_closure,
     minimize_build_grain,
     origin_relation_stored,
     strict_fd_determines,
@@ -2891,14 +2892,32 @@ def build_concept_graph(
     #   - skip nodes that already have any outgoing edge.
     mandatory_blank_ids = dict.fromkeys(node_id("", c.address) for c in mandatory_list)
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
-    for src in outer_condition_nodes:
-        if attrs[src].derivation == Derivation.ROOT:
-            continue
-        src_address = attrs[src].address
-        if src_address not in row_arg_addresses:
-            continue
-        if any(True for _ in graph.successors(src)):
-            continue
+    backfill = [
+        src
+        for src in outer_condition_nodes
+        if attrs[src].derivation != Derivation.ROOT
+        and attrs[src].address in row_arg_addresses
+        and not any(True for _ in graph.successors(src))
+    ]
+    # a constant is the same value on every row: the rowed outputs carry a
+    # condition its grain has no key for, which it would join on no key (`4`
+    # at `big, city` beside `min(height) by species`). Constrained by some of
+    # the condition's inputs and not others, it reads a partial gate, so it
+    # takes all of them or none.
+    unkeyed = {
+        dst
+        for dst in mandatory_blank_ids
+        if dst in graph.nodes
+        and attrs[dst].derivation == Derivation.CONSTANT
+        and any(
+            not attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+            <= concept_attr_fd_closure(
+                attrs, attrs[dst].grain_components, include_empty_grain=False
+            )
+            for src in backfill
+        )
+    }
+    for src in backfill:
         # a scalar output whose grain lacks a condition's key has nothing to
         # join it on, so the condition filters the scans its inputs come from
         targets = dict.fromkeys(
@@ -2911,7 +2930,8 @@ def build_concept_graph(
                 else [dst]
             )
         )
-        for dst in targets:
+        rowed = [d for d in targets if d not in unkeyed]
+        for dst in rowed or targets:
             if graph.has_edge(src, dst):
                 continue
             if _constraint_crosses_rowset(attrs, src, dst):

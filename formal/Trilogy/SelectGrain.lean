@@ -59,6 +59,13 @@ nor the tuple it ranks.
   it pairs each key with every value its other columns share
   (`property_without_its_key_misjoins`); joined on the key's own value it is
   exact (`property_with_its_key_exact`).
+- A value over aggregates at two grains is one per pair the rows hold; off
+  the two groups joined on nothing it invents pairs
+  (`two_grain_value_without_its_pairs_invents`). An aggregate `by` keys its
+  host's grain does not determine, rendered there, is read at the host's
+  grain (`host_grain_pin_misreads`). A constant holds per row kept: gated by
+  such a value's groups alone, it keeps a city no row passes
+  (`constant_gated_off_its_rows_invents`).
 -/
 
 namespace Trilogy.SelectGrain
@@ -214,6 +221,45 @@ theorem wrap_without_pair_key_crosses :
     let cities := dedup (rows.map (·.1))
     let forms := dedup (kept.map fun r => form r.2)
     pairs.length = 2 ∧ (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 := by
+  decide
+
+/-- `select city, species, sum(x) by species / count(id) by city`: one value
+per `(city, species)` pair the rows hold. Off the two groups alone, which
+share no key, it is one per city and species: city 1 holds no species 2, and
+three pairs become four. -/
+theorem two_grain_value_without_its_pairs_invents :
+    let rows : List (Int × Int) := [(0, 1), (0, 2), (1, 1)]
+    let cities := dedup (rows.map (·.1))
+    let species := dedup (rows.map (·.2))
+    (dedup rows).length = 3 ∧
+      (cities.flatMap fun c => species.map fun s => (c, s)).length = 4 := by
+  decide
+
+/-- `where x = 3 or sum(x) by city, species = ...` hosted on a group at
+`species`: rendered there, the aggregate is read at the host's grain. Species
+0 grows in cities 0 and 1: its row in city 1 sums to 7 by `(city, species)`
+and to 10 by `species`. -/
+theorem host_grain_pin_misreads :
+    let rows : List (Int × Int × Int) := [(0, 0, 3), (1, 0, 7)]
+    let x : Int × Int × Int → Int := fun r => r.2.2
+    let pair : Int × Int × Int → Key := fun r => [r.1, r.2.1]
+    let species : Int × Int × Int → Key := fun r => [r.2.1]
+    eval (.by_ pair) species x rows (1, 0, 7) = 7 ∧
+      eval .bare species x rows (1, 0, 7) = 10 := by
+  decide
+
+/-- `select city, 4 where <gate over by city and by species>`: the constant
+holds per row kept. Constrained by the gate's two groups alone it pairs every
+city with every species: the gate `species = 2` keeps city 0, and the cross
+keeps city 1 too, which holds no species 2. -/
+theorem constant_gated_off_its_rows_invents :
+    let rows : List (Int × Int) := [(0, 1), (0, 2), (1, 1)]
+    let gate : Int × Int → Bool := fun r => r.2 == 2
+    let cities := dedup (rows.map (·.1))
+    let species := dedup (rows.map (·.2))
+    let cross := cities.flatMap fun c => species.map fun s => (c, s)
+    dedup ((rows.filter gate).map (·.1)) = [0] ∧
+      dedup ((cross.filter gate).map (·.1)) = [0, 1] := by
   decide
 
 /-! ## An aggregate `by` fixed keys in a select -/

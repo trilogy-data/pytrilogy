@@ -13,15 +13,16 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.515.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.516.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family to 200,000; the PR of each round holds its sweep totals.
+`expressions` family to 350,000; the PR of each round holds its sweep totals.
 What they still get wrong is `OPEN` in
-`tests/discovery/test_oracle_spellings_laws.py` (404253) and
-`test_oracle_expressions_laws.py`, under area 1 below.
+`tests/discovery/test_oracle_spellings_laws.py` (404253); the `expressions`
+family has no `OPEN` seed left.
 
-The `Oracle sweep` workflow re-sweeps that whole range on main every night
-(`.github/workflows/oracle_sweep.yml`), since the law suites replay only the
+The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
+main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
+family is not in its matrix yet), since the law suites replay only the
 first few hundred seeds and the ones a round found. When a round extends the
 range, raise `SWEPT_TO` there and the number above. A red night names its
 seeds: `python -m local_scripts.oracle_sweep show <seed>` reproduces one.
@@ -124,7 +125,8 @@ or fix their planning beyond keeping existing tests green.
   whatever else is projected", "a group's answer is the answer filtered to
   it", `P or false` is `P`, a filter never adds rows.
 - Pair a value with its twin: five spellings of one value (`s`, `t <- s`,
-  `t <- s + 0`, `(s + 0)`, inline), `in (x)` beside `= x`, `x ? c` beside
+  `t <- s + 0`, `(s + 0)`, inline), a literal beside an expression of
+  literals (`1` and `1 - 10` were planned at different grains), `in (x)` beside `= x`, `x ? c` beside
   `case when c then x end`, parenthesized beside bare. A twin needs no oracle
   and points at what differs. It can also share the bug.
 - Put a concept in every position: alone, beside an aggregate, beside its own
@@ -322,16 +324,10 @@ this edit no longer reproduced, so probe any lead before working on it.
 
 Open in the `expressions` family (each fails on main too):
 
-- A row atom OR'd or NOT'd with aggregates at a grain beside the select's
-  (15826, 89514): a gate or values at two grains no side holds together.
-  89514's constant (`2 * 1`) is grouped at `city` beside the `species` rows;
-  `select city, 2 where max(height) by city, tree_form = 5` now plans.
-- 78245: a FINAL merge's input `tree_form` has no non-hidden parent (an OR
-  of gates at `city, tree_form` and `species` beside `city, species`).
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
 - Spellings 404253: FINAL reads `height` off a side its merge does not join.
-- The expressions family past 200,000 is unswept.
+- The expressions family past 350,000 is unswept.
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.
 
@@ -470,6 +466,10 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 - FINAL dedups group by more than the tuple (TPC-DS q23 twice, q30/q79 by
   hidden join keys).
 - SQL Server resolves a select alias only as a bare ORDER BY term.
+- A concept-level `union(amt, zero)` with `zero <- 0.0` raises a keyless
+  join (on main too). `zero <- cast(0.0 as ...)` and `zero <- 1 - 1` plan:
+  0.3.516 keeps a constant off a select grain computed from it, but a bare
+  literal arm fails another way (`tests/engine/test_duckdb_union_arm_filter_leak.py`).
 - `union` keeps the bag and is not in the Lean model; `coalesce`/`case` type
   merging is unchecked.
 

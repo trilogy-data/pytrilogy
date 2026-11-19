@@ -157,6 +157,7 @@ def main_lineage_groups(
 def _reachable_input(
     gid: str,
     lineage_ancestors_graph: nx.DiGraph,
+    host_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
     group_members: dict[str, set[str]],
 ) -> set[str]:
@@ -169,7 +170,11 @@ def _reachable_input(
         and buckets[gid].derivation in (Derivation.ROOT, Derivation.UNION)
         else set()
     )
-    ancestors = nx.ancestors(lineage_ancestors_graph, gid)
+    # A ROOT joins its constraint feeders' values onto its rows, but passes
+    # none of them on: a group reading the ROOT reaches them only through
+    # its other parents (`max(x) by species` beside `min(x) by city, species`).
+    root = buckets.get(gid) is not None and buckets[gid].derivation == Derivation.ROOT
+    ancestors = nx.ancestors(lineage_ancestors_graph if root else host_graph, gid)
     if not ancestors:
         return own | set(group_members.get(gid, set()))
     reachable: set[str] = set(own)
@@ -246,7 +251,15 @@ def _candidate_groups(
         ):
             continue
         hosts.append(gid)
-    return hosts
+    # A constant has no rows of its own to filter: hosting the atom, it
+    # would read the atom's inputs off its parents, past any aggregate
+    # between them and the rows (`height` under `sum(height) by city`).
+    rowed = [
+        gid
+        for gid in hosts
+        if gid not in buckets or buckets[gid].derivation != Derivation.CONSTANT
+    ]
+    return rowed or hosts
 
 
 def _entity_peels_beside_row_stream(
@@ -1391,7 +1404,11 @@ class _PlacementScope:
 
     def reachable_input(self, gid: str) -> set[str]:
         return _reachable_input(
-            gid, self.lineage_ancestors_graph, self.buckets, self.group_members
+            gid,
+            self.lineage_ancestors_graph,
+            self.host_graph,
+            self.buckets,
+            self.group_members,
         )
 
     def reads_pin(self, row_inputs: set[str]) -> bool:
