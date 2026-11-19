@@ -13,9 +13,9 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.519.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.520.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family to 500,000; the PR of each round holds its sweep totals.
+`expressions` family to 650,000; the PR of each round holds its sweep totals.
 No family has an `OPEN` seed left (`OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` is empty).
 
@@ -271,6 +271,12 @@ or fix their planning beyond keeping existing tests green.
   filter finer than a re-sum is applied below it.
 - A partial is what a source stores (`rollup_concepts`), never a finished
   value that sits beside finer rows.
+- A value computed at a group is nullable where its group can make it NULL:
+  any aggregate but a count over a nullable argument, and what propagates it
+  (`GroupNode`, `null_on_null_group`). A nullability claim decides `=`
+  against `is not distinct from`, so a missing one drops rows. Sample
+  `stddev`/`var` of a one-row group is NULL over non-null values and is not
+  claimed yet (no non-null numeric column in the sweep model shows it).
 - A condition-phase group (`root_d1`, `d1`) holds rows the WHERE never
   filtered: rank it last wherever groups are chosen by a tie on name, and a
   regraft off a constraint-fed root drops the gate.
@@ -325,12 +331,12 @@ Open in the `expressions` family (each fails on main too):
 
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
-- The expressions family past 500,000 is unswept.
-- Efficiency: the base model still reads the trees twice in about 5,000 of
-  the 300,000 queries at 350,000-500,000. `MergeTwinScans` folds only
-  ungrouped, unjoined twins under one WHERE; the rest are a grouped scan
-  beside a row scan under one WHERE (one read could feed both), or scans
-  under different WHEREs (a `by *` total beside filtered rows needs both).
+- The expressions family past 650,000 is unswept.
+- Efficiency: `MergeTwinScans` folds an ungrouped twin into its twin and
+  groups a grouped scan over its ungrouped twin under one WHERE. Left: scans
+  under different WHEREs (a `by *` total beside filtered rows needs both),
+  and a summary re-sum beside its row twin (it reads stored partials through
+  `partial_sources`, which the rebase would have to carry).
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.
 
@@ -450,9 +456,9 @@ See `docs/handoff_summary_cover_next.md` for the approach.
   computed once in a CTE and read thereafter.
 - A decimal sum keeps its operands' precision, so a persisted sum can
   overflow (loud).
-- `date_trunc(t, month)` of a datetime on DuckDB is not its declared type.
 - `null::int` on ClickHouse renders an invalid cast.
-- Chained casts (`t::date::datetime`) do not parse.
+- Chained casts: `t::date::datetime` reads `date::datetime` as a type with a
+  trait and raises; `(t::date)::datetime` works.
 - CASE arms of differing column types are rejected while `coalesce` merges.
 - No engine in CI: Presto `date_part`, SQL Server `date_trunc`/`date_part`.
 
