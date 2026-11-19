@@ -10,7 +10,7 @@ import pytest
 
 from trilogy import Dialects, Executor
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, UndefinedConceptException
 from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.lark_backend import parse_lark
 from trilogy.parsing.v2.model import HydrationError
@@ -160,15 +160,48 @@ class TestSyntax:
             ),
             ("address points order by lat", "needs a file target"),
             ("file `p.parquet` order by elsewhere", "neither store nor derive"),
+            (
+                "file `p.parquet` order by nowhere",
+                r"(?i)undefined concept:? '?(local\.)?nowhere",
+            ),
+            ("file `p.parquet` order by latt", r"Suggestions: .*'lat'"),
         ],
     )
     def test_rejects(self, trailer: str, message: str) -> None:
         env = Environment()
-        with pytest.raises((InvalidSyntaxException, HydrationError), match=message):
+        with pytest.raises(
+            (InvalidSyntaxException, HydrationError, UndefinedConceptException),
+            match=message,
+        ):
             env.parse(
                 HEADER
                 + "key elsewhere int;\n"
                 + f"datasource plain (id: id, lat: lat) grain (id) {trailer};"
+            )
+
+    def test_rejects_a_column_alias_naming_its_concept(self) -> None:
+        env = Environment()
+        with pytest.raises(
+            HydrationError,
+            match="'lat_col' is a column of 'plain'; order by the concept it binds,"
+            " 'local.lat'",
+        ):
+            env.parse(
+                HEADER
+                + "datasource plain (id: id, lat_col: lat) grain (id)"
+                + " file `p.parquet` order by lat_col asc;"
+            )
+
+    def test_rejects_an_undefined_order_identifier(self) -> None:
+        env = Environment()
+        with pytest.raises(
+            HydrationError,
+            match=r"undefined concept 'bukket'\. Suggestions: .*'bucket'",
+        ):
+            env.parse(
+                "key id int;\nproperty id.bucket int;\n"
+                "datasource plain (id: id, bucket: bucket) grain (id)"
+                " file `p.parquet` order by bukket asc;"
             )
 
     def test_changes_the_fingerprint(self) -> None:
