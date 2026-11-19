@@ -2402,7 +2402,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 - **The expressions family to 650,000** (0.3.520). On main its 300,000
   queries (seeds 500,000-650,000) hold 2 wrong and 1 raising beside the 68
   the generator rejects; the branch fixes all three, breaks none, and plans
-  6,808 fewer scans. Fixed:
+  5,857 fewer scans. Fixed:
   - A group never marked an aggregate over a nullable argument nullable, so
     FINAL's re-join of the `(city, tree_form)` group paired `max(height) +
     1` with `=` and dropped the group whose heights are all NULL (645783;
@@ -2415,7 +2415,13 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     reads only a parent's usable outputs.
   - A grouped scan beside its ungrouped twin under one WHERE read the table
     again (500002; `Identity.group_reads_twin_rows`). `MergeTwinScans` groups
-    it over the twin's rows; a summary re-sum stays on its own scan.
+    it over the twin's rows when it reads only plain columns; a summary
+    re-sum stays on its own scan.
+  - The law suites caught two shapes the first cut broke: a group whose
+    `sum` turned nullable, beside rows whose own WHERE atom proved it
+    non-null, was preserved for its NULL group and invented a city
+    (spellings 7067). A NULL key on one side that the other side's filters
+    reject now preserves nothing (`_nullable_join`).
 
 ## Limits
 
