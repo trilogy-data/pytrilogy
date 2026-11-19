@@ -174,7 +174,9 @@ class GroupNode(StrategyNode):
         # in this subtree (e.g. a derived join key over a nullable column)
         node_nullable = {x.address for x in self.nullable_concepts}
         parent_nullable = {
-            a for p in parent_sources for c in p.nullable_concepts
+            a
+            for p in parent_sources
+            for c in p.nullable_concepts
             for a in c.equivalent_addresses
         }
         parent_outputs = {c.address for p in parent_sources for c in p.output_concepts}

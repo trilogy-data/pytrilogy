@@ -82,7 +82,9 @@ def _rebase_group(group: DatasourceCTE, rows: DatasourceCTE) -> None:
         rows.source.output_concepts.append(column)
         rows.source_map[column.address] = [rows.datasource.safe_identifier]
         rows.source.source_map[column.address] = {rows.datasource}
-    group.__class__ = CTE
+    # The driver's CTE list holds this object, so it becomes a plain CTE in
+    # place rather than being replaced.
+    group.__class__ = CTE  # type: ignore[assignment]
     del group.datasource
     group.parent_ctes = [rows]
     group.condition = None

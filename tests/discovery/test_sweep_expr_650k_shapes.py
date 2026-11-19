@@ -21,26 +21,34 @@ from tests.discovery.test_oracle_sweep_laws import executor, normalize
 CASES = [
     # expressions 645783, reduced
     (
-        "select tree_id, max(height) by city, tree_form + 1 as v0,"
-        " count(tag) by tree_form * count(tree_id) as v2 where city = 'A';",
+        (
+            "select tree_id, max(height) by city, tree_form + 1 as v0,"
+            " count(tag) by tree_form * count(tree_id) as v2 where city = 'A';"
+        ),
         [("a1", 6, 3), ("a2", 6, 3), ("a3", 6, 3), ("a4", None, 1)],
     ),
     # expressions 645783
     (
-        "select tree_id, max(height) by city, tree_form + count(tree_id) by * as v0,"
-        " sum(height * 2) as v1, count_distinct(tag) by tree_form * count(tree_id)"
-        " as v2 where city = 'A';",
+        (
+            "select tree_id, max(height) by city, tree_form + count(tree_id) by * as v0,"
+            " sum(height * 2) as v1, count_distinct(tag) by tree_form * count(tree_id)"
+            " as v2 where city = 'A';"
+        ),
         [("a1", 9, 6, 2), ("a2", 9, None, 2), ("a3", 9, 10, 2), ("a4", None, None, 1)],
     ),
     # expressions 564837, reduced, with the WHERE kept and rejected
     (
-        "select count(tree_id) by * as v0, max(height) by * / count(tree_id) as v1"
-        " where count_distinct(tag) by * < sum(height) by *;",
+        (
+            "select count(tree_id) by * as v0, max(height) by * / count(tree_id) as v1"
+            " where count_distinct(tag) by * < sum(height) by *;"
+        ),
         [(6, 7 / 6)],
     ),
     (
-        "select count(tree_id) by * as v0, max(height) by * / count(tree_id) as v1"
-        " where count_distinct(tag) by * > sum(height) by *;",
+        (
+            "select count(tree_id) by * as v0, max(height) by * / count(tree_id) as v1"
+            " where count_distinct(tag) by * > sum(height) by *;"
+        ),
         [],
     ),
 ]
