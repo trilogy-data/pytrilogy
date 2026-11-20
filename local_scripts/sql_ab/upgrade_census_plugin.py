@@ -4,9 +4,11 @@ the proofs that held while it was decided.
     UPGRADE_CENSUS=/tmp/up.jsonl PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p upgrade_census_plugin tests ...
 
-Each line: test, method (`inner` / `narrow` / `narrow_veto`), from -> to, and
-the proof helpers that returned True during the decision (`_complete_values`
-reports the branch that answered at the top of its recursion).
+Each line: test, method (`inner` / `narrow` / `narrow_veto`), from -> to, the
+join's lefts, keys and place in its CTE (a multi-left or a later join is one
+the planner's whole-ON proof skips), and the proof helpers that returned True
+during the decision (`_complete_values` reports the branch that answered at
+the top of its recursion).
 """
 
 from __future__ import annotations
@@ -79,6 +81,10 @@ def pytest_configure(config) -> None:
                                 "proofs": sorted(set(proofs)),
                                 "left": cte.name,
                                 "right": right_cte.name,
+                                "lefts": sorted({p.node.name for p in join.pairs}),
+                                "keys": sorted({p.left.address for p in join.pairs}),
+                                "position": cte.joins.index(join),
+                                "joins": len(cte.joins),
                             }
                         )
                         + "\n"
