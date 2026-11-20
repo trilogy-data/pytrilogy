@@ -239,9 +239,9 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 6:
-3, 4 and 7 landed, 6's knob landed (its planner half waits on a language
-decision), 8 closed, 9 half done; 1, 2 and 5 remain, and hold nearly all of
-the estimated lines.
+3, 4, 6 and 7 landed (6 smaller than estimated, its planner half folded into
+2), 8 closed, 9 half done; 1, 2 and 5 remain, and hold nearly all of the
+estimated lines.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -256,6 +256,8 @@ the estimated lines.
    had at `get_join_type` time in 24 of 34 corpus firings; the 10 it could
    not decide are same-address origin arbitrations that need a per-side
    node. This is the seam `docs/domain_graph_design.md` step 5 names.
+   Seam 6's leftover, proving an EQUAL key's sides complete while planning
+   instead of after, is the same move (see 6).
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle
@@ -330,31 +332,41 @@ the estimated lines.
    `null_provenance.py`, `join_resolution.py` side-fact assembly and the
    `value_set_join_upgrade` padding walks). Corpus evidence says the stamp
    could start as `value | extent`.
-6. **Drop the `narrow_equal_domain_joins` knob (knob landed; the planner
-   half is refused by a law).** The knob is gone, and
+6. **Drop the `narrow_equal_domain_joins` knob (landed; the premise behind
+   the rest was wrong).** The knob is gone, and
    `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL
    ones) is the one owner of "no narrowing collapses this key", read by
    `MergeNode`'s coalescing veto and `UpgradeOuterFromKeySetEquivalence`,
    each of which had recomputed it.
 
-   The planner half (type an EQUAL key like any other instead of FULL) is
-   NOT landed: it contradicts a pinned semantics, not a conservatism.
-   `tests/unnest/test_unnest_filter_laws.py::test_element_pairs_with_the_row_it_expands[*-equal]`
-   holds that a selected `merge into` key pads the members of its table no
-   row lists (`(None, k)`), which only the FULL produces. Whether `merge a
-   into b` means "one key" (the audit's premise) or "the union of both
-   members" (the law's) is a language decision; until it is made, the
-   planner keeps `outer_relation_keys`. Measured while it was in: corpus 5
-   moved, the law's 6 cells red, and one latent defect exposed: an UNNEST
-   drops owner rows whose array is empty or NULL, yet
-   `partial_binding_sources` names only the leaf `~` under it, so an
-   aggregate over the unnested rows reads as one binding with its owner's
-   `~` source (`tree_reporting::test_native_range_build_matches_fixture`
-   goes red). The FULL on the merged key hides it today.
+   The seam's premise, "under model trust `merge a into b` makes one key",
+   is wrong, and its planner half (type an EQUAL key like any other instead
+   of FULL) is closed as not a seam. An EQUAL declaration (`merge a into b`,
+   `merge equal a = b`, `equal join a = b`, one declaration in every
+   spelling) says the two DOMAINS are one value space. It does not say that
+   every side of a join carries the whole domain: a side is a filtered, an
+   aggregated or an unnested read of it. So the join preserves both sides
+   until each proves complete, and only then narrows; what the declaration
+   buys is that completeness proven for `a` carries to `b` (`merge union`
+   withholds even that, so it never narrows). The planner change assumed
+   "not stamped `~`" meant complete, and the laws refuted it:
+   `test_unnest_filter_laws.py::test_element_pairs_with_the_row_it_expands`
+   pads a region only a treeless species lists (`(None, k)`), and
+   `tree_reporting::test_native_range_build_matches_fixture` lost the
+   species whose lists are empty. The laws now run every EQUAL cell under
+   both `into` and `merge equal`, and the narrowing matrix under all three
+   spellings, so the spellings stay one declaration.
 
-   Also measured: the optimizer's EQUAL proof (`_pair_equal_declared`)
-   narrows q04's agent-shape fact-to-customer LEFT joins (typed LEFT for a
-   `?` value-NULL FK); that is the nullability seam's question.
+   What remains is an ownership move, not a semantic one: the completeness
+   proof runs in the optimizer after the planner emitted FULL, though many
+   proofs (an unfiltered scan of a complete binding, a group over one) are
+   knowable while planning. That is seam 2's plan-time evidence, and joins
+   it. Two facts to carry there: the optimizer's EQUAL proof also narrows
+   q04's agent-shape fact-to-customer LEFT joins (typed LEFT for a `?`
+   value-NULL FK); and an UNNEST drops owner rows whose array is empty or
+   NULL, yet `partial_binding_sources` names only the leaf `~` under it, so
+   a plan-time proof must not read an aggregate over unnested rows as
+   complete over the owner.
 
    Landed beside it, a bug on `main`: the `full_join_keys` rule fired on any
    connecting key, including a FULL key both sides' grains determine among

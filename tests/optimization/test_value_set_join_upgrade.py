@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy.constants import MagicConstants
 from trilogy.core.domain_graph import (
     DomainEdge,
@@ -626,10 +628,12 @@ def _generated_sql(model: str, query: str) -> str:
     return executor.generate_sql(query)[-1]
 
 
-def test_equal_merge_joins_inner_end_to_end():
-    """A non-partial `merge` declares EQUAL domains: the merged key is one
-    key, so two authoritative scans of it join INNER."""
-    model = _TWO_SOURCE_MODEL + "\nmerge kb into ka;"
+@pytest.mark.parametrize("merge", ["merge kb into ka;", "merge equal ka = kb;"])
+def test_equal_merge_narrows_full_to_inner_end_to_end(merge: str):
+    """A non-partial `merge` declares EQUAL domains: two authoritative scans
+    each prove they carry the whole domain, so the merged key's join narrows
+    to INNER."""
+    model = _TWO_SOURCE_MODEL + "\n" + merge
     query = "select ka, sum(va) -> ta, sum(vb) -> tb;"
     narrowed = _generated_sql(model, query)
     assert "FULL JOIN" not in narrowed

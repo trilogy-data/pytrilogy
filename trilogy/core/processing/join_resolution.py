@@ -2954,9 +2954,10 @@ def get_node_joins(
         is_coalescing_axis,
     )
 
-    # an EQUAL key (`merge a into b`) stays FULL here: a selected merged key
-    # pads the members only one side lists (`test_unnest_filter_laws`); the
-    # optimizer narrows it once both sides prove complete
+    # an EQUAL key (`merge a into b`, `merge equal a = b`) declares one domain,
+    # not that every side carries all of it: the join preserves both until each
+    # side proves complete, which the optimizer checks (a side built from part
+    # of the domain pads the rest, `test_unnest_filter_laws`)
     full_join_keys = {
         canon_node(a) for a in environment.domain_graph.outer_relation_keys()
     }

@@ -7,15 +7,17 @@ rows of the main matrix violate an EQUAL declaration by construction (those
 cells rule intersection semantics — lying declaration = author error).
 
 Pinned contracts:
-- EQUAL (non-partial `merge`) is one key: it renders INNER, with the
-  oracle's rows.
-- `equal join a = b` is the same declaration scoped to one query and narrows
-  the same way.
+- EQUAL is one declaration in every spelling (`merge a into b`, `merge equal
+  a = b`, and `equal join a = b` scoped to one query): the join on it
+  preserves both sides until each proves it carries the whole domain, here
+  two unfiltered scans, and then narrows to INNER with the oracle's rows.
 - UNION (`union join`) never narrows — the declaration says the domains may
   diverge even when today's data happens to match.
 """
 
 from pathlib import Path
+
+import pytest
 
 from tests.join_matrix.harness import (
     aggregate,
@@ -72,20 +74,17 @@ def _oracle() -> list[tuple]:
     return expected_full(aggregate(HONEST_LEFT), aggregate(HONEST_RIGHT))
 
 
-EQUAL_QUERY = HEAD + "merge b.r_key into a.l_key;\n" + SELECT
-EQUAL_JOIN_QUERY = HEAD + UNION_SELECT + " equal join a.l_key = b.r_key;"
+EQUAL_QUERIES = {
+    "into": HEAD + "merge b.r_key into a.l_key;\n" + SELECT,
+    "merge": HEAD + "merge equal a.l_key = b.r_key;\n" + SELECT,
+    "join": HEAD + UNION_SELECT + " equal join a.l_key = b.r_key;",
+}
 UNION_QUERY = HEAD + UNION_SELECT + " union join a.l_key = b.r_key;"
 
 
-def test_equal_declaration_narrows_to_inner(tmp_path: Path):
-    sql, rows = _run(_write_models(tmp_path), EQUAL_QUERY)
-    assert "FULL JOIN" not in sql, sql
-    assert "INNER JOIN" in sql, sql
-    assert rows == _oracle(), rows
-
-
-def test_scoped_equal_join_narrows_to_inner(tmp_path: Path):
-    sql, rows = _run(_write_models(tmp_path), EQUAL_JOIN_QUERY)
+@pytest.mark.parametrize("spelling", list(EQUAL_QUERIES))
+def test_equal_declaration_narrows_to_inner(tmp_path: Path, spelling: str):
+    sql, rows = _run(_write_models(tmp_path), EQUAL_QUERIES[spelling])
     assert "FULL JOIN" not in sql, sql
     assert "INNER JOIN" in sql, sql
     assert rows == _oracle(), rows

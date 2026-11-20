@@ -55,9 +55,10 @@ KINDS = {
 # (docs/subset_union_join_design.md). `subset join R = L` declares R ⊆ L (the
 # superset L anchors, row parity with a preserving LEFT); `union join L = R`
 # declares neither contains the other (never narrows, keeps FULL rows);
-# `equal join L = R` declares one domain, so it joins INNER, which on these
-# deliberately declaration-violating rows DROPS the side-exclusive rows (lying
-# declaration = author error). `into` is the legacy merge spelling, which has no union.
+# `equal join L = R` declares one domain: two unfiltered scans each prove they
+# carry it, so the join narrows to INNER, which on these deliberately
+# declaration-violating rows DROPS the side-exclusive rows (lying declaration =
+# author error). `into` is the legacy merge spelling, which has no union.
 TYPES = {
     "subset": (
         expected_left,
