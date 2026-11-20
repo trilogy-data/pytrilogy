@@ -135,6 +135,97 @@ SHAPES = [
         ),
         [("B", 1, 4)],
     ),
+    # values by city and by fc are bridged by the rows holding both keys, which
+    # takes two groups at once: the city-species rows and fc by species
+    # (15258); Ulmus (A, o) fails the gate
+    (
+        (
+            f"select city, {FC}, max(height) by fc as a, sum(height) by city as b"
+            " where max(height) by species >= 1;"
+        ),
+        [("A", "b", 7, 8), ("B", "b", 7, 9), ("B", "o", 2, 9)],
+    ),
+    # a column a set reads stays on the select's rows when a gate is keyed by
+    # it (57225): city A alone has more than two trees
+    (
+        (
+            "select tag, max(height) by * as v0 where species in (species ? city ="
+            " 'A') and count(tree_id) by city > 2;"
+        ),
+        [("x", 5), ("y", 5)],
+    ),
+    (
+        (
+            "select tag, max(height) by * as v0 where species in (species ?"
+            " count(tree_id) by city > 1) and count(tree_id) by city > 2;"
+        ),
+        [("x", 5), ("y", 5)],
+    ),
+    # a derived key a sibling is grouped by is not split by its own grain
+    # (50815): every city is in the set
+    (
+        (
+            f"select city, {FC}, sum(height) by city * count_distinct(tag) by fc as"
+            " v0 where city in (city ? count(tree_id) by species > 0);"
+        ),
+        [("A", "b", 16), ("A", "o", 8), ("B", "b", 18), ("B", "o", 9)],
+    ),
+    # a group gated by a set carries no value through it: the broadleaf
+    # distinct tags are 2, not Quercus' 1 (55868); a4, b2 pass the gate and
+    # a2, b1 the set
+    (
+        (
+            "select count(tree_id) as v0 where count_distinct(tag) by tree_form ="
+            " count(tree_id) by species or not (tag in (tag ? avg(height) by"
+            " tree_form is null));"
+        ),
+        [(4,)],
+    ),
+    # a set's own rows bridge nothing (55114): the set keeps every tag, so
+    # Ulmus stays though its own condition is NULL
+    (
+        (
+            "select city, species, tree_form, count(tree_id) by city, tree_form as"
+            " v0, max(height) as v1 where tag in (tag ? min(height) by city, species"
+            " - count_distinct(tag) by tree_form > 0);"
+        ),
+        [
+            ("A", "Acer", "broadleaf", 3, 3),
+            ("A", "Quercus", "broadleaf", 3, 5),
+            ("A", "Ulmus", None, 1, None),
+            ("B", "Acer", "broadleaf", 1, 7),
+            ("B", "Tilia", "linden", 1, 2),
+        ],
+    ),
+    # ...nor supply a value FINAL re-reads (46333): the set is empty, and the
+    # linden sum, 2, passes beside it
+    (
+        (
+            "select city, sum(height) by * as v0 where sum(height) by tree_form <= 3"
+            " or tree_form in (tree_form ? max(height) by tree_form < 0);"
+        ),
+        [("B", 2)],
+    ),
+    # one CTE planned twice under one WHERE nested two ways merges (49126): b2
+    # alone is an x in a Tilia set and city B
+    (
+        (
+            f"select city, {FC}, max(height) by fc as v0 where tag = 'x' and species"
+            " in (species ? height = 2) and city in (city ? city = 'B');"
+        ),
+        [("B", "o", 2)],
+    ),
+    # a gate FINAL re-applies beside a total pairs on its whole grain, the
+    # species it carries onto the value's side included (63640): Ulmus' NULL
+    # minimum keeps (A, none) alone of city A
+    (
+        (
+            "select city, tree_form, count(tree_id) by * as v0, count(tree_id) by"
+            " tree_form / count(tree_id) by city as v1 where min(height) by city,"
+            " species is null or city in ('B');"
+        ),
+        [("A", None, 3, 1.0), ("B", "broadleaf", 3, 0.5), ("B", "linden", 3, 0.5)],
+    ),
 ]
 
 

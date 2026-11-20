@@ -12,6 +12,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import GroupNode
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
+from trilogy.core.processing.v4_helper.edges import EdgeAttrs, EdgeKind
 from trilogy.core.processing.v4_helper.models import (
     DepthLabel,
     FinalAssemblyContract,
@@ -80,6 +81,7 @@ def test_gate_key_no_side_renders_is_joined_from_its_row_stream():
 
     extras = _final_extra_sides(
         graph,
+        {},
         attrs,
         ["agg", "basic"],
         {"rows": [build.concepts["local.tree_id"]]},
@@ -106,6 +108,7 @@ def test_root_side_carries_an_argument_it_outputs():
 
     extras = _final_extra_sides(
         graph,
+        {},
         attrs,
         ["rows", "basic"],
         {"rows": [build.concepts["local.tree_id"]]},
@@ -159,9 +162,9 @@ def test_bridge_candidates_are_planned_groups_decided_before_the_consumer():
         g: _attrs(Derivation.ROOT) for g in ("root", "basic", "agg", FINAL_NODE_ID)
     }
     planned = ["root", "basic", "agg"]
-    assert _bridge_candidates(graph, attrs, planned, "agg") == ["basic", "root"]
-    assert _bridge_candidates(graph, attrs, planned) == ["agg", "basic", "root"]
-    assert _bridge_candidates(graph, attrs, ["root", "agg"], "agg") == ["root"]
+    assert _bridge_candidates(graph, {}, attrs, planned, "agg") == ["basic", "root"]
+    assert _bridge_candidates(graph, {}, attrs, planned) == ["agg", "basic", "root"]
+    assert _bridge_candidates(graph, {}, attrs, ["root", "agg"], "agg") == ["root"]
 
 
 def test_condition_phase_group_bridges_last():
@@ -173,7 +176,7 @@ def test_condition_phase_group_bridges_last():
             depth_label=DepthLabel.ROOT_D1, derivation=Derivation.ROOT
         )
     planned = ["root_d1", "gate", "root", "agg"]
-    assert _bridge_candidates(graph, attrs, planned) == [
+    assert _bridge_candidates(graph, {}, attrs, planned) == [
         "agg",
         "root",
         "gate",
@@ -396,3 +399,18 @@ def test_parent_covered_only_by_a_sibling_holding_its_planned_regions():
     )
 
     assert [p.group_id for p in parents] == ["domain", "sib"]
+
+
+def test_a_set_bridges_nothing():
+    graph = nx.DiGraph()
+    graph.add_edges_from([("root", "set"), ("set", "rows"), ("rows", FINAL_NODE_ID)])
+    edges = {
+        ("root", "set"): EdgeAttrs(kind=EdgeKind.LINEAGE),
+        ("set", "rows"): EdgeAttrs(kind=EdgeKind.EXISTENCE),
+    }
+    attrs = {g: _attrs(Derivation.ROOT) for g in ("root", "rows", FINAL_NODE_ID)}
+    attrs["set"] = _attrs(Derivation.FILTER)
+    assert _bridge_candidates(graph, edges, attrs, ["root", "set", "rows"]) == [
+        "rows",
+        "root",
+    ]

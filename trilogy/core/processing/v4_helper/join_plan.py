@@ -8,7 +8,7 @@ joins to satisfy it instead of re-deriving it from whatever the built parents
 happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import partial
@@ -1186,33 +1186,41 @@ def elect_bridges(
         # a bridge every pairing of which is keyed: shared columns that
         # identify neither side multiply both, so none is elected and the
         # keyless-join guard names the gap
+        free = [gid for gid in candidates if gid not in cover and gid not in bridges]
         elected = next(
             (
-                (gid, trial)
-                for gid in candidates
-                if gid not in cover
-                and gid not in bridges
-                and (
-                    len((trial := plan(extras=[*bridges, gid])).islands()),
+                (added, trial)
+                for added in [*((gid,) for gid in free), *_bridge_pairs(free)]
+                if (
+                    len((trial := plan(extras=[*bridges, *added])).islands()),
                     _underkeyed_blends(trial, attrs, environment, reader_grain),
                 )
                 < (islands, blends)
                 and all(
                     p.kind != PairingKind.BLEND
                     for p in trial.pairings
-                    if gid in (p.left, p.right)
+                    if {p.left, p.right} & set(added)
                 )
             ),
             None,
         )
         if elected is None:
             return current
-        gid, trial = elected
+        added, trial = elected
         keying = current.keying | (
-            {gid} if len(trial.islands()) == islands else frozenset()
+            set(added) if len(trial.islands()) == islands else frozenset()
         )
         current = replace(trial, keying=frozenset(keying))
-        bridges.append(gid)
+        bridges.extend(added)
+
+
+def _bridge_pairs(free: Sequence[str]) -> Iterator[tuple[str, str]]:
+    """Two groups that bridge only together (the row stream holding `city,
+    species` and a value by species holding `fc`, between groups by `city`
+    and by `fc`): tried once no single group joins an island."""
+    for i, left in enumerate(free):
+        for right in free[i + 1 :]:
+            yield left, right
 
 
 def _underkeyed_blends(

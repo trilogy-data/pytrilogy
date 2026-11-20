@@ -14,6 +14,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
+    BooleanOperator,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -37,6 +38,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -146,6 +148,23 @@ def _computed_over(
         )
         for arg in concept.concept_arguments
     )
+
+
+def _and_atoms(condition: object) -> list:
+    if isinstance(condition, BuildConditional) and (
+        condition.operator == BooleanOperator.AND
+    ):
+        return _and_atoms(condition.left) + _and_atoms(condition.right)
+    return [condition]
+
+
+def _same_conjunction(left: object, right: object) -> bool:
+    """One AND of the same atoms, however it nests: two plans of one CTE can
+    group `a and b and c` differently."""
+    if left == right:
+        return True
+    a, b = _and_atoms(left), _and_atoms(right)
+    return len(a) == len(b) and all(x in b for x in a) and all(y in a for y in b)
 
 
 @dataclass
@@ -346,7 +365,7 @@ class CTE:
                 f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
-        if self.condition != other.condition:
+        if not _same_conjunction(self.condition, other.condition):
             error = (
                 "Attempting to merge two ctes with different conditions"
                 f" {self.name} {other.name} conditions {self.condition} {other.condition}"

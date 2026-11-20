@@ -403,12 +403,7 @@ def _prune_existence_exclusive_roots(
         successors = list(concept_graph.successors(root))
         if not successors or not all(s in d1_subgraph for s in successors):
             continue
-        lineage = [
-            s
-            for s in successors
-            if edge_kind(concept_edges, root, s) == EdgeKind.LINEAGE
-        ]
-        if _reaches_existence_set(concept_graph, concept_edges, d1_subgraph, lineage):
+        if _feeds_only_sets(concept_graph, concept_edges, d1_subgraph, successors):
             exclusive_addrs.add(concept_attrs[root].address)
     if not exclusive_addrs:
         return
@@ -427,24 +422,32 @@ def _prune_existence_exclusive_roots(
         )
 
 
-def _reaches_existence_set(
+def _feeds_only_sets(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     d1_subgraph: set[str],
     seeds: list[str],
 ) -> bool:
-    """Some seed, or a condition node downstream of one, defines a semijoin set."""
+    """Every condition node downstream of the seeds ends in a semijoin set:
+    none escapes the condition subgraph but through the set (`city` keying
+    both a set's `count(tree_id) by city > 1` and the outer gate's `count by
+    city > 2` must stay on the shared root, the gate's join key)."""
     stack = list(seeds)
     seen: set[str] = set()
+    reached = False
     while stack:
         cur = stack.pop()
         if cur in seen:
             continue
         seen.add(cur)
-        if feeds_existence(concept_graph, concept_edges, cur):
-            return True
-        stack.extend(n for n in concept_graph.successors(cur) if n in d1_subgraph)
-    return False
+        for succ in concept_graph.successors(cur):
+            if edge_kind(concept_edges, cur, succ) == EdgeKind.EXISTENCE:
+                reached = True
+            elif succ not in d1_subgraph:
+                return False
+            else:
+                stack.append(succ)
+    return reached
 
 
 def _finest_determining_key(

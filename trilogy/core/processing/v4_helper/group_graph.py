@@ -2386,7 +2386,11 @@ def _concept_sets(
         # every FINAL feeder pairs the region's rows on
         pointwise = fact.derivation not in GROUPING_DERIVATIONS
         for pgid in group_graph.predecessors(gid):
-            if pgid == FINAL_NODE_ID:
+            # a set feeds no rows: nothing is preserved through it
+            if (
+                pgid == FINAL_NODE_ID
+                or edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
+            ):
                 continue
             hidden_spans = (
                 region_join_keys & set(attrs[pgid].carried_spans)
