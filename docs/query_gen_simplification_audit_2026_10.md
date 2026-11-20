@@ -238,10 +238,11 @@ Rowset assembly:
 
 ## Design seams (not built unless marked landed)
 
-Ranked by lines a seam would free, across the axes. Status as of seam 5:
-3, 4, 6 and 7 landed (6 smaller than estimated, its planner half folded into
-2), 5 landed its ownership half, 8 closed, 9 half done; 1 and 2 remain, and
-hold nearly all of the estimated lines.
+Ranked by lines a seam would free, across the axes. Status as of seam 2's
+first half: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL
+proof and lost its per-side origin premise, 8 closed, 9 half done; 1 and the
+rest of 2 remain, and hold nearly all of the estimated lines.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -250,14 +251,52 @@ hold nearly all of the estimated lines.
    leaf would collapse the owner election, the extent-free suppression and
    the held-span join contract into "a leaf joins on its key, preserving the
    leaf". Blocked by the padded-plan fallback every region row pin protects.
-2. **Per-side origin nodes in the planner** (about 520 lines of
-   `value_set_join_upgrade.py` plus `scoped_partial_derived` and the
-   `JoinScope` registries). The narrowing rules act on evidence the planner
-   had at `get_join_type` time in 24 of 34 corpus firings; the 10 it could
-   not decide are same-address origin arbitrations that need a per-side
-   node. This is the seam `docs/domain_graph_design.md` step 5 names.
-   Seam 6's leftover, proving an EQUAL key's sides complete while planning
-   instead of after, is the same move (see 6).
+2. **Plan-time narrowing (first half landed; no per-side origin node
+   needed).** The estimate was about 520 lines of `value_set_join_upgrade.py`
+   plus `scoped_partial_derived` and the `JoinScope` registries, gated on a
+   per-side origin node for the same-address arbitrations the planner could
+   not decide. A firing census of `UpgradeOuterFromKeySetEquivalence` over
+   the whole suite (912 firings in the 14,400 non-law tests, 1,478 in the
+   33,800 law tests) re-measured that premise.
+   - **The origin arbitration was dead.** `_side_origins` (a `getattr` walk of
+     a side's CTE chain for `origin_address` stamps) took part in one firing
+     across the whole suite (`test_double_partial_key_join_order`), and that
+     firing's SQL is identical without it: another pair decides it. It is
+     deleted. A same-address pair now narrows only on a genuine one-sided `~`
+     stamp (`_genuine_partial_stamp`). So a per-side origin node is not what
+     blocks seam 2.
+   - **The planner proves EQUAL completeness (seam 6's leftover).** An EQUAL
+     key (`merge a into b`, `merge equal`, `equal join`) between two sides
+     that each carry its whole domain (`SideFacts.complete_equal`:
+     `complete_key_domain`, through BASIC lineage) is typed like any other
+     key, not FULL by the `full_join_keys` rule. The optimizer's EQUAL
+     upgrades fell from 332 to 216 firings and its total from 912 to 813.
+     The plans narrow where the optimizer never could after the FULL had
+     shaped them. Over the suite SQL capture, about 990 FULL JOINs became
+     LEFT, RIGHT or INNER and about 100 key coalesces went, across 827 moved
+     statements, every one under a row oracle that stayed green (mostly
+     `test_relation_rollup_laws`, `tree_reporting` dashboards and fixtures).
+     `test_equal_join_plan_time_completeness.py` pins it (red on `main`).
+
+   Not landed:
+   - **An unnest of complete lists is not complete at plan time.** The
+     optimizer reads the elements as complete (`_unnested_parent`), and 153
+     of the remaining EQUAL firings rest on it. Typed INNER while planning,
+     an owner-NULL row appears downstream
+     (`test_merged_unnest_lookup_no_padding.py`, `tree_reporting` native
+     range build), so it stays in the optimizer.
+   - **`scoped_partial_derived` is not a graph query.** Recomputed from
+     `domain_graph.subset_sources()`, the collapsed endpoints and the build
+     concepts' derivations, it disagreed with the Factory's set in 80 suite
+     tests in both directions (rowset outputs, unnest endpoints, namespaced
+     merges). It carries author-time facts the build environment no longer
+     holds, so it stays until the Factory hands those over.
+   - **The rest of the optimizer rule.** What it still proves needs the
+     rendered plan: twin groups over one filter chain (`keyset_equiv`), a
+     rowset at its own boundary, a recursion seed, a parent every join keeps
+     (`joined_complete`), and conditions the optimizer itself pushed. These
+     remain seam 2's open half.
+
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle

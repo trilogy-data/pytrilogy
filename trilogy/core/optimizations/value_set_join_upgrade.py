@@ -639,41 +639,6 @@ def _unnested_parent(side_cte: CTE) -> list[CTE]:
     return [side_cte.parent_ctes[0]]
 
 
-def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
-    """The origin domain nodes this side carries for a canonical key group:
-    the authored addresses of substituted column bindings
-    (``BuildColumnAssignment.origin_address``) whose bound concept renders in
-    ``group``, collected across the side's source tree and parent chain.
-    Per-column stamps discriminate where physical datasource identity cannot
-    (one table binding several relation endpoints, shared-base self-joins
-    reading distinct columns)."""
-    out: set[str] = set()
-
-    def walk_source(source) -> None:
-        for ds in getattr(source, "datasources", []) or []:
-            if isinstance(ds, BuildDatasource):
-                for column in ds.columns:
-                    if column.origin_address is not None and (
-                        column.concept.all_spellings & group
-                    ):
-                        out.add(column.origin_address)
-            else:
-                walk_source(ds)
-
-    seen: set[str] = set()
-
-    def walk_cte(cte) -> None:
-        if not isinstance(cte, CTE) or cte.name in seen:
-            return
-        seen.add(cte.name)
-        walk_source(cte.source)
-        for parent in cte.parent_ctes:
-            walk_cte(parent)
-
-    walk_cte(side_cte)
-    return out
-
-
 def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """The side marks the key partial: a subset domain declaration (a `~`
     binding, `merge a into ~b`, or a scoped subset join) propagated up the
@@ -794,29 +759,13 @@ def _pair_side_fully_matches(
             return False
         # Same-address pair: relation-induced partial stamps land symmetrically
         # when several relations share one canonical group, so they cannot
-        # say which side is the subset here. A genuine coverage stamp (a `~`
-        # binding) present only on the sub side settles the direction;
-        # otherwise arbitrate by origin domain nodes: the subset side carries
-        # a declared-subset origin of this group that the superset side lacks.
+        # say which side is the subset here. Only a genuine coverage stamp (a
+        # `~` binding) present on the sub side alone settles the direction.
         if sub_concept.address == sup_concept.address and not (
             isinstance(sub_cte, CTE)
             and _genuine_partial_stamp(sub_concept, sub_cte, sup_cte, domain_graph)
         ):
-            subset_sources = domain_graph.subset_join_map()
-            if not subset_sources:
-                return False
-            pair_canon = domain_graph.canonical(sub_concept.address)
-            group = sub_concept.all_spellings | {pair_canon}
-            sub_origins = _side_origins(sub_cte, group)
-            sup_origins = _side_origins(sup_cte, group)
-            if not any(
-                s != sub_concept.address
-                and domain_graph.canonical(s) == pair_canon
-                and s in sub_origins
-                and s not in sup_origins
-                for s in subset_sources
-            ):
-                return False
+            return False
     # A ROWSET superset anchor at its own rename boundary is complete by
     # construction (the body filter defines the domain), so the declared
     # subset side fully matches it. An external filter on the rowset output

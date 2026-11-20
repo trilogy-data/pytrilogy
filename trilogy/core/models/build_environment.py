@@ -191,15 +191,12 @@ class BuildEnvironment:
     # merge mechanism. It survives as a distinct output only on the partial side,
     # so join resolution marks it partial there (a root/rowset partial key
     # collapses away and is handled by the column-partial / rowset machinery
-    # instead). Composite of graph facts and author derivations; dissolves once
-    # join typing consults per-side origin nodes directly.
+    # instead). Composite of graph facts and author-time derivations the build
+    # no longer holds, so the Factory computes it.
     scoped_partial_derived: set[str] = field(default_factory=set)
     # The full concept domain graph for this build: declared edges (global
     # merges + this build's scoped-join overlay) plus structural, binding and
     # FD edges minted from the author model (docs/domain_graph_design.md).
-    # `scoped_partial_derived` above is derivable from it plus author
-    # derivations; it remains a compat shim until join typing consults
-    # per-side origin nodes.
     domain_graph: DomainGraph = field(default_factory=DomainGraph)
     # Transitive closure of AUTHOR-referenced concept addresses for the select
     # this environment was materialized for (outputs, WHERE/HAVING/ORDER BY,
