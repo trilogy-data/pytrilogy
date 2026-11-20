@@ -516,6 +516,37 @@ election, not the padded fallback.
      optimizer's `_upgrade_to_inner` refuse a nullable key off those two,
      and `_pair_fully_matches` refuses a nullable subset side.
 
+   **The systematic case.** The suite never saw this because every NULL
+   group in its data sits on both sides or on neither.
+   `tests/join_matrix/test_null_group_matrix.py` sweeps two facts reading one
+   key with no declared relation: each side's binding (`?k`, `~?k`), where the
+   NULL-key rows are (left, right, both, neither), the key kind (`k`, `k + 1`,
+   a dimension attribute `year`, `year + 1`) and whether a dimension holding
+   the whole domain is in the model, against a null-safe FULL oracle. 33 of
+   its 96 cells lost rows on `main`, and the twin and subset rules above fixed
+   24. The other 9 were the planner's base typing, which predates seam 2:
+   - `_nullable_join` typed two sides that each NULL the key as a value
+     INNER null-safe (a derived `k + 1` the planner joins row-wise). Two
+     sides joined on no key solid on both, that read other tables through
+     the same filters (`_null_groups_unanchored`, over `SideFacts.leaves`
+     and `filters`), now keep both, FULL, unless the key is authored. A solid
+     key says which row is which (a `?genus` beside the `species` that
+     determines it pairs by species). Sides whose filters differ keep their
+     typing: one may be a WHERE's gate and the other its gated rows, which
+     the INNER filters by intent (`test_oracle_expressions_laws` seeds 13 and
+     2948 leak a rejected row as FULL). Padding NULLs, absence rather than
+     values, stay as they were (tpc-h adhoc07's customers with no order).
+   - A `~?k` fact's undated rows reach the year aggregate as guest padding
+     (a value-NULL key with no dimension row). `_nullable_join` read that
+     aggregate as the dimension's lookup (#972) and as a sole host's feeder,
+     and both dropped the guests. A guest NULL is a fact row: it now vetoes
+     the lookup reading, and a feeder's guests keep the join FULL when the
+     host reads other rows (`_null_groups_unanchored`).
+   `test_two_source_matrix.py`'s nullable axis now also puts the NULL row on
+   one side only (`harness.matrix_rows(null_sides=...)`), pinning that a
+   declared relation treats a one-sided NULL group like any side-exclusive
+   key.
+
    Census over the non-law suite: 373 to 299. About 57 of those are
    refusals, not moves to the planner: the `~` stamp class fell 72 to 20 and
    twin equivalence 56 to 42 because the joins they narrowed now stay
@@ -540,6 +571,16 @@ election, not the padded fallback.
    fails the same 25 tests as `main` (credential-bound and
    `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
    522/522.
+
+   Gates for the base-typing half, against the twin and subset rules alone:
+   suite SQL capture moved the join shapes of 148 more tests (INNER -218,
+   FULL +165, RIGHT +37, LEFT +17), each under a row oracle that stayed
+   green: `test_partial_lookup_fallback_oracle_laws` (24),
+   `test_rollup_resolution_laws` (24), `test_rank_beside_partial_merge` (18),
+   `test_shared_attribute_aggregate_matrix` (12), the rest ten or fewer
+   each. Corpus: unchanged (q84 alone, as above). Fuzzer 522/522; the suite
+   fails the same 25 tests as `main`. The census reads 325 over the non-law
+   suite, the new matrix cells included.
 
    Found, not chased (predates seam 2, same on `ae34eb2`): `where year = 2024
    select cust_id, count(order_id), count(visit_id)` over orders and visits

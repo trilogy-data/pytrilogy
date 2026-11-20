@@ -333,6 +333,8 @@ class SideFacts:
     complete_equal: frozenset[str] = frozenset()
     # the filter atoms every row of the side passed
     filters: tuple[BoolExpr, ...] = ()
+    # the tables the side reads
+    leaves: frozenset[str] = frozenset()
     # extent-free span or `~` key -> the leaf tables whose own `~` column
     # binds it here
     span_bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -793,6 +795,13 @@ def _nullable_join(
         # (extension-family cross products). Preserve the host and let plain
         # equality drop the feeder's padding.
         if host is not None:
+            # a feeder's guest NULL is a fact row, not extension padding: it
+            # pairs only with the host's NULL for the same rows
+            feeder = right_facts if host == left else left_facts
+            if keys & feeder.guest_padded and _null_groups_unanchored(
+                keys, left_facts, right_facts
+            ):
+                return JoinType.FULL
             return _preserving(host == left)
         # A value NULL on one side (a guest order's address, grouped) names a
         # real row; the other side's padding names nothing. Keep the row. An
@@ -822,6 +831,14 @@ def _nullable_join(
             keys & right_facts.value_nullables
         ) and not facts.authored(keys):
             return _preserving(left_value)
+        # Off a declared relation, whether each of two sides reading other
+        # rows holds a value NULL group is data: keep both.
+        if (
+            left_value
+            and not facts.authored(keys)
+            and _null_groups_unanchored(keys, left_facts, right_facts)
+        ):
+            return JoinType.FULL
         return JoinType.INNER
     if left_is_nullable != right_is_nullable:
         # A nullable key weakens that side's EQUAL-domain claim to "some
@@ -841,7 +858,7 @@ def _nullable_join(
         fact = right_facts if left_is_nullable else left_facts
         if (
             _dimension_of(lookup, fact)
-            and not keys & lookup.value_nullables
+            and not keys & (lookup.value_nullables | lookup.guest_padded)
             and not facts.authored(keys)
         ):
             return _preserving(not left_is_nullable)
@@ -850,6 +867,21 @@ def _nullable_join(
     if unfiltered is not None:
         return _preserving(unfiltered)
     return JoinType.INNER
+
+
+def _null_groups_unanchored(keys: set[str], left: SideFacts, right: SideFacts) -> bool:
+    """Each side's NULL-key group is its own data: no key of the join is
+    solid on both sides (one would say which row is which), and the sides
+    read other tables through the same filters. Sides whose filters differ
+    may be a gate and its gated rows (a WHERE over an aggregate the join
+    applies), whose INNER drops rows by intent."""
+    if keys - left.nullables - right.nullables:
+        return False
+    return (
+        left.leaves != right.leaves
+        and all(any(a == b for b in right.filters) for a in left.filters)
+        and all(any(a == b for b in left.filters) for a in right.filters)
+    )
 
 
 def _rejected_nulls(passed: SideFacts, skipped: SideFacts) -> set[str]:
@@ -2830,6 +2862,7 @@ def _side_facts(
             if span not in extent_free_spans
         ),
         filters=tuple(applied_atoms(datasource)),
+        leaves=_leaves(datasource),
         span_bindings={
             canon_node(address): partial_binding_sources(datasource, address)
             for address in extent_free_spans
