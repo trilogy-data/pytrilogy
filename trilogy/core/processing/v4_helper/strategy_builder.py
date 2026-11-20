@@ -5610,7 +5610,8 @@ def _filter_arg_producer(
     spans: frozenset[str],
 ) -> str | None:
     """The most derived of `candidates` outputting `addr`; beside a region's
-    rows, one carrying every span first. A one-row value comes from a group
+    rows, one carrying every span first, and an aggregate group only for what
+    it computes. A one-row value comes from a group
     computing it at its own grain, never off rows that merely carry it (a
     `count(tree_id) by *` beside every tree joins on nothing)."""
     return max(
@@ -5618,6 +5619,11 @@ def _filter_arg_producer(
         key=lambda gid: (
             spans <= set(attrs[gid].output_concepts),
             attrs[gid].grain_components == {ALL_ROWS_ADDRESS},
+            # an aggregate group builds what it computes, never a coarser
+            # value its stated set carries beside (`count_distinct(tag) by
+            # species` on the `city, species` group)
+            attrs[gid].derivation != Derivation.AGGREGATE
+            or addr in attrs[gid].primary_members,
             sum(1 for a in nx.ancestors(group_graph, gid) if a in candidates),
         ),
         default=None,

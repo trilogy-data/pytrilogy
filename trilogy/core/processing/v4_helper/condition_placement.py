@@ -59,7 +59,11 @@ from .edges import (
     lineage_subgraph,
     subgraph_of_kinds,
 )
-from .functional_dependency import build_fd_determines_all, strict_fd_determines_all
+from .functional_dependency import (
+    build_fd_determines_all,
+    strict_fd_closure,
+    strict_fd_determines_all,
+)
 from .models import (
     ConceptAttrs,
     ConceptSets,
@@ -631,12 +635,23 @@ def _hosts_reading_unfiltered_rows(
 
 def _final_pairs_set_gates(atom: BoolExpr, scope: "_PlacementScope") -> bool:
     """Whether FINAL can re-apply a membership atom: each aggregate it reads
-    beside the set pairs on keys the outputs hold (`count(id) by species`
-    beside `species`). A gate keyed on a column no output carries would join
-    FINAL's rows on nothing."""
+    beside the set pairs on keys a select-phase contributor holds, or looks
+    up off a held key (`max(height) by tree_form` beside rows holding
+    `species`). A key only the rows' identity determines (`city` of `tree_id`)
+    is no column the contributor planned, and a gate that holds on an absent
+    group is carried on a side holding its keys outright: else FINAL would
+    pair the gate on nothing."""
     held = {c.address for c in scope.mandatory_list}
+    for gid in scope.group_graph.predecessors(FINAL_NODE_ID):
+        if gid not in scope.nested_ids and (b := scope.buckets.get(gid)) is not None:
+            held |= set(b.primary_members) | scope.carried[gid]
+    environment = scope.environment
+    identities = {k for k in held if strict_fd_determines_all(environment, {k}, held)}
+    looked_up = strict_fd_closure(environment, held - identities) | held
+    absent = args_holding_on_absent(atom)
     return all(
-        set(pairing_keys(c.grain.components)) <= held
+        set(pairing_keys(c.grain.components))
+        <= (held if c.address in absent else looked_up)
         for c in atom.row_arguments
         if c.is_aggregate
     )

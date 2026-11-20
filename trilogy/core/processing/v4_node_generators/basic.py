@@ -131,6 +131,35 @@ def _reads_partial_coarser(
     )
 
 
+def _keys_beside_resums(
+    outputs: list[BuildConcept],
+    widened: list[BuildConcept],
+    parents: list[StrategyNode],
+) -> list[BuildConcept]:
+    """`widened` without the grain keys a value re-summing a parent's partial
+    is not grouped by: a derived key's own grain (`species` of `fc`) beside
+    `sum(h)` at `fc` would split each re-sum into one row per species."""
+    resolved = [p.resolve() for p in parents]
+    readers = [
+        o
+        for r in resolved
+        for o in outputs
+        if o.grain is not None
+        and _reads_partial_coarser([o], r.rollup_concepts, r.grain)
+    ]
+    if not readers:
+        return widened
+    keys = {
+        k
+        for o in outputs
+        if o.lineage is not None and o.grain is not None
+        for k in o.grain.components
+        if k != o.address
+    }
+    kept = set().union(*(r.grain.components for r in readers if r.grain))
+    return [c for c in widened if c.address not in keys - kept]
+
+
 def grain_claim_unheld(
     outputs: list[BuildConcept],
     parent_grain: set[str],
@@ -174,7 +203,9 @@ def gen_basic(
             conditions=conditions.conditional if conditions else None,
             preexisting_conditions=pre,
         )
-    full_outputs = outputs_with_parent_grain_keys(outputs, parents)
+    full_outputs = _keys_beside_resums(
+        outputs, outputs_with_parent_grain_keys(outputs, parents), parents
+    )
     inputs = parent_outputs_needed(full_outputs, parents, conditions)
     if len(parents) == 1:
         return SelectNode(

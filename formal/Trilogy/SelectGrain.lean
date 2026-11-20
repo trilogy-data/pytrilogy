@@ -1177,6 +1177,54 @@ theorem parenthesized_conjunction_is_its_atoms (a b : Option Bool) :
     | none => rfl
     | some y => cases y <;> rfl
 
+/-! ## A gate beside a membership filters the rows its keys pair on (0.3.523)
+
+The `compositions` sweep past 30,000. Each law below is one the planner broke
+on a shape of it. -/
+
+/-- `where max(h) by species < 1 or species in (species ? 3 <= h <= 7)`
+beside `select city, form, count(id) by city`: the kept rows are the WHERE's,
+and the `(city, form)` tuples are theirs. Applied only to the count's input,
+the tuples were every row's, so the form-less species leaked
+(`gate_off_outputs_keeps_key_rows`, seed 17410). Rows are `(city, species,
+form)`, form 9 for none. -/
+theorem gate_off_outputs_keeps_key_rows :
+    let rows : List (Int × Int × Int) :=
+      [(0, 0, 0), (0, 0, 0), (0, 1, 0), (0, 2, 9), (1, 0, 0), (1, 3, 1)]
+    let inSet : Int → Bool := fun s => s == 0 || s == 1
+    (dedup ((rows.filter fun r => inSet r.2.1).map fun r => (r.1, r.2.2))).length = 2 ∧
+      (dedup (rows.map fun r => (r.1, r.2.2))).length = 4 := by
+  decide
+
+/-- A value re-aggregated off a nullable stored partial is NULL where every
+partial is (`min(h) - min(h) by city, form` of the form-less group), so its
+`=` drops the group FINAL pairs it on (`resum_of_nullable_partial_is_nullable`,
+seed 12435): the summary's `lo` is `?`, and the re-sum inherits it. -/
+theorem resum_of_nullable_partial_is_nullable :
+    let partials : List (Option Int) := [none]
+    let lo := partials.foldl (fun a b => match a, b with
+      | some x, some y => some (min x y) | some x, none => some x
+      | none, y => y) none
+    lo = none ∧ sqlEq lo lo = false := by
+  decide
+
+/-- **An aggregate over a value constant in its group is that value**
+(`aggregate_of_group_constant`): `sum(max(h) by city)` at the city grain reads
+one `max` per city, so it is the `max`, never a sum nested around a re-max
+(seed 35546). -/
+theorem aggregate_of_group_constant (v : Int) : [v].foldl (· + ·) 0 = v := by
+  simp
+
+/-- A value re-summing partials at `fc` grouped also by `fc`'s own grain
+(`species`) is one row per species: `sum(h) + count(id)` by `fc` came out as
+two `b` rows (`resum_split_by_key_grain`, seed 33686). -/
+theorem resum_split_by_key_grain :
+    let fc : Int → Int := fun s => if s ≤ 1 then 0 else 1
+    let parts : List (Int × Int) := [(0, 10), (1, 5), (2, 0), (3, 2)]
+    (dedup (parts.map fun p => fc p.1)).length = 2 ∧
+      (dedup (parts.map fun p => (fc p.1, p.1))).length = 4 := by
+  decide
+
 end Trilogy.SelectGrain
 
 /-! ## A widening ends with the padding it kept
