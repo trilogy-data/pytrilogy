@@ -121,3 +121,27 @@ assertion) or has rows that depend on the shape, which is a bug.
 ```bash
 WALK_FLIP=shape,name PYTHONPATH=local_scripts/sql_ab python -m pytest -p walk_flip_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
 ```
+
+## Narrowing census
+
+`upgrade_census_plugin.py` records every firing of the optimizer's
+`UpgradeOuterFromKeySetEquivalence` (seam 2 of
+`docs/query_gen_simplification_audit_2026_10.md`): the method (`inner`,
+`narrow`, `narrow_veto` under an authored FULL key), the join types before and
+after, and the proof helpers that held while it was decided. Grouping firings
+by proof set names the class a plan-time proof would have to take over.
+
+```bash
+UPGRADE_CENSUS=/tmp/up.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p upgrade_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```
+
+## Region census
+
+`domain_kind_plugin.py` records, per test, each region domain the planner
+decides (`region_domains.DomainKind`, with the note of a PADDED one) and each
+extent election, marking a span `domain` when a region domain owns it and
+`ranked` when the election's ranking picked its owner (seam 1).
+
+```bash
+DOMAIN_CENSUS=/tmp/kinds.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p domain_kind_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```

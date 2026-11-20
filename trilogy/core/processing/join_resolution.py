@@ -9,7 +9,7 @@ from operator import attrgetter
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_MARKER_PREFIX, logger
-from trilogy.core.domain_graph import DomainGraph
+from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -326,8 +326,6 @@ class SideFacts:
     arm: bool = False
     # spans the side holds a region's rows on
     held_spans: frozenset[str] = frozenset()
-    # extent-free spans the side carries every value of
-    complete_spans: frozenset[str] = frozenset()
     # EQUAL-declared keys the side carries every value of
     complete_equal: frozenset[str] = frozenset()
     # the filter atoms every row of the side passed
@@ -383,6 +381,9 @@ class JoinFacts:
     seed: str | None = None
     # the filter atoms the merge applies over its joined rows
     applied: tuple[BoolExpr, ...] = ()
+    # (sub, sup, key): `sub` binds `key` as a subset of what `sup` carries
+    # every value of, so every `sub` row with a key has a `sup` partner
+    covered: frozenset[tuple[str, str, str]] = frozenset()
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -692,21 +693,14 @@ def _extent_free_join(
     left_binds = bool(span_keys & left_facts.partials)
     right_binds = bool(span_keys & right_facts.partials)
     if left_binds != right_binds:
-        binder, other = (
-            (left_facts, right_facts) if left_binds else (right_facts, left_facts)
-        )
+        binder = left_facts if left_binds else right_facts
         # A binder keyed by the span itself (a `~` notes table beside the
         # customers) is a lookup, not a fact referencing it: it has no rows of
         # its own to anchor, and the members it lacks keep the other side's.
         if binder.grain and binder.grain <= span_keys:
             return None, None
-        # The other side carrying the span's whole domain and the binder no
-        # NULL on it: every binder row has its partner, so anchoring preserves
-        # nothing. Typed INNER here rather than left to the narrowing pass,
-        # because the anchoring's stamp (the domain's columns nullable on this
-        # stream) would otherwise reach every merge above as a value NULL.
-        if keys <= other.complete_spans and not keys & binder.nullables:
-            return JoinType.INNER, None
+        # A binder the other side covers (`JoinFacts.covered`) is INNER in
+        # the walk, before the anchoring's stamp reaches the merges above.
         return _preserving(left_binds), None
     # Both sides bind it. Two projections of ONE binding cover the same subset,
     # so the span carries no row intent between them and the remaining keys
@@ -733,9 +727,9 @@ def _partial_domain_join(
 ) -> JoinType:
     """A partial side declares a SUBSET domain. Subset speaks to VALUES and
     NULL is not a value, so partiality and nullability never interact here:
-    render preserving, and the narrowing pass restores direction exactly when
-    the superset side provably carries the key's full domain and the subset
-    side's NULLs have a null-safe partner."""
+    render preserving. The walk drops the subset side's preservation when the
+    other side carries the key's whole domain (`_narrow_covered`); the
+    optimizer's narrowing pass proves what only the rendered plan shows."""
     left_facts, right_facts = facts.side(left), facts.side(right)
     # Preserving the feeder of a sole host (``_sole_host``) manufactures padded
     # join keys the FINAL merge then null-pairs across extension families. A
@@ -1153,6 +1147,78 @@ def _keyless_order(facts: JoinFacts, ds: str) -> tuple[bool, tuple[int, str]]:
     return (not facts.side(ds).columns - others, facts.rank(ds))
 
 
+def _covered_pair(
+    left: str, right: str, keys: set[str], facts: JoinFacts
+) -> bool | None:
+    """Whether the left side is a subset side every row of which has a partner
+    on the other (else the right; None when neither is): each `~` key the pair
+    joins on is covered (`JoinFacts.covered`), and any other key is one the
+    covering side's grain, made of covered keys, determines. A FULL-declared
+    key (`full_join_keys`) keeps both sides' rows whatever they bind."""
+    if keys & facts.full_join_keys:
+        return None
+    for sub_is_left in (True, False):
+        sub, sup = (left, right) if sub_is_left else (right, left)
+        partial = keys & facts.side(sub).partials
+        if not partial or not all((sub, sup, k) in facts.covered for k in partial):
+            continue
+        sup_facts = facts.side(sup)
+        if keys == partial or (
+            bool(sup_facts.grain)
+            and sup_facts.grain <= partial
+            and keys <= sup_facts.determined | sup_facts.grain
+        ):
+            return sub_is_left
+    return None
+
+
+def _without_preserving(join_type: JoinType, sub_is_left: bool) -> JoinType:
+    """`join_type` keeping none of the subset side's unmatched rows."""
+    keeps_sub = PADS_RIGHT_JOIN_TYPES if sub_is_left else PADS_LEFT_JOIN_TYPES
+    if join_type not in keeps_sub:
+        return join_type
+    if join_type == JoinType.FULL:
+        return _preserving(not sub_is_left)
+    return JoinType.INNER
+
+
+def _intact(side: str, walked: list[str], joins: list[JoinOrderOutput]) -> bool:
+    """Every row of `side` is still in the stream walked so far: no join since
+    it was walked dropped one."""
+    present = bool(walked) and walked[0] == side
+    for join in joins:
+        if join.right == side:
+            if join.type not in PADS_LEFT_JOIN_TYPES:
+                return False
+            present = True
+        elif present and join.type not in PADS_RIGHT_JOIN_TYPES:
+            return False
+    return present
+
+
+def _narrow_covered(
+    join: JoinOrderOutput,
+    walked: list[str],
+    joins: list[JoinOrderOutput],
+    facts: JoinFacts,
+) -> None:
+    """The planner's half of the subset proof: a join whose whole ON pairs a
+    subset side with one carrying its key's whole domain keeps none of the
+    subset side's unmatched rows, since it has none. The covering side's rows
+    must all still be in the stream; a subset side padded in earlier is kept
+    by `ensure_content_preservation`."""
+    if len(join.keys) != 1:
+        return
+    ((left, keys),) = join.keys.items()
+    sub_is_left = _covered_pair(left, join.right, keys, facts)
+    if sub_is_left is None or not (sub_is_left or _intact(left, walked, joins)):
+        return
+    narrowed = _without_preserving(join.type, sub_is_left)
+    if narrowed != join.type and plan_trace.active():
+        _trace_join_type(left, join.right, keys, facts, walked, narrowed, "covered")
+    join.type = narrowed
+
+
 def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutput:
     """`right` joined onto every side already walked that the plan pairs it
     with, on what the plan pairs them on. Of two lefts on the same keys, the
@@ -1270,7 +1336,10 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
             key=facts.rank,
         )
         if touching:
-            output.append(_join_onto(right, walked, facts))
+            join = _join_onto(right, walked, facts)
+            if facts.covered:
+                _narrow_covered(join, walked, output, facts)
+            output.append(join)
         elif eligible_left:
             # a second island: its seed joins on nothing and the keyless-join
             # guard judges it
@@ -1512,14 +1581,18 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
     return out
 
 
-def complete_key_domain(ds: DataSource, address: str) -> bool:
+def complete_key_domain(
+    ds: DataSource, address: str, rowset_boundaries: bool = False
+) -> bool:
     """Whether this source carries every value of ``address``: an unfiltered
     scan binding it complete, or an unfiltered, unlimited read keeping every
     row of one (a group over it, a join preserving it).
 
     The plan-time half of the optimizer's subset proof
     (``_pair_side_fully_matches``): a `~` binding joined to this side has a
-    partner for every row."""
+    partner for every row. With `rowset_boundaries`, a rowset's boundary
+    carries every value of its own handles (`_rowset_boundary`); not of a
+    domain an EQUAL declaration merges a handle into."""
     if any(c.address == address for c in ds.partial_concepts):
         return False
     if isinstance(ds, BuildDatasource):
@@ -1530,10 +1603,27 @@ def complete_key_domain(ds: DataSource, address: str) -> bool:
         )
     if ds.condition is not None or ds.limit is not None:
         return False
+    if rowset_boundaries and _rowset_boundary(ds, address):
+        return True
     preserved = preserved_sources(ds.datasources, ds.joins)
     return any(
-        sub.identifier in preserved and complete_key_domain(sub, address)
+        sub.identifier in preserved
+        and complete_key_domain(sub, address, rowset_boundaries)
         for sub in ds.datasources
+    )
+
+
+def _rowset_boundary(ds: QueryDatasource, address: str) -> bool:
+    """`ds` renames a rowset's body into the handle `address`: its rows are
+    the body's, 1:1, so it carries every value of the handle by construction
+    (the body's WHERE defines the domain rather than filtering one)."""
+    handle = next((c for c in ds.output_concepts if c.address == address), None)
+    return (
+        handle is not None
+        and handle.derivation == Derivation.ROWSET
+        and not any(
+            c.address == address for sub in ds.datasources for c in sub.output_concepts
+        )
     )
 
 
@@ -2700,11 +2790,6 @@ def _side_facts(
             for span in held_region_spans(datasource)
             if span not in extent_free_spans
         ),
-        complete_spans=frozenset(
-            canon_node(address)
-            for address in extent_free_spans
-            if complete_key_domain(datasource, address)
-        ),
         filters=tuple(applied_atoms(datasource)),
         span_bindings={
             canon_node(address): partial_binding_sources(datasource, address)
@@ -2728,15 +2813,46 @@ def _complete_equal(
     )
 
 
-def _carries_every_value(datasource: DataSource, concept: BuildConcept) -> bool:
+def _carries_every_value(
+    datasource: DataSource, concept: BuildConcept, rowset_boundaries: bool = False
+) -> bool:
     """`complete_key_domain`, through BASIC lineage: a derived key's domain is
     the image of its inputs'."""
-    if complete_key_domain(datasource, concept.address):
+    if complete_key_domain(datasource, concept.address, rowset_boundaries):
         return True
     if concept.derivation != Derivation.BASIC:
         return False
     args = concept.concept_arguments
-    return bool(args) and all(_carries_every_value(datasource, arg) for arg in args)
+    return bool(args) and all(
+        _carries_every_value(datasource, arg, rowset_boundaries) for arg in args
+    )
+
+
+def _covered_keys(
+    sides: Mapping[str, SideFacts],
+    ds_node_map: Mapping[str, DataSource],
+    ds_concept_map: Mapping[tuple[str, str], BuildConcept],
+    environment: BuildEnvironment,
+) -> frozenset[tuple[str, str, str]]:
+    """`JoinFacts.covered`: a side binding a key `~`, never NULL, beside one
+    binding it completely and carrying every value of it, whose spelling the
+    domain graph puts the first's within. The plan-time half of the
+    optimizer's subset proof (`_pair_side_fully_matches`)."""
+    graph = environment.domain_graph
+    out: set[tuple[str, str, str]] = set()
+    for sub, sub_facts in sides.items():
+        for key in sub_facts.partials - sub_facts.nullables:
+            sub_concept = ds_concept_map[(sub, key)]
+            for sup, sup_facts in sides.items():
+                if sup == sub or key not in sup_facts.columns - sup_facts.partials:
+                    continue
+                sup_concept = ds_concept_map[(sup, key)]
+                if graph.relation(sub_concept.address, sup_concept.address) in (
+                    ResolvedRelation.SUBSET,
+                    ResolvedRelation.EQUAL,
+                ) and _carries_every_value(ds_node_map[sup], sup_concept, True):
+                    out.add((sub, sup, key))
+    return frozenset(out)
 
 
 def _computes_one_row(concept: BuildConcept) -> bool:
@@ -3018,6 +3134,7 @@ def get_node_joins(
             for ds_node, side in sides.items()
         }
     declared = frozenset(canon_node(a) for a in _declared_subset_keys(environment))
+    covered = _covered_keys(sides, ds_node_map, ds_concept_map, environment)
     span_families = {
         canon_node(key): canon_node(axis)
         for axis in environment.scoped_join_key_groups
@@ -3050,6 +3167,7 @@ def get_node_joins(
         pair_keys=pair_nodes,
         seed=f"ds~{seed}" if seed else None,
         applied=tuple(applied),
+        covered=covered,
     )
     facts = replace(
         facts,
