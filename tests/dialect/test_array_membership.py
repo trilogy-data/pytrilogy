@@ -190,3 +190,59 @@ def test_membership_in_a_list_property_is_row_scoped(where, expected):
             f"select {select} where {where} order by tree_id asc;"
         )[-1].fetchall()
         assert [row[0] for row in rows] == expected, select
+
+
+DERIVED_LIST = """
+key id int;
+property id.tags string;
+property id.grp string;
+datasource t (id, tags, grp) grain (id) query '''
+select 1 as id, 'a,b' as tags, 'x' as grp
+union all select 2, 'c', 'x'
+union all select 3, 'b,d', 'y'
+''';
+auto tag_list <- split(tags, ',');
+auto grp_ids <- array_agg(id) by grp;
+auto b_ids <- id ? 'b' in tag_list;
+"""
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select id where 'b' in split(tags, ',')", [(1,), (3,)]),
+        ("select id where 'b' in tag_list", [(1,), (3,)]),
+        ("select id where 'b' not in tag_list", [(2,)]),
+        ("select id where 3 in grp_ids", [(3,)]),
+        ("select id where id in grp_ids", [(1,), (2,), (3,)]),
+        ("select id where id in b_ids", [(1,), (3,)]),
+        ("select grp, count(id) as c where 'b' in tag_list", [("x", 1), ("y", 1)]),
+    ],
+)
+def test_membership_in_a_derived_list_is_row_scoped(query, expected):
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(DERIVED_LIST)
+    rows = executor.execute_text(f"{query} order by 1 asc;")[-1].fetchall()
+    assert [tuple(row) for row in rows] == expected
+
+
+def _built_where(model: str, query: str):
+    from trilogy.core.models.build import Factory
+
+    env = Environment()
+    env.parse(model)
+    _, statements = env.parse(query)
+    return Factory(environment=env).build(statements[-1].where_clause.conditional)
+
+
+def test_list_membership_builds_as_a_row_comparison():
+    from trilogy.core.models.build import BuildComparison, BuildSubselectComparison
+
+    built = _built_where(LIST_PROPERTY, "select tree_id where 4 in bloom_months;")
+    assert type(built) is BuildComparison
+    assert not any(built.existence_arguments)
+    assert {c.address for c in built.row_arguments} == {"local.bloom_months"}
+
+    built = _built_where(DERIVED_LIST, "select id where id in b_ids;")
+    assert isinstance(built, BuildSubselectComparison)
+    assert any(built.existence_arguments)
