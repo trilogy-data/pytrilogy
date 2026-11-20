@@ -13,12 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.522.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.523.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000 and the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
-expression) to 30,000; the PR of each round holds its sweep totals. Only
-`compositions` has `OPEN` seeds (42 queries, area 1).
+expression) to 60,000; the PR of each round holds its sweep totals. Only
+`compositions` has `OPEN` seeds (50 queries, area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -345,20 +345,30 @@ Open in the `expressions` family (each fails on main too):
 Open in the `compositions` family (`OPEN` in
 `tests/discovery/test_oracle_compositions_laws.py`, each failing on main):
 
-- Most are summary-model only and read a membership or a derived key
-  (`coalesce(tree_form, 'none') as form0`, `fc`) beside a value over the
-  rolled root. Start with 12435: `min(height) - min(height) by city,
-  tree_form` computed in the rolled group is not claimed nullable, so FINAL
-  pairs on it with `=` and the `(A, NULL)` group comes out twice.
-- A membership whose set reads a gate keyed off the outputs (`max(height) by
-  city` beside `select tall`) is not re-applied at FINAL
-  (`_final_pairs_set_gates`): re-applied, FINAL picked a producer whose built
-  node did not hold the gate (9559, 25935 on the first cut). The keys rows
-  under such an atom can still leak (9016, 15565).
-- Raises: `Planner emitted a keyless join` (15258, 26698: a `by` a derived
-  key beside a WHERE of gates at other grains, no membership), `Missing
-  source reference to local.height` (13009, 28945: a rank beside `max(height)`
-  under a summary), `Merge sources` (5754).
+- **Keys off a value over two aggregates** (44364, 50815, 15258, 26698 and
+  most `keyless join` raises): `max(height) by city * min(height) by fc`
+  is built by joining its two aggregates on nothing, and `elect_cover`
+  takes `(city, fc)` off that cross product because its parents passed the
+  WHERE. Without a WHERE FINAL computes the value over the row stream. A
+  cover rule refusing such a group's keys turned 15258's raise into wrong
+  rows: the value's group needs the rows' `(city, fc)` pairs as a parent.
+- A gate that holds on an absent group whose keys a contributor only
+  determines (`city` of `tree_id`, `tree_form` of `species`) is not
+  re-applied at FINAL (`_final_pairs_set_gates`), so its key rows leak
+  (9016, 24246). Re-applied, FINAL's absent branch asks a ROOT side to carry
+  the key (`_final_extra_sides`), but the join plan reads the side's stated
+  outputs and pairs on nothing (9559's shape).
+- Summary only: 34415, 37601, 38002, 47456, 15155, 23531 (a membership or a
+  `by *` gate beside a derived key or a nested aggregate).
+- Raises: `Graph contains a cycle` (41277), `Attempting to merge two ctes
+  with different conditions` (49126, 59820), `Merge sources` (5754, 32125),
+  DuckDB's `Ambiguous reference` (32239) and `Missing source reference`
+  (13009: a rank beside `max(height)` under `avg(height) by * is not null`).
+  13009, 5754 and 32239 plan when `_split_root_dimension_clusters` peels no
+  aggregate onto a single-key dimension, but that peel is how the summary
+  serves `max(height)` beside `city` (`test_rollup_resolution_laws.py`
+  `max_beside_avg`), so the guard was dropped: find what 13009's peeled
+  `species` bucket lacks instead.
 - Not generated yet: windows other than `rank` (`lag`, `row_number`, frames),
   a membership in a select target's `?`, a membership in a HAVING, `/` by a
   `by` aggregate that can be 0.

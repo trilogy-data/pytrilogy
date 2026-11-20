@@ -52,6 +52,7 @@ def scan_stamps(
         for c in outputs
         if (
             c in nullable_lcl
+            or _read_off_nullable_partial(datasource, c)
             or (
                 propagates_argument_nulls(c)
                 and any(arg in nullable_lcl for arg in c.concept_arguments)
@@ -60,6 +61,18 @@ def scan_stamps(
         and not non_null_proofs.intersection(c.all_spellings)
     ]
     return partials, nullables
+
+
+def _read_off_nullable_partial(
+    datasource: BuildDatasource, concept: BuildConcept
+) -> bool:
+    """An aggregate the scan reads off a finer stored partial is NULL where
+    that column is; a filtered one reads its partial under a CASE, so any."""
+    if concept.address in datasource.output_lcl:
+        return False
+    if (column := datasource.rollup_column_for(concept)) is not None:
+        return column.is_nullable
+    return datasource.filtered_column_for(concept) is not None
 
 
 class SelectNode(StrategyNode):

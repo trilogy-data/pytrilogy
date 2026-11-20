@@ -1,5 +1,6 @@
-"""Reduced shapes of the `compositions` oracle family (seeds 0-30,000), each
-failing on 0.3.521, with rows checked by hand against the six trees."""
+"""Reduced shapes of the `compositions` oracle family, each failing on the
+release before the one that fixed it, with rows checked by hand against the
+six trees."""
 
 import pytest
 
@@ -77,6 +78,62 @@ SHAPES = [
             " > 2;"
         ),
         [],
+    ),
+    # a gate keyed off the outputs beside a membership is re-applied on the
+    # rows FINAL pairs the keys by (17410): a4 (Ulmus, no form) is out
+    (
+        (
+            "select city, tree_form, count(tree_id) by city as v0 where (max(height)"
+            " by species < 1 or species in (species ? height between 3 and 7));"
+        ),
+        [("A", "broadleaf", 3), ("B", "broadleaf", 1)],
+    ),
+    # a value re-summed off a nullable stored partial is nullable (12435)
+    (
+        (
+            "select city, tree_form, max(max(height) by city, tree_form) as v0,"
+            " max(height) as v1, min(height) - min(height) by city, tree_form as v2;"
+        ),
+        [
+            ("A", "broadleaf", 5, 5, 0),
+            ("A", None, None, None, None),
+            ("B", "broadleaf", 7, 7, 0),
+            ("B", "linden", 2, 2, 0),
+        ],
+    ),
+    # a summary's rolled bucket is not the dimension peeled onto its key (28945)
+    (
+        (
+            "select city, species, tree_form, max(height) by species as v0, rank"
+            " city over species, tree_form order by sum(height) by city, species,"
+            " tree_form desc as v1;"
+        ),
+        [
+            ("A", "Acer", "broadleaf", 7, 2),
+            ("A", "Quercus", "broadleaf", 5, 1),
+            ("A", "Ulmus", None, None, 1),
+            ("B", "Acer", "broadleaf", 7, 1),
+            ("B", "Tilia", "linden", 2, 1),
+        ],
+    ),
+    # a value re-summing partials at a derived key is not split by the key's
+    # own grain (33686)
+    (
+        (
+            f"select {FC}, sum(height) + count(tree_id) as v0 where city in (city ?"
+            " sum(height) by species <= 5);"
+        ),
+        [("b", 19), ("o", 4)],
+    ),
+    # an aggregate of a value re-aggregated in its own group is that value
+    # (35546): b2 alone, max(height) by city is 2
+    (
+        (
+            "select city, rank city order by sum(height) by city asc as v0,"
+            " sum(max(height) by city) + min(max(height) by city, tree_form) as v1"
+            " where tree_form = 'linden';"
+        ),
+        [("B", 1, 4)],
     ),
 ]
 

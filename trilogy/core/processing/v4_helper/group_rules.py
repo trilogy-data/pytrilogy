@@ -1218,7 +1218,9 @@ def partition_roots(
                 label_value,
                 RootReason.ENTITY,
                 members,
-                f"dim:{'|'.join(sorted(grain))}",
+                # not `dim:`: an entity peel onto the same key reads the
+                # dimension's table, which stores no rolled value
+                f"rolled:{'|'.join(sorted(grain))}",
             )
             bucket.dim_keys = grain
             buckets.append(bucket)
