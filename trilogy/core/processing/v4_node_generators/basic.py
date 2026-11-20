@@ -160,6 +160,25 @@ def _keys_beside_resums(
     return [c for c in widened if c.address not in keys - kept]
 
 
+def _keys_of_sibling_keys(
+    outputs: list[BuildConcept], widened: list[BuildConcept]
+) -> list[BuildConcept]:
+    """`widened` without the grain keys of an output a sibling is grouped by:
+    `fc` keys `v0` at `(city, fc)`, so the projection's rows are its `fc`s,
+    and `species`, the grain `fc` is computed at, would repeat each one per
+    species."""
+    keys = {
+        o.address: set(o.grain.components) - {o.address}
+        for o in outputs
+        if o.lineage is not None and o.grain is not None
+    }
+    keyed = set().union(*keys.values())
+    top = set().union(*(k for a, k in keys.items() if a not in keyed))
+    own = set().union(*(keys.get(a, set()) for a in top))
+    drop = own - top - {o.address for o in outputs}
+    return [c for c in widened if c.address not in drop]
+
+
 def grain_claim_unheld(
     outputs: list[BuildConcept],
     parent_grain: set[str],
@@ -204,7 +223,11 @@ def gen_basic(
             preexisting_conditions=pre,
         )
     full_outputs = _keys_beside_resums(
-        outputs, outputs_with_parent_grain_keys(outputs, parents), parents
+        outputs,
+        _keys_of_sibling_keys(
+            outputs, outputs_with_parent_grain_keys(outputs, parents)
+        ),
+        parents,
     )
     inputs = parent_outputs_needed(full_outputs, parents, conditions)
     if len(parents) == 1:

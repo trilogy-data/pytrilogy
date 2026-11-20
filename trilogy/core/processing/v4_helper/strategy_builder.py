@@ -4132,7 +4132,7 @@ def _plan_group_bridges(
             group_graph,
             attrs,
             cover,
-            _bridge_candidates(group_graph, attrs, planned, gid),
+            _bridge_candidates(group_graph, group_edges, attrs, planned, gid),
             [c for concepts in cover.values() for c in concepts],
             environment,
             authored,
@@ -5468,6 +5468,7 @@ def _sole_partners(plan: JoinPlan, contributors: Sequence[str]) -> frozenset[str
 
 def _bridge_candidates(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     planned: Sequence[str],
     consumer: str = FINAL_NODE_ID,
@@ -5476,11 +5477,18 @@ def _bridge_candidates(
     group, for the FINAL: one feeding no output may sort after it) that are
     still in the plan, most derived first. A group folded into its readers left
     the plan at its turn. A condition-phase group's rows never passed the
-    WHERE, so it bridges an outer consumer only when nothing else does."""
+    WHERE, so it bridges an outer consumer only when nothing else does. A set
+    bridges nothing: its rows are the ones its own condition kept."""
     decided = (
         planned if consumer == FINAL_NODE_ID else planned[: planned.index(consumer)]
     )
-    groups = {gid for gid in decided if gid in group_graph and gid != FINAL_NODE_ID}
+    groups = {
+        gid
+        for gid in decided
+        if gid in group_graph
+        and gid != FINAL_NODE_ID
+        and not _only_a_set(group_graph, group_edges, gid)
+    }
     outer = attrs[consumer].depth_label not in NESTED_DEPTHS
     return sorted(
         groups,
@@ -5491,6 +5499,15 @@ def _bridge_candidates(
         ),
         reverse=True,
     )
+
+
+def _only_a_set(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    kinds = {
+        edge_kind(group_edges, gid, succ)
+        for succ in group_graph.successors(gid)
+        if succ != FINAL_NODE_ID
+    }
+    return kinds == {EdgeKind.EXISTENCE}
 
 
 def _final_gate_keys(
@@ -5665,6 +5682,7 @@ def _merged_spellings(group: GroupAttrs, environment: BuildEnvironment) -> set[s
 
 def _final_extra_sides(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     candidates: Sequence[str],
     per_group: dict[str, list[BuildConcept]],
@@ -5676,7 +5694,10 @@ def _final_extra_sides(
     each filter-only argument's producer, and the row stream computing a gate
     key none of them renders (`count(id) by genus`, genus derived). A ROOT
     contributor holds its cover, plus each argument it outputs that no other
-    side does: it carries that through its wrap rather than joining again."""
+    side does: it carries that through its wrap rather than joining again. A
+    set produces no argument: it carries one only for the rows its own
+    condition kept."""
+    candidates = [g for g in candidates if not _only_a_set(group_graph, group_edges, g)]
     sides = [*per_group, *bridges]
     roots = [g for g in per_group if attrs[g].derivation == Derivation.ROOT]
     available = set().union(
@@ -6909,7 +6930,7 @@ def _assemble_final_node(
         group_graph,
         attrs,
         per_group,
-        _bridge_candidates(group_graph, attrs, cover.groups),
+        _bridge_candidates(group_graph, group_edges, attrs, cover.groups),
         mandatory_list,
         environment,
         final_contract.authored_axes,
@@ -6917,6 +6938,7 @@ def _assemble_final_node(
     bridges = bridged.extras
     extras = _final_extra_sides(
         group_graph,
+        group_edges,
         attrs,
         cover.groups,
         per_group,
@@ -7663,7 +7685,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
     carry_demands = _input_contract_carry_demands(a)
-    candidates = _bridge_candidates(group_graph, attrs, ctx.planned, gid)
+    candidates = _bridge_candidates(
+        group_graph, ctx.group_edges, attrs, ctx.planned, gid
+    )
     element_filters: list[StrategyNode] = []
     if derivation == Derivation.UNION:
         parents = _union_arm_parents(

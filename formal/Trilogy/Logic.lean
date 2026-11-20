@@ -56,6 +56,12 @@ open B3
 theorem Logic.and_comm (p q : B3) : and3 p q = and3 q p := by
   cases p <;> cases q <;> rfl
 
+/-- **A WHERE is its atoms, however it nests** (`and_assoc`): two plans of one
+CTE that group `a and b and c` differently hold one condition, so they merge
+(0.3.524, compositions seed 49126 raised `Attempting to merge two ctes`). -/
+theorem Logic.and_assoc (p q r : B3) : and3 (and3 p q) r = and3 p (and3 q r) := by
+  cases p <;> cases q <;> cases r <;> rfl
+
 theorem Logic.and_true_left (p : B3) : and3 t p = p := by
   cases p <;> rfl
 

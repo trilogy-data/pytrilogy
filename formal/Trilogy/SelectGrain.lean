@@ -1225,6 +1225,63 @@ theorem resum_split_by_key_grain :
       (dedup (parts.map fun p => (fc p.1, p.1))).length = 4 := by
   decide
 
+/-! ## Keys off values at two grains (0.3.524)
+
+The `compositions` sweep past 60,000. Rows are the six trees, `(id, city,
+species)`. -/
+
+def trees : List (Int × Int × Int) :=
+  [(1, 0, 0), (2, 0, 0), (3, 0, 1), (4, 0, 2), (5, 1, 0), (6, 1, 3)]
+
+/-- `select city, fc, max(h) by fc, sum(h) by city where max(h) by species >= 1`:
+the `(city, fc)` tuples are the kept rows', which only the `(city, species)`
+rows and `fc` by species hold together. Paired off the two values' groups on
+nothing, every kept city meets every kept `fc`: four tuples for three, and the
+form-less species' `(A, o)` leaks (`keys_off_two_values_cross`, seed 15258). -/
+theorem keys_off_two_values_cross :
+    let fc : Int → Int := fun s => if s ≤ 1 then 0 else 1
+    let kept := trees.filter (·.2.2 != 2)
+    let cities := dedup (kept.map (·.2.1))
+    let fcs := dedup (kept.map fun r => fc r.2.2)
+    (cities.flatMap fun c => fcs.map fun f => (c, f)).length = 4 ∧
+      (dedup (kept.map fun r => (r.2.1, fc r.2.2))).length = 3 := by
+  decide
+
+/-- `select tag, max(h) by * where species in (species ? city = 'A') and
+count(id) by city > 2`: the gate keeps the rows of city 0, four of six. The set
+reads `city` too, and the select's rows lost it to the set's own scan; a gate
+joined to rows without its key keeps every row once any city passes
+(`gate_key_read_by_a_set`, seed 57225). -/
+theorem gate_key_read_by_a_set :
+    let pass := ([(0, 4), (1, 2)] : List (Int × Int)).filter (·.2 > 2)
+    (trees.filter fun r => pass.any (·.1 == r.2.1)).length = 4 ∧
+      (trees.filter fun _ => !pass.isEmpty).length = 6 := by
+  decide
+
+/-- `count_distinct(tag) by form = count(id) by species`: the broadleaf form's
+distinct tags are 2, but counted inside the `(species, form)` groups Quercus
+reads its own 1 and passes beside its one tree. The species group carried the
+value through the set that gated it, which feeds no rows, and recomputed it at
+its own grain (`distinct_count_at_a_finer_grain`, seed 55868). Rows are
+`(species, tag)` of the broadleaf trees. -/
+theorem distinct_count_at_a_finer_grain :
+    let rows : List (Int × Int) := [(0, 0), (0, 1), (1, 0), (0, 1)]
+    (dedup (rows.map (·.2))).length = 2 ∧
+      (dedup ((rows.filter (·.1 == 1)).map (·.2))).length = 1 := by
+  decide
+
+/-- A set is the keys its condition keeps, not rows of the select: `tag in (tag ?
+c)` with `c` NULL on Ulmus' tree and true on another `x` keeps Ulmus. Joined as
+a bridge, the set's own rows dropped it (`set_rows_are_no_bridge`, seed
+55114); read for a gate's value FINAL re-applies, an empty set dropped every
+row (46333). Rows are `(id, tag, c)`. -/
+theorem set_rows_are_no_bridge :
+    let rows : List (Int × Int × Option Bool) := [(1, 0, some true), (4, 0, none)]
+    let set := dedup ((rows.filter (·.2.2 == some true)).map (·.2.1))
+    (rows.filter fun r => set.contains r.2.1).length = 2 ∧
+      (rows.filter (·.2.2 == some true)).length = 1 := by
+  decide
+
 end Trilogy.SelectGrain
 
 /-! ## A widening ends with the padding it kept
