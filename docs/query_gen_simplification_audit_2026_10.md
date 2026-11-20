@@ -409,7 +409,20 @@ election, not the padded fallback.
    `test_subset_join_plan_time_completeness.py::test_unfiltered_rowsets_beside_their_anchor_are_typed_inner`
    pins the graph case with the optimizer rule stubbed (red on `main`).
 
-   GATES_PLACEHOLDER
+   Gates, against `3694067`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included, 49,899 tests) moved the distinct join shapes of 63 tests
+   (FULL -35, RIGHT -2, LEFT +3, INNER +37; the rest of the textual moves
+   are worktree paths and statement counts under xdist), each under a row
+   oracle that stayed green: `test_partial_lookup_fallback_oracle_laws`
+   (28), `test_rank_beside_partial_merge` (25),
+   `test_class_value_beside_partial_lookups`, `test_rowset_declared_join_pairing`,
+   `test_unmodelled_regions`, `test_rowset`. The one move with no row oracle,
+   gcat `test_full_join_issue_2` (no local data), narrows a payload FULL to
+   LEFT because `launch_info` binds `LV_Type: ~vehicle.name` beside the
+   complete `lv_info`: every launch keeps its vehicle row, so the vehicles'
+   stream carries every launch. Corpus (205 statements): 0 moved. The suite
+   fails the same 25 tests as `main` (credential-bound and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). FUZZER_LINE
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
