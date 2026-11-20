@@ -79,3 +79,32 @@ def test_scan_chain_declines_a_column_one_arm_cannot_render():
     assert tagged.address not in {o.address for o in union.output_concepts}
     for arm in union.parents:
         assert tagged.address not in {o.address for o in arm.output_concepts}
+
+
+def _resolved_union():
+    build, union = _union()
+    union.resolve()
+    return build, union
+
+
+def _stacked(union: UnionNode) -> set[str]:
+    return {c.address for c in union.resolve().output_concepts}
+
+
+def test_deferred_widen_rebuild_refreshes_resolved_arms():
+    build, union = _resolved_union()
+    cell = build.concepts["cell"]
+    lat, lon = build.concepts["lat"], build.concepts["lon"]
+    assert widen_projection(union, [cell], input_candidates=[lat, lon], rebuild=False)
+    union.rebuild_cache()
+    assert cell.address in _stacked(union)
+    for arm in union.parents:
+        assert cell.address in {c.address for c in arm.resolve().output_concepts}
+
+
+def test_immediate_widen_still_resolves():
+    build, union = _resolved_union()
+    cell = build.concepts["cell"]
+    lat, lon = build.concepts["lat"], build.concepts["lon"]
+    assert widen_projection(union, [cell], input_candidates=[lat, lon])
+    assert cell.address in _stacked(union)
