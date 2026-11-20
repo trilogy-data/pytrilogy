@@ -6,6 +6,10 @@ pushdown moves a WHERE onto it, so a scan filtered at plan time and one
 filtered by pushdown can survive side by side, each projecting the columns
 its own consumers read. The second folds into the first, which carries both
 projections.
+
+A scan under a condition beside an unconditioned scan of the same table reads
+the unconditioned rows and applies its own condition there: the table is read
+whole once either way.
 """
 
 from __future__ import annotations
@@ -88,16 +92,46 @@ def _group_reads(group: DatasourceCTE) -> list[BuildConcept] | None:
     return reads
 
 
-def _rebase_group(
-    group: DatasourceCTE, rows: DatasourceCTE, reads: list[BuildConcept]
+def _condition_reads(cte: DatasourceCTE, reads: list[BuildConcept]) -> bool:
+    """Whether `cte`'s own condition reads only columns in `reads`."""
+    if cte.condition is None or any(cte.condition.existence_arguments):
+        return False
+    names = {c.address for c in reads}
+    return {c.address for c in cte.condition.concept_arguments} <= names
+
+
+def _rows_for(cte: DatasourceCTE, rows: DatasourceCTE, read: tuple) -> bool | None:
+    """True when `rows` reads what `cte` reads; False when it reads the whole
+    table `cte` filters; None when `cte` cannot read it."""
+    other = _read(rows)
+    if other is None or _signature(rows) is None:
+        return None
+    if other == read:
+        return True
+    if rows.condition is None and other[:1] + other[2:] == read[:1] + read[2:]:
+        return False
+    return None
+
+
+def _rebase(
+    group: DatasourceCTE,
+    rows: DatasourceCTE,
+    reads: list[BuildConcept],
+    shared: bool = True,
 ) -> None:
-    """`group` aggregates the rows `rows` already reads: it groups `rows`
-    instead of scanning the table again. The shared condition stays on `rows`."""
+    """`group` reads the rows `rows` already reads instead of scanning the
+    table again. A shared condition stays on `rows`; otherwise `group` applies
+    its own over them."""
     present = {c.address for c in rows.output_columns}
+    nullable = {c.address for c in rows.datasource.nullable_concepts}
     for column in reads:
         rows.hidden_concepts.discard(column.address)
         if column.address in present:
             continue
+        # the table's claim travels with the column, or a filter over it
+        # reads as tautological
+        if column.address in nullable:
+            rows.nullable_concepts.append(column)
         rows.output_columns.append(column)
         rows.source.output_concepts.append(column)
         rows.source_map[column.address] = [rows.datasource.safe_identifier]
@@ -107,9 +141,10 @@ def _rebase_group(
     group.__class__ = CTE  # type: ignore[assignment]
     del group.datasource
     group.parent_ctes = [rows]
-    group.condition = None
-    group.source.condition = None
     group.existence_source_map = {}
+    if shared:
+        group.condition = None
+        group.source.condition = None
     group.source.datasources = [rows.source]
     group.source.base_datasource = None
     group.source_map = {c.address: [rows.name] for c in reads}
@@ -126,6 +161,8 @@ class MergeTwinScans(OptimizationRule):
             return False, None
         if cte.group_to_grain:
             return self._group_over_rows(cte, inverse_map)
+        if cte.condition is not None and self._filter_over_rows(cte, inverse_map):
+            return True, None
         signature = _signature(cte)
         if signature is None or _inlined_anywhere(cte.name, inverse_map[cte.name]):
             return False, None
@@ -150,30 +187,53 @@ class MergeTwinScans(OptimizationRule):
     def _group_over_rows(
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
-        read = _read(cte)
         reads = _group_reads(cte)
         if (
-            read is None
-            or reads is None
+            reads is None
             # a re-sum reads stored partials through its own source map
             or cte.rollup_concepts
             or cte.partial_sources
-            or _inlined_anywhere(cte.name, inverse_map[cte.name])
         ):
             return False, None
+        return self._rebase_over_twin(cte, reads, inverse_map, True), None
+
+    def _filter_over_rows(
+        self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
+        reads = _group_reads(cte)
+        if reads is None or _signature(cte) is None:
+            return False
+        return self._rebase_over_twin(cte, reads, inverse_map, False)
+
+    def _rebase_over_twin(
+        self,
+        cte: DatasourceCTE,
+        reads: list[BuildConcept],
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+        allow_shared: bool,
+    ) -> bool:
+        read = _read(cte)
+        if read is None or _inlined_anywhere(cte.name, inverse_map[cte.name]):
+            return False
+        filtered = _condition_reads(cte, reads)
         for consumers in inverse_map.values():
             for consumer in consumers:
                 for rows in consumer.dependency_nodes():
                     if (
-                        not isinstance(rows, DatasourceCTE)
+                        rows is cte
+                        or not isinstance(rows, DatasourceCTE)
                         or rows.name not in inverse_map
-                        or _signature(rows) is None
-                        or _read(rows) != read
                         or _inlined_anywhere(rows.name, inverse_map[rows.name])
                     ):
                         continue
-                    self.log(f"Grouping {cte.name} over its twin rows {rows.name}")
-                    _rebase_group(cte, rows, reads)
+                    shared = _rows_for(cte, rows, read)
+                    if (
+                        shared is None
+                        or (allow_shared if shared else filtered) is False
+                    ):
+                        continue
+                    self.log(f"Reading {cte.name} over its twin rows {rows.name}")
+                    _rebase(cte, rows, reads, shared)
                     inverse_map[rows.name].append(cte)
-                    return True, None
-        return False, None
+                    return True
+        return False

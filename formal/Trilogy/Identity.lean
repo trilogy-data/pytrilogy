@@ -24,6 +24,10 @@ grain to the other's.
   total beside the select's rows, expressions 500002).
 - `grouped_twin_drops_repeats`: the twin must be ungrouped; grouping a
   deduplicated read undercounts repeated rows.
+- `filter_reads_whole_twin`: a scan under a condition over columns `c` is the
+  unconditioned twin's read, carrying `c`, filtered by the same condition, so a
+  filtered scan beside a whole-table scan reads the table once (expressions
+  650115: a WHERE's `by` aggregates read every row, the select its kept rows).
 
 Checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and
 `tests/optimization/test_merge_twin_scans.py`.
@@ -89,6 +93,14 @@ theorem group_reads_twin_rows {α β γ δ : Type} (rows : List α) (p : α → 
     (f : α → β) (g : α → γ) (agg : List β → δ) :
     agg ((rows.filter p).map f) = agg ((twinRead rows p f g).map Prod.fst) := by
   rw [(twin_scans_share_one_read rows p f g).1]
+
+theorem filter_reads_whole_twin {α β κ : Type} (rows : List α) (c : α → κ)
+    (q : κ → Bool) (f : α → β) :
+    (rows.filter (fun r => q (c r))).map f =
+      ((twinRead rows (fun _ => true) f c).filter (fun x => q x.2)).map Prod.fst := by
+  induction rows with
+  | nil => rfl
+  | cons r rs ih => by_cases h : q (c r) = true <;> simp_all [twinRead]
 
 theorem grouped_twin_drops_repeats :
     ([1, 1].filter (fun _ => true)).length ≠ ([1, 1].eraseDups.filter (fun _ => true)).length := by

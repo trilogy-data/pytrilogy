@@ -63,7 +63,7 @@ a design decision or a bug.
 | `Writings.lean` | a float, a decimal or an instant cast to a string: shortest digits laid out as `repr`, a declared scale, a fraction without trailing zeros, a timestamp at UTC; a decimal quotient | a decimal's text reads back as its value and carries its scale (`decimal_read_write`, `decimal_scale_written`, bounded); `repr`'s layout reads back as the digits and exponent it laid out (`layout_read_exact`, bounded) and is fixed exactly for an exponent in [-4, 16) (`fixed_iff`); rounding to 15 places keeps a value of 15 digits or fewer (`round15_exact`, bounded); the stripped fraction reads back and does not depend on the precision the engine holds (`fraction_read_write`, `fraction_precision_free`, bounded) (checked by `tests/core/test_text_write_laws.py` on DuckDB, SQLite and ClickHouse) |
 | `Sharing.lean` | a rendering's operand: how many times a cast or a clamped substring names it, its size when nested, the draws a volatile operand reads, SQLite's flattener | inlined, `n` levels hold `k ^ n` copies of the operand (`inline_nested_ge`) and bound they grow linearly (`bound_nested`), so binding wins once its own text is under the copies it saves (`bound_le_inline`); bound, every use reads one draw (`bind_draws_once`), and a binding that reads its row's column draws per row (`correlated_per_row`); flattening a binding is inlining it (`flattened_is_inline`) (checked by `tests/core/test_bound_operand_laws.py` on DuckDB, SQLite and ClickHouse, and on SQLite 3.45 where `/usr/bin/python3` has it) |
 | `ValueSet.lean` | aggregates of a column a table stores at its own grain: a complete binding's values, repeat-blind and repeat-sensitive aggregates, `count` of a column against a stored row count | `min`, `max` and `count_distinct` are functions of their input's set of values (`value_set_min_exact`, `value_set_max_exact`, `value_set_count_distinct_exact`), and so is a scalar of the column alone (`SameValues.map`), so a complete binding answers them at any grain, and a column its table's grain determines holds the base rows' values under any predicate on that grain (`grain_column_values`, `grain_column_min_exact`); `count` and `sum` read repeats (`value_set_misses_repeats`); `count(cls)` is the re-sum of `count(id) by cls` over the non-null classes (`count_column_from_row_count`), and over every class it counts the NULL class's rows (`count_column_counts_null_group`) | (checked by `tests/discovery/test_value_set_laws.py`, with the row table in scope and hidden) |
-| `Identity.lean` | a planned source's identifier, spelled from its members and grains; a scan's projection under a condition | unbracketed, wrapping a join and joining a wrapped side spell one identifier (`naive_wrap_of_join_collides`); with a join's members bracketed, no two sources to depth 2 share one (`bracketed_injective_bounded`); two projections of one table under one condition are projections of one read carrying both (`twin_scans_share_one_read`), and an aggregate of the table under it is the aggregate of the row twin's read (`group_reads_twin_rows`), never of a deduplicated one (`grouped_twin_drops_repeats`) | (checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and `tests/optimization/test_merge_twin_scans.py`) |
+| `Identity.lean` | a planned source's identifier, spelled from its members and grains; a scan's projection under a condition | unbracketed, wrapping a join and joining a wrapped side spell one identifier (`naive_wrap_of_join_collides`); with a join's members bracketed, no two sources to depth 2 share one (`bracketed_injective_bounded`); two projections of one table under one condition are projections of one read carrying both (`twin_scans_share_one_read`), and an aggregate of the table under it is the aggregate of the row twin's read (`group_reads_twin_rows`), never of a deduplicated one (`grouped_twin_drops_repeats`); a scan under a condition is its unconditioned twin filtered (`filter_reads_whole_twin`) | (checked by `tests/discovery/test_sweep_expr_500k_shapes.py` and `tests/optimization/test_merge_twin_scans.py`) |
 | `Nullability.lean` | which computed values can be NULL, and what a join on a value claimed non-null loses | an aggregate other than a count is NULL on a group of all-NULL arguments (`max_of_null_group_is_null`), and so is an expression over it (`plus_of_null_is_null`); a count is 0 there (`count_of_null_group_is_zero`); a relation re-joined to itself on a NULL value with `=` loses the row (`plain_rejoin_drops_null_value`), with `is not distinct from` it keeps every row (`null_safe_rejoin_keeps_rows`) | (checked by `tests/discovery/test_sweep_expr_650k_shapes.py`) |
 
 Every bug a law or oracle sweep finds is fixed with a regression test outside
@@ -2422,6 +2422,37 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     non-null, was preserved for its NULL group and invented a city
     (spellings 7067). A NULL key on one side that the other side's filters
     reject now preserves nothing (`_nullable_join`).
+
+- **The expressions family to 800,000** (0.3.521). On main its 300,000
+  queries (seeds 650,000-800,000) hold no wrong or raising seed beside 48
+  refused, and seeds 650,000-725,000 with `--carry-state` none
+  either. The branch breaks none and plans 1,189 fewer scans. Fixed:
+  - A scan under a WHERE beside an unfiltered scan of the same table read the
+    table again: the WHERE's `by` aggregates read every row, the select its
+    kept rows (650115; `Identity.filter_reads_whole_twin`). `MergeTwinScans`
+    rebases the filtered scan, grouped or not, over the unfiltered twin and
+    applies its own condition there.
+  - The A/B caught one shape the first cut broke (777104): the twin gained
+    the read columns without the table's nullability, so
+    `StripRedundantNotNull` read `height is not null` as tautological and
+    dropped it. A column the rebase adds carries its table's claim.
+  - Found probing the rebase, not by the sweep (the generator writes no
+    membership): an aggregate a WHERE reads inside a membership's set and
+    as an atom of its own raised `DisconnectedConceptsException`
+    (`species in (species ? count(tree_id) by species > 1) and count(tree_id)
+    by species > 0`). Its only consumer was the set, a side channel, so the
+    backfill that joins a WHERE-only aggregate to the outputs skipped it. The
+    backfill now looks past existence-only consumers
+    (`tests/discovery/test_membership_beside_where_aggregate.py`).
+  - A keyless select refused to compute the aggregate its WHERE gates on when
+    both spelled it alike with an explicit `by` (`count(tree_id) by *` in
+    each, 652494): the guard against a HAVING written as a WHERE matched it,
+    though the WHERE reads every row at its `by` and the select the kept
+    rows, and the planner keeps the two apart. Only the bare spelling is
+    refused now. Every seed main refused in the swept ranges now plans and
+    matches the oracle: 324 queries of the expressions family to 800,000,
+    508 of `first` and 832 of `spellings` to 450,000
+    (`tests/discovery/test_where_by_beside_select.py`).
 
 ## Limits
 
