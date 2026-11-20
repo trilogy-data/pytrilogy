@@ -14,6 +14,7 @@ import pytest
 from tests.helpers.planned_sides import every_side_planned, record_planned_sides
 from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from tests.unnest.test_unnest_filter_laws import (
+    EQUAL_MERGES,
     REGIONS,
     Data,
     declared_unique,
@@ -59,13 +60,17 @@ query '''select city, species, count(*) as n_trees, sum(height) as total_height,
 max(height) as top_height from trees group by 1, 2''';
 """
 
-EQUAL = "merge tree_eco_region into ecoregion_id;\n"
-
 # (model, the related value, the `load` spelling that sizes `eco`, a literal)
 SPELLINGS = {
     "element": (BASE, "tree_eco_region", "plain", "1"),
-    "merged": (BASE + EQUAL, "ecoregion_id", "equal", "1"),
-    "property": (BASE + EQUAL, "biome", "equal", "'wet'"),
+    **{
+        f"merged-{name}": (BASE + merge, "ecoregion_id", name, "1")
+        for name, merge in EQUAL_MERGES.items()
+    },
+    **{
+        f"property-{name}": (BASE + merge, "biome", name, "'wet'")
+        for name, merge in EQUAL_MERGES.items()
+    },
 }
 
 SHAPES = {
@@ -87,7 +92,7 @@ FILTERS = {
 
 # served with no WHERE once planned: a key beside a merged related value reads
 # the trees (right, a miss)
-OPEN = {("merged", "beside_key")}
+OPEN = {(f"merged-{name}", "beside_key") for name in EQUAL_MERGES}
 
 
 def _executor(model: str, data: Data, spelling: str):
@@ -141,18 +146,19 @@ group by 1, 2''';
 """
 
 
+@pytest.mark.parametrize("merge", list(EQUAL_MERGES))
 @pytest.mark.parametrize("seed", SEEDS)
-def test_a_summary_binding_the_value_is_read_as_stored(seed):
+def test_a_summary_binding_the_value_is_read_as_stored(seed, merge):
     """A table that stores the count by the related value needs no relation
     join: the search reads it, not the species summary."""
     data = random_data(seed)
-    model = BASE + EQUAL + SUMMARY + ECO_SUMMARY
+    model = BASE + EQUAL_MERGES[merge] + SUMMARY + ECO_SUMMARY
     query = (
         "select ecoregion_id, count(tree_id) as n"
         " where ecoregion_id is not null having n > 0;"
     )
-    _, expected = _rows(_executor(BASE + EQUAL, data, "equal"), query)
-    sql, got = _rows(_executor(model, data, "equal"), query)
+    _, expected = _rows(_executor(BASE + EQUAL_MERGES[merge], data, merge), query)
+    sql, got = _rows(_executor(model, data, merge), query)
     assert got == expected, sql
     assert '"summary_eco"' in sql and '"summary"' not in sql, sql
 
@@ -187,7 +193,7 @@ def test_unique_list_pairs_need_no_distinct(seed, spelling, shape):
         return
     assert '"summary"' in sql and '"trees"' not in sql, sql
     fewer = sql.upper().count("GROUP BY") < plain_sql.upper().count("GROUP BY")
-    assert fewer == (spelling != "property"), sql
+    assert fewer == (not spelling.startswith("property")), sql
 
 
 def test_elided_passthrough_keeps_its_merge_planned(monkeypatch):

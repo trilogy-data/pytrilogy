@@ -893,29 +893,21 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
     EQUAL domain declaration (non-partial `merge a into b`,
     docs/subset_union_join_design.md): the canonical collapse then genuinely
     names one value space, so the standard completeness tests apply and the
-    join may narrow to INNER. Populated only when
-    ``CONFIG.optimizations.narrow_equal_domain_joins`` is on; narrowing
-    trusts the declaration, and data violating it loses the violating rows.
+    join may narrow to INNER. Narrowing trusts the declaration: data violating
+    it loses the violating rows.
     """
 
-    def __init__(
-        self,
-        domain_graph: DomainGraph | None = None,
-        narrow_equal_domain_joins: bool = True,
-    ) -> None:
+    def __init__(self, domain_graph: DomainGraph | None = None) -> None:
         # The statement's declared-edge domain graph is the one source of
         # truth for authored relations (docs/domain_graph_design.md); the
         # views below are derived from it.
         graph = domain_graph or DomainGraph()
         self.domain_graph = graph
         # Canonical addresses of EQUAL-declared keys (see class docstring).
-        self.equal_join_keys = (
-            graph.equal_narrowable_keys() if narrow_equal_domain_joins else set()
-        )
-        # Canonical addresses of query-scoped FULL/UNION keys; joins on these
-        # must never upgrade to INNER (FULL's key stays complete, so the
-        # partial-driven checks cannot protect it).
-        self.full_join_keys = graph.outer_relation_keys() - self.equal_join_keys
+        self.equal_join_keys = graph.equal_narrowable_keys()
+        # Joins on these must never upgrade to INNER (FULL's key stays
+        # complete, so the partial-driven checks cannot protect it).
+        self.full_join_keys = graph.full_relation_keys()
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]

@@ -11,10 +11,12 @@ aggregate's grouping key or on nothing, a row meets elements of other rows
 
 Each case builds random trees, a species-keyed region list (with duplicates,
 empty and NULL lists, and species with no list) and holds each query to the
-reference computed here. `subset` and `equal` spell the element as the key it
-is merged into, `ecoregion_id`. A plain merge claims the two domains are one,
-so under `equal` the `eco` table holds exactly the regions some list names; a
-region no list names would be padded in with no tree."""
+reference computed here. `subset`, `into` and `equal` spell the element as the
+key it is merged into, `ecoregion_id`. `merge a into b` and `merge equal a = b`
+are one declaration, that the two domains are one, so under either the `eco`
+table holds exactly the regions some list names. The declaration says nothing
+about the tree rows: a region only a treeless species lists is in the domain
+with no tree, and a selected merged key pads it in."""
 
 import random
 from dataclasses import dataclass
@@ -62,10 +64,15 @@ grain (sighting_id)
 query '''select 1 as sighting_id, 'oak' as species''';
 """
 
+EQUAL_MERGES = {
+    "into": "merge tree_eco_region into ecoregion_id;\n",
+    "equal": "merge equal tree_eco_region = ecoregion_id;\n",
+}
+
 SPELLINGS = {
     "plain": (BASE, "tree_eco_region"),
     "subset": (SUBSET, "ecoregion_id"),
-    "equal": (BASE + "merge tree_eco_region into ecoregion_id;\n", "ecoregion_id"),
+    **{name: (BASE + merge, "ecoregion_id") for name, merge in EQUAL_MERGES.items()},
     "licensed": (SUBSET + SIGHTINGS, "ecoregion_id"),
 }
 
@@ -109,7 +116,7 @@ def _sql_list(values: list[int] | None) -> str:
 
 
 def eco_regions(data: Data, spelling: str) -> set[int]:
-    return data.listed() if spelling == "equal" else set(REGIONS)
+    return data.listed() if spelling in EQUAL_MERGES else set(REGIONS)
 
 
 def load(executor, data: Data, spelling: str) -> None:
@@ -216,7 +223,7 @@ def test_element_filter_keeps_rows_with_a_passing_element(spelling, shape, seed)
         assert _run(executor, query) == reference(kept_trees(data, test)), query
 
 
-@pytest.mark.parametrize("spelling", ["plain", "equal", "licensed"])
+@pytest.mark.parametrize("spelling", ["plain", *EQUAL_MERGES, "licensed"])
 @pytest.mark.parametrize("seed", SEEDS)
 def test_element_pairs_with_the_row_it_expands(spelling, seed):
     """Selected beside the row, each element pairs with its own row only, once

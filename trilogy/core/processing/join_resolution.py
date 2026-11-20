@@ -994,6 +994,22 @@ def _trace_join_type(
     )
 
 
+def _independent_full_keys(
+    left: str, right: str, keys: set[str], facts: JoinFacts
+) -> bool:
+    """A FULL-declared key the pair joins on as an axis of its own. One both
+    sides' grains, among the pair's other keys, determine (`parent` beside
+    `id`) pairs no row the grain does not, and the pairing drops it."""
+    full = keys & facts.full_join_keys
+    if not full:
+        return False
+    rest = keys - full
+    return not all(
+        side.grain and side.grain <= rest and full <= side.determined
+        for side in (facts.side(left), facts.side(right))
+    )
+
+
 def _decide_join_type(
     left: str,
     right: str,
@@ -1005,7 +1021,7 @@ def _decide_join_type(
     # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
     # merges): neither domain contains the other, so FULL with the key
     # coalesced; the registry also vetoes narrowing, and keeps the key complete.
-    if all_connecting_keys & facts.full_join_keys:
+    if _independent_full_keys(left, right, all_connecting_keys, facts):
         return JoinType.FULL, "full_join_keys"
 
     region_type, region_hosts_equally = _region_contract_join(
@@ -2957,6 +2973,10 @@ def get_node_joins(
         is_coalescing_axis,
     )
 
+    # an EQUAL key (`merge a into b`, `merge equal a = b`) declares one domain,
+    # not that every side carries all of it: the join preserves both until each
+    # side proves complete, which the optimizer checks (a side built from part
+    # of the domain pads the rest, `test_unnest_filter_laws`)
     full_join_keys = {
         canon_node(a) for a in environment.domain_graph.outer_relation_keys()
     }

@@ -725,9 +725,7 @@ class MergeNode(StrategyNode):
         # not row intent: its FULL is licensed by domains that are equal
         # UNFILTERED, and a WHERE only one side can apply breaks that.
         graph = self.environment.domain_graph
-        coalescing = (
-            graph.outer_relation_keys() - graph.equal_narrowable_keys()
-        ) | graph.coalescing_relation_members()
+        coalescing = graph.full_relation_keys() | graph.coalescing_relation_members()
         return JoinProofs(
             proofs=proofs,
             branch_proofs=branch_proofs,
