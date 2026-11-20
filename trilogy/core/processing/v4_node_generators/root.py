@@ -457,15 +457,21 @@ def gen_root(
     ]
     inner_outputs = list(outputs) + membership_args
 
-    node = plan_source(
-        SourceRequest(
-            outputs=inner_outputs,
-            environment=environment,
-            graph=g,
-            history=history,
-            conditions=row_conditions,
-            complete_partials=complete_partials,
-            arm_local=arm_local,
+    # a cross-row arg beside a membership (`count(x) by g != 3 or k in S`) is
+    # no scan column: it is a gate, fed and joined back like one
+    node = (
+        None
+        if any(concept_is_cross_row(arg) for arg in membership_args)
+        else plan_source(
+            SourceRequest(
+                outputs=inner_outputs,
+                environment=environment,
+                graph=g,
+                history=history,
+                conditions=row_conditions,
+                complete_partials=complete_partials,
+                arm_local=arm_local,
+            )
         )
     )
     if node is None and conditions is not None:
