@@ -98,6 +98,12 @@ FILTERED = [
         " and avg(height) by species != 0 and count(tree_id) by city = 2;",
         [("B", 2)],
     ),
+    # expressions 777104, reduced: the twin carries the table's NULL heights
+    (
+        "select tree_id, height where height is not null"
+        " and count_distinct(tag) by city >= count(tree_id) by city, species;",
+        [("a1", 3), ("a3", 5), ("b1", 7), ("b2", 2)],
+    ),
 ]
 
 

@@ -123,10 +123,15 @@ def _rebase(
     table again. A shared condition stays on `rows`; otherwise `group` applies
     its own over them."""
     present = {c.address for c in rows.output_columns}
+    nullable = {c.address for c in rows.datasource.nullable_concepts}
     for column in reads:
         rows.hidden_concepts.discard(column.address)
         if column.address in present:
             continue
+        # the table's claim travels with the column, or a filter over it
+        # reads as tautological
+        if column.address in nullable:
+            rows.nullable_concepts.append(column)
         rows.output_columns.append(column)
         rows.source.output_concepts.append(column)
         rows.source_map[column.address] = [rows.datasource.safe_identifier]
