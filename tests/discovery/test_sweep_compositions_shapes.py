@@ -215,6 +215,17 @@ SHAPES = [
         ),
         [("B", "o", 2)],
     ),
+    # a gate FINAL re-applies beside a total pairs on its whole grain, the
+    # species it carries onto the value's side included (63640): Ulmus' NULL
+    # minimum keeps (A, none) alone of city A
+    (
+        (
+            "select city, tree_form, count(tree_id) by * as v0, count(tree_id) by"
+            " tree_form / count(tree_id) by city as v1 where min(height) by city,"
+            " species is null or city in ('B');"
+        ),
+        [("A", None, 3, 1.0), ("B", "broadleaf", 3, 0.5), ("B", "linden", 3, 0.5)],
+    ),
 ]
 
 

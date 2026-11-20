@@ -7234,6 +7234,10 @@ def _assemble_final_node(
             )
         )
         parents = _join_gate_hosts(parents, gate_keys - carried, extras, built)
+        # the carried keys are pairing keys: a gate joined short of them pairs
+        # every row sharing the rest (`SelectGrain.gate_paired_short_of_its_grain`)
+        if carried:
+            plan = asks
     parents = _dedup_beside_resummed_gates(
         parents,
         arg_nodes,
