@@ -1637,12 +1637,14 @@ class QueryDatasource:
 
     def __setattr__(self, name: str, value: object) -> None:
         # ``identifier`` is an expensive recursive property memoized in
-        # ``_identifier_cache``. Optimization passes mutate QDS fields after
-        # construction (datasources/condition/source_type/...), so drop the
-        # cache on any field write to keep the memo correct.
-        if name not in ("_identifier_cache", "_shape_cache"):
+        # ``_identifier_cache``, and ``null_provenance.provenance`` stamps its
+        # answers in ``_provenance_cache``. Optimization passes mutate QDS
+        # fields after construction (datasources/joins/condition/...), so drop
+        # the caches on any field write to keep them correct.
+        if name not in ("_identifier_cache", "_shape_cache", "_provenance_cache"):
             self.__dict__["_identifier_cache"] = None
             self.__dict__["_shape_cache"] = None
+            self.__dict__["_provenance_cache"] = None
         object.__setattr__(self, name, value)
 
     def __repr__(self):

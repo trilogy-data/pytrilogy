@@ -59,9 +59,8 @@ from trilogy.core.processing.join_resolution import (
     OUTER_JOIN_TYPES,
 )
 from trilogy.core.processing.null_provenance import (
-    guest_padded_addresses,
-    nulls_are_values,
     padding_sources,
+    provenance,
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
@@ -418,10 +417,6 @@ def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     )
 
 
-def _identity(address: str) -> str:
-    return address
-
-
 def _unpaired_guest_padding(
     sub_concept: BuildConcept,
     sub_cte: CTE | UnionCTE,
@@ -434,11 +429,11 @@ def _unpaired_guest_padding(
     side happens to hold, so the sub side's preservation stays load-bearing."""
     if not isinstance(sub_cte, CTE):
         return False
-    if not sub_concept.all_spellings & guest_padded_addresses(sub_cte.source):
+    if not sub_concept.all_spellings & provenance(sub_cte.source).guest:
         return False
     return not (
         isinstance(sup_cte, CTE)
-        and sup_concept.all_spellings & guest_padded_addresses(sup_cte.source)
+        and sup_concept.all_spellings & provenance(sup_cte.source).guest
     )
 
 
@@ -455,7 +450,7 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
         if (
             isinstance(side, CTE)
             and _key_nullable(concept, side)
-            and not nulls_are_values(concept, side.source)
+            and not provenance(side.source).values(concept)
         ):
             padded = True
     if not padded:
@@ -469,7 +464,7 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
 def _key_padding_sources(side: CTE | UnionCTE, keys: set[str]) -> set[str]:
     if not isinstance(side, CTE):
         return set()
-    return padding_sources(side.source, keys, _identity)
+    return padding_sources(side.source, keys)
 
 
 def _same_filter_chain(left_cte: CTE | UnionCTE, right_cte: CTE | UnionCTE) -> bool:

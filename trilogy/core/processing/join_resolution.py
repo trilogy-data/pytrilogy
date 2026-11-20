@@ -52,10 +52,8 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.join_key_groups import axis_member_keys
 from trilogy.core.processing.null_provenance import (
-    ProvenanceMemo,
-    active_memo,
+    provenance,
     side_nullable,
-    span_padded_addresses,
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
@@ -1330,7 +1328,6 @@ def get_modifiers(
     right_concept: BuildConcept,
     left: DataSource | None,
     right: DataSource | None,
-    memo: ProvenanceMemo | None = None,
     anchored: bool = True,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL.
@@ -1344,9 +1341,8 @@ def get_modifiers(
     if not (side_nullable(left_concept, left) and side_nullable(right_concept, right)):
         return []
     assert left is not None and right is not None
-    memo = memo or ProvenanceMemo()
-    values = memo.of(left).values(left_concept)
-    if values != memo.of(right).values(right_concept):
+    values = provenance(left).values(left_concept)
+    if values != provenance(right).values(right_concept):
         return []
     if not values and not anchored and not _same_filters(left, right):
         return []
@@ -2083,18 +2079,14 @@ def _span_padding_matrix(
     nullables: Mapping[str, frozenset[str]],
     spellings: dict[str, str],
     canon_node: Callable[[str], str],
-    memo: ProvenanceMemo | None = None,
 ) -> dict[str, dict[str, frozenset[str]]]:
     """Per side, per nullable key: the spans (as `held_spans` spells them)
     whose extension rows NULL it."""
-    memo = memo or ProvenanceMemo()
     out: dict[str, dict[str, frozenset[str]]] = {}
     for ds_node, datasource in ds_node_map.items():
         by_key: dict[str, set[str]] = defaultdict(set)
         for spelling in sorted(spellings):
-            for address in span_padded_addresses(
-                datasource, frozenset({spelling}), memo
-            ):
+            for address in provenance(datasource).padded_by(frozenset({spelling})):
                 by_key[canon_node(address)].add(canon_node(spellings[spelling]))
         out[ds_node] = {
             key: frozenset(found)
@@ -2122,7 +2114,6 @@ class _Merge:
     concepts: dict[tuple[str, str], BuildConcept]
     spellings: dict[str, str]
     canon_node: Callable[[str], str]
-    memo: ProvenanceMemo
 
 
 def _padding_witness(
@@ -2137,13 +2128,13 @@ def _padding_witness(
     datasource = merge.sources[node]
     out: list[BuildConcept] = []
     hidden = _hidden_addresses(datasource)
-    provenance = merge.memo.of(datasource)
-    extent = provenance.extent
+    stamp = provenance(datasource)
+    extent = stamp.extent
     for span in sorted(spans):
         padded: set[str] = set()
         for spelling, named in merge.spellings.items():
             if merge.canon_node(named) == span:
-                padded |= provenance.padded_by(frozenset({spelling}))
+                padded |= stamp.padded_by(frozenset({spelling}))
         witnesses = sorted(
             (
                 c
@@ -2152,7 +2143,7 @@ def _padding_witness(
                 and c.address in padded
                 and c.address not in hidden
                 and c.address not in extent
-                and not provenance.values(c)
+                and not stamp.values(c)
             ),
             key=lambda c: c.address,
         )
@@ -2587,7 +2578,6 @@ def _pair_modifiers(
             merge.concepts[(right, key)],
             left_source,
             right_source,
-            merge.memo,
             anchored=any(
                 _pairs_solid(
                     merge.concepts[(left, other)],
@@ -2606,7 +2596,6 @@ def _side_facts(
     datasource: DataSource,
     environment: BuildEnvironment,
     canon_node: Callable[[str], str],
-    memo: ProvenanceMemo,
     host_canon: set[str] | None,
     extent_free_spans: frozenset[str],
 ) -> tuple[SideFacts, dict[str, BuildConcept]]:
@@ -2626,19 +2615,17 @@ def _side_facts(
         for c in datasource.output_concepts
         if c.address in environment.scoped_partial_derived
     }
-    provenance = memo.of(datasource)
+    stamp = provenance(datasource)
     nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
     if extent_free_spans:
         # a `?` binding's NULL is a value (an undated sale), not padding
-        value_null = {
-            c.address for c in datasource.output_concepts if provenance.values(c)
-        }
+        value_null = {c.address for c in datasource.output_concepts if stamp.values(c)}
         nullable_nodes -= {
             canon_node(a)
-            for a in provenance.padded_by(extent_free_spans)
+            for a in stamp.padded_by(extent_free_spans)
             if a not in value_null
         }
-    padded_nodes = {canon_node(a) for a in provenance.rollup}
+    padded_nodes = {canon_node(a) for a in stamp.rollup}
     partial_keys: set[str] = set()
     nullable_keys: set[str] = set()
     rollup_keys: set[str] = set()
@@ -2668,7 +2655,7 @@ def _side_facts(
         # the FIRST concept spelling the node decides the provenance
         if node in nullable_nodes and node not in nullable_keys:
             nullable_keys.add(node)
-            if provenance.values(concept):
+            if stamp.values(concept):
                 value_keys.add(node)
         if node in padded_nodes:
             rollup_keys.add(node)
@@ -2678,11 +2665,9 @@ def _side_facts(
         nullables=frozenset(nullable_keys),
         value_nullables=frozenset(value_keys),
         extent_nullables=frozenset(
-            nullable_keys & {canon_node(a) for a in provenance.extent}
+            nullable_keys & {canon_node(a) for a in stamp.extent}
         ),
-        guest_padded=frozenset(
-            nullable_keys & {canon_node(a) for a in provenance.guest}
-        ),
+        guest_padded=frozenset(nullable_keys & {canon_node(a) for a in stamp.guest}),
         rollup_padded=frozenset(rollup_keys),
         grain=frozenset(canon_node(a) for a in datasource.grain.components),
         determined=frozenset(
@@ -2929,7 +2914,6 @@ def get_node_joins(
     def canon_node(address: str) -> str:
         return f"c~{canonical.get(address, address)}"
 
-    memo = active_memo()
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
     sides: dict[str, SideFacts] = {}
@@ -2939,7 +2923,7 @@ def get_node_joins(
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
         sides[ds_node], spelled = _side_facts(
-            datasource, environment, canon_node, memo, host_canon, extent_free_spans
+            datasource, environment, canon_node, host_canon, extent_free_spans
         )
         for node, concept in spelled.items():
             ds_concept_map.setdefault((ds_node, node), concept)
@@ -2957,7 +2941,6 @@ def get_node_joins(
             {ds_node: side.nullables for ds_node, side in sides.items()},
             spellings,
             canon_node,
-            memo,
         )
         sides = {
             ds_node: replace(side, span_padding=matrix.get(ds_node, {}))
@@ -3036,7 +3019,7 @@ def get_node_joins(
             declared,
         ),
     )
-    merge = _Merge(facts, ds_node_map, ds_concept_map, spellings, canon_node, memo)
+    merge = _Merge(facts, ds_node_map, ds_concept_map, spellings, canon_node)
     joins = resolve_join_order_v2(facts)
     paddings = _merge_paddings(joins, facts)
     # Per join, only what the joins BEFORE it padded: a join's own padding of
