@@ -30,6 +30,7 @@ from .constants import REPEAT_BLIND_AGGREGATES, DepthLabel, EdgeKind
 from .edges import (
     EdgeMap,
     edge_kind,
+    existence_predecessors,
     feeds_existence,
     lineage_predecessors,
     lineage_subgraph,
@@ -398,6 +399,14 @@ def _partition_standard_aggregates(
     return buckets
 
 
+def _feeding_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    """What `node` reads, rows or a membership's set: a gate beside two sets
+    reads both, and each set's condition its own aggregates."""
+    return lineage_predecessors(graph, edges, node) + existence_predecessors(
+        graph, edges, node
+    )
+
+
 def _split_cyclic_groups(
     groups: list[tuple[AggKey, int, list[NodeItem]]],
     concept_graph: nx.DiGraph,
@@ -411,7 +420,7 @@ def _split_cyclic_groups(
     filter beside `min(h) by species` reads, is a cycle of two groups."""
     members = {node for _, _, layer in groups for node, _ in layer}
     ancestors = {
-        node: _lineage_reach(node, lineage_predecessors, concept_graph, concept_edges)
+        node: _lineage_reach(node, _feeding_predecessors, concept_graph, concept_edges)
         & (members - {node})
         for node in members
     }
@@ -434,10 +443,18 @@ def _split_cyclic_groups(
     }
     if not cyclic:
         return [(key, index, layer, None) for key, index, layer in groups]
-    # `ancestors` is transitive, so an ancestor always has fewer of its own
-    depth: dict[str, int] = {}
-    for node in sorted(members, key=lambda n: (len(ancestors[n]), n)):
-        depth[node] = max((depth[a] + 1 for a in ancestors[node]), default=0)
+    # longest-path depth, capped: a set's existence edge into a gate beside it
+    # can close a loop through members that read each other
+    depth: dict[str, int] = dict.fromkeys(members, 0)
+    for _ in range(len(members)):
+        changed = False
+        for node in sorted(members):
+            want = max((depth[a] + 1 for a in ancestors[node]), default=0)
+            if want > depth[node] and want <= len(members):
+                depth[node] = want
+                changed = True
+        if not changed:
+            break
     out: list[tuple[AggKey, int, list[NodeItem], int | None]] = []
     for i, (key, index, layer) in enumerate(groups):
         if i not in cyclic:

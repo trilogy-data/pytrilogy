@@ -1719,4 +1719,65 @@ theorem bridge_joined_whole_repeats_its_pairs :
       (bridge.flatMap fun r => pairs.filter fun v => v == (r.1, r.2.2)).length = 5 := by
   decide
 
+/-! ## A membership, a set and a derived key are no grains of the rows
+
+The `compositions` family (0.3.522) writes `x in (x ? c)` beside the WHERE's
+own atoms, a `by` over a derived key, and a nested aggregate beside a value of
+the select. Each law below is one the planner broke on a shape of it. -/
+
+/-- The trees `(id, city, species)` of the sweep model, species numbered. -/
+def compRows : List (Int × Int × Int) :=
+  [(1, 0, 0), (2, 0, 0), (3, 0, 1), (4, 0, 2), (5, 1, 0), (6, 1, 3)]
+
+/-- **A membership is a row predicate, so it filters the key rows**
+(`membership_keys_are_kept_keys`): `select species, count(id) by * where id in
+S or g` holds the species of the rows the WHERE keeps, as any atom does. -/
+theorem membership_keys_are_kept_keys (k : α → Key) (S : List α → List Key)
+    (g : α → Bool) (rows : List α) (t : Key)
+    (h : t ∈ keptKeys k (fun r => (S rows).contains (k r) || g r) rows) :
+    ∃ r ∈ rows, ((S rows).contains (k r) || g r) = true ∧ k r = t :=
+  kept_key_holds k _ rows t h
+
+/-- City 1's trees by the set, species 0 by a gate (`count by species > 2`):
+two species are kept. Applied only to the total's input, the key rows were
+every species (`membership_left_off_keys_keeps_rejected`, sweep seed 337). -/
+theorem membership_left_off_keys_keeps_rejected :
+    let p : Int × Int × Int → Bool := fun r => r.2.1 == 1 || r.2.2 == 0
+    let species : Int × Int × Int → Key := fun r => [r.2.2]
+    (keptKeys species p compRows).length = 2 ∧
+      (keptKeys species (fun _ => true) compRows).length = 4 := by
+  decide
+
+/-- A group's count read as a per-row presence flag: one row per tree, `1`
+each, deduped to the group's tuple. Right only when the rows are already one
+per group; a set listed first in the scan (`tree_form ? c`, one row per form)
+claimed that grain for the trees (`set_grain_is_no_row_grain`, seed 5544):
+species 0's count read 1 for 3. -/
+theorem set_grain_is_no_row_grain :
+    let species0 := compRows.filter (·.2.2 == 0)
+    species0.length = 3 ∧ (dedup (species0.map fun r => (r.2.2, (1 : Int)))).length = 1 := by
+  decide
+
+/-- **A derived key's own grain is no key of its value**
+(`derived_key_grain_splits_its_tuple`, seed 2081): `fc` of species 0 and 1 is
+the same `b`, so `(city, fc)` is one tuple where `(city, fc, species)` is two,
+and a FINAL grouped by the latter returned `(A, b)` twice. -/
+theorem derived_key_grain_splits_its_tuple :
+    let fc : Int → Int := fun s => if s ≤ 1 then 0 else 1
+    let rows := compRows.filter (·.2.1 == 0)
+    (dedup (rows.map fun r => (r.2.1, fc r.2.2))).length = 2 ∧
+      (dedup (rows.map fun r => (r.2.1, fc r.2.2, r.2.2))).length = 3 := by
+  decide
+
+/-- A total read off per-key partials is their re-aggregate. `min(h)` beside
+`sum(count(id) by species)` under a WHERE was kept per species and read as the
+total, one row per species (`partial_read_as_total_splits`, seed 876): three
+minima where the total is one. -/
+theorem partial_read_as_total_splits :
+    let h : List (Int × Int) := [(0, 3), (0, 7), (1, 5), (3, 2)]
+    let per := dedup (h.map (·.1)) |>.map fun s =>
+      ((h.filter (·.1 == s)).map (·.2)).foldl min 100
+    per.length = 3 ∧ per.foldl min 100 = 2 := by
+  decide
+
 end Trilogy.SelectGrain

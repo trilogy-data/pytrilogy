@@ -253,8 +253,12 @@ def _aggregates_rows(cte: Any) -> bool:
         return False
     rolled = {c.address for c in cte.rollup_concepts}
     return any(
-        c.derivation == Derivation.AGGREGATE
-        and (c.address in rolled or not cte.source_map.get(c.address))
+        (
+            c.derivation == Derivation.AGGREGATE
+            and (c.address in rolled or not cte.source_map.get(c.address))
+        )
+        # a value over a partial this CTE re-sums (`count(id) - max(h)`)
+        or any(a.address in rolled for a in c.concept_arguments)
         for c in cte.output_columns
     )
 

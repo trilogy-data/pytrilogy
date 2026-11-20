@@ -5884,7 +5884,11 @@ def _final_dedup_targets(
         _reads_aggregate(o) for o in node.output_concepts
     ):
         return None
-    if node.force_group and not _holds_summary_rows(node, contract_outputs):
+    if (
+        node.force_group
+        and not _holds_summary_rows(node, contract_outputs)
+        and not _groups_past_outputs(node, contract_outputs, environment)
+    ):
         return None
     # A non-standard-grouping (ROLLUP/CUBE/GROUPING SETS) contributor's rows are
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
@@ -6023,6 +6027,19 @@ def _stored_partials(
         if o.address in held and o.is_aggregate and _is_rollable_aggregate(o)
     ]
     return pending_rollups(rollable, resolved.grain) if rollable else []
+
+
+def _groups_past_outputs(
+    node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """A grouping that kept a key the outputs do not determine (a derived
+    key's own grain, `species` of `fc`) holds a row per value of it."""
+    closure = strict_fd_closure(environment, {c.address for c in outputs})
+    return any(
+        o.address not in closure and not o.is_aggregate
+        for o in node.output_concepts
+        if o.address not in (node.hidden_concepts or set())
+    )
 
 
 def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:
