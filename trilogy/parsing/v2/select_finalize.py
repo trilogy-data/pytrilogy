@@ -429,11 +429,16 @@ def _validate_where_aggregate_matches_select(
 ) -> None:
     """Reject inline WHERE aggregates that recompute a SELECT aggregate.
 
-    ``where sum(x) > 100 select sum(x) as total`` (with or without matching
-    ``by`` clauses) is a HAVING-style filter dressed up as WHERE: the value
-    being filtered only exists post-aggregation. Emit a targeted message that
-    names the matching select alias instead of falling through to the
-    multi-grain error, which is correct but opaque for this common case.
+    ``where sum(x) > 100 select sum(x) as total`` is a HAVING-style filter
+    dressed up as WHERE: the value being filtered only exists
+    post-aggregation. Emit a targeted message that names the matching select
+    alias instead of falling through to the multi-grain error, which is
+    correct but opaque for this common case.
+
+    A WHERE aggregate with an explicit ``by`` (``by *`` included) has said
+    which rows it reads, every row at that grain, so it is no HAVING in
+    disguise: the WHERE gates on its scope twin and the select keeps its own
+    value over the kept rows.
     """
     if not select.where_clause:
         return
@@ -446,7 +451,7 @@ def _validate_where_aggregate_matches_select(
         return
     for node in _collect_condition_aggregates(first_stage.conditional):
         sig = _aggregate_full_signature(node)
-        if sig is None or sig not in sig_to_alias:
+        if sig is None or sig[2] or sig not in sig_to_alias:
             continue
         alias = _strip_local_namespace(sig_to_alias[sig])
         rendered = _render_aggregate(node)

@@ -2889,7 +2889,8 @@ def build_concept_graph(
     #     mandatory walk already produces);
     #   - require the node's address to appear as a row argument (existence
     #     args don't need row-stream consumers);
-    #   - skip nodes that already have any outgoing edge.
+    #   - skip nodes that already have an outgoing edge into the row stream
+    #     (one feeding only a membership subselect's set still needs a host).
     mandatory_blank_ids = dict.fromkeys(node_id("", c.address) for c in mandatory_list)
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
     backfill = [
@@ -2897,7 +2898,7 @@ def build_concept_graph(
         for src in outer_condition_nodes
         if attrs[src].derivation != Derivation.ROOT
         and attrs[src].address in row_arg_addresses
-        and not any(True for _ in graph.successors(src))
+        and all(attrs[succ].existence_only for succ in graph.successors(src))
     ]
     # a constant is the same value on every row: the rowed outputs carry a
     # condition its grain has no key for, which it would join on no key (`4`
