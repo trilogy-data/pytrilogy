@@ -358,8 +358,12 @@ hold nearly all of the estimated lines.
    extended, so a set's answer is not the union of its members'.
 
    Gates, against `162f024`: corpus 0 moved (205 statements); the suite
-   SQL capture (every statement any test compiles) GATE_SUITE; fuzzer
-   GATE_FUZZ.
+   SQL capture (48,458 statements, every one any test compiles) 0 moved once
+   `PYTHONHASHSEED` is pinned (unpinned, 46 move in both directions between
+   two runs of the same commit: GROUP BY, SELECT and grain-check column
+   order, and local server ports); fuzzer 522/522; the suite fails the same
+   25 tests as `main` (credential-bound, and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`).
 6. **Drop the `narrow_equal_domain_joins` knob (landed; the premise behind
    the rest was wrong).** The knob is gone, and
    `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL
