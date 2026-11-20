@@ -1115,6 +1115,16 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
+def _is_row_array_membership(left: Any, right: Any) -> bool:
+    """`x in <list concept>` tests the list on x's own row, not every list's
+    members: a row-level comparison, not an existence set."""
+    return (
+        isinstance(right, BuildConcept)
+        and isinstance(right.datatype, ArrayType)
+        and not isinstance(arg_to_datatype(left), ArrayType)
+    )
+
+
 @dataclass(slots=True)
 class BuildBetween(DataTyped, BuildOperandArgs, ConstantInlineable):
     left: (
@@ -4260,7 +4270,7 @@ class Factory:
         )
 
     @_build_dispatch.register
-    def _(self, base: SubselectComparison) -> BuildSubselectComparison:
+    def _(self, base: SubselectComparison) -> BuildComparison:
         right: Any = base.right
         # this has specialized logic - include all Functions, EXCEPT a ROW_TUPLE
         # (composite-membership row constructor): it must stay a function so its
@@ -4307,6 +4317,10 @@ class Factory:
                 " another. To filter by values present in a related model, compare"
                 " two distinct (unmerged) concepts (reference the other model's"
                 " key directly, or drop the `merge`)."
+            )
+        if _is_row_array_membership(left_built, right_built):
+            return BuildComparison(
+                left=left_built, right=right_built, operator=base.operator
             )
         return BuildSubselectComparison(
             left=left_built,
