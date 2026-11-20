@@ -179,7 +179,7 @@ from trilogy.scripts.source_identity import (
     resolve_origin,
 )
 
-DEFAULT_API_URL = "https://trilogy-cloud-api.fly.dev"
+DEFAULT_API_URL = "https://api.trilogydata.dev"
 ENV_API_URL = "TRILOGY_CLOUD_API"
 ENV_TOKEN = "TRILOGY_CLOUD_TOKEN"
 ENV_REQUEST_TIMEOUT = "TRILOGY_CLOUD_TIMEOUT"
