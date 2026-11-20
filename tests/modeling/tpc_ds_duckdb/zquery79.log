@@ -1,11 +1,11 @@
 query_id = "79"
-gen_length = 2582
+gen_length = 2571
 preql_size = 1132
 comp_size = 1188
 generated_sql = """
 
 WITH 
-cooperative as (
+thoughtful as (
 SELECT
     \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_pos_address_sk\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_sk\",
@@ -30,13 +30,13 @@ GROUP BY
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"cooperative\".\"city_short\" as \"city_short\",
-    \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"cooperative\".\"amt\" as \"amt\",
-    \"cooperative\".\"profit\" as \"profit\"
+    \"thoughtful\".\"city_short\" as \"city_short\",
+    \"thoughtful\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    \"thoughtful\".\"amt\" as \"amt\",
+    \"thoughtful\".\"profit\" as \"profit\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"thoughtful\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 GROUP BY
     1,
     2,
@@ -44,11 +44,11 @@ GROUP BY
     4,
     5,
     6,
-    \"cooperative\".\"store_sales_pos_address_sk\"
+    \"thoughtful\".\"store_sales_pos_address_sk\"
 ORDER BY 
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
-    \"cooperative\".\"city_short\" asc nulls first,
-    \"cooperative\".\"profit\" asc nulls first,
-    \"cooperative\".\"store_sales_ticket_number\" asc
+    \"thoughtful\".\"city_short\" asc nulls first,
+    \"thoughtful\".\"profit\" asc nulls first,
+    \"thoughtful\".\"store_sales_ticket_number\" asc
 LIMIT (100)"""

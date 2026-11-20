@@ -83,7 +83,7 @@ def parent_outputs_needed(
         [
             output
             for parent in parents
-            for output in parent.output_concepts
+            for output in parent.usable_outputs
             if output.address in referenced
         ],
         "address",

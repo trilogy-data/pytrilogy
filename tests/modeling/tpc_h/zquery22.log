@@ -1,22 +1,11 @@
 query_id = "22"
-gen_length = 1495
+gen_length = 1477
 preql_size = 513
 comp_size = 806
 generated_sql = """
 
 WITH 
 thoughtful as (
-SELECT
-    \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
-    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"cntrycode\"
-FROM
-    \"memory\".\"customer\" as \"orders_customer_customers\"
-    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
-WHERE
-    (SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) is not null and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')) and \"orders_customer_customers\".\"c_acctbal\" > 0 and \"orders_orders\".\"o_orderkey\" is null
-),
-quizzical as (
 SELECT
     avg(\"orders_customer_customers\".\"c_acctbal\") as \"avg_bal_in_target\"
 FROM
@@ -26,18 +15,29 @@ WHERE
 
 HAVING
     count(*) > 0
+),
+wakeful as (
+SELECT
+    \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
+    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"cntrycode\"
+FROM
+    \"memory\".\"customer\" as \"orders_customer_customers\"
+    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
+WHERE
+    (SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) is not null and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')) and \"orders_customer_customers\".\"c_acctbal\" > 0 and \"orders_orders\".\"o_orderkey\" is null
 )
 SELECT
-    \"thoughtful\".\"cntrycode\" as \"cntrycode\",
-    count(\"thoughtful\".\"orders_customer_id\") as \"numcust\",
-    sum(\"thoughtful\".\"orders_customer_account_balance\") as \"totacctbal\"
+    \"wakeful\".\"cntrycode\" as \"cntrycode\",
+    count(\"wakeful\".\"orders_customer_id\") as \"numcust\",
+    sum(\"wakeful\".\"orders_customer_account_balance\") as \"totacctbal\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"quizzical\" on 1=1
+    \"wakeful\"
+    INNER JOIN \"thoughtful\" on 1=1
 WHERE
-    \"thoughtful\".\"orders_customer_account_balance\" > \"quizzical\".\"avg_bal_in_target\"
+    \"wakeful\".\"orders_customer_account_balance\" > \"thoughtful\".\"avg_bal_in_target\"
 
 GROUP BY
     1
 ORDER BY 
-    \"thoughtful\".\"cntrycode\" asc"""
+    \"wakeful\".\"cntrycode\" asc"""

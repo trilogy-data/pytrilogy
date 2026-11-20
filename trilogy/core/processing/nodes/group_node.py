@@ -1,7 +1,9 @@
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType
+from trilogy.core.enums import ZERO_ON_EMPTY_AGGREGATES, SourceType
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
@@ -25,6 +27,32 @@ from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
+
+
+def null_on_null_group(
+    concept: BuildConcept, nullable: set[str], memo: dict[str, bool]
+) -> bool:
+    """Whether a value computed at a group can be NULL: an aggregate other
+    than a count is NULL on a group whose argument values are all NULL, and a
+    null-propagating expression over such a value is too."""
+    if concept.address in memo:
+        return memo[concept.address]
+    memo[concept.address] = False
+    if concept.equivalent_addresses & nullable:
+        result = True
+    elif isinstance(concept.lineage, BuildAggregateWrapper):
+        result = (
+            concept.lineage.function.operator not in ZERO_ON_EMPTY_AGGREGATES
+            and any(
+                null_on_null_group(a, nullable, memo) for a in concept.concept_arguments
+            )
+        )
+    else:
+        result = propagates_argument_nulls(concept) and any(
+            null_on_null_group(a, nullable, memo) for a in concept.concept_arguments
+        )
+    memo[concept.address] = result
+    return result
 
 
 class GroupNode(StrategyNode):
@@ -138,6 +166,20 @@ class GroupNode(StrategyNode):
         # node-level nullables carry inferred nullability for concepts COMPUTED
         # in this subtree (e.g. a derived join key over a nullable column)
         node_nullable = {x.address for x in self.nullable_concepts}
+        parent_nullable = {
+            a
+            for p in parent_sources
+            for c in p.nullable_concepts
+            for a in c.equivalent_addresses
+        }
+        parent_outputs = {c.address for p in parent_sources for c in p.output_concepts}
+        memo: dict[str, bool] = {}
+        node_nullable |= {
+            x.address
+            for x in self.output_concepts
+            if x.address not in parent_outputs
+            and null_on_null_group(x, parent_nullable, memo)
+        }
         nullable_concepts = [
             x
             for x in self.output_concepts

@@ -1,11 +1,11 @@
 query_id = "21"
-gen_length = 1692
+gen_length = 1708
 preql_size = 510
 comp_size = 802
 generated_sql = """
 
 WITH 
-uneven as (
+thoughtful as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
@@ -18,7 +18,7 @@ FROM
 WHERE
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"order_orders\".\"o_orderstatus\" = 'F' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
 ),
-highfalutin as (
+cooperative as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
@@ -26,30 +26,30 @@ SELECT
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
-    \"lineitem\".\"l_orderkey\" in (select \"order_id\" from \"uneven\")
+    \"lineitem\".\"l_orderkey\" in (select \"order_id\" from \"thoughtful\")
 
 GROUP BY
     1,
     2),
-thoughtful as (
+uneven as (
 SELECT
-    \"highfalutin\".\"order_id\" as \"order_id\"
+    \"cooperative\".\"order_id\" as \"order_id\"
 FROM
-    \"highfalutin\"
+    \"cooperative\"
 GROUP BY
     1
 HAVING
-    count(\"highfalutin\".\"part_supplier_id\") > 1 and count(\"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
+    count(\"cooperative\".\"part_supplier_id\") > 1 and count(\"cooperative\".\"_virt_filter_id_1852383943558009\") = 1
 )
 SELECT
-    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
-    sum(\"uneven\".\"line_item\") as \"numwait\"
+    \"thoughtful\".\"part_supplier_name\" as \"part_supplier_name\",
+    sum(\"thoughtful\".\"line_item\") as \"numwait\"
 FROM
-    \"uneven\"
-    INNER JOIN \"thoughtful\" on \"uneven\".\"order_id\" = \"thoughtful\".\"order_id\"
+    \"thoughtful\"
+    INNER JOIN \"uneven\" on \"thoughtful\".\"order_id\" = \"uneven\".\"order_id\"
 GROUP BY
     1
 ORDER BY 
     \"numwait\" desc,
-    \"uneven\".\"part_supplier_name\" asc
+    \"thoughtful\".\"part_supplier_name\" asc
 LIMIT (100)"""

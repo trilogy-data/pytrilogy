@@ -1,11 +1,11 @@
 query_id = "73"
-gen_length = 2942
+gen_length = 2925
 preql_size = 1308
 comp_size = 1437
 generated_sql = """
 
 WITH 
-cooperative as (
+thoughtful as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_sk\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
@@ -32,13 +32,13 @@ SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_SALUTATION\" as \"store_sales_customer_salutation\",
     \"store_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"store_sales_customer_preferred_cust_flag\",
-    \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"cooperative\".\"ticket_cnt\" as \"ticket_cnt\"
+    \"thoughtful\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    \"thoughtful\".\"ticket_cnt\" as \"ticket_cnt\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"thoughtful\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
-    \"cooperative\".\"ticket_cnt\" desc,
+    \"thoughtful\".\"ticket_cnt\" desc,
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc,
-    \"cooperative\".\"store_sales_ticket_number\" asc,
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" asc"""
+    \"thoughtful\".\"store_sales_ticket_number\" asc,
+    \"thoughtful\".\"store_sales_customer_sk\" asc"""

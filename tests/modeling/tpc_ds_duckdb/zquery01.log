@@ -1,11 +1,11 @@
 query_id = "01"
-gen_length = 1410
+gen_length = 1390
 preql_size = 419
 comp_size = 689
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     \"ss_store_returns\".\"SR_CUSTOMER_SK\" as \"ss_return_customer_sk\",
     \"ss_store_returns\".\"SR_STORE_SK\" as \"ss_return_store_sk\",
@@ -20,22 +20,22 @@ WHERE
 GROUP BY
     1,
     2),
-questionable as (
+cooperative as (
 SELECT
-    \"thoughtful\".\"ss_return_store_sk\" as \"ss_return_store_sk\",
-    avg(\"thoughtful\".\"total_returns\") as \"avg_store_returns\"
+    \"cheerful\".\"ss_return_store_sk\" as \"ss_return_store_sk\",
+    avg(\"cheerful\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
 GROUP BY
     1)
 SELECT
     \"ss_return_customer_customers\".\"C_CUSTOMER_ID\" as \"ss_return_customer_id\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"questionable\" on \"thoughtful\".\"ss_return_store_sk\" is not distinct from \"questionable\".\"ss_return_store_sk\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_return_customer_customers\" on \"thoughtful\".\"ss_return_customer_sk\" = \"ss_return_customer_customers\".\"C_CUSTOMER_SK\"
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"ss_return_store_sk\" is not distinct from \"cooperative\".\"ss_return_store_sk\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_return_customer_customers\" on \"cheerful\".\"ss_return_customer_sk\" = \"ss_return_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"thoughtful\".\"total_returns\" > ( 1.2 * \"questionable\".\"avg_store_returns\" )
+    \"cheerful\".\"total_returns\" > ( 1.2 * \"cooperative\".\"avg_store_returns\" )
 
 ORDER BY 
     \"ss_return_customer_customers\".\"C_CUSTOMER_ID\" asc
