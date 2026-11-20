@@ -2424,8 +2424,8 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     reject now preserves nothing (`_nullable_join`).
 
 - **The expressions family to 800,000** (0.3.521). On main its 300,000
-  queries (seeds 650,000-800,000) hold no wrong or raising seed beside the 48
-  the generator rejects, and seeds 650,000-725,000 with `--carry-state` none
+  queries (seeds 650,000-800,000) hold no wrong or raising seed beside 48
+  refused, and seeds 650,000-725,000 with `--carry-state` none
   either. The branch breaks none and plans 1,189 fewer scans. Fixed:
   - A scan under a WHERE beside an unfiltered scan of the same table read the
     table again: the WHERE's `by` aggregates read every row, the select its
@@ -2444,6 +2444,15 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     backfill that joins a WHERE-only aggregate to the outputs skipped it. The
     backfill now looks past existence-only consumers
     (`tests/discovery/test_membership_beside_where_aggregate.py`).
+  - A keyless select refused to compute the aggregate its WHERE gates on when
+    both spelled it alike with an explicit `by` (`count(tree_id) by *` in
+    each, 652494): the guard against a HAVING written as a WHERE matched it,
+    though the WHERE reads every row at its `by` and the select the kept
+    rows, and the planner keeps the two apart. Only the bare spelling is
+    refused now. Every seed main refused in the swept ranges now plans and
+    matches the oracle: 324 queries of the expressions family to 800,000,
+    508 of `first` and 832 of `spellings` to 450,000
+    (`tests/discovery/test_where_by_beside_select.py`).
 
 ## Limits
 
