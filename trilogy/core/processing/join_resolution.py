@@ -328,6 +328,8 @@ class SideFacts:
     held_spans: frozenset[str] = frozenset()
     # extent-free spans the side carries every value of
     complete_spans: frozenset[str] = frozenset()
+    # EQUAL-declared keys the side carries every value of
+    complete_equal: frozenset[str] = frozenset()
     # the filter atoms every row of the side passed
     filters: tuple[BoolExpr, ...] = ()
     # extent-free span or `~` key -> the leaf tables whose own `~` column
@@ -998,7 +1000,10 @@ def _independent_full_keys(
     """A FULL-declared key the pair joins on as an axis of its own. One both
     sides' grains, among the pair's other keys, determine (`parent` beside
     `id`) pairs no row the grain does not, and the pairing drops it."""
-    full = keys & facts.full_join_keys
+    left_facts, right_facts = facts.side(left), facts.side(right)
+    full = keys & facts.full_join_keys - (
+        left_facts.complete_equal & right_facts.complete_equal
+    )
     if not full:
         return False
     rest = keys - full
@@ -2710,6 +2715,30 @@ def _side_facts(
     return facts, concepts
 
 
+def _complete_equal(
+    datasource: DataSource, equal_nodes: set[str], canon_node: Callable[[str], str]
+) -> frozenset[str]:
+    """The EQUAL-declared keys `datasource` carries every value of: a join on
+    one between two such sides keeps every row of both."""
+    return frozenset(
+        node
+        for c in datasource.output_concepts
+        if (node := canon_node(c.address)) in equal_nodes
+        and _carries_every_value(datasource, c)
+    )
+
+
+def _carries_every_value(datasource: DataSource, concept: BuildConcept) -> bool:
+    """`complete_key_domain`, through BASIC lineage: a derived key's domain is
+    the image of its inputs'."""
+    if complete_key_domain(datasource, concept.address):
+        return True
+    if concept.derivation != Derivation.BASIC:
+        return False
+    args = concept.concept_arguments
+    return bool(args) and all(_carries_every_value(datasource, arg) for arg in args)
+
+
 def _computes_one_row(concept: BuildConcept) -> bool:
     """A one-row value this query computes: a constant, a `by *` total, or an
     expression over those. One a datasource stores (`property <*>.watermark`)
@@ -2958,8 +2987,9 @@ def get_node_joins(
 
     # an EQUAL key (`merge a into b`, `merge equal a = b`) declares one domain,
     # not that every side carries all of it: the join preserves both until each
-    # side proves complete, which the optimizer checks (a side built from part
-    # of the domain pads the rest, `test_unnest_filter_laws`)
+    # side proves complete (a side built from part of the domain pads the rest,
+    # `test_unnest_filter_laws`). Sides complete here (`complete_equal`) pair as
+    # on any key; the optimizer proves what only the rendered plan shows.
     full_join_keys = {
         canon_node(a) for a in environment.domain_graph.outer_relation_keys()
     }
@@ -2973,6 +3003,19 @@ def get_node_joins(
                 is_coalescing_axis(axis, environment)
                 for axis in axis_scalar_reads(c, environment)
             )
+        }
+    equal_nodes = {
+        canon_node(a) for a in environment.domain_graph.equal_narrowable_keys()
+    }
+    if equal_nodes:
+        sides = {
+            ds_node: replace(
+                side,
+                complete_equal=_complete_equal(
+                    ds_node_map[ds_node], equal_nodes, canon_node
+                ),
+            )
+            for ds_node, side in sides.items()
         }
     declared = frozenset(canon_node(a) for a in _declared_subset_keys(environment))
     span_families = {
