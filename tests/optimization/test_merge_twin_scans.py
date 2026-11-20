@@ -1,8 +1,11 @@
-"""Two scans of one table under one WHERE read the same rows once.
+"""Two scans of one table under one WHERE read the same rows once, and a scan
+under a WHERE reads an unfiltered twin rather than the table again.
 
 The planner names a scan before predicate pushdown moves the WHERE onto it,
 so a scan filtered at plan time survived beside its pushdown-filtered twin
 (expressions 362641, 364578: the trees read twice under `tag = 'x'`)."""
+
+import pytest
 
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
 from trilogy.constants import CONFIG
@@ -81,3 +84,26 @@ def test_summary_resum_keeps_its_partial_source():
             ("A", "Ulmus", None, 5),
         ]
     )
+
+
+FILTERED = [
+    (
+        "select tree_id, height where city = 'A' and count(tree_id) by species > 1"
+        " and max(height) by city < 6;",
+        [("a1", 3), ("a2", None)],
+    ),
+    # expressions 650115, reduced
+    (
+        "select city, min(height) as v0 where city = 'B'"
+        " and avg(height) by species != 0 and count(tree_id) by city = 2;",
+        [("B", 2)],
+    ),
+]
+
+
+@pytest.mark.parametrize("query, expected", FILTERED)
+def test_filtered_scan_reads_its_unfiltered_twin(query: str, expected: list[tuple]):
+    ex = executor("base")
+    sql = ex.generate_sql(query)[-1]
+    assert _scans(sql) == 1, sql
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(expected)
