@@ -52,3 +52,24 @@ def test_partial_fact_beside_its_complete_dimension_is_typed_inner():
     customer_join = next(j for j in joins if "customer_id" in j)
     assert customer_join.startswith("INNER JOIN"), joins
     assert rows == [("z", None)]
+
+
+UNFILTERED = """
+key id int;
+key bill_id int;
+key ship_id int;
+datasource orders (id: id, bill: bill_id, ship: ship_id) grain (id)
+query '''select 1 id, 100 bill, 200 ship union all select 2, 101, 201''';
+with buyers_a as select id, bill_id as cust_id;
+with buyers_b as select id, ship_id as cust_id;
+"""
+
+
+def test_unfiltered_rowsets_beside_their_anchor_are_typed_inner():
+    joins, rows = _joins_and_rows(
+        UNFILTERED,
+        "select id, buyers_a.cust_id as a, buyers_b.cust_id as b "
+        "subset join buyers_a.id = id and buyers_b.id = id;",
+    )
+    assert [j.split(" JOIN ")[0] for j in joins] == ["INNER", "INNER"], joins
+    assert rows == [(1, 100, 200), (2, 101, 201)]

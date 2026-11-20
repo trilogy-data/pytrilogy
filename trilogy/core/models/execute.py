@@ -1301,6 +1301,10 @@ class Join(Generic[NodeT]):
     # planning only: the type the join had before an earlier join's padding
     # widened it (`join_resolution.restore_unpadded_joins`)
     own_type: JoinType | None = None
+    # planning only: the sides every row of which has a partner, so the join
+    # drops none of their rows whatever its type (`join_resolution._narrow_covered`)
+    matched_left: bool = False
+    matched_right: bool = False
 
     def __post_init__(self):
         key = _node_key(self.right)
@@ -1342,6 +1346,8 @@ class Join(Generic[NodeT]):
             guard=_bind_guard(self.guard, node_for),
             condition=self.condition,
             own_type=self.own_type,
+            matched_left=self.matched_left,
+            matched_right=self.matched_right,
         )
 
     def repoint(self, node_for: Callable[[NodeT], NodeT]) -> None:

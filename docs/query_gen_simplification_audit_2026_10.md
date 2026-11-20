@@ -239,13 +239,14 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-second slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
-folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL and
-subset proofs (the optimizer rule's firings over the non-law suite: 912
-before the first slice, 796 after it, 522 after the second) and lost its per-side origin premise, 8 closed, 9 half done; 1
-and the rest of 2 remain, and hold nearly all of the estimated lines. Seam 1
-was re-measured: its blocker is the ranked owner election, not the padded
-fallback.
+third slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
+`~`-subset and graph-subset proofs (the optimizer rule's firings over the
+non-law suite: 912 before the first slice, 796 after it, 522 after the
+second, 407 after the third) and lost its per-side origin premise, 8 closed,
+9 half done; 1 and the rest of 2 remain, and hold nearly all of the
+estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
+election, not the padded fallback.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -365,6 +366,64 @@ fallback.
    side. Corpus (209 statements): 2 moved, q72's key read off its dimension
    and tpc-h adhoc07's INNER chain reordered. Fuzzer 522/522; the suite
    fails the same 25 tests as `main`.
+
+   **Third slice (landed): graph-related subsets, and a covered join thins
+   nothing.** The 522 firings left after the second slice
+   (`local_scripts/sql_ab/upgrade_census_plugin.py`, re-run on `3694067`)
+   held 65 rowset-boundary narrowings and about 50 `_proven_subset_of` ones
+   the planner missed for three reasons, each now closed:
+   - **Subset evidence without a `~`.** `JoinFacts.covered` asked the subset
+     side to bind its key `~`. The optimizer also accepts a domain-graph
+     relation between two distinct concepts: an unfiltered rowset over its
+     anchor (`with b as select id, ...` beside `id`) is EQUAL to it, so the
+     anchor's rows all have a partner on the rowset's boundary. A side now
+     qualifies by either; one concept bound complete on both sides still
+     does not (`test_dim_peel_composite_grain_axis`: the dimension keeps the
+     member a `?` fact lacks).
+   - **A relation stamp is not a coverage fact.** A `subset join r.k = k`
+     stamps `r.k` `~` on every read of it, the rowset boundary included, so
+     `complete_key_domain` refused the boundary that carries every value of
+     its own handle. A stamp at a declared subset end (`subset_sources`,
+     as the optimizer's `_own_coverage_partial` reads it) now defers to the
+     read's leaves and joins; a leaf's own `~` and an extent-free boundary
+     still refuse.
+   - **Both sides, and the stream after.** `_narrow_covered` drops each
+     covered side's preservation, not only the first (two sides each
+     carrying the other's domain join INNER), and records it on the join
+     (`matched_left`/`matched_right`, carried onto `Join`). `_intact`,
+     `preserved_sources` and `_narrowed_sources` read the record: an INNER
+     the proof typed drops no row of a covered side, so the covering side's
+     rows stay intact for the next join and its outputs are not stamped
+     partial. Without the last, the INNER beside the relation-stamped
+     rowset stamped the customers partial and a later join typed INNER on
+     it, losing the customer with no order
+     (`test_rowset_declared_join_pairing`).
+
+   Firings fell from 522 to 407: rowset boundary 65 to 17 (8 of them
+   `union join` vetoes the planner leaves alone, the rest nullable keys,
+   multi-left and multi-key joins), and the joins those narrowings fed.
+   No helper reached 0. What remains: the unnest of complete lists (153,
+   kept in the optimizer), twin key sets over one filter chain (about 90),
+   value-NULL `~?` keys a null-safe pair matches (57, all
+   `test_padded_null_pairing`), and multi-left or thinned-stream joins.
+   `test_subset_join_plan_time_completeness.py::test_unfiltered_rowsets_beside_their_anchor_are_typed_inner`
+   pins the graph case with the optimizer rule stubbed (red on `main`).
+
+   Gates, against `3694067`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included, 49,899 tests) moved the distinct join shapes of 63 tests
+   (FULL -35, RIGHT -2, LEFT +3, INNER +37; the rest of the textual moves
+   are worktree paths and statement counts under xdist), each under a row
+   oracle that stayed green: `test_partial_lookup_fallback_oracle_laws`
+   (28), `test_rank_beside_partial_merge` (25),
+   `test_class_value_beside_partial_lookups`, `test_rowset_declared_join_pairing`,
+   `test_unmodelled_regions`, `test_rowset`. The one move with no row oracle,
+   gcat `test_full_join_issue_2` (no local data), narrows a payload FULL to
+   LEFT because `launch_info` binds `LV_Type: ~vehicle.name` beside the
+   complete `lv_info`: every launch keeps its vehicle row, so the vehicles'
+   stream carries every launch. Corpus (205 statements): 0 moved. The suite
+   fails the same 25 tests as `main` (credential-bound and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
+   522/522.
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
