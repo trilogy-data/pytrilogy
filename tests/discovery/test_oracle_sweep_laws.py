@@ -318,8 +318,8 @@ def executor(model: str) -> Executor:
     return exec
 
 
-# `by *` in both the select and the WHERE of a keyless select is rejected by
-# design: the select has no grain to tell the two apart.
+# A bare aggregate in both the select and the WHERE of a keyless select is
+# refused by design (a HAVING written as a WHERE); with an explicit `by` it plans.
 REJECTED = "is also computed in the SELECT"
 
 
