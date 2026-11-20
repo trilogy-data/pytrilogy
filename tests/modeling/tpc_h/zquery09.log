@@ -10,10 +10,10 @@ SELECT
 FROM
     \"memory\".\"orders\" as \"order_orders\"
     INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"order_orders\".\"o_orderkey\" = \"lineitem\".\"l_orderkey\"
+    INNER JOIN \"memory\".\"partsupp\" as \"part_partsupp\" on \"lineitem\".\"l_partkey\" = \"part_partsupp\".\"ps_partkey\" AND \"lineitem\".\"l_suppkey\" = \"part_partsupp\".\"ps_suppkey\"
     INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"part\" as \"part_part\" on \"lineitem\".\"l_partkey\" = \"part_part\".\"p_partkey\"
-    INNER JOIN \"memory\".\"partsupp\" as \"part_partsupp\" on \"lineitem\".\"l_partkey\" = \"part_partsupp\".\"ps_partkey\" AND \"lineitem\".\"l_suppkey\" = \"part_partsupp\".\"ps_suppkey\"
 WHERE
     \"part_part\".\"p_name\" like '%green%' ESCAPE '\\'
 

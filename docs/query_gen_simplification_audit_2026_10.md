@@ -239,11 +239,13 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-third slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+fourth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
-`~`-subset and graph-subset proofs (the optimizer rule's firings over the
-non-law suite: 912 before the first slice, 796 after it, 522 after the
-second, 407 after the third) and lost its per-side origin premise, 8 closed,
+`~`-subset, graph-subset and twin proofs (the optimizer rule's firings over
+the non-law suite: 912 before the first slice, 796 after it, 522 after the
+second, 407 after the third, 377 after the fourth; over the whole suite, laws
+included, its CTE rewrites fell from 1,045 to 496 in the fourth) and lost its
+per-side origin premise, 8 closed,
 9 half done; 1 and the rest of 2 remain, and hold nearly all of the
 estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
@@ -424,6 +426,69 @@ election, not the padded fallback.
    fails the same 25 tests as `main` (credential-bound and
    `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
    522/522.
+
+   **Fourth slice (landed): twins.** The optimizer's equivalence upgrade
+   (`_pair_key_sets_equivalent`) reads two sides as one key set when each is
+   complete on it: twin rollups, two facts each binding a key complete, two
+   aggregates by a dimension attribute. `JoinFacts.covered` refused that
+   shape (one concept, no `~`, bound complete on both sides), so the planner
+   left it FULL or LEFT for the optimizer. Now two reads of one concept that
+   each carry every value of it (`_carries_every_value`) cover each other
+   (`_twins`) when they NULL it alike (`_null_alike`): on no row, or only as
+   a value on both, which the pair already matches null-safely
+   (`get_modifiers`). Guest, rollup and span padding are not values: a
+   span-padded `pstatus` beside order 100's value-NULL group typed INNER
+   loses cat's row
+   (`test_derived_key_domain::test_where_beside_a_region_fed_output_aggregate_filters_the_rows`).
+   A side that NULLs the key beside one that never does still keeps its
+   preservation (`test_dim_peel_composite_grain_axis`).
+
+   Census over the non-law suite: 407 to 377 (twins 82 to 56; the rest are
+   twins over a filter chain, which `complete_key_domain` refuses, and
+   multi-left or later joins). Over the whole suite, laws included, the
+   rule's CTE rewrites fell from 1,045 (645 tests) to 496 (359), and the
+   rules that cleaned up after its late INNERs with it:
+   `DropIdentityGroup` 220 to 53, `SimplifyNullSafeJoins` 203 to 121,
+   `PrunePreservedJoinKeys` 1,280 to 878, `UpgradeJoinOnGuards` 3,704 to
+   3,487, `OrderInnerJoinsFirst` 589 to 446. Neither the upgrade nor
+   `DropIdentityGroup` fires on any shape of the rule-soundness model now
+   (2,000 random queries and the regressions, both addressings), so their
+   `test_rule_fires_and_keeps_rows` cells are gone; both still fire under
+   other row oracles. `test_subset_join_plan_time_completeness.py::test_twin_reads_of_one_complete_key_are_typed_inner`
+   pins a value-NULL twin with the rule stubbed (red on `main`).
+
+   Gates, against `8033411`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included) moved the join shape of 437 tests whose statement count
+   held (INNER +726, LEFT -710, FULL -42, RIGHT -34: 60 fewer joins), each
+   under a row oracle that stayed green, mostly
+   `test_global_fallback_oracle_laws` (115), `test_oracle_spellings_laws`
+   (55), `test_fixed_aggregate_select_laws` (36),
+   `test_oracle_expressions_laws` (33), `test_rank_beside_partial_merge`
+   (20); the moved plans are smaller or equal, except below. Corpus (209
+   statements): 1 moved, tpc-h q09's INNER chain reordered. The suite fails
+   the same 25 tests as `main`. Fuzzer 522/522.
+
+   Open, found by the gates:
+   - **Six `test_dimension_chain_oracle_laws` plans grow** (269, 299, 324,
+     350, 533, 560: 3 to 5 CTEs, `sum(group(seats) by id)` regroups by
+     `(id, seats)` and joins back on `id`). All three sides now join INNER,
+     so the walk keeps its stated order and starts from the aircraft; on
+     `main` a RIGHT after an INNER re-seeded it at the flight
+     (`_preserved_past_inner`), and the plan folded the group. The joined
+     pregrain is the same on both, so the regroup is decided elsewhere in
+     the group's assembly. `DropIdentityGroup` can drop the GROUP BY with an
+     orientation-free walk over INNER joins (prototyped), but not the
+     self-join it leaves; the fix belongs where the walk's orientation
+     reaches the group, not in the optimizer. Rows are right.
+   - **Is NULL a member of a complete domain?** The upgrade, and this
+     slice, read two `?` bindings that each carry every value of a key as
+     pairing their NULL groups null-safely. With orders holding a NULL
+     customer and visits none, `select cust_id, sum(amount), sum(pages)`
+     returns no NULL-customer row (the planner alone keeps it, FULL). The
+     join matrix's nullable axis states NULL keys are members that must
+     pair, and its data has a NULL row on every side; `_partial_domain_join`
+     says NULL is not a value. Deciding it decides whether the null-safe
+     arms of `_upgrade_to_inner` and `_pair_fully_matches` stay.
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
