@@ -68,6 +68,19 @@ LOGGER_PREFIX = "[DISCOVERY LOOP]"
 ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 
 
+def _feeds_only_existence(
+    source: QueryDatasource | BuildDatasource, qds: QueryDatasource
+) -> bool:
+    """Whether `source` is a set the condition reads in a subselect; the check
+    on its outputs is a proxy for that."""
+    condition = qds.condition
+    return condition is not None and any(
+        c.address in block
+        for c in source.output_concepts
+        for block in condition.existence_arguments
+    )
+
+
 def calculate_effective_parent_grain(
     node: QueryDatasource | BuildDatasource,
 ) -> BuildGrain:
@@ -84,7 +97,9 @@ def calculate_effective_parent_grain(
             if not qds.datasources:
                 # sourceless literal aggregate (count(1)/by *) = single global-scalar row
                 return BuildGrain()
-            return qds.datasources[0].grain
+            # a set read only by a membership subselect is not the row stream
+            rows = [x for x in qds.datasources if not _feeds_only_existence(x, qds)]
+            return (rows or qds.datasources)[0].grain
         seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
@@ -114,15 +129,7 @@ def calculate_effective_parent_grain(
         for x in qds.datasources:
             # an unjoined source still contributes grain unless it is used only
             # in a subselect; the existence check is a proxy for that
-            if x.name not in seen and not (
-                qds.condition
-                and qds.condition.existence_arguments
-                and any(
-                    c.address in block
-                    for c in x.output_concepts
-                    for block in qds.condition.existence_arguments
-                )
-            ):
+            if x.name not in seen and not _feeds_only_existence(x, qds):
                 logger.debug(f"adding unjoined grain {x.grain} for datasource {x.name}")
                 grain += x.grain
         return grain

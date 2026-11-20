@@ -67,6 +67,7 @@ from .models import (
     GroupBucket,
     RootReason,
     nulls_grouping_keys,
+    pairing_keys,
 )
 from .projection import decided_at_output_grain, iter_row_lineage, literal_producible
 from .region_reads import restated_over_region
@@ -628,6 +629,19 @@ def _hosts_reading_unfiltered_rows(
         hosts += tuple(_upstream_most(extra, host_graph))
 
 
+def _final_pairs_set_gates(atom: BoolExpr, scope: "_PlacementScope") -> bool:
+    """Whether FINAL can re-apply a membership atom: each aggregate it reads
+    beside the set pairs on keys the outputs hold (`count(id) by species`
+    beside `species`). A gate keyed on a column no output carries would join
+    FINAL's rows on nothing."""
+    held = {c.address for c in scope.mandatory_list}
+    return all(
+        set(pairing_keys(c.grain.components)) <= held
+        for c in atom.row_arguments
+        if c.is_aggregate
+    )
+
+
 def _uncovered_exposing_output_contributor(
     chosen_groups: tuple[str, ...], atom: BoolExpr, scope: "_PlacementScope"
 ) -> bool:
@@ -1099,15 +1113,19 @@ def _grouping_barrier_host(
     return None
 
 
-def _movable_row_inputs(atom: BoolExpr, scope: "_PlacementScope") -> set[str]:
+def _movable_row_inputs(
+    atom: BoolExpr, scope: "_PlacementScope", existence: bool = False
+) -> set[str]:
     """The row inputs of an atom that may be copied onto another host, empty
-    when it may not: an existence atom has a feeder to wire, and a probe or
-    scoped-axis atom reads the coalesced axis that only exists post-merge."""
+    when it may not: an existence atom has a feeder to wire (a host that
+    builds its own, an uncovered grouping, takes it with `existence`), and a
+    probe or scoped-axis atom reads the coalesced axis that only exists
+    post-merge."""
     # `existence_arguments` is truthy for a LITERAL membership too (`x in
     # ('a','b')` yields `[()]`, one empty group), so test the groups, not
     # the list: only an atom with an actual existence CONCEPT (a feeder to
     # wire) stays home.
-    if any(atom.existence_arguments):
+    if any(atom.existence_arguments) and not existence:
         return set()
     row_inputs = {c.address for c in atom.row_arguments}
     if _reads_post_merge_axis(row_inputs, scope.scoped_join_member_addresses):
@@ -1201,7 +1219,7 @@ def _uncovered_grouping_placements(
         ):
             continue
         atom = placement.atom
-        row_inputs = _movable_row_inputs(atom, scope)
+        row_inputs = _movable_row_inputs(atom, scope, existence=True)
         if not row_inputs:
             continue
         # upstream first: a re-sum of a partial this loop filters reads it
@@ -1857,7 +1875,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     ]
     if (
         mandatory_list
-        and not _reads_a_set(atom)
+        and (not _reads_a_set(atom) or _final_pairs_set_gates(atom, scope))
         and _uncovered_exposing_output_contributor(chosen_groups, atom, scope)
     ):
         out.append(_at_final(atom, PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR))

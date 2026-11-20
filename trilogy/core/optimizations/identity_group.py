@@ -77,7 +77,17 @@ def rows_unique_at_group(cte: CTE) -> bool:
     joins = [j for j in cte.joins if isinstance(j, Join)]
     if len(joins) != len(cte.joins):
         return False
-    nodes = {b.node.name: b.node for b in cte.source_bindings() if b.node is not None}
+    sets = (
+        {c.address for group in cte.condition.existence_arguments for c in group}
+        if cte.condition is not None
+        else set()
+    )
+    # a set a membership reads is no row source
+    nodes = {
+        b.node.name: b.node
+        for b in cte.source_bindings()
+        if b.node is not None and not output_addresses(b.node) & sets
+    }
     rights = {j.right.name for j in joins}
     bases = [node for name, node in nodes.items() if name not in rights]
     if len(bases) != 1 or len(rights) != len(joins):

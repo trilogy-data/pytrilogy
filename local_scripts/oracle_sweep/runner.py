@@ -29,6 +29,7 @@ FAMILIES = {
     "first": ("tests.discovery.test_oracle_sweep_laws", "shape"),
     "spellings": ("tests.discovery.test_oracle_spellings_laws", "shape2"),
     "expressions": ("tests.discovery.test_oracle_expressions_laws", "shape3"),
+    "compositions": ("tests.discovery.test_oracle_compositions_laws", "shape4"),
 }
 GENERATOR_FILES = [
     "tests/discovery/test_rollup_resolution_laws.py",
@@ -37,7 +38,11 @@ GENERATOR_FILES = [
 ]
 # A family's own generator, beside the shared ones: adding a family leaves the
 # others' cached records valid.
-FAMILY_FILES = {"expressions": ["tests/discovery/test_oracle_expressions_laws.py"]}
+EXPRESSIONS = "tests/discovery/test_oracle_expressions_laws.py"
+FAMILY_FILES = {
+    "expressions": [EXPRESSIONS],
+    "compositions": [EXPRESSIONS, "tests/discovery/test_oracle_compositions_laws.py"],
+}
 # Bump when a record's fields or meaning change: cached records are keyed on it.
 RECORD_VERSION = 1
 MODELS = ("base", "summary")

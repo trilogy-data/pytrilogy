@@ -5,6 +5,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.nodes import (
     ConstantNode,
     MergeNode,
@@ -100,15 +101,33 @@ def _grain_claim_needs_group(
     grain-less branch, which is a plan change for nodes this has no business
     touching.
     """
-    parent_grain = set(parent.resolve().grain.components)
+    resolved = parent.resolve()
+    parent_grain = set(resolved.grain.components)
     if not parent_grain or parent_grain.issubset({c.address for c in outputs}):
         return False
+    if _reads_partial_coarser(outputs, resolved.rollup_concepts, resolved.grain):
+        return True
     _expose_parent_grain(parent, parent_grain, environment)
     return grain_claim_unheld(
         outputs,
         parent_grain,
         {c.address for c in parent.output_concepts},
         environment,
+    )
+
+
+def _reads_partial_coarser(
+    outputs: list[BuildConcept], rollups: list[BuildConcept], grain: BuildGrain
+) -> bool:
+    """A value over a partial the parent still holds per finer key (`min(x)`
+    kept per species for a nested aggregate beside it) is computed once the
+    partial is re-aggregated to the value's own grain."""
+    pending = {c.address for c in pending_rollups(rollups, grain)}
+    return any(
+        not set(o.grain.components) >= set(grain.components)
+        and pending & {a.address for a in o.concept_arguments}
+        for o in outputs
+        if o.grain is not None
     )
 
 
