@@ -76,6 +76,13 @@ class UnionNode(StrategyNode):
             x.add_output_concepts(concepts, rebuild, unhide)
         super().add_output_concepts(concepts, rebuild, unhide)
 
+    def rebuild_cache(self) -> QueryDatasource:
+        # Columns are widened onto the arms with a deferred rebuild; a union
+        # restacks its arms' resolutions, so stale arms would drop them.
+        for arm in self.parents:
+            arm.rebuild_cache()
+        return super().rebuild_cache()
+
     def copy(self) -> "UnionNode":
         node = UnionNode(
             input_concepts=list(self.input_concepts),
