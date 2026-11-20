@@ -333,7 +333,7 @@ def shape4(seed: int) -> tuple[str, list[tuple]]:
 
 
 SEEDS = 400
-# seeds 0-30,000 that failed on 0.3.521 and plan right now
+# seeds that failed on main and plan right now
 FOUND_SEEDS = [
     337, 728, 829, 876, 1023, 1077, 1105, 1128, 1237, 1255, 1258, 1277, 1481,
     1497, 1683, 1693, 1742, 1875, 2081, 2087, 2234, 2403, 2724, 2885, 2909,
@@ -363,61 +363,35 @@ FOUND_SEEDS = [
     32428, 32766, 33591, 33686, 33803, 34115, 34232, 34864, 35052,
     35053, 35491, 35546, 36405, 36698, 37402, 37848, 39387, 42244, 42280,
     42999, 46282, 46508, 47245, 47374, 47802, 47934, 49109, 53435, 53723,
-    56071, 57200, 58246
+    56071, 57200, 58246,
+    # 30,000-90,000 leads 0.3.524 fixed
+    9016, 15258, 24246, 26698, 30553, 39273, 44364, 46333, 48060, 49126,
+    49263, 50635, 50815, 54254, 55114, 55868, 57225, 59820, 59941, 60061,
+    60632, 63195, 63640, 64769, 65089, 67175, 74943, 75378, 89049, 89137,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises, or None for wrong rows
 OPEN: dict[tuple[int, str], str | None] = {
     (5754, "summary"): "Merge sources",
-    (9016, "base"): None,
-    (9016, "summary"): None,
     (13009, "summary"): "Missing source reference",
     (15155, "summary"): None,
-    (15258, "base"): "keyless join",
-    (15258, "summary"): "keyless join",
     (23531, "summary"): None,
-    (24246, "base"): None,
-    (24246, "summary"): None,
-    (26698, "base"): "keyless join",
-    (26698, "summary"): "keyless join",
-    (30553, "base"): "keyless join",
-    (30553, "summary"): "keyless join",
     (32125, "summary"): "Merge sources",
     (32239, "summary"): "Ambiguous reference",
     (34415, "summary"): None,
     (37601, "summary"): None,
     (38002, "summary"): None,
-    (39273, "base"): "keyless join",
-    (39273, "summary"): "keyless join",
     (41277, "base"): "Graph contains a cycle",
     (41277, "summary"): "Graph contains a cycle",
-    (44364, "base"): None,
-    (44364, "summary"): None,
-    (46333, "base"): None,
-    (46333, "summary"): None,
     (47456, "summary"): None,
-    (48060, "base"): None,
-    (48060, "summary"): None,
-    (49126, "base"): "Attempting to merge two ctes",
-    (49126, "summary"): "Attempting to merge two ctes",
-    (49263, "base"): None,
-    (49263, "summary"): None,
-    (50635, "base"): "keyless join",
-    (50635, "summary"): "keyless join",
-    (50815, "base"): None,
-    (50815, "summary"): None,
-    (54254, "base"): None,
-    (54254, "summary"): None,
-    (55114, "base"): None,
-    (55114, "summary"): None,
-    (55868, "base"): None,
-    (55868, "summary"): None,
-    (57225, "base"): "keyless join",
-    (57225, "summary"): "keyless join",
-    (59820, "base"): "Attempting to merge two ctes",
-    (59820, "summary"): "Attempting to merge two ctes",
-    (59941, "base"): "keyless join",
-    (59941, "summary"): "keyless join",
+    (66218, "base"): "Graph contains a cycle",
+    (66218, "summary"): "Graph contains a cycle",
+    (71000, "summary"): "Ambiguous reference",
+    (77768, "summary"): None,
+    (83051, "summary"): None,
+    (84985, "summary"): None,
+    (85861, "summary"): None,
+    (89278, "summary"): "keyless join",
 }
 
 

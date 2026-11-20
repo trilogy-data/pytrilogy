@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000 and the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
 expression) to 90,000; the PR of each round holds its sweep totals. Only
-`compositions` has `OPEN` seeds (50 queries, area 1).
+`compositions` has `OPEN` seeds (20 queries, area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -366,8 +366,8 @@ Open in the `compositions` family (`OPEN` in
   hosted on the aggregate groups that compute the sets' own inputs (one
   concept is both a set's inner value and the gate's argument), so
   `_split_cyclic_groups` cannot split it. Host the atom below neither set.
-- Raises: `Merge sources` (5754, 32125), DuckDB's `Ambiguous reference`
-  (32239) and `Missing source reference` (13009: a rank beside `max(height)`
+- Raises (summary): `Merge sources` (5754, 32125), `keyless join` (89278),
+  DuckDB's `Ambiguous reference` (32239, 71000) and `Missing source reference` (13009: a rank beside `max(height)`
   under `avg(height) by * is not null`). 13009, 5754 and 32239 plan when
   `_split_root_dimension_clusters` peels no aggregate onto a single-key
   dimension, but that peel is how the summary serves `max(height)` beside
