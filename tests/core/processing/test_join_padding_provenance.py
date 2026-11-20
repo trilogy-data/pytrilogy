@@ -32,8 +32,8 @@ from trilogy.core.processing.join_resolution import (
     preserved_sources,
 )
 from trilogy.core.processing.null_provenance import (
-    guest_padded_addresses,
     padding_sources,
+    provenance,
 )
 
 KEY = "local.padded"
@@ -76,23 +76,23 @@ def _identity(address: str) -> str:
 
 
 def testpadding_sources_ignores_leaf_and_unpadded():
-    assert padding_sources(_qds([KEY], []), {KEY}, _identity) == set()
+    assert padding_sources(_qds([KEY], []), {KEY}) == set()
 
 
 def testpadding_sources_reports_own_identifier():
     padded = _qds([KEY], [KEY])
-    assert padding_sources(padded, {KEY}, _identity) == {padded.identifier}
+    assert padding_sources(padded, {KEY}) == {padded.identifier}
 
 
 def testpadding_sources_walks_parents():
     padded = _qds([KEY], [KEY])
     consumer = _qds([KEY], [], parents=[padded])
-    assert padded.identifier in padding_sources(consumer, {KEY}, _identity)
+    assert padded.identifier in padding_sources(consumer, {KEY})
 
 
 def testpadding_sources_scoped_to_the_requested_key():
     padded = _qds([KEY, "local.other"], ["local.other"])
-    assert padding_sources(padded, {KEY}, _identity) == set()
+    assert padding_sources(padded, {KEY}) == set()
 
 
 _LEFT, _RIGHT, _AXIS = "ds~left", "ds~right", "c~local.order_id"
@@ -445,7 +445,7 @@ def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
     assert _join({_ATTR}, guest_padded={_RIGHT: {_ATTR}}, **held) == JoinType.FULL
 
 
-def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
+def test_guest_padding_walks_a_value_null_join_without_leaves():
     """`items` LEFT-joined onto a `~?` fact: the item's columns are NULL on the
     guest sale, so they are guest padding downstream (through an aggregate
     over the merge too), while the `?` leaf itself is not."""
@@ -456,11 +456,11 @@ def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
     merged = _qds([USER, ORDER, attr], [USER, attr], parents=[sales, items])
     merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items}}
     merged.joins = [_keyed(sales, items, JoinType.LEFT_OUTER)]
-    assert guest_padded_addresses(merged) == {attr}
+    assert provenance(merged).guest == {attr}
     grouped = _qds([attr], [attr], parents=[merged])
     grouped.source_map = {attr: {merged}}
-    assert guest_padded_addresses(grouped) == {attr}
-    assert guest_padded_addresses(items) == set()
+    assert provenance(grouped).guest == {attr}
+    assert provenance(items).guest == set()
 
 
 def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
@@ -480,7 +480,7 @@ def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
         _keyed(sales, items, JoinType.LEFT_OUTER),
         _keyed(items, lookup, JoinType.RIGHT_OUTER, attr),
     ]
-    assert guest_padded_addresses(merged) == set()
+    assert provenance(merged).guest == set()
 
 
 def _onto(right: BuildDatasource, *lefts: BuildDatasource) -> Join:

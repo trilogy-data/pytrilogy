@@ -1,5 +1,5 @@
-"""`ProvenanceMemo` answers each null-provenance question once per source;
-`plan_scope` shares one memo across a plan and nothing outside it."""
+"""A source owns its null provenance: answered once from its parents'
+answers, and restamped when one of its fields is written."""
 
 from tests.core.processing.test_join_padding_provenance import _concept, _qds
 from trilogy.core.enums import JoinType
@@ -9,11 +9,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
 )
 from trilogy.core.processing import null_provenance
-from trilogy.core.processing.null_provenance import (
-    ProvenanceMemo,
-    active_memo,
-    plan_scope,
-)
+from trilogy.core.processing.null_provenance import provenance
 
 KEY = "local.k"
 VALUE = "local.v"
@@ -37,18 +33,13 @@ def _padded_merge() -> QueryDatasource:
     return merged
 
 
-def test_active_memo_is_the_plans_inside_the_scope_and_fresh_outside():
-    before = active_memo()
-    with plan_scope() as memo:
-        assert active_memo() is memo
-        assert active_memo() is memo
-    assert active_memo() is not memo
-    assert active_memo() is not before
+def test_a_source_keeps_one_stamp():
+    merged = _padded_merge()
+    assert provenance(merged) is provenance(merged)
 
 
 def test_values_are_answered_once_per_source_and_concept():
     merged = _padded_merge()
-    memo = ProvenanceMemo()
     calls: list[str] = []
     original = null_provenance.nulls_are_values
 
@@ -59,24 +50,23 @@ def test_values_are_answered_once_per_source_and_concept():
 
     null_provenance.nulls_are_values = counting
     try:
-        first = memo.of(merged).values(_concept(VALUE))
-        again = memo.of(merged).values(_concept(VALUE))
+        first = provenance(merged).values(_concept(VALUE))
+        again = provenance(merged).values(_concept(VALUE))
     finally:
         null_provenance.nulls_are_values = original
     assert first == again
     assert calls == [VALUE]
 
 
-def test_memo_holds_its_sources_so_ids_stay_unique():
-    memo = ProvenanceMemo()
+def test_extent_padding_is_the_sources_own():
     merged = _padded_merge()
-    assert memo.of(merged).extent
-    assert memo.sources[id(merged)] is merged
+    stamp = provenance(merged)
+    assert VALUE in stamp.extent
+    assert stamp.extent is provenance(merged).extent
 
 
-def test_extent_padding_is_read_through_the_memo():
+def test_writing_a_field_restamps_the_source():
     merged = _padded_merge()
-    memo = ProvenanceMemo()
-    provenance = memo.of(merged)
-    assert VALUE in provenance.extent
-    assert memo.extent[id(merged)] == provenance.extent
+    assert VALUE in provenance(merged).extent
+    merged.joins = []
+    assert VALUE not in provenance(merged).extent

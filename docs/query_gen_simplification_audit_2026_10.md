@@ -238,10 +238,10 @@ Rowset assembly:
 
 ## Design seams (not built unless marked landed)
 
-Ranked by lines a seam would free, across the axes. Status as of seam 6:
+Ranked by lines a seam would free, across the axes. Status as of seam 5:
 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half folded into
-2), 8 closed, 9 half done; 1, 2 and 5 remain, and hold nearly all of the
-estimated lines.
+2), 5 landed its ownership half, 8 closed, 9 half done; 1 and 2 remain, and
+hold nearly all of the estimated lines.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -328,10 +328,42 @@ estimated lines.
    graph, attributes, edges and keyspace. `test_v4_rowset_witness_front.py`
    pins that the body's plan groups over the keyspace its witness read; it
    fails on `main`.
-5. **Provenance stamped by the producer** (about 500 lines across
-   `null_provenance.py`, `join_resolution.py` side-fact assembly and the
-   `value_set_join_upgrade` padding walks). Corpus evidence says the stamp
-   could start as `value | extent`.
+5. **Provenance stamped by the producer (landed, ownership half).** A
+   source owns its null provenance: `null_provenance.provenance(source)` is
+   the source's stamp, each answer (`extent`, `guest`, `rollup`,
+   `padded_by(spans)`, `values(c)`, `padders(k)`) computed once from its own
+   joins and its parents' stamps, never by walking past a parent. A
+   `QueryDatasource` keeps the stamp until one of its fields is written (the
+   `__setattr__` that already drops its identifier cache), so an optimizer
+   rewrite of a source's joins or parents restamps it.
+
+   With it went the plan-wide memo: `ProvenanceMemo`, the `plan_scope`
+   ContextVar around planning in `query_processor`, `active_memo`, the memo
+   threaded through `get_modifiers`, `_span_padding_matrix`, `_side_facts`
+   and `_Merge`, and the free walks (`extent_null_addresses`,
+   `guest_padded_addresses`, `span_padded_addresses`). The planner and the
+   optimizer now read one stamp: the optimizer's `value_set_join_upgrade`
+   readers walked uncached before, because the memo's scope ended where the
+   optimizer starts rewriting joins; a write now restamps the written source
+   instead. `nulls_are_values` asks each carrying parent's stamp, so its
+   cycle guard tracks only one source's argument chain, and
+   `padding_sources` is a union of per-key stamps (its `canon` parameter
+   always was the identity).
+
+   Not landed: collapsing the five provenances into one per-address stamp
+   (`value | extent`, as the corpus suggests). The audit's nullability
+   register keeps each of `guest`, `rollup` and `span` pinned by engine
+   rows, so that is a semantic move, not an ownership one. `padded_by` stays
+   keyed by span set: an address counts only when EVERY provider of it was
+   extended, so a set's answer is not the union of its members'.
+
+   Gates, against `162f024`: corpus 0 moved (205 statements); the suite
+   SQL capture (48,458 statements, every one any test compiles) 0 moved once
+   `PYTHONHASHSEED` is pinned (unpinned, 46 move in both directions between
+   two runs of the same commit: GROUP BY, SELECT and grain-check column
+   order, and local server ports); fuzzer 522/522; the suite fails the same
+   25 tests as `main` (credential-bound, and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`).
 6. **Drop the `narrow_equal_domain_joins` knob (landed; the premise behind
    the rest was wrong).** The knob is gone, and
    `DomainGraph.full_relation_keys` (outer-relation keys minus the EQUAL
