@@ -227,9 +227,10 @@ class MergeTwinScans(OptimizationRule):
                     ):
                         continue
                     shared = _rows_for(cte, rows, read)
-                    if shared is None or (shared and not allow_shared):
-                        continue
-                    if not shared and not filtered:
+                    if (
+                        shared is None
+                        or (allow_shared if shared else filtered) is False
+                    ):
                         continue
                     self.log(f"Reading {cte.name} over its twin rows {rows.name}")
                     _rebase(cte, rows, reads, shared)
