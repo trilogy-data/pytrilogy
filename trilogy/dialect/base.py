@@ -2574,6 +2574,24 @@ class BaseDialect:
                 # DB. Unnest into a derived table so the identity predicate
                 # compares one scalar per element.
                 rhs_is_array = isinstance(right.datatype, ArrayType)
+                if rhs_is_array and not isinstance(e, BuildSubselectComparison):
+                    # row-scoped: the list is a column of this row
+                    return self.render_array_membership(
+                        self.render_expr(
+                            e.left,
+                            cte=cte,
+                            raise_invalid=raise_invalid,
+                            materialized_addresses=materialized_addresses,
+                        ),
+                        self.render_expr(
+                            right,
+                            cte=cte,
+                            raise_invalid=raise_invalid,
+                            materialized_addresses=materialized_addresses,
+                        ),
+                        e.operator,
+                        arg_to_datatype(e.left),
+                    )
                 from_clause, col_ref = self._resolve_existence_column(
                     right, cte, raise_invalid
                 )

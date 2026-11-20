@@ -46,15 +46,15 @@ where probe in zips
 select probe;
 """
 
-# The FROM fragment each dialect uses to expose one array element per row, when
-# the array is a column that has to be read from a source alongside it.
-CORRELATED_FORMS = {
-    Dialects.DUCK_DB: "(select unnest(",
-    Dialects.POSTGRES: "(select unnest(",
-    Dialects.CLICKHOUSE: "(select arrayJoin(",
-    Dialects.BIGQUERY: ", unnest(",
-    Dialects.SNOWFLAKE: ", lateral flatten(input => ",
-    Dialects.TRINO: "cross join unnest(",
+# The fragment each dialect uses to expose one element per row of an array
+# read from the row being filtered, so membership is tested per row.
+ROW_FORMS = {
+    Dialects.DUCK_DB: "(select unnest(STRING_SPLIT(",
+    Dialects.POSTGRES: "(select unnest(string_to_array(",
+    Dialects.CLICKHOUSE: "(select arrayJoin(splitByString(",
+    Dialects.BIGQUERY: "from unnest(split(",
+    Dialects.SNOWFLAKE: "from table(flatten(input => split(",
+    Dialects.TRINO: "from unnest(split(",
 }
 
 # The same fragment when the array stands alone and needs no source to join.
@@ -88,11 +88,11 @@ def _render(dialect: Dialects, model: str, parameters: bool = True) -> str:
     )
 
 
-@pytest.mark.parametrize("dialect,expected", list(CORRELATED_FORMS.items()))
+@pytest.mark.parametrize("dialect,expected", list(ROW_FORMS.items()))
 def test_array_valued_membership_uses_the_native_unnest(dialect, expected):
     sql = _render(dialect, ARRAY_VALUED)
     assert expected in sql, sql
-    for form in set(CORRELATED_FORMS.values()) - {expected}:
+    for form in set(ROW_FORMS.values()) - {expected}:
         assert form not in sql, sql
 
 
@@ -102,9 +102,7 @@ def test_array_valued_membership_raises_without_an_array_type(dialect):
         _render(dialect, ARRAY_VALUED)
 
 
-@pytest.mark.parametrize(
-    "dialect", [*CORRELATED_FORMS, *NO_ARRAY_DIALECTS, Dialects.PRESTO]
-)
+@pytest.mark.parametrize("dialect", [*ROW_FORMS, *NO_ARRAY_DIALECTS, Dialects.PRESTO])
 def test_value_list_membership_is_portable(dialect):
     """A literal list needs no array anywhere — including on the dialects that
     have no array type at all."""
@@ -115,7 +113,7 @@ def test_value_list_membership_is_portable(dialect):
     assert "ARRAY[" not in sql
 
 
-@pytest.mark.parametrize("dialect", [*CORRELATED_FORMS, *NO_ARRAY_DIALECTS])
+@pytest.mark.parametrize("dialect", [*ROW_FORMS, *NO_ARRAY_DIALECTS])
 def test_inlined_array_constant_is_a_value_list(dialect):
     """An array constant rendered inline is a literal list — splat it, don't ask
     the dialect for an array. That is what keeps this portable everywhere."""
@@ -140,3 +138,55 @@ def test_bound_array_parameter_uses_the_native_unnest(dialect, expected):
     assert expected in sql, sql
     for form in set(STANDALONE_FORMS.values()) - {expected}:
         assert form not in sql, sql
+
+
+LIST_PROPERTY = """
+key tree_id string;
+key species string;
+property species.genus string;
+property species.bloom_months list<int>;
+
+datasource trees (
+    tree_id,
+    species,
+)
+grain (tree_id)
+query \'\'\'
+select 't1' as tree_id, 'Prunus avium' as species
+union all select 't2', 'Quercus robur'
+union all select 't3', 'Acer rubrum'
+\'\'\';
+
+datasource species_info (
+    species,
+    genus,
+    bloom_months,
+)
+grain (species)
+query \'\'\'
+select 'Prunus avium' as species, 'Prunus' as genus, [4, 5] as bloom_months
+union all select 'Quercus robur', 'Quercus', [5]
+union all select 'Acer rubrum', 'Acer', [3, 4]
+\'\'\';
+"""
+
+
+@pytest.mark.parametrize(
+    "where,expected",
+    [
+        ("4 in bloom_months", ["t1", "t3"]),
+        ("contains(bloom_months, 4)", ["t1", "t3"]),
+        ("4 not in bloom_months", ["t2"]),
+        ("4 in bloom_months and genus = 'Prunus'", ["t1"]),
+        ("4 in bloom_months and genus = 'Quercus'", []),
+        ("5 in bloom_months and genus != 'Prunus'", ["t2"]),
+    ],
+)
+def test_membership_in_a_list_property_is_row_scoped(where, expected):
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(LIST_PROPERTY)
+    for select in ("tree_id", "tree_id, bloom_months"):
+        rows = executor.execute_text(
+            f"select {select} where {where} order by tree_id asc;"
+        )[-1].fetchall()
+        assert [row[0] for row in rows] == expected, select
