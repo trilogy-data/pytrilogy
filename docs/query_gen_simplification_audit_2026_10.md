@@ -422,7 +422,8 @@ election, not the padded fallback.
    complete `lv_info`: every launch keeps its vehicle row, so the vehicles'
    stream carries every launch. Corpus (205 statements): 0 moved. The suite
    fails the same 25 tests as `main` (credential-bound and
-   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). FUZZER_LINE
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
+   522/522.
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
