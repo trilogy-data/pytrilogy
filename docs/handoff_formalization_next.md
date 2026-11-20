@@ -13,9 +13,9 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.520.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.521.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000 and the
-`expressions` family to 650,000; the PR of each round holds its sweep totals.
+`expressions` family to 800,000; the PR of each round holds its sweep totals.
 No family has an `OPEN` seed left (`OPEN` in
 `tests/discovery/test_oracle_spellings_laws.py` is empty).
 
@@ -331,11 +331,14 @@ Open in the `expressions` family (each fails on main too):
 
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
-- The expressions family past 650,000 is unswept.
-- Efficiency: `MergeTwinScans` folds an ungrouped twin into its twin and
-  groups a grouped scan over its ungrouped twin under one WHERE. Left: scans
-  under different WHEREs (a `by *` total beside filtered rows needs both),
-  and a summary re-sum beside its row twin (it reads stored partials through
+- The expressions family past 800,000 is unswept. 650,000-800,000 held no
+  wrong or raising seed on main, with or without `--carry-state`: this
+  generator is spent for correctness; extend it (below) before sweeping on.
+- Efficiency: `MergeTwinScans` reads a scan under a WHERE off an unfiltered
+  twin of its table. Left (about 3,300 of 300,000 queries still scan twice):
+  a filtered row scan beside a grouped, unfiltered one with no row twin
+  (`select tree_id where city = 'A' and count(tree_id) by species > 1`), and
+  a summary re-sum beside its row twin (it reads stored partials through
   `partial_sources`, which the rebase would have to carry).
 - Not generated yet: `/` by a value that can be 0, a derived key inside a
   `by`, nested aggregates, windows, `order by` an expression.

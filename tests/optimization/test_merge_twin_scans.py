@@ -88,20 +88,26 @@ def test_summary_resum_keeps_its_partial_source():
 
 FILTERED = [
     (
-        "select tree_id, height where city = 'A' and count(tree_id) by species > 1"
-        " and max(height) by city < 6;",
+        (
+            "select tree_id, height where city = 'A' and count(tree_id) by species > 1"
+            " and max(height) by city < 6;"
+        ),
         [("a1", 3), ("a2", None)],
     ),
     # expressions 650115, reduced
     (
-        "select city, min(height) as v0 where city = 'B'"
-        " and avg(height) by species != 0 and count(tree_id) by city = 2;",
+        (
+            "select city, min(height) as v0 where city = 'B'"
+            " and avg(height) by species != 0 and count(tree_id) by city = 2;"
+        ),
         [("B", 2)],
     ),
     # expressions 777104, reduced: the twin carries the table's NULL heights
     (
-        "select tree_id, height where height is not null"
-        " and count_distinct(tag) by city >= count(tree_id) by city, species;",
+        (
+            "select tree_id, height where height is not null"
+            " and count_distinct(tag) by city >= count(tree_id) by city, species;"
+        ),
         [("a1", 3), ("a3", 5), ("b1", 7), ("b2", 2)],
     ),
 ]
