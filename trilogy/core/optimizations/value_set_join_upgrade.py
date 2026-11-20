@@ -57,6 +57,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     DIRECTIONAL_OUTER_JOIN_TYPES,
     OUTER_JOIN_TYPES,
+    same_rows,
 )
 from trilogy.core.processing.null_provenance import (
     padding_sources,
@@ -434,6 +435,24 @@ def _unpaired_guest_padding(
     return not (
         isinstance(sup_cte, CTE)
         and sup_concept.all_spellings & provenance(sup_cte.source).guest
+    )
+
+
+def _null_groups_differ(
+    left: BuildConcept,
+    left_cte: CTE | UnionCTE,
+    right: BuildConcept,
+    right_cte: CTE | UnionCTE,
+) -> bool:
+    """A side can NULL the key and the two do not read the same rows
+    (`same_rows`): whether either holds a NULL group is data, so null-safe
+    equality may find it no partner. NULL is no member of a complete domain."""
+    if not (_key_nullable(left, left_cte) or _key_nullable(right, right_cte)):
+        return False
+    return not (
+        isinstance(left_cte, CTE)
+        and isinstance(right_cte, CTE)
+        and same_rows(left_cte.source, right_cte.source)
     )
 
 
@@ -852,6 +871,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # Joins on these must never upgrade to INNER (FULL's key stays
         # complete, so the partial-driven checks cannot protect it).
         self.full_join_keys = graph.full_relation_keys()
+        self.declared_keys = graph.declared_relation_keys()
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -891,6 +911,13 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if self._narrow_directionally(cte, join, right_cte):
                 changed = True
         return changed, None
+
+    def _pair_declared(self, pair: ConceptPair) -> bool:
+        """The pair's key is in a declared relation, whose NULL groups pair by
+        declaration (`DomainGraph.declared_relation_keys`)."""
+        return bool(
+            (pair.left.all_spellings | pair.right.all_spellings) & self.declared_keys
+        )
 
     def _pair_equal_declared(self, pair) -> bool:
         return bool(
@@ -938,9 +965,11 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             return False
         # A key nullable on a side but joined with plain ``=`` carries NULL
         # rows the equality never matches (a ROLLUP subtotal key); INNER
-        # would silently drop them. A null-safe pair matches NULLs and is
-        # safe. For an EQUAL-declared key both sides name one value space, so
-        # the pair is made null-safe rather than refusing the upgrade.
+        # would silently drop them. A null-safe pair matches the NULL groups
+        # both sides hold, which off a declared relation only reads of the
+        # same rows are known to (`_null_groups_differ`). For an
+        # EQUAL-declared key both sides name one value space, so the pair is
+        # made null-safe rather than refusing the upgrade.
         for pair, witness in zip(join.pairs, witnesses):
             assert witness is not None
             # Null-safety pairs the NULL groups but says nothing about the
@@ -950,6 +979,10 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             # declaration names one value space and overrides.
             if not self._pair_equal_declared(witness) and _unshared_join_padding(
                 witness, right_cte
+            ):
+                return False
+            if not self._pair_declared(witness) and _null_groups_differ(
+                witness.left, witness.node, pair.right, right_cte
             ):
                 return False
             if pair.is_nullable:
@@ -1017,10 +1050,12 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             graph_proof_only=graph_proof_only,
         ):
             return False
-        if not (
+        # Off a declared relation, a NULL-key row of the subset side has a
+        # partner only if the superset side happens to hold a NULL group.
+        if _key_nullable(sub, sub_cte) and not (
             pair.is_nullable
+            and self._pair_declared(pair)
             and not _unpaired_guest_padding(sub, sub_cte, sup, sup_cte)
-            or not _key_nullable(sub, sub_cte)
         ):
             return False
         return (

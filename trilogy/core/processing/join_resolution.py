@@ -1462,6 +1462,19 @@ def _same_filters(left: DataSource, right: DataSource) -> bool:
     )
 
 
+def _leaves(source: DataSource) -> frozenset[str]:
+    if isinstance(source, QueryDatasource):
+        return frozenset().union(*(_leaves(sub) for sub in source.datasources))
+    return frozenset({source.identifier})
+
+
+def same_rows(left: DataSource, right: DataSource) -> bool:
+    """Both sides read the same tables through the same filters, so a NULL
+    key group one holds the other holds too: whether a side has one at all is
+    data, not domain (NULL is no member of a complete key's domain)."""
+    return _leaves(left) == _leaves(right) and _same_filters(left, right)
+
+
 def preserved_sources(
     datasets: list[DataSource], joins: list[SourceJoin | UnnestJoin]
 ) -> set[str]:
@@ -2872,10 +2885,13 @@ def _covered_keys(
     between two concepts (an unfiltered rowset over its anchor). One concept
     bound complete on both sides covers only between twins (`_twins`): a
     side NULLing it where the other does not keeps rows no partner matches
-    (`test_dim_peel_composite_grain_axis`). The plan-time half of the
-    optimizer's subset proof (`_pair_side_fully_matches`)."""
+    (`test_dim_peel_composite_grain_axis`). NULL is no value of a domain, so
+    a NULL-key row is covered only under a declared relation, whose NULL
+    groups pair by declaration. The plan-time half of the optimizer's subset
+    proof (`_pair_side_fully_matches`)."""
     graph = environment.domain_graph
     carries = _Carries(ds_node_map, ds_concept_map, graph.subset_sources())
+    declared = graph.declared_relation_keys()
     out: set[tuple[str, str, str]] = set()
     for sub, sub_facts in sides.items():
         for key in sub_facts.columns:
@@ -2884,15 +2900,20 @@ def _covered_keys(
                 if sup == sub or key not in sup_facts.columns:
                     continue
                 sup_concept = ds_concept_map[(sup, key)]
+                related = graph.canonical(sub_concept.address) in declared
                 if (
                     key not in sub_facts.partials
                     and sub_concept.address == sup_concept.address
                 ):
-                    if _twins(key, sub, sup, sides, carries):
+                    if _twins(key, sub, sup, sides, carries, related):
                         out.add((sub, sup, key))
                     continue
                 if (
-                    key not in sub_facts.nullables
+                    (
+                        key not in sub_facts.nullables
+                        or related
+                        and _null_alike(key, sub_facts, sup_facts)
+                    )
                     and graph.relation(sub_concept.address, sup_concept.address)
                     in _WITHIN
                     and carries(sup, key)
@@ -2925,16 +2946,28 @@ class _Carries:
 
 
 def _twins(
-    key: str, a: str, b: str, sides: Mapping[str, SideFacts], carries: _Carries
+    key: str,
+    a: str,
+    b: str,
+    sides: Mapping[str, SideFacts],
+    carries: _Carries,
+    related: bool,
 ) -> bool:
     """Two reads of one concept that each carry every value of it, and NULL it
     alike: on no row, or only as a value (a `?` column), which the pair
     matches null-safely (`get_modifiers`). Every row of either has a partner
-    on the other. The plan-time half of the optimizer's twin key sets
+    on the other. A NULL group is no value of the domain, so only a declared
+    relation (`related`) or reading the same rows (`same_rows`) says both
+    sides hold it. The plan-time half of the optimizer's twin key sets
     (`_pair_key_sets_equivalent`), for sides no filter thinned."""
     return (
         key not in sides[b].partials
         and _null_alike(key, sides[a], sides[b])
+        and (
+            related
+            or key not in sides[a].nullables | sides[b].nullables
+            or same_rows(carries.nodes[a], carries.nodes[b])
+        )
         and carries(a, key)
         and carries(b, key)
     )

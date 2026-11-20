@@ -239,13 +239,14 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-fourth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+fifth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
-`~`-subset, graph-subset and twin proofs (the optimizer rule's firings over
-the non-law suite: 912 before the first slice, 796 after it, 522 after the
-second, 407 after the third, 377 after the fourth; over the whole suite, laws
-included, its CTE rewrites fell from 1,045 to 496 in the fourth) and lost its
-per-side origin premise, 8 closed,
+`~`-subset, graph-subset and twin proofs and decided NULL membership (the
+optimizer rule's firings over the non-law suite: 912 before the first slice,
+796 after it, 522 after the second, 407 after the third, 377 after the
+fourth, 299 after the fifth, most of that last drop refusals of unsound
+narrowings; over the whole suite, laws included, its CTE rewrites fell from
+1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done; 1 and the rest of 2 remain, and hold nearly all of the
 estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
@@ -480,16 +481,70 @@ election, not the padded fallback.
      orientation-free walk over INNER joins (prototyped), but not the
      self-join it leaves; the fix belongs where the walk's orientation
      reaches the group, not in the optimizer. Rows are right.
-   - **Is NULL a member of a complete domain?** The upgrade, and this
-     slice, read two `?` bindings that each carry every value of a key as
-     pairing their NULL groups null-safely. With orders holding a NULL
-     customer and visits none, `select cust_id, sum(amount), sum(pages)`
-     returns no NULL-customer row (the planner alone keeps it, FULL). The
-     join matrix's nullable axis states NULL keys are members that must
-     pair, and its data has a NULL row on every side; `_partial_domain_join`
-     says NULL is not a value. Deciding it decides whether the null-safe
-     arms of `_upgrade_to_inner` and `_pair_fully_matches` stay.
+   - **Is NULL a member of a complete domain?** Decided in the fifth
+     slice: no.
 
+   **Fifth slice (landed): a NULL group is no value of a complete key's
+   domain.** The question above had a row-level answer. With orders holding
+   a NULL customer and visits none, `select cust_id, sum(amount),
+   sum(pages)` dropped the NULL-customer order: the fourth slice's planner
+   twin typed the join INNER null-safe, and so did the optimizer's
+   equivalence upgrade on its own. Three shapes lost rows on `main`, each
+   now pinned in `test_subset_join_plan_time_completeness.py` (red on
+   `main`): the twin above (planner and optimizer), a `~?` subset side
+   beside a complete `?` read (`_pair_fully_matches`'s null-safe arm
+   narrowed FULL to LEFT, losing the subset side's NULL row), and two facts
+   whose undated rows NULL a derived year over one shared date dimension
+   (`_pair_key_sets_equivalent`: `year + 1` lost the undated store tickets
+   whenever web had none).
+
+   A complete binding says the side carries every value of the key's
+   domain. Whether it also holds a NULL group is data, so null-safe equality
+   may find that group no partner. The rule, in both stages:
+   - Two reads of one key whose NULL groups are those of the same rows
+     (`same_rows`: the same leaf tables through the same filters, the twin
+     rollups of one table) still pair: one holds the group exactly when the
+     other does.
+   - A declared relation (`DomainGraph.declared_relation_keys`: `subset` /
+     `equal` / `union` joins and merges) speaks for the two keys'
+     populations, NULL groups included, which is the join matrix's
+     nullable-axis contract. The optimizer keeps its null-safe arms for those
+     pairs only, and the planner now proves the same: a declared subset side
+     that NULLs its key alike (`_null_alike`) is covered, so the nullable
+     matrix cells type at plan time (that subset's firings 132 to 116).
+   - Anything else keeps its preservation: the planner's `_twins` and the
+     optimizer's `_upgrade_to_inner` refuse a nullable key off those two,
+     and `_pair_fully_matches` refuses a nullable subset side.
+
+   Census over the non-law suite: 373 to 299. About 57 of those are
+   refusals, not moves to the planner: the `~` stamp class fell 72 to 20 and
+   twin equivalence 56 to 42 because the joins they narrowed now stay
+   preserving. About 17 are the planner's new declared arm. What is left:
+   unnest of complete lists (163), twin equivalence over a filter chain or
+   an INNER-joined partner (42, `test_split_key_gates`-style: a side reads a
+   stream INNER-joined to the other side's filtered group), graph subsets
+   (31), and multi-left or later joins.
+
+   Gates, against `4bf7383`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included, 49,914 tests) moved the distinct join shapes of 125 tests
+   (INNER -85, FULL +76, RIGHT +6, LEFT +3), each under a row oracle that
+   stayed green: `test_padded_null_pairing` (43), `test_oracle_spellings_laws`
+   (19), `test_fixed_value_lifecycle_laws` (8), `test_oracle_expressions_laws`
+   (7), `test_summary_cover_laws` (6), the rest one to five each. The suite
+   data holds NULL groups on both sides or neither, which is why it never
+   saw the loss. The one narrowing,
+   `test_rollup_grand_total_survives_a_subset_join_back` (FULL to RIGHT), is
+   the planner's declared arm; its rows are asserted. Corpus (207 statements,
+   tpc-ds aggregates included): 1 moved, q84 inlines one CTE and its
+   `is not null` guard moves across a null-safe INNER to the WHERE. The suite
+   fails the same 25 tests as `main` (credential-bound and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
+   522/522.
+
+   Found, not chased (predates seam 2, same on `ae34eb2`): `where year = 2024
+   select cust_id, count(order_id), count(visit_id)` over orders and visits
+   sharing one `date_id` types the final join INNER at plan time and returns
+   no rows when no customer both ordered and visited in 2024.
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle
