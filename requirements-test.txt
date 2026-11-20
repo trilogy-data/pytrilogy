@@ -4,7 +4,8 @@ pytest-cov
 pytest-xdist
 # parity oracle for the pest parser; not a runtime dependency
 lark
-duckdb>=2,<3
+# query.farm has no shellfs build for 2.0.1 yet; script datasources need it
+duckdb>=2,<3,!=2.0.1
 mypy
 # 0.16.0 false-positives PYI041 on the build-dispatch union; fixed in 0.16.2
 ruff>=0.16.2
