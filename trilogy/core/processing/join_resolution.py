@@ -2869,16 +2869,16 @@ def _covered_keys(
     """`JoinFacts.covered`: a side whose key is never NULL beside one carrying
     every value of it, whose spelling the domain graph puts the first's
     within. The first needs subset evidence: a `~` binding, or a relation
-    between two concepts (an unfiltered rowset over its anchor); one concept
-    bound complete on both sides says nothing about which rows each holds.
-    The plan-time half of the optimizer's subset proof
-    (`_pair_side_fully_matches`)."""
+    between two concepts (an unfiltered rowset over its anchor). One concept
+    bound complete on both sides covers only between twins (`_twins`): a
+    side NULLing it where the other does not keeps rows no partner matches
+    (`test_dim_peel_composite_grain_axis`). The plan-time half of the
+    optimizer's subset proof (`_pair_side_fully_matches`)."""
     graph = environment.domain_graph
-    relation_stamps = graph.subset_sources()
-    carried: dict[tuple[str, str], bool] = {}
+    carries = _Carries(ds_node_map, ds_concept_map, graph.subset_sources())
     out: set[tuple[str, str, str]] = set()
     for sub, sub_facts in sides.items():
-        for key in sub_facts.columns - sub_facts.nullables:
+        for key in sub_facts.columns:
             sub_concept = ds_concept_map[(sub, key)]
             for sup, sup_facts in sides.items():
                 if sup == sub or key not in sup_facts.columns:
@@ -2888,19 +2888,66 @@ def _covered_keys(
                     key not in sub_facts.partials
                     and sub_concept.address == sup_concept.address
                 ):
+                    if _twins(key, sub, sup, sides, carries):
+                        out.add((sub, sup, key))
                     continue
-                if graph.relation(sub_concept.address, sup_concept.address) not in (
-                    ResolvedRelation.SUBSET,
-                    ResolvedRelation.EQUAL,
+                if (
+                    key not in sub_facts.nullables
+                    and graph.relation(sub_concept.address, sup_concept.address)
+                    in _WITHIN
+                    and carries(sup, key)
                 ):
-                    continue
-                if (sup, key) not in carried:
-                    carried[(sup, key)] = _carries_every_value(
-                        ds_node_map[sup], sup_concept, True, relation_stamps
-                    )
-                if carried[(sup, key)]:
                     out.add((sub, sup, key))
     return frozenset(out)
+
+
+_WITHIN = (ResolvedRelation.SUBSET, ResolvedRelation.EQUAL)
+
+
+@dataclass
+class _Carries:
+    """`_carries_every_value` per (side, key), memoized across the pairs."""
+
+    nodes: Mapping[str, DataSource]
+    concepts: Mapping[tuple[str, str], BuildConcept]
+    relation_stamps: Collection[str]
+    memo: dict[tuple[str, str], bool] = field(default_factory=dict)
+
+    def __call__(self, side: str, key: str) -> bool:
+        if (side, key) not in self.memo:
+            self.memo[(side, key)] = _carries_every_value(
+                self.nodes[side],
+                self.concepts[(side, key)],
+                True,
+                self.relation_stamps,
+            )
+        return self.memo[(side, key)]
+
+
+def _twins(
+    key: str, a: str, b: str, sides: Mapping[str, SideFacts], carries: _Carries
+) -> bool:
+    """Two reads of one concept that each carry every value of it, and NULL it
+    alike: on no row, or only as a value (a `?` column), which the pair
+    matches null-safely (`get_modifiers`). Every row of either has a partner
+    on the other. The plan-time half of the optimizer's twin key sets
+    (`_pair_key_sets_equivalent`), for sides no filter thinned."""
+    return (
+        key not in sides[b].partials
+        and _null_alike(key, sides[a], sides[b])
+        and carries(a, key)
+        and carries(b, key)
+    )
+
+
+def _null_alike(key: str, a: SideFacts, b: SideFacts) -> bool:
+    if key not in a.nullables | b.nullables:
+        return True
+    return all(
+        key in side.value_nullables - side.guest_padded - side.rollup_padded
+        and key not in side.span_padding
+        for side in (a, b)
+    )
 
 
 def _computes_one_row(concept: BuildConcept) -> bool:

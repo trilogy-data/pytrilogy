@@ -73,3 +73,25 @@ def test_unfiltered_rowsets_beside_their_anchor_are_typed_inner():
     )
     assert [j.split(" JOIN ")[0] for j in joins] == ["INNER", "INNER"], joins
     assert rows == [(1, 100, 200), (2, 101, 201)]
+
+
+TWINS = """
+key cust_id int;
+key order_id int;
+property order_id.amount int;
+key visit_id int;
+property visit_id.pages int;
+datasource orders (order_id, ?cust_id, amount) grain (order_id)
+query '''select 1 order_id, 1 cust_id, 10 amount union all select 2, null, 20''';
+datasource visits (visit_id, ?cust_id, pages) grain (visit_id)
+query '''select 1 visit_id, 1 cust_id, 5 pages union all select 2, null, 7''';
+"""
+
+
+def test_twin_reads_of_one_complete_key_are_typed_inner():
+    joins, rows = _joins_and_rows(
+        TWINS, "select cust_id, sum(amount) as spend, sum(pages) as seen;"
+    )
+    assert [j.split(" JOIN ")[0] for j in joins] == ["INNER"], joins
+    assert "is not distinct from" in joins[0]
+    assert rows == [(1, 10, 5), (None, 20, 7)]

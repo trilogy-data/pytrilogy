@@ -27,12 +27,8 @@ from trilogy.core.models.execute import CTE
 from trilogy.core.optimizations.atom_contract import and_atoms
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.optimizations.existence_having_fold import FoldExistenceIntoAggregate
-from trilogy.core.optimizations.identity_group import DropIdentityGroup
 from trilogy.core.optimizations.semi_join_pushdown import PushSemiJoinIntoAggregate
 from trilogy.core.optimizations.strip_redundant_not_null import tautological_not_null
-from trilogy.core.optimizations.value_set_join_upgrade import (
-    UpgradeOuterFromKeySetEquivalence,
-)
 from trilogy.core.processing.condition_utility import _not_null_concept
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.execute import ProcessedQuery
@@ -107,13 +103,12 @@ RULES = [
 ]
 
 # A shape each rule fires on, with the addressing it fires under, so its
-# ablation compares a plan it changed (`Rewrite.identity_group_exact`,
-# `existence_fold_exact`, `semi_join_exact`, `matched_left_is_inner`).
+# ablation compares a plan it changed (`existence_fold_exact`,
+# `semi_join_exact`). `UpgradeOuterFromKeySetEquivalence` and
+# `DropIdentityGroup` fire on no shape of this model: the planner types its
+# joins (`test_subset_join_plan_time_completeness.py`), which leaves neither
+# a join to narrow nor a GROUP BY that narrowing made an identity.
 FIRES = {
-    DropIdentityGroup: (
-        SPLIT,
-        "where rqty in (1, 10) select order_id, note, name;",
-    ),
     FoldExistenceIntoAggregate: (
         SPLIT,
         "where (amount > 0) and (sum(amount) by cust_id > 4) select name;",
@@ -125,10 +120,6 @@ FIRES = {
             "(count(order_id) by cust_id = 2)) select cust_id, order_id, reason;\n"
             "select rs.cust_id, count(rs.order_id) -> n;"
         ),
-    ),
-    UpgradeOuterFromKeySetEquivalence: (
-        SPLIT,
-        "where note is null select region, count(order_id) -> n;",
     ),
 }
 
