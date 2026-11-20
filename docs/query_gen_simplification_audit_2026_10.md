@@ -239,10 +239,13 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-first half: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
-folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL
-proof and lost its per-side origin premise, 8 closed, 9 half done; 1 and the
-rest of 2 remain, and hold nearly all of the estimated lines.
+second slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL and
+subset proofs (the optimizer rule's firings over the non-law suite: 912
+before the first slice, 796 after it, 522 after the second) and lost its per-side origin premise, 8 closed, 9 half done; 1
+and the rest of 2 remain, and hold nearly all of the estimated lines. Seam 1
+was re-measured: its blocker is the ranked owner election, not the padded
+fallback.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
    `region_domains.py`, `extent_ownership.py`, `region_reads.py`, the
@@ -251,6 +254,25 @@ rest of 2 remain, and hold nearly all of the estimated lines.
    leaf would collapse the owner election, the extent-free suppression and
    the held-span join contract into "a leaf joins on its key, preserving the
    leaf". Blocked by the padded-plan fallback every region row pin protects.
+
+   Re-measured (`local_scripts/sql_ab/domain_kind_plugin.py`, non-law suite,
+   14,400 tests) the premise is half right:
+   - **The padded fallback is small.** Of 1,927 region-domain decisions,
+     1,681 (907 tests) are already OWN: the region IS a ROOT-like leaf.
+     PADDED is 89 decisions in 55 tests, all targeted pins: a ROLLUP key (19
+     tests), a MATERIALIZED aggregate over the region (5), and a gate no host
+     filters the region's rows by (31).
+   - **The ranked election is the blocker.** Of 1,743 extent elections, 1,440
+     elect only domains; 303 (208 tests) still rank an owner. They serve
+     BOUNDARY (45 tests), ROW_STREAM (22), RELATION (5) and PADDED (53)
+     regions, and in 70 tests a base-region completion (`live_completes`)
+     with no domain at all. Deleting the election needs each of those to
+     name its own leaf first, the completions included.
+   - **Nothing in the plumbing is dead.** Branch coverage over the whole
+     suite (48,200 tests, laws included) leaves 2 of 243 statements in
+     `region_domains.py`, 0 of 82 in `extent_ownership.py` and 2 of 60 in
+     `region_reads.py` unreached; dropping the extent-free carried spans
+     alone fails 6 region row pins. The seam is a redesign, not a harvest.
 2. **Plan-time narrowing (first half landed; no per-side origin node
    needed).** The estimate was about 520 lines of `value_set_join_upgrade.py`
    plus `scoped_partial_derived` and the `JoinScope` registries, gated on a
@@ -293,9 +315,56 @@ rest of 2 remain, and hold nearly all of the estimated lines.
      holds, so it stays until the Factory hands those over.
    - **The rest of the optimizer rule.** What it still proves needs the
      rendered plan: twin groups over one filter chain (`keyset_equiv`), a
-     rowset at its own boundary, a recursion seed, a parent every join keeps
-     (`joined_complete`), and conditions the optimizer itself pushed. These
-     remain seam 2's open half.
+     recursion seed, a parent every join keeps (`joined_complete`), and
+     conditions the optimizer itself pushed. These remain seam 2's open half.
+
+   **Second slice (landed): the planner proves subset completeness.** A
+   firing census (`local_scripts/sql_ab/upgrade_census_plugin.py`, proof
+   helpers that held per firing) put 796 firings over the non-law suite in
+   four classes: a declared subset into a rowset at its own boundary (193), a
+   one-sided `~` stamp beside a complete authoritative scan (about 160), an
+   unnest of complete lists (153, left in the optimizer above) and twin key
+   sets over one filter chain (88). The first two are knowable while
+   planning, and the walk now drops the subset side's preservation itself
+   (`join_resolution._narrow_covered`):
+   - `JoinFacts.covered` names each (sub, sup, key) where `sub` binds the key
+     `~` and never NULL, `sup` binds it completely and carries every value
+     of it (`complete_key_domain`, through BASIC lineage, and with
+     `rowset_boundaries` a rowset's boundary for its own handles), and the
+     domain graph puts sub's spelling within sup's (SUBSET or EQUAL: two
+     rowsets subset-joined to one anchor share a canonical key, not a
+     subset).
+   - A join narrows only when that pair is its whole ON clause (a second
+     left's equality can still drop a covered row:
+     `test_property_hop_alignment_matrix::test_member_unprojected_cross_side_grain`)
+     and the covering side's rows are all still in the stream (`_intact`).
+     A FULL-declared key keeps both sides (`test_join_merge_parity`'s
+     `yoy_independent_rowsets`): a rowset's handle is complete for itself,
+     not for a domain an EQUAL declaration merges it into, so the boundary
+     rule stays out of `complete_equal`.
+   - `_extent_free_join`'s own "the other side carries the span's whole
+     domain" INNER and `SideFacts.complete_spans` are gone: they were this
+     proof restricted to extent-free spans.
+
+   Firings fell from 796 to 522 (rowset boundary 193 to 77, `~` stamp about
+   160 to 109). What is left of both classes is a multi-left join, a covering
+   side an earlier join thinned, or a side whose completeness only the
+   optimizer's rewrites show (`joined_complete`). No optimizer helper reached
+   0, so none is deleted. `test_subset_join_plan_time_completeness.py` pins
+   both shapes with the optimizer rule stubbed (red on `main`).
+
+   Gates, against `ca275e3`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   48,494 statements, laws included) moved the join shape of 199 tests
+   (FULL -71, RIGHT -40, INNER -14, LEFT +190 across their statements; the
+   rest of the textual moves are worktree paths and xdist CTE naming), each
+   under a row oracle that stayed green, mostly
+   `test_dimension_chain_oracle_laws`, `tree_reporting` dashboards,
+   `test_rank_beside_partial_merge` and `test_rule_soundness_laws`. Where a
+   narrowed INNER now precedes a RIGHT the walk re-seeds
+   (`_preserved_past_inner`) and the join reads LEFT from the preserved
+   side. Corpus (209 statements): 2 moved, q72's key read off its dimension
+   and tpc-h adhoc07's INNER chain reordered. Fuzzer 522/522; the suite
+   fails the same 25 tests as `main`.
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees

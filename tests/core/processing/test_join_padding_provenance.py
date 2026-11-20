@@ -30,6 +30,7 @@ from trilogy.core.processing.join_resolution import (
     complete_key_domain,
     get_join_type,
     preserved_sources,
+    resolve_join_order_v2,
 )
 from trilogy.core.processing.null_provenance import (
     padding_sources,
@@ -262,20 +263,27 @@ def test_rowset_body_padding_is_named_by_the_readers_handle():
 _SPAN, _ATTR = "c~local.item_sk", "c~local.item_desc"
 
 
+def _walked(covered: frozenset[tuple[str, str, str]]) -> JoinType:
+    sides = _sides(
+        columns={_LEFT: {_SPAN}, _RIGHT: {_SPAN}}, partials={_RIGHT: {_SPAN}}
+    )
+    facts = JoinFacts(
+        sides=sides,
+        extent_free_keys=frozenset({_SPAN}),
+        pair_keys={frozenset({_LEFT, _RIGHT}): frozenset({_SPAN})},
+        side_ranks={_LEFT: 0, _RIGHT: 1},
+        covered=covered,
+    )
+    (join,) = resolve_join_order_v2(facts)
+    return join.type
+
+
 def test_extent_free_span_pairs_inner_with_its_complete_domain():
     """A `~` binding joined to the span's whole domain has a partner for every
-    row, so it is INNER at plan time; a domain that is not the whole one, or a
-    binder carrying a NULL on the span, keeps the binder anchored."""
-    typed = {"partials": {_RIGHT: {_SPAN}}, "extent_free_keys": frozenset({_SPAN})}
-    complete = {_LEFT: {_SPAN}}
-    assert _join({_SPAN}, complete_spans=complete, **typed) == JoinType.INNER
-    assert (
-        _join({_SPAN}, complete_spans={_LEFT: set()}, **typed) == JoinType.RIGHT_OUTER
-    )
-    assert (
-        _join({_SPAN}, nullables={_RIGHT: {_SPAN}}, complete_spans=complete, **typed)
-        == JoinType.RIGHT_OUTER
-    )
+    row (`JoinFacts.covered`), so it is INNER at plan time; uncovered, the
+    binder stays anchored."""
+    assert _walked(frozenset({(_RIGHT, _LEFT, _SPAN)})) == JoinType.INNER
+    assert _walked(frozenset()) == JoinType.RIGHT_OUTER
 
 
 def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
