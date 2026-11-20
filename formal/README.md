@@ -2436,6 +2436,14 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     the read columns without the table's nullability, so
     `StripRedundantNotNull` read `height is not null` as tautological and
     dropped it. A column the rebase adds carries its table's claim.
+  - Found probing the rebase, not by the sweep (the generator writes no
+    membership): an aggregate a WHERE reads inside a membership's set and
+    as an atom of its own raised `DisconnectedConceptsException`
+    (`species in (species ? count(tree_id) by species > 1) and count(tree_id)
+    by species > 0`). Its only consumer was the set, a side channel, so the
+    backfill that joins a WHERE-only aggregate to the outputs skipped it. The
+    backfill now looks past existence-only consumers
+    (`tests/discovery/test_membership_beside_where_aggregate.py`).
 
 ## Limits
 

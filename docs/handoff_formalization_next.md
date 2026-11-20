@@ -340,8 +340,10 @@ Open in the `expressions` family (each fails on main too):
   (`select tree_id where city = 'A' and count(tree_id) by species > 1`), and
   a summary re-sum beside its row twin (it reads stored partials through
   `partial_sources`, which the rebase would have to carry).
-- Not generated yet: `/` by a value that can be 0, a derived key inside a
-  `by`, nested aggregates, windows, `order by` an expression.
+- Not generated yet: a membership (`x in (x ? cond)`) beside the WHERE's
+  own atoms (one hand probe of it raised; fixed in 0.3.521), `/` by a value
+  that can be 0, a derived key inside a `by`, nested aggregates, windows,
+  `order by` an expression.
 
 Reads the summary could serve:
 
