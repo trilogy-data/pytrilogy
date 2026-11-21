@@ -13,12 +13,15 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.527.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.528.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
-`expressions` family to 800,000 and the `compositions` family (memberships,
+`expressions` family to 800,000, the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
-expression) to 260,000; the PR of each round holds its sweep totals. No
-family has `OPEN` seeds.
+expression) to 260,000 and the `windows` family (other windows over the
+select's groups, memberships in a select target's `?` and in a HAVING, `/` by
+a `by` aggregate) to 12,000; the PR of each round holds its sweep totals.
+`windows` has 13 `OPEN` seeds (area 4); `expressions` 8628 raises on the
+summary model on main (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -287,7 +290,18 @@ or fix their planning beyond keeping existing tests green.
   read and broke a seed that was INNER already).
 - A set feeds no rows. A membership's defining group holds the rows its own
   condition kept: it is no bridge, no producer of a FINAL argument, and no
-  column is carried across its existence edge (0.3.524 fixed one of each).
+  column is carried across its existence edge (0.3.524 fixed one of each);
+  nor a supplier of a select output, a regraft parent, or the grain of the
+  rows it filters (0.3.528, for a set in a select target's `?`, which carries
+  no `@condition` label to exclude it by).
+- Where a set is written decides what it reads: in the WHERE, every row; in
+  the select or the HAVING, the rows the WHERE kept. A WHERE aggregate
+  reaches no scan, so a select-phase set under one is planned standalone
+  beneath the WHERE (`_CleanFeederCache.get(kept=True)`).
+- A one-row side restricts no key: its filter empties the merge or leaves
+  it whole, so it never stands in for a keyed sibling's WHERE.
+- A window counts repeats, as an aggregate does: wherever a consumer is
+  excused a join because repeats dedup away, ask whether it is a window.
   Nor is its feeder a row parent of the node it gates: a walk down a node's
   parents (grain, pins) reads `_row_source_parents`, and a set is ordered
   before its own membership's left side only (0.3.525).
@@ -352,15 +366,12 @@ Open in the `expressions` family (each fails on main too):
   a summary re-sum beside its row twin (it reads stored partials through
   `partial_sources`, which the rebase would have to carry).
 
-Open in the `compositions` family: none of seeds 0-260,000 is wrong or
-raises.
+- `expressions` 8628 raises on the summary model, on main too (found by an
+  A/B of 0-10,000; the family's nightly sweep is not in the matrix).
 
-- The family is nearly spent: 200,000-260,000 held 4 raising queries in
-  120,000 on main and no wrong one (1 in 125 was wrong to 30,000). The next
-  round should generate what it does not yet, as a new family: windows other
-  than `rank` (`lag`, `row_number`, frames), a membership in a select
-  target's `?`, a membership in a HAVING, `/` by a `by` aggregate that can be
-  0.
+Open in the `compositions` family: none of seeds 0-260,000 is wrong or
+raises. It is nearly spent (4 raising queries in 120,000 past 200,000); the
+`windows` family (area 4) is where the yield is.
 - Efficiency: a set the group graph builds is planned a second time as a
   standalone feeder (`_CleanFeederCache`) for a dimension root hosting the
   same membership. Seed 83051, which showed it, no longer generates a
@@ -492,6 +503,41 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 - No engine in CI: Presto `date_part`, SQL Server `date_trunc`/`date_part`.
 
 ### 4. Windows, ORDER BY, set operators (`Windows.lean`, `SetOps.lean`, `SelectGrain.lean`)
+
+Open in the `windows` family (`OPEN` in `test_oracle_windows_laws.py`, each
+failing on main too; 12,000 seeds held 1 failure in 21 queries on main, so
+sweep on before reducing these):
+
+- Wrong rows: a HAVING membership whose set reads two gates beside a
+  filtered aggregate (5168); an `over ()` total beside two filtered counts
+  under a HAVING membership fans out (7437); a `row_number` partitioned by a
+  property beside a WHERE of two memberships numbers repeats (11606).
+- A keyless join between a filtered aggregate's set and a `by` denominator
+  (8156, 9809); `Could not resolve existence clause` for a HAVING membership
+  on a property under a window (10318); a membership's left side a window
+  group never carries (3018).
+- Invalid SQL: a CTE joined twice or referenced past its scope when two
+  select-phase sets share a feeder (1210, 1955, 1977, 6336, 10654); a
+  summary column read off the wrong scan (11457).
+- Efficiency: a summary no longer answers `agg(x ? k in <set>)` (301 of
+  3,449 summary reads in the family, 85 queries scan the trees more). The
+  refusal is in `_datasource_has_matching_rollup_aggregate`, which cannot see
+  the WHERE; the defect it covers is narrow (the re-sum's CASE reads the
+  membership's left column, which the scan's WHERE wrapper drops when the
+  WHERE reads it too: `gen_root`'s wrapper and a second path). Keep the
+  column on the scan and the refusal can go.
+- Efficiency: a select-phase set under a WHERE aggregate is planned as a
+  standalone feeder, re-reading what the group graph already built (+640
+  CTEs over 24,000 queries). Hosting the WHERE's gate on the set's own filter
+  group (a CONSTRAINT edge to it, and `main_lineage_groups` following a
+  select-phase existence edge) would share the scan.
+- State: on one executor, after seed 0 (`select species, tag, ..., sum(height)
+  as v1, lag(sum(height)) over (...) as v2`) seed 567 re-sums a finished
+  count per tree on the summary model (`(A, Acer)` reads 4 for 2). The suite
+  plans each case on a fresh copy of the model; `--carry-state` over 0-4,000
+  shows no other pair.
+- The generator writes no frames (`rows between`), no window over a window,
+  and no membership whose set is a derived key.
 
 - Decide whether to warn: a select of only a window ordered by a bare
   aggregate repeats ranks per tuple, and with no keys every row ties

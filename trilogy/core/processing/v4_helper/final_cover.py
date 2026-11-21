@@ -17,7 +17,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase
 from .condition_placement import args_holding_on_absent, feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
-from .edges import EdgeKind, EdgeMap, edges_of_kind
+from .edges import EdgeKind, EdgeMap, edges_of_kind, only_a_set
 from .group_graph import read_row_parents
 from .models import ExtentOwnership, GroupAttrs
 from .projection import concept_satisfiable
@@ -343,6 +343,11 @@ def elect_cover(
             ]
         if not candidates:
             continue
+        # a set supplies no output another group holds: its rows are the ones
+        # its own condition kept (`SelectGrain.set_supplies_no_output`)
+        candidates = [
+            gid for gid in candidates if not only_a_set(group_graph, group_edges, gid)
+        ] or candidates
         # A COALESCING mate carries only its own side's domain: a group that
         # never read the one hosting the concept itself misses that side's rows.
         if addr in coalescing:

@@ -25,6 +25,11 @@ every row that holds the tuple. An aggregate window with no order
   value. Grouping by the tuple and projecting the value splits a value into
   a group per tuple (`group_by_tuple_splits_value`), and a value window is
   no function of its operand (`lag_reads_rows_not_values`).
+- An aggregate a window reads: the operand of `lag(min(h)) over (order by
+  tall)` is at the select's grain, so the window reads one row per group
+  (`window_over_groups_reads_groups`); over the rows of the order column's own
+  key a group lags to itself (`repeated_group_lags_to_itself`,
+  `property_key_rows_repeat_groups`).
 - An aggregate a window orders by: one with no `by` is at the select's raw
   grain, like any other (`SelectGrain.bare_is_select_grain`). When that grain
   holds the partition it reads only the partition's rows
@@ -255,6 +260,43 @@ ranks of its `g`. -/
 theorem order_keys_dropped_fans_out :
     let ranks : List (Nat × Nat) := [(0, 2), (0, 3), (1, 1), (1, 4)]
     (lookup [0, 0, 1, 1] ranks).length = 8 := by decide
+
+/-! ## A window over an aggregate reads the groups
+
+`select tall, lag(min(h)) over (order by tall)`: the operand is an aggregate
+with no `by`, read at the select's grain like any other
+(`SelectGrain.bare_is_select_grain`), so the window is a value per group: it
+reads one row per `tall`. Trilogy took the window's keys from its order
+column instead, and `tall` is a property of `tree_id`: the window ran over
+the trees, each holding its group's value, and a group met itself as its own
+predecessor (`repeated_group_lags_to_itself`,
+`property_key_rows_repeat_groups`). Only a window *ordered by* a bare
+aggregate inherited the select grain; one reading it does too. -/
+
+/-- `lag` at position `i` of a stream. -/
+def lagAt {α : Type} (xs : List α) (i : Nat) : Option α :=
+  if i = 0 then none else xs[i - 1]?
+
+/-- **A stream that repeats a group lags it to itself**: where two
+neighbouring rows hold one group's value, the second reads its own. -/
+theorem repeated_group_lags_to_itself {α : Type} (xs : List α) (i : Nat)
+    (h : xs[i]? = xs[i + 1]?) : lagAt xs (i + 1) = xs[i + 1]? := by
+  simp [lagAt, h]
+
+/-- A stream holding each group once lags each to the group before it. -/
+theorem window_over_groups_reads_groups {α : Type} (xs : List α) (i : Nat) :
+    lagAt xs (i + 1) = xs[i]? := by
+  simp [lagAt]
+
+/-- `min(h)` by `tall` is 2 (false), 5 (true) and NULL (unknown), two trees
+each. Over the groups the lags are `none, 2, 5`: three rows. Over the trees
+each group appears with two lags: six rows for three groups. -/
+theorem property_key_rows_repeat_groups :
+    let groups : List (Nat × Option Nat) := [(0, some 2), (1, some 5), (2, none)]
+    let trees := groups.flatMap fun g => [g, g]
+    let lagged (xs : List (Nat × Option Nat)) :=
+      (List.range xs.length).map fun i => (xs[i]?.map (·.1), (lagAt xs i).map (·.2))
+    (lagged groups).length = 3 ∧ (lagged trees).eraseDups.length = 6 := by decide
 
 /-! ## Where NULLs sort -/
 

@@ -71,13 +71,21 @@ ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 def _feeds_only_existence(
     source: QueryDatasource | BuildDatasource, qds: QueryDatasource
 ) -> bool:
-    """Whether `source` is a set the condition reads in a subselect; the check
-    on its outputs is a proxy for that."""
+    """Whether `source` is a set the condition reads in a subselect (the check
+    on its outputs is a proxy for that), or one a filtered column's own
+    condition reads (`x ? k in (set)`): it supplies no column."""
     condition = qds.condition
-    return condition is not None and any(
+    if condition is not None and any(
         c.address in block
         for c in source.output_concepts
         for block in condition.existence_arguments
+    ):
+        return True
+    existence = qds.existence_source_map
+    return any(source in sources for sources in existence.values()) and not any(
+        source in sources
+        for address, sources in qds.source_map.items()
+        if address not in existence
     )
 
 
