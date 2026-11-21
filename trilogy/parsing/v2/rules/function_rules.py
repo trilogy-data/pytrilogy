@@ -337,16 +337,35 @@ def _materialize_grouping_keys(
     return refs
 
 
+def grouping_spec(
+    mode: AggregateGroupingMode,
+    key_lists: list[list[Any]],
+    context: RuleContext,
+    node: SyntaxNode,
+) -> AggregateGrouping:
+    """The spec of a rollup/cube (one key list) or of grouping sets (one list
+    per set)."""
+    sets = [_materialize_grouping_keys(keys, context, node) for keys in key_lists]
+    if mode != AggregateGroupingMode.GROUPING_SETS:
+        return AggregateGrouping(mode=mode, by=sets[0] if sets else [])
+    by: list[Any] = []
+    seen: set[str] = set()
+    for group in sets:
+        for item in group:
+            if item.address in seen:
+                continue
+            seen.add(item.address)
+            by.append(item)
+    return AggregateGrouping(mode=mode, by=by, grouping_sets=sets)
+
+
 def select_rollup(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    args = hydrated_children(node, hydrate)
-    keys = args[0] if args else []
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.ROLLUP,
-        by=_materialize_grouping_keys(keys, context, node),
+    return grouping_spec(
+        AggregateGroupingMode.ROLLUP, hydrated_children(node, hydrate), context, node
     )
 
 
@@ -355,10 +374,8 @@ def select_cube(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    keys = hydrated_children(node, hydrate)[0]
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.CUBE,
-        by=_materialize_grouping_keys(keys, context, node),
+    return grouping_spec(
+        AggregateGroupingMode.CUBE, hydrated_children(node, hydrate), context, node
     )
 
 
@@ -378,22 +395,11 @@ def select_grouping_sets(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    raw_sets = hydrated_children(node, hydrate)
-    grouping_sets = [
-        _materialize_grouping_keys(group, context, node) for group in raw_sets
-    ]
-    by: list[Any] = []
-    seen: set[str] = set()
-    for group in grouping_sets:
-        for item in group:
-            if item.address in seen:
-                continue
-            seen.add(item.address)
-            by.append(item)
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.GROUPING_SETS,
-        by=by,
-        grouping_sets=grouping_sets,
+    return grouping_spec(
+        AggregateGroupingMode.GROUPING_SETS,
+        hydrated_children(node, hydrate),
+        context,
+        node,
     )
 
 

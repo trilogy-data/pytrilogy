@@ -4,6 +4,7 @@ from typing import Any
 
 from trilogy.constants import MAGIC_TVF_UNION_NAME, UNION_ARM_KEY
 from trilogy.core.enums import (
+    AggregateGroupingMode,
     ConceptSource,
     Derivation,
     FunctionType,
@@ -40,6 +41,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.parsing.common import constant_to_concept, union_item_to_concept
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
+from trilogy.parsing.v2.rules.function_rules import grouping_spec
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -331,10 +333,16 @@ def lower_grouping_select(
     relation's identity; a rolled key is nullable, its subtotal NULL a value.
     A spec over no keys is one standard group and stays a plain select."""
     if arm.grouping is None or not arm.grain.components:
+        if arm.signature:
+            raise InvalidSyntaxException(
+                "a rollup over no keys is a plain select and takes no output "
+                "signature; drop the `-> (...)`."
+            )
         return arm
     namespace = context.environment.namespace
     columns = arm.output_components
     hidden = arm.hidden_components
+    _validate_grouping_signature(arm, len(columns) - len(hidden))
     align_items = [
         AlignItem(
             alias=f"_{scope}_rollup_{ref.address.replace('.', '_')}",
@@ -353,6 +361,7 @@ def lower_grouping_select(
         namespace=namespace,
         derived_concepts=[],
         meta=arm.meta,
+        outputs=arm.signature,
     )
     lineage = statement.as_lineage(context.environment)
     for pos, ref in enumerate(columns):
@@ -372,6 +381,58 @@ def lower_grouping_select(
     return statement
 
 
+def _validate_grouping_signature(arm: SelectStatement, width: int) -> None:
+    if not arm.signature:
+        return
+    if len(arm.signature) != width:
+        raise InvalidSyntaxException(
+            f"the arm projects {width} column(s) but the output signature "
+            f"declares {len(arm.signature)}. Name each arm column once, in order."
+        )
+    for out in arm.signature:
+        if out.purpose is not None or out.datatype is not None:
+            raise InvalidSyntaxException(
+                f"output `{out.name}` of a rollup/cube/grouping_sets call takes "
+                "its type from the arm column; give a name only."
+            )
+
+
+TVF_GROUPING_MODES: dict[SyntaxNodeKind | None, AggregateGroupingMode] = {
+    SyntaxNodeKind.TVF_ROLLUP_INVOCATION: AggregateGroupingMode.ROLLUP,
+    SyntaxNodeKind.TVF_CUBE_INVOCATION: AggregateGroupingMode.CUBE,
+    SyntaxNodeKind.TVF_GROUPING_SETS_INVOCATION: AggregateGroupingMode.GROUPING_SETS,
+}
+
+_KEY_LIST_KINDS = (SyntaxNodeKind.EXPR_OVER_LIST, SyntaxNodeKind.GROUPING_SET)
+
+
+def tvf_grouping_invocation(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> SelectStatement:
+    """`rollup|cube|grouping_sets((select ...), keys)`: the arm select carrying
+    the grouping spec and any `-> (...)` names, not yet finalized. The caller
+    finalizes it and lowers it with `lower_grouping_select`."""
+    arm: SelectStatement | None = None
+    key_lists: list[list[Any]] = []
+    for child in node.child_nodes():
+        if child.kind == SyntaxNodeKind.TVF_REL_ARG:
+            arm = hydrate(child)
+        elif child.kind == SyntaxNodeKind.TVF_OUTPUT and arm is not None:
+            arm.signature = hydrate(child)
+        elif child.kind in _KEY_LIST_KINDS:
+            key_lists.append(hydrate(child))
+    if arm is None:
+        raise fail(node, "a grouping call needs a parenthesized select as its arm")
+    if arm.grouping is not None:
+        raise fail(node, "the arm of a grouping call cannot carry its own grouping")
+    arm.grouping = grouping_spec(
+        TVF_GROUPING_MODES[node.kind], key_lists, context, node
+    )
+    return arm
+
+
 def tvf_set_op_invocation(
     node: SyntaxNode,
     context: RuleContext,
@@ -389,7 +450,7 @@ def tvf_set_op_invocation(
     )
 
 
-def tvf_select_statement(
+def set_op_select_statement(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
@@ -465,5 +526,7 @@ TVF_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.TVF_UNION_INVOCATION: tvf_set_op_invocation,
     SyntaxNodeKind.TVF_EXCEPT_INVOCATION: tvf_set_op_invocation,
     SyntaxNodeKind.TVF_INTERSECT_INVOCATION: tvf_set_op_invocation,
-    SyntaxNodeKind.TVF_SELECT_STATEMENT: tvf_select_statement,
+    SyntaxNodeKind.TVF_ROLLUP_INVOCATION: tvf_grouping_invocation,
+    SyntaxNodeKind.TVF_CUBE_INVOCATION: tvf_grouping_invocation,
+    SyntaxNodeKind.TVF_GROUPING_SETS_INVOCATION: tvf_grouping_invocation,
 }

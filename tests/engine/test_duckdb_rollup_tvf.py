@@ -241,8 +241,7 @@ def test_rowset_renders_as_authored():
         MODEL + "with a as select department, sum(credits) as t by rollup (department);"
     )
     rendered = Renderer().to_string(statements[-1])
-    assert rendered.startswith("rowset a <- select")
-    assert "by rollup (department)" in rendered
+    assert rendered.startswith("rowset a <- rollup(")
     assert "union" not in rendered
 
 

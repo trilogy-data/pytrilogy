@@ -18,6 +18,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
+    ROLLUP_NAMESPACE_PREFIX,
     SUBQUERY_NAMESPACE_PREFIX,
     WORKING_PATH_CONCEPT,
     rowset_alias_prefix,
@@ -297,6 +298,19 @@ class Renderer:
             if name.startswith(prefix):
                 return name[len(prefix) :]
         return name
+
+    @staticmethod
+    def _is_injected_grouping_flag(item: SelectItem) -> bool:
+        """A hidden `grouping(key)` the parser adds to a grouped arm; it is
+        re-added on reparse."""
+        content = item.content
+        return (
+            Modifier.HIDDEN in item.modifiers
+            and isinstance(content, ConceptTransform)
+            and isinstance(content.function, AggregateWrapper)
+            and content.function.function.operator == FunctionType.GROUPING
+            and content.output.name.startswith(VIRTUAL_CONCEPT_PREFIX)
+        )
 
     @staticmethod
     def _is_hidden_subquery_output(item) -> bool:
@@ -1245,6 +1259,7 @@ class Renderer:
                 self.indent_lines(self.to_string(c))
                 for c in arg.selection
                 if not self._is_hidden_subquery_output(c)
+                and not self._is_injected_grouping_flag(c)
             ]
             # Stage by stage: a flat where is the one-stage chain `[where_clause]`,
             # so this renders it unchanged and a `then where` chain round-trips.
@@ -1280,7 +1295,12 @@ class Renderer:
             joins.append(f"{join_keyword[authored]} join {left} = {right}")
 
         grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
-        return QUERY_TEMPLATE.render(
+        source = ""
+        if arg.source is not None:
+            with self._rowset_scope(arg.source.name):
+                call = self.to_string(arg.source.select)
+            source = f"from {call.removesuffix(';')}\n"
+        return source + QUERY_TEMPLATE.render(
             select_columns=select_columns,
             wheres=where_stages,
             having=having_clause,
@@ -1365,8 +1385,29 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: RollupSelectStatement):
-        # authored as the arm select's own `by rollup (...)` clause
-        return self.to_string(arg.selects[0])
+        return self._render_grouping_call(arg.selects[0])
+
+    def _render_grouping_call(self, arm: SelectStatement) -> str:
+        """`rollup|cube|grouping_sets((arm), keys) [-> (names)];`"""
+        spec = arm.grouping
+        assert spec is not None
+        body = self.to_string(replace(arm, grouping=None, signature=[]))
+        body = body.strip().removesuffix(";").rstrip().removesuffix(",")
+        with self.indented():
+            body = self.indent_lines(body, extra_levels=1)
+            parts = [f"{self.indent_lines('(')}\n{body}\n{self.indent_lines(')')}"]
+            parts += [self.indent_lines(key) for key in self._grouping_keys(spec)]
+        outputs = ", ".join(self.to_string(o) for o in arm.signature)
+        signature = f" -> ({outputs})" if outputs else ""
+        return f"{spec.mode.value}(\n" + ",\n".join(parts) + f"\n){signature};"
+
+    def _grouping_keys(self, grouping: AggregateGrouping) -> list[str]:
+        if grouping.mode.value == "grouping_sets":
+            return [
+                f"({', '.join(self.to_string(x) for x in gs)})"
+                for gs in grouping.grouping_sets
+            ]
+        return [self.to_string(x) for x in grouping.by]
 
     @to_string.register
     def _(self, arg: TVFOutputItem):
@@ -1621,7 +1662,8 @@ class Renderer:
 
         ns, base = arg.address.rsplit(".", 1)
         base = self._unmangle_rowset_name(base)
-        if ns == DEFAULT_NAMESPACE:
+        # an inline `from rollup(...) -> (name)` output is read by its bare name
+        if ns == DEFAULT_NAMESPACE or ns.startswith(ROLLUP_NAMESPACE_PREFIX):
             return base
         return f"{ns}.{base}"
 

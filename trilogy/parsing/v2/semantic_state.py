@@ -117,6 +117,7 @@ class SemanticState:
     # created (and resolved) under a hidden per-rowset name. A stack (not a
     # single value) because a rowset's MERGE body spans multiple SELECTs.
     _rowset_name_stack: list[str] = field(default_factory=list)
+    _name_bindings: list[dict[str, str]] = field(default_factory=list)
     # Depth counter marking hydration of the RHS of a membership (`in`/`not in`)
     # comparison. A multi-output `(select ...)` subquery is only meaningful there
     # (as a row-tuple set); everywhere else it must project a single column.
@@ -149,6 +150,18 @@ class SemanticState:
             yield
         finally:
             self._rowset_name_stack.pop()
+
+    @contextmanager
+    def name_bindings(self, bindings: dict[str, str]) -> Iterator[None]:
+        """Resolve each bare name to its bound address within the scope."""
+        self._name_bindings.append(bindings)
+        try:
+            yield
+        finally:
+            self._name_bindings.pop()
+
+    def bound_address(self, name: str) -> str | None:
+        return self._name_bindings[-1].get(name) if self._name_bindings else None
 
     @property
     def current_rowset_name(self) -> str | None:
@@ -388,6 +401,9 @@ class ConceptLookup:
         # leading ``local.``, or qualify unnamespaced keys with ``local.``.
         prefix = f"{DEFAULT_NAMESPACE}."
         candidates: list[str] = []
+        bound = self._state.bound_address(address.removeprefix(prefix))
+        if bound is not None:
+            candidates.append(bound)
         # Inside a rowset body, a default-namespace name (bare, or
         # ``local.x``) must prefer that rowset's hidden alias if one
         # exists — so HAVING/WHERE/ORDER BY/window references bind to the

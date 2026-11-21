@@ -25,7 +25,11 @@ from trilogy.core.statements.author import (
     SelectStatement,
 )
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
-from trilogy.parsing.v2.rules.tvf_rules import lower_grouping_select
+from trilogy.parsing.v2.rules.tvf_rules import (
+    TVF_GROUPING_MODES,
+    lower_grouping_select,
+    set_op_select_statement,
+)
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -212,6 +216,58 @@ def lower_statement_grouping(select: SelectStatement, context: RuleContext) -> N
     select.relational = outer
 
 
+def tvf_select_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> SelectStatement:
+    """Inline `from <tvf>(...) -> (...) select ...`: the trailing select, with
+    the TVF's outputs bound under their signature names."""
+    call = next(
+        (c for c in node.child_nodes() if c.kind in TVF_GROUPING_MODES),
+        None,
+    )
+    if call is None:
+        return set_op_select_statement(node, context, hydrate)
+    select_node = next(
+        c for c in node.child_nodes() if c.kind == SyntaxNodeKind.SELECT_STATEMENT
+    )
+    meta = call.meta
+    place = (
+        f"{context.source_text}:{getattr(meta, 'line', 0)}:"
+        f"{getattr(meta, 'column', 0)}"
+    )
+    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
+    with context.semantic_state.rowset_alias_scope(name):
+        arm = hydrate(call)
+    if not arm.signature:
+        raise fail(
+            call,
+            "an inline grouping call names its outputs: "
+            "`from rollup((select ...), keys) -> (col1, col2) select ...`. "
+            "Or name the relation: `with r as rollup((select ...), keys);`.",
+        )
+    finalize_select_tree(arm, context)
+    body = lower_grouping_select(arm, context, name, core_meta(node.meta))
+    namespace = context.environment.namespace or DEFAULT_NAMESPACE
+    rowset = RowsetDerivationStatement(name=name, select=body, namespace=namespace)
+    handles = _register_rowset(rowset, context, core_meta(node.meta))
+    context.environment.add_rowset(name, body.as_lineage(context.environment))
+    # a signature name means its handle inside the trailing select only, so it
+    # may repeat a model concept's name or another statement's
+    assert isinstance(body, RollupSelectStatement)
+    named = [h for item, h in zip(body.align.items, handles) if not item.hidden]
+    bindings = {out.name: h.address for out, h in zip(arm.signature, named)}
+    with context.semantic_state.name_bindings(bindings):
+        select: SelectStatement = hydrate(select_node)
+    select.source = rowset
+    select.labels = {
+        h.address: ConceptRef(address=f"{namespace}.{out.name}", datatype=h.datatype)
+        for out, h in zip(arm.signature, named)
+    }
+    return select
+
+
 def _one_row(select: SelectStatement, environment: Environment) -> bool:
     """No grain, `limit 1`, or every grain component pinned by an `=` in the
     WHERE, itself or through its keys: to a literal or constant
@@ -273,4 +329,5 @@ def _rowset_of(address: str, environment: Environment) -> str | None:
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT: rowset_derivation_statement,
     SyntaxNodeKind.SCALAR_SUBQUERY: scalar_subquery,
+    SyntaxNodeKind.TVF_SELECT_STATEMENT: tvf_select_statement,
 }
