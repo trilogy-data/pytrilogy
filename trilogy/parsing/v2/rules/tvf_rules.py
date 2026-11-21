@@ -433,6 +433,24 @@ def tvf_grouping_invocation(
     return arm
 
 
+def grouping_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> SelectStatement:
+    """A grouping call as the whole statement: the arm select carrying the
+    spec, whose rows (in its ORDER BY, to its LIMIT) are the result."""
+    arm: SelectStatement = hydrate(node.child_nodes()[0])
+    if arm.signature:
+        raise fail(
+            node,
+            "a grouping call run as a statement shows the arm's own column names; "
+            "alias them in the arm, or read it with "
+            "`from rollup(...) -> (names) select ...`.",
+        )
+    return arm
+
+
 def tvf_set_op_invocation(
     node: SyntaxNode,
     context: RuleContext,
@@ -529,4 +547,5 @@ TVF_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.TVF_ROLLUP_INVOCATION: tvf_grouping_invocation,
     SyntaxNodeKind.TVF_CUBE_INVOCATION: tvf_grouping_invocation,
     SyntaxNodeKind.TVF_GROUPING_SETS_INVOCATION: tvf_grouping_invocation,
+    SyntaxNodeKind.GROUPING_STATEMENT: grouping_statement,
 }

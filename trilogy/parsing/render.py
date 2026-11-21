@@ -131,9 +131,7 @@ QUERY_TEMPLATE = Template(
 {{ where }}
 {% endfor %}{% for join in joins %}{{ join }}
 {% endfor %}select{%- for select in select_columns %}
-{{ select }},{% endfor %}{%- if grouping %}
-{{ grouping }}
-{% endif %}{% if having %}
+{{ select }},{% endfor %}{% if having %}
 having
 {{ having }}
 {% endif %}{%- if order_by %}
@@ -1254,6 +1252,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: SelectStatement):
+        if arg.grouping is not None:
+            return self._render_grouping_call(arg)
         with self.indented():
             select_columns = [
                 self.indent_lines(self.to_string(c))
@@ -1294,7 +1294,6 @@ class Renderer:
             )
             joins.append(f"{join_keyword[authored]} join {left} = {right}")
 
-        grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
         source = ""
         if arg.source is not None:
             with self._rowset_scope(arg.source.name):
@@ -1304,7 +1303,6 @@ class Renderer:
             select_columns=select_columns,
             wheres=where_stages,
             having=having_clause,
-            grouping=grouping,
             order_by=order_by,
             joins=joins,
             limit=arg.limit,
@@ -1825,19 +1823,6 @@ class Renderer:
         return self._pretty(
             [func_str, Break(priority=10, indent=1, flat=" "), f"by {by}"]
         )
-
-    def _render_select_grouping(self, grouping: AggregateGrouping) -> str:
-        """Render a SELECT-level ``by rollup (…)`` / ``by cube (…)`` /
-        ``by grouping sets (…)`` clause."""
-        if grouping.mode.value == "grouping_sets":
-            sets = ", ".join(
-                f"({', '.join(self.to_string(x) for x in gs)})"
-                for gs in grouping.grouping_sets
-            )
-            return f"by grouping sets ({sets})"
-        kw = {"rollup": "rollup", "cube": "cube"}.get(grouping.mode.value, "rollup")
-        keys = ", ".join(self.to_string(x) for x in grouping.by)
-        return f"by {kw} ({keys})"
 
     @to_string.register
     def _(self, arg: MergeStatementV2):
