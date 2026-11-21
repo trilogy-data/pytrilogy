@@ -13,11 +13,11 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.526.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.527.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000 and the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
-expression) to 200,000; the PR of each round holds its sweep totals. No
+expression) to 260,000; the PR of each round holds its sweep totals. No
 family has `OPEN` seeds.
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -344,8 +344,7 @@ Open in the `expressions` family (each fails on main too):
 - An aggregate group's merge takes no keying bridge (it would count the
   repeats), so a blend among an aggregate's own inputs is still unbridged.
 - The expressions family past 800,000 is unswept: 650,000-800,000 held no
-  wrong or raising seed on main. Sweep `compositions` instead; it is far from
-  spent (1 query in 125 was wrong on main to 30,000).
+  wrong or raising seed on main.
 - Efficiency: `MergeTwinScans` reads a scan under a WHERE off an unfiltered
   twin of its table. Left (about 3,300 of 300,000 queries still scan twice):
   a filtered row scan beside a grouped, unfiltered one with no row twin
@@ -353,15 +352,22 @@ Open in the `expressions` family (each fails on main too):
   a summary re-sum beside its row twin (it reads stored partials through
   `partial_sources`, which the rebase would have to carry).
 
-Open in the `compositions` family: none of seeds 0-200,000 is wrong or
+Open in the `compositions` family: none of seeds 0-260,000 is wrong or
 raises.
 
+- The family is nearly spent: 200,000-260,000 held 4 raising queries in
+  120,000 on main and no wrong one (1 in 125 was wrong to 30,000). The next
+  round should generate what it does not yet, as a new family: windows other
+  than `rank` (`lag`, `row_number`, frames), a membership in a select
+  target's `?`, a membership in a HAVING, `/` by a `by` aggregate that can be
+  0.
 - Efficiency: a set the group graph builds is planned a second time as a
   standalone feeder (`_CleanFeederCache`) for a dimension root hosting the
-  same membership (83051's plan holds both).
-- Not generated yet: windows other than `rank` (`lag`, `row_number`, frames),
-  a membership in a select target's `?`, a membership in a HAVING, `/` by a
-  `by` aggregate that can be 0.
+  same membership. Seed 83051, which showed it, no longer generates a
+  membership; find a fresh shape first.
+- An extra (bridge) side is widened only to a stored key its outputs
+  determine (`join_plan._root_lookups`); a derived key (`fc`) still needs
+  a pair bridge.
 
 Reads the summary could serve:
 
