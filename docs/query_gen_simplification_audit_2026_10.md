@@ -239,14 +239,15 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-sixth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+seventh slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
-`~`-subset, graph-subset and twin proofs and decided NULL membership (the
+`~`-subset, graph-subset, twin and unnested-element proofs, decided NULL
+membership and retired its first optimizer helper, `_unnested_parent` (the
 optimizer rule's firings over the non-law suite: 912 before the first slice,
 796 after it, 522 after the second, 407 after the third, 377 after the
 fourth, 299 after the fifth, most of that drop refusals of unsound
-narrowings, and 256 after the sixth, measured from 324 once the null-group
-matrix joined the suite; over the whole suite, laws included, its CTE
+narrowings, 256 after the sixth, measured from 324 once the null-group
+matrix joined the suite, and 101 after the seventh, from 255; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done; 1 and the rest of 2 remain, and hold nearly all of the
 estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
@@ -306,12 +307,9 @@ election, not the padded fallback.
      `test_equal_join_plan_time_completeness.py` pins it (red on `main`).
 
    Not landed:
-   - **An unnest of complete lists is not complete at plan time.** The
-     optimizer reads the elements as complete (`_unnested_parent`), and 153
-     of the remaining EQUAL firings rest on it. Typed INNER while planning,
-     an owner-NULL row appears downstream
-     (`test_merged_unnest_lookup_no_padding.py`, `tree_reporting` native
-     range build), so it stays in the optimizer.
+   - **An unnest of complete lists is not complete at plan time.** Landed
+     in the seventh slice, below: the first cut's owner loss was the
+     one-binding rule reading an unnest as a projection of its owner's `~`.
    - **`scoped_partial_derived` is not a graph query.** Recomputed from
      `domain_graph.subset_sources()`, the collapsed endpoints and the build
      concepts' derivations, it disagreed with the Factory's set in 80 suite
@@ -665,6 +663,65 @@ election, not the padded fallback.
    tests as `main` (credential-bound and
    `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
    522/522.
+
+   **Seventh slice (landed): elements of complete lists, and the first
+   optimizer helper retired.** The census on `33f9816` read 255 firings over
+   the non-law suite, 155 of them the optimizer reading an unnest's elements
+   as complete (`_unnested_parent`), every one a single-left first join, so
+   all within the planner's whole-ON proof. Three changes moved them:
+   - **An unnest's elements are complete when its lists are.**
+     `complete_key_domain` reads a source that only unnests one source
+     (`_unnested_list`) as carrying every element when that source carries
+     every list, through BASIC and ROWSET lineage as before. The owner
+     columns stay incomplete: the `UnnestNode` stamps them `~`, since an
+     owner whose list is empty or NULL yields no row.
+   - **The lists count only where the joins keep them by type or by a
+     declared subset** (`declared_only`). Read INNER beside the trees, the
+     lists of a species with no tree are gone, and the trees' complete
+     `species` binding is no promise that every enrichment row found a tree
+     (`test_unnest_filter_laws::test_element_pairs_with_the_row_it_expands`:
+     a region only a treeless species lists pads in, 12 cells red in the
+     first cut). A twin match or `_partners_every_right_row` beside another
+     complete binding does not keep the lists; a right binding the key `~`
+     beside a complete left does (the native-range build's
+     `species LEFT JOIN ~enrichment`). That is the optimizer's own line:
+     `_keeps_rows_of` asks `_pair_side_fully_matches`, which wants subset
+     evidence.
+   - **An unnest is its own binding of the owners it thins.** The first cut
+     of seam 2's unnest half (and this slice's) lost the empty-list species of
+     the native-range build: an aggregate over the unnested rows and the
+     enrichment read both bind `~species` through the same leaf, so
+     `_one_binding` read them as two projections of one subset and
+     `_nullable_join` typed them INNER. On `main` that join stayed FULL only
+     because the eco join's padded row NULLed `species` on the aggregate.
+     `partial_binding_sources` now adds the unnest source itself when its own
+     unnest stamps the address, so the two reads are peer subsets and keep
+     both.
+
+   With the class at 0, the optimizer's UNNEST branch of `_complete_values`
+   and `_unnested_parent` are deleted, the first optimizer helper seam 2
+   retires. Census over the non-law suite: 255 to 101 (graph subsets 31,
+   twins 23, `_joined_complete` 14, rowset boundaries 12, `~` stamps 6,
+   recursion seeds 4, the rest 11). Over the whole suite, laws included:
+   134. `test_subset_join_plan_time_completeness.py` pins the element proof
+   and the empty-list owner with the optimizer rule stubbed (both red on
+   `main`).
+
+   Gates, against `33f9816`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included, 50,237 tests) moved the join shape of 1,949 tests (FULL
+   -4,530, RIGHT -1,700, INNER +4,537, LEFT +1,767, 9,318 fewer
+   coalesces), mostly `test_relation_rollup_laws` (1,240) and
+   `test_unnest_filter_laws` (576), each under a row oracle that stayed
+   green; no test changed outcome. 37 plans gained a join or a CTE
+   (`test_grain_pin_unnest_merge_filter` 18, `test_summary_cover_laws` 7,
+   the merge-bridge tests 10, `test_unnest_partial_stamp` 2): with the
+   unnest-side join narrowed at plan time the element CTE no longer carries
+   the dimension's attributes, so the lookup is re-joined downstream. Rows
+   are right; folding the attribute back onto the narrowed join is open.
+   (`tpc_ds_duckdb/test_queries` also reads as moved: its statement count
+   varies with the fixture under xdist.) Corpus (207 statements, tpc-ds
+   aggregates included): 0 moved. The suite fails the same 25 tests as
+   `main`. Fuzzer 522/522.
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle

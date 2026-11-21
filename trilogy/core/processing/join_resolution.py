@@ -1513,13 +1513,18 @@ def same_rows(left: DataSource, right: DataSource) -> bool:
 
 
 def preserved_sources(
-    datasets: list[DataSource], joins: list[SourceJoin | UnnestJoin]
+    datasets: list[DataSource],
+    joins: list[SourceJoin | UnnestJoin],
+    declared_only: bool = False,
 ) -> set[str]:
     """Identifiers of the sources whose every row survives the join tree.
     Joins are left-deep: a join that does not preserve its left side drops
     rows of everything joined so far, and an UNNEST can drop rows too. A
     right the join does not preserve keeps every row all the same when each
-    has a partner (`_partners_every_right_row`)."""
+    has a partner (`_partners_every_right_row`). Under `declared_only` that
+    takes a right binding the key `~`: a complete binding beside another
+    complete one is no promise that each of the other's rows finds a partner,
+    and neither is a match the twins proved (`matched_left`/`matched_right`)."""
     right_ids = joined_right_ids(joins)
     alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
     for join in joins:
@@ -1527,18 +1532,24 @@ def preserved_sources(
             alive = set()
             continue
         right_kept = (
-            join.matched_right
-            or join.join_type in PADS_LEFT_JOIN_TYPES
-            or _partners_every_right_row(join, alive)
+            join.join_type in PADS_LEFT_JOIN_TYPES
+            or not declared_only
+            and join.matched_right
+            or _partners_every_right_row(join, alive, declared_only)
         )
-        if not join.matched_left and join.join_type not in PADS_RIGHT_JOIN_TYPES:
+        left_kept = join.join_type in PADS_RIGHT_JOIN_TYPES or (
+            not declared_only and join.matched_left
+        )
+        if not left_kept:
             alive = set()
         if right_kept:
             alive.add(join.right.identifier)
     return alive
 
 
-def _partners_every_right_row(join: Join, alive: set[str]) -> bool:
+def _partners_every_right_row(
+    join: Join, alive: set[str], declared_only: bool = False
+) -> bool:
     """A join on one key from a left whose every row survives and which holds
     the key's whole domain: every right row with a key has a partner, so only
     a NULL key on the right drops one (`trees LEFT JOIN ~species`)."""
@@ -1550,6 +1561,7 @@ def _partners_every_right_row(join: Join, alive: set[str]) -> bool:
         pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
         and all(c.address != pair.right.address for c in join.right.nullable_concepts)
+        and (not declared_only or _binds_partial(join.right, pair.right.address))
     )
 
 
@@ -1642,10 +1654,14 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
     out: frozenset[str] = frozenset()
     for sub in ds.datasources:
         out |= partial_binding_sources(sub, address)
+    stamped = any(c.address == address for c in ds.partial_concepts)
+    # an unnest drops the owners whose list is empty: its own subset
+    if stamped and any(isinstance(j, UnnestJoin) for j in ds.joins):
+        return out | {ds.identifier}
     # a rowset boundary built not to extend a span (its reader holds the
     # region) is partial on the handle with no leaf `~` behind it: the
     # boundary is the binding, and two projections of it are one
-    if not out and any(c.address == address for c in ds.partial_concepts):
+    if not out and stamped:
         return frozenset({ds.identifier})
     return out
 
@@ -1655,6 +1671,7 @@ def complete_key_domain(
     address: str,
     rowset_boundaries: bool = False,
     relation_stamps: Collection[str] = frozenset(),
+    declared_only: bool = False,
 ) -> bool:
     """Whether this source carries every value of ``address``: an unfiltered
     scan binding it complete, or an unfiltered, unlimited read keeping every
@@ -1666,7 +1683,9 @@ def complete_key_domain(
     carries every value of its own handles (`_rowset_boundary`); not of a
     domain an EQUAL declaration merges a handle into. `relation_stamps` are
     the subset ends of declared relations: a read stamps one `~` for the
-    relation, not for the rows it holds, so only its leaves and joins say."""
+    relation, not for the rows it holds, so only its leaves and joins say.
+    `declared_only` keeps a joined source only where its join type or a
+    declared subset does (`preserved_sources`)."""
     stamped = any(c.address == address for c in ds.partial_concepts)
     if isinstance(ds, BuildDatasource):
         return (
@@ -1681,12 +1700,36 @@ def complete_key_domain(
         return False
     if rowset_boundaries and _rowset_boundary(ds, address):
         return address not in deep_extent_free_spans(ds)
-    preserved = preserved_sources(ds.datasources, ds.joins)
+    unnests = [j for j in ds.joins if isinstance(j, UnnestJoin)]
+    if unnests and len(unnests) == len(ds.joins) and len(ds.datasources) == 1:
+        lists = _unnested_list(unnests, address)
+        if lists is not None:
+            return _carries_every_value(
+                ds.datasources[0], lists, rowset_boundaries, relation_stamps, True
+            )
+    preserved = preserved_sources(ds.datasources, ds.joins, declared_only)
     return any(
         sub.identifier in preserved
-        and complete_key_domain(sub, address, rowset_boundaries, relation_stamps)
+        and complete_key_domain(
+            sub, address, rowset_boundaries, relation_stamps, declared_only
+        )
         for sub in ds.datasources
     )
+
+
+def _unnested_list(unnests: list[UnnestJoin], address: str) -> BuildConcept | None:
+    """The list a source that only unnests reads into the element `address`:
+    every element of every list read comes out, so the elements are complete
+    when the lists are. An owner whose list is empty or NULL drops out, so
+    nothing else read there is. The lists count only where the join types or
+    a declared subset keep them: a list read INNER beside the trees keeps no
+    treeless species', whatever the trees' complete binding claims
+    (`test_unnest_filter_laws::test_element_pairs_with_the_row_it_expands`)."""
+    for join in unnests:
+        if any(c.address == address for c in join.concepts):
+            target = join.object_to_unnest
+            return target if isinstance(target, BuildConcept) else None
+    return None
 
 
 def key_providers(
@@ -2922,20 +2965,23 @@ def _carries_every_value(
     concept: BuildConcept,
     rowset_boundaries: bool = False,
     relation_stamps: Collection[str] = frozenset(),
+    declared_only: bool = False,
 ) -> bool:
     """`complete_key_domain`, through BASIC and ROWSET lineage: a derived
     key's domain is the image of its inputs', and a handle's the image of its
     content over the body's rows, so a body reading every row of a complete
     binding carries it whole."""
     if complete_key_domain(
-        datasource, concept.address, rowset_boundaries, relation_stamps
+        datasource, concept.address, rowset_boundaries, relation_stamps, declared_only
     ):
         return True
     if concept.derivation not in _COMPLETENESS_TRANSFERRING:
         return False
     args = concept.concept_arguments
     return bool(args) and all(
-        _carries_every_value(datasource, arg, rowset_boundaries, relation_stamps)
+        _carries_every_value(
+            datasource, arg, rowset_boundaries, relation_stamps, declared_only
+        )
         for arg in args
     )
 
