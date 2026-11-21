@@ -176,6 +176,15 @@ ERROR_CODES: dict[int, str] = {
         "or `sum(x) by store.id as total`. (For subtotals wrap the select in a "
         "call: `rollup((select ...), key1, key2);`.)"
     ),
+    235: (
+        "A grouping call is `rollup((select ...), key1, key2);` - the whole "
+        "select in its OWN parentheses, then the keys - and only `;` or an "
+        "output signature `-> (names)` may follow it: `where`, `having`, "
+        "`order by` and `limit` go INSIDE the wrapped select. "
+        "`cube((select ...), k1, k2)` and `grouping_sets((select ...), (k1, k2), "
+        "(k1), ())` take the same shape. Example: `rollup((select store.state, "
+        "sum(sales) as total order by total desc limit 10), store.state);`"
+    ),
     234: (
         "Input is nested too deeply to parse - parentheses, brackets, calls, "
         "`case`, `not`, `?` filters or types inside one another, about 40 or "
@@ -205,6 +214,44 @@ GROUPING_CLAUSE_HINT = (
     "`cube((select ...), <keys>)` and `grouping_sets((select ...), (<k1>, <k2>), "
     "(<k1>), ())` take the same shape."
 )
+
+
+_GROUPING_CALL_RE = re.compile(r"\b(?:rollup|cube|grouping_sets)\s*\(", re.IGNORECASE)
+_AFTER_CALL_RE = re.compile(r"\s*(?:where|having|order|limit|by)\b", re.IGNORECASE)
+
+
+def _matching_paren(text: str, open_at: int) -> int | None:
+    depth = 0
+    for i in range(open_at, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def detect_grouping_call_shape(text: str, pos: int) -> int | None:
+    """Locate a misshapen grouping call in the statement that failed at
+    ``pos``: its select not in its own parentheses (`rollup(select ...)`, or
+    SQL's `rollup(a, b)`), or a clause written after the call
+    (`rollup(...) order by x`). Returns the call's position, or None. Shared
+    by both grammar backends."""
+    masked = _mask_literals(text)
+    start = masked.rfind(";", 0, pos) + 1
+    end = masked.find(";", pos)
+    end = len(masked) if end < 0 else end
+    for call in _GROUPING_CALL_RE.finditer(masked, start, end):
+        if masked[: call.start()].rstrip().lower().endswith(("group by", "@")):
+            continue
+        arm = _skip_space(masked, call.end())
+        if masked[arm : arm + 1] != "(":
+            return call.start()
+        close = _matching_paren(masked, call.end() - 1)
+        if close is not None and _AFTER_CALL_RE.match(masked, close + 1):
+            return call.start()
+    return None
 
 
 def detect_grouping_clause(content: str) -> bool:

@@ -22,6 +22,7 @@ from trilogy.parsing.v2.errors import (
     detect_named_function_missing_at,
     detect_paren_select_after_from,
     detect_select_distinct,
+    detect_grouping_call_shape,
     detect_select_level_by,
     detect_star_argument,
     detect_subselect,
@@ -158,6 +159,12 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     target_pos = detect_unquoted_path_target(text, pos)
     if target_pos is not None:
         raise create_syntax_error(232, target_pos, text)
+
+    # 235: a grouping call whose select lacks its own parentheses, or with a
+    # clause written after it.
+    call_pos = detect_grouping_call_shape(text, pos)
+    if call_pos is not None:
+        raise create_syntax_error(235, call_pos, text)
 
     # `__ANON_0` is Lark's auto-name for the inline "<-" literal — only used by
     # derivation/binding rules. If it appears in `expected`, the user is in a

@@ -171,7 +171,9 @@ class StatementPlanner:
                 return MergeStatementPlan(statement)
             case SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT:
                 return RowsetStatementPlan(statement)
-            case SyntaxNodeKind.TVF_SELECT_STATEMENT | SyntaxNodeKind.GROUPING_STATEMENT:
+            case (
+                SyntaxNodeKind.TVF_SELECT_STATEMENT | SyntaxNodeKind.GROUPING_STATEMENT
+            ):
                 # Inline `from union(...) -> (...) select ...` hydrates to the
                 # trailing select (the union desugars to local rowset bindings).
                 return SelectStatementPlan(statement)
