@@ -986,6 +986,13 @@ limit 100;
 # NO special handling: `sum(profit) - sum(loss) as net` rolls up both operands
 # to the same levels, because the rollup is a property of the whole select,
 # not of one aggregate.
+#
+# NOTE - keep the rank INSIDE the rolled select, as above. A rank written over a
+# NAMED rollup (`with r as rollup(...); select rank(r.a, r.b) over (...)`) ranks
+# the distinct (r.a, r.b) tuples, and a subtotal row can share its displayed
+# values with another row. If you must rank outside, project the level in the
+# rolled select (`grouping_id(a, b) as lvl`) and pass it as a rank key too:
+# `rank(r.a, r.b, r.lvl) over (...)`.
 """,
     ),
     SyntaxExample(
