@@ -28,6 +28,8 @@ WORKING_PATH_CONCEPT = "_env_working_path"
 # desugared into. Used to mint the name and to skip its auto-promoted hidden
 # output when rendering (it re-derives from the inline form on reparse).
 SUBQUERY_NAMESPACE_PREFIX = "_subquery_"
+# rowset a top-level `by rollup|cube|grouping sets` select is read through
+ROLLUP_NAMESPACE_PREFIX = "_rollup_"
 
 
 def rowset_alias_prefix(rowset_name: str) -> str:

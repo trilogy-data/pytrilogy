@@ -5,7 +5,7 @@ from math import ceil
 from typing import Any
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
-from trilogy.core.constants import CONSTANT_DATASET
+from trilogy.core.constants import CONSTANT_DATASET, ROLLUP_NAMESPACE_PREFIX
 from trilogy.core.domain_graph import DomainGraph, assemble_full_graph, tag_scoped_joins
 from trilogy.core.enums import (
     NEVER_NULL_FUNCTIONS,
@@ -30,6 +30,7 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     MultiSelectLineage,
+    RollupSelectLineage,
     RowsetItem,
     SelectLineage,
     WhereClause,
@@ -1522,6 +1523,7 @@ def _collect_rowset_scoped_joins(
     narrowing registries."""
     out: list[tuple[str, str, JoinType]] = []
     seen_rowsets: set[str] = set()
+    own = {ref.address for ref in statement.output_components}
     pools: list[dict] = [dict(environment.concepts.items())]
     local = getattr(statement, "local_concepts", None)
     if local:
@@ -1534,7 +1536,20 @@ def _collect_rowset_scoped_joins(
             if lineage.rowset.name in seen_rowsets:
                 continue
             seen_rowsets.add(lineage.rowset.name)
-            out.extend(getattr(lineage.rowset.select, "scoped_joins", []) or [])
+            # another statement's rollup relation: its joins were that
+            # statement's own
+            if (
+                lineage.rowset.name.startswith(ROLLUP_NAMESPACE_PREFIX)
+                and concept.address not in own
+            ):
+                continue
+            select = lineage.rowset.select
+            # a rollup TVF's joins are its arm's
+            bodies = (
+                select.selects if isinstance(select, RollupSelectLineage) else [select]
+            )
+            for body in bodies:
+                out.extend(getattr(body, "scoped_joins", []) or [])
     return out
 
 
@@ -1599,6 +1614,11 @@ def _process_query(
     supports_full_join: bool,
 ) -> ProcessedQuery:
     hooks = hooks or []
+    # a top-level rollup is planned as the select over its TVF's handles and
+    # rendered under the authored names
+    authored = statement
+    if isinstance(statement, SelectStatement):
+        statement = statement.planned
 
     build_lineage_sink: list[BuildSelectLineage | BuildMultiSelectLineage] = []
     root_datasource = get_query_datasources(
@@ -1665,6 +1685,8 @@ def _process_query(
         environment, DomainGraph.from_scoped_joins(scoped_pairs)
     )
     scoped_merge_map = dict(domain_graph.canonical_map())
+    if isinstance(authored, SelectStatement):
+        scoped_merge_map.update(authored.relational_names)
 
     final_ctes = optimize_ctes(
         deduped_ctes,
@@ -1703,13 +1725,13 @@ def _process_query(
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
-        output_columns=statement.output_components,
+        output_columns=authored.output_components,
         ctes=final_ctes,
         base=root_cte,
-        hidden_columns={x for x in statement.hidden_components},
-        local_concepts=statement.local_concepts,
-        locally_derived=statement.locally_derived,
-        parameters=_extract_params(environment.concepts, statement.local_concepts),
+        hidden_columns={x for x in authored.hidden_components},
+        local_concepts=authored.local_concepts,
+        locally_derived=authored.locally_derived,
+        parameters=_extract_params(environment.concepts, authored.local_concepts),
         scoped_merge_map=scoped_merge_map,
         derived_value_scopes=derived_value_scopes,
         plan_warnings=plan_warnings,

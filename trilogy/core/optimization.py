@@ -8,6 +8,7 @@ from functools import partial
 from trilogy.constants import CONFIG, Optimizations, logger
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.exceptions import OptimizationNonConvergence
+from trilogy.core.models.build import BuildRollupSelectLineage
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
@@ -274,7 +275,19 @@ def carry_root_contract(old_root: CTE | UnionCTE, new_root: CTE | UnionCTE) -> N
     references but only a limited child's ordering."""
     new_root.order_by = old_root.order_by
     new_root.limit = old_root.limit
-    new_root.hidden_concepts = new_root.hidden_concepts | old_root.hidden_concepts
+    # a rollup TVF's outputs are read through their handles alone: once the
+    # handles fold in, one left visible reads as used upstream
+    shown = {c.address for c in old_root.output_columns} - old_root.hidden_concepts
+    new_root.hidden_concepts = (
+        new_root.hidden_concepts
+        | old_root.hidden_concepts
+        | {
+            c.address
+            for c in new_root.output_columns
+            if isinstance(c.lineage, BuildRollupSelectLineage)
+            and c.address not in shown
+        }
+    )
 
 
 @dataclass(frozen=True)

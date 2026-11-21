@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
+    BuildRollupSelectLineage,
     BuildRowsetItem,
 )
 from trilogy.core.models.execute import (
@@ -353,6 +354,16 @@ def rename_reference(column: BuildConcept) -> BuildConcept | None:
     lineage = column.lineage
     if isinstance(lineage, BuildRowsetItem):
         return lineage.content
+    if isinstance(lineage, BuildRollupSelectLineage):
+        # a rollup TVF's output re-labels its one arm's column
+        return next(
+            (
+                item.concepts[0]
+                for item in lineage.align.items
+                if item.alias == column.name
+            ),
+            None,
+        )
     if isinstance(lineage, BuildFilterItem) and isinstance(
         lineage.content, BuildConcept
     ):

@@ -109,7 +109,7 @@ def test_rollup_cte_projects_only_grouped_or_aggregated(executor):
     ungrouped = [
         item
         for position, item in enumerate(items, start=1)
-        if "sum(" not in item and str(position) not in keys
+        if "sum(" not in item and "grouping(" not in item and str(position) not in keys
     ]
     assert not ungrouped, f"ungrouped projections in the rollup CTE: {ungrouped}"
 

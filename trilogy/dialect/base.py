@@ -1096,6 +1096,44 @@ def _reads_unfiltered_partial(cte: CTE | UnionCTE, concept: BuildConcept) -> boo
     )
 
 
+def _renamed_columns(concept: BuildConcept, cte: CTE | UnionCTE) -> list[str]:
+    """`concept` and the columns it re-labels in `cte`: a rowset handle's
+    content, a TVF output's arm column."""
+    out = [concept.address]
+    while True:
+        lineage = concept.lineage
+        if isinstance(lineage, BuildRowsetItem):
+            concept = lineage.content
+        elif isinstance(lineage, BuildMultiSelectLineage):
+            try:
+                concept = lineage.find_source(concept, cte)
+            except ValueError:
+                return out
+        else:
+            return out
+        out.append(concept.address)
+
+
+def _visible_output(concept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept | None:
+    """The visible output column carrying `concept`: itself, a column it
+    re-labels, or the name the statement renders it under
+    (`sort_select_output_processed`'s ALIAS)."""
+    carried = _renamed_columns(concept, cte)
+    for column in cte.output_columns:
+        if column.address in cte.hidden_concepts:
+            continue
+        if column.address in carried:
+            return column
+        lineage = column.lineage
+        if (
+            isinstance(lineage, BuildFunction)
+            and lineage.operator == FunctionType.ALIAS
+            and [a.address for a in lineage.concept_arguments] == [concept.address]
+        ):
+            return column
+    return None
+
+
 class BaseDialect:
     NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
         dict[WindowType, Callable[[str, str], str]]
@@ -1485,20 +1523,23 @@ class BaseDialect:
     ) -> str:
         # A visible output can be ordered by its SELECT alias instead of
         # re-rendering the expression.
-        if (
-            isinstance(order_item.expr, BuildConcept)
-            and order_item.expr.address in cte.output_columns
-            and order_item.expr.address not in cte.hidden_concepts
+        visible = (
+            _visible_output(order_item.expr, cte)
+            if isinstance(order_item.expr, BuildConcept)
             and self.ALIAS_ORDER_REFERENCING_ALLOWED
-        ):
-            if cte.source_map.get(order_item.expr.address, []):
+            else None
+        )
+        if visible is not None and isinstance(order_item.expr, BuildConcept):
+            if cte.source_map.get(visible.address, []) or cte.source_map.get(
+                order_item.expr.address, []
+            ):
                 # sourced from a parent: reference that column
                 return self.render_ordering(
                     self.render_expr(order_item.expr, cte=cte), order_item.order
                 )
             # derived here: the alias is the only name
             return self.render_ordering(
-                f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER}",
+                f"{self.QUOTE_CHARACTER}{visible.safe_address}{self.QUOTE_CHARACTER}",
                 order_item.order,
             )
         try:

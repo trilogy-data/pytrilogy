@@ -1,19 +1,29 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Any
+
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.constants import ROLLUP_NAMESPACE_PREFIX, SUBQUERY_NAMESPACE_PREFIX
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Modifier, Purpose
 from trilogy.core.functions import LITERAL_CONSTANT_TYPES
 from trilogy.core.models.author import (
     Comparison,
+    Concept,
     ConceptRef,
     Conditional,
+    OrderBy,
     Parenthetical,
     RowsetItem,
     SubqueryItem,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
+from trilogy.core.statements.author import (
+    RollupSelectStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+)
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
 from trilogy.parsing.v2.rules.tvf_rules import lower_grouping_select
 from trilogy.parsing.v2.rules_context import (
@@ -23,8 +33,12 @@ from trilogy.parsing.v2.rules_context import (
     core_meta,
     fail,
 )
-from trilogy.parsing.v2.select_finalize import finalize_select_tree
+from trilogy.parsing.v2.select_finalize import (
+    finalize_select_statement,
+    finalize_select_tree,
+)
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.utility import string_to_hash
 
 
 def rowset_derivation_statement(
@@ -45,17 +59,13 @@ def rowset_derivation_statement(
     # the scope intentionally — it operates on already-resolved addresses.
     finalize_select_tree(select, context)
     if isinstance(select, SelectStatement):
-        select = lower_grouping_select(select, context, name, node)
+        select = lower_grouping_select(select, context, name, core_meta(node.meta))
     output = RowsetDerivationStatement(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
     )
-    result = rowset_to_concepts_v2(output, context)
-    for new_concept in result.concepts:
-        context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
-    if result.alias_updates:
-        context.semantic_state.stage_rowset_aliases(result.alias_updates)
+    _register_rowset(output, context, core_meta(node.meta))
     return output
 
 
@@ -120,25 +130,86 @@ def scalar_subquery(
             "a `(select ...)` used as a scalar value must return one row: "
             "aggregate it with no `by` (`(select max(v))`) or add `limit 1`",
         )
-    body = lower_grouping_select(select, context, name, node)
+    body = lower_grouping_select(select, context, name, core_meta(node.meta))
     output = RowsetDerivationStatement(
         name=name,
         select=body,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
         scalar=scalar,
     )
-    result = rowset_to_concepts_v2(output, context)
-    for new_concept in result.concepts:
-        context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
-    if result.alias_updates:
-        context.semantic_state.stage_rowset_aliases(result.alias_updates)
+    concepts = _register_rowset(output, context, core_meta(node.meta))
     context.environment.add_rowset(name, body.as_lineage(context.environment))
     return SubqueryItem(
-        content=result.concepts[0].reference,
+        content=concepts[0].reference,
         select=select,
         name=name,
-        contents=[c.reference for c in result.concepts],
+        contents=[c.reference for c in concepts],
     )
+
+
+def _register_rowset(
+    output: RowsetDerivationStatement, context: RuleContext, meta: Any
+) -> list[Concept]:
+    result = rowset_to_concepts_v2(output, context)
+    for new_concept in result.concepts:
+        context.add_rowset_concept(new_concept, meta=meta, force=True)
+    if result.alias_updates:
+        context.semantic_state.stage_rowset_aliases(result.alias_updates)
+    return result.concepts
+
+
+def lower_statement_grouping(select: SelectStatement, context: RuleContext) -> None:
+    """Give a finalized top-level `select ... by rollup|cube|grouping sets` its
+    relational form: the select (less ORDER BY and LIMIT) is the arm of a
+    rollup TVF read through an anonymous rowset, and `select.relational` is
+    the select over that rowset's handles the planner runs. The handles render
+    under the authored names, so the statement's surface is unchanged."""
+    if select.relational is not None or select.grouping is None:
+        return
+    arm = replace(select, order_by=None, limit=None)
+    # named for its text and place in it: a re-parse reuses the relation's
+    # concepts, and two statements never share them
+    place = f"{context.source_text}:{select.meta.line_number}:{select.meta.column}"
+    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
+    body = lower_grouping_select(arm, context, name)
+    if not isinstance(body, RollupSelectStatement):
+        return
+    rowset = RowsetDerivationStatement(
+        name=name,
+        select=body,
+        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+    )
+    handles = _register_rowset(rowset, context, None)
+    context.environment.add_rowset(name, body.as_lineage(context.environment))
+    replacements = [
+        (column.address, handle.reference)
+        for column, handle in zip(arm.output_components, handles)
+    ]
+    outer = SelectStatement(
+        selection=[
+            SelectItem(
+                content=handle.reference,
+                modifiers=(
+                    [Modifier.HIDDEN] if column.address in arm.hidden_components else []
+                ),
+            )
+            for column, handle in zip(arm.output_components, handles)
+        ],
+        order_by=(
+            OrderBy(
+                items=[
+                    item.with_reference_replacement(replacements)
+                    for item in select.order_by.items
+                ]
+            )
+            if select.order_by
+            else None
+        ),
+        limit=select.limit,
+        meta=select.meta,
+    )
+    finalize_select_statement(outer, context)
+    select.relational = outer
 
 
 def _one_row(select: SelectStatement, environment: Environment) -> bool:
