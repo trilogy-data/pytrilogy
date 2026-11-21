@@ -302,9 +302,9 @@ def test_statement_over_no_keys_stays_a_select():
 
 
 def test_statement_renders_under_authored_names(executor):
-    result = executor.execute_text(
-        rolled(" order by g asc, department asc limit 2")
-    )[-1]
+    result = executor.execute_text(rolled(" order by g asc, department asc limit 2"))[
+        -1
+    ]
     assert list(result.keys()) == ["department", "total_credits"]
     assert [tuple(r) for r in result.fetchall()] == [("art", 2), ("math", 7)]
 
