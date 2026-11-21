@@ -182,8 +182,8 @@ select
     sales.store as store,
     sales.day as day,
     sum(sales.amt) as amt,
-    max(sum(sales.amt)) over (partition by sales.store order by sales.day) as rm
-having max(sum(sales.amt)) over (partition by sales.store order by sales.day) > 0
+    lag(sales.day) over (partition by sales.store order by sales.day) as rm
+having lag(sales.day) over (partition by sales.store order by sales.day) > 0
 order by store asc;
 """
 
