@@ -153,17 +153,17 @@ def test_key_need_not_be_projected(executor):
     [
         (
             "from rollup((select department, sum(credits) as t), department)"
-            " select department, t;",
+            + " select department, t;",
             "names its outputs",
         ),
         (
             "with r as rollup((select department, sum(credits) as t), department)"
-            " -> (a);",
+            + " -> (a);",
             "declares 1",
         ),
         (
             "with r as rollup((select department, sum(credits) as t), department)"
-            " -> (a string, b);",
+            + " -> (a string, b);",
             "give a name only",
         ),
     ],
@@ -177,11 +177,11 @@ def test_signature_errors(executor, query, message):
     "query",
     [
         "with r as rollup((select department, course as crs, sum(credits) as t,"
-        " grouping(department) as g where credits > 2), department, crs);",
+        + " grouping(department) as g where credits > 2), department, crs);",
         f"with r as cube({ARM}, department, course) -> (dept, crs, total);",
         f"from grouping_sets({ARM}, (department, course), (department), ())"
-        " -> (dept, crs, total)\n"
-        "select dept, crs, total where total > 3 order by dept asc limit 3;",
+        + " -> (dept, crs, total)\n"
+        + "select dept, crs, total where total > 3 order by dept asc limit 3;",
     ],
 )
 def test_render_round_trips(query):
