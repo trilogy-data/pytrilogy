@@ -408,6 +408,50 @@ SHAPES = [
         ),
         [("A", "broadleaf", 8), ("B", "broadleaf", 7)],
     ),
+    # a gate re-applied at FINAL joins the row stream holding its key when the
+    # side asked to carry it is computed off grouped rows (203313): in city A,
+    # 8 less 3 broadleaf trees, 8 less 1 other
+    (
+        (
+            f"select city, {FC}, count(tree_id) by * as v0, sum(height) by city -"
+            " count(tree_id) by fc as v1 where count(tree_id) by species < 10 and"
+            " city = 'A';"
+        ),
+        [("A", "b", 4, 5), ("A", "o", 4, 7)],
+    ),
+    # ...and drops the pairs whose rows all fail it: only b2 (Tilia, 2) passes
+    (
+        (
+            f"select city, {FC}, count(tree_id) by * as v0, sum(height) by city -"
+            " count(tree_id) by fc as v1 where max(height) by species < 4;"
+        ),
+        [("B", "o", 1, 1)],
+    ),
+    # a set's feeder carrying the column its own condition reads is no row
+    # source when another side supplies it (227275): Acer and Quercus pass
+    (
+        (
+            "select species, sum(height) as v0, count(tag) as v2 where species in"
+            " (species ? tree_form = 'broadleaf') and tree_form = 'broadleaf';"
+        ),
+        [("Acer", 10, 3), ("Quercus", 5, 1)],
+    ),
+    (
+        (
+            "select species, sum(height) as v0, count(tag) as v2 where species in"
+            " (species ? tree_form is null) and tree_form = 'linden';"
+        ),
+        [],
+    ),
+    # a value by a property beside a window by its key is paired through the
+    # key's scan, widened to the property (234282)
+    (
+        (
+            "select species, sum(height) by tree_form as v0, rank species order by"
+            " sum(height) asc as v1;"
+        ),
+        [("Acer", 15, 3), ("Quercus", 15, 2), ("Tilia", 2, 1), ("Ulmus", None, 4)],
+    ),
 ]
 
 

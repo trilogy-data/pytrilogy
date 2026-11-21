@@ -524,6 +524,25 @@ def root_carry_demand(
     return demand
 
 
+def _root_lookups(
+    group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The stored `keys` an extra ROOT scan's own outputs determine: widening
+    it to them looks each row's value up and adds none (the species scan beside
+    a window by species, widened to `tree_form` to pair a value by form)."""
+    if group.extent_spans:
+        return frozenset()
+    own = frozenset(group.output_concepts)
+    return frozenset(
+        key
+        for key in keys & strict_fd_closure(environment, own)
+        if key not in own
+        and key not in environment.all_scoped_join_group_members()
+        and (concept := environment.concepts.get(key)) is not None
+        and concept.derivation == Derivation.ROOT
+    )
+
+
 def _boundary_columns(
     group: GroupAttrs, environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -1012,6 +1031,10 @@ def plan_final_join(
     }
     for gid, keys in (contracted or {}).items():
         carry_demands[gid] = carry_demands.get(gid, frozenset()) | keys
+    supplied_keys = pairing_keys(frozenset().union(*(identity[g] for g in supplying)))
+    for gid in contributors:
+        if gid not in supplying and attrs[gid].derivation == Derivation.ROOT:
+            carry_demands[gid] |= _root_lookups(attrs[gid], supplied_keys, environment)
     # A row stream is identified by the grain keys its rows turn out to hold
     # (`sale_recency` at customer and sale date holds both off its inputs);
     # settled before what each side is widened to is read off the identities.

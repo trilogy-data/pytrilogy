@@ -7152,6 +7152,7 @@ def _assemble_final_node(
         [side_cols(p) for p in parents],
         _planned_region_reads(group_graph, attrs, parents, origin),
     )
+    unbridged = len(parents)
     parents = _join_elected_bridges(
         parents,
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
@@ -7159,6 +7160,19 @@ def _assemble_final_node(
         frozenset(
             id(_planned_side(built, gid))
             for gid in bridged.keying | _sole_partners(plan, contributing)
+        ),
+    )
+    # a bridge over grouped rows takes the keys widening could not as a lookup
+    parents = parents[:unbridged] + _project_planned_keys(
+        parents[unbridged:],
+        origin,
+        plan,
+        environment,
+        list(built.values()),
+        lambda outputs: plan_source(
+            SourceRequest(
+                outputs=outputs, environment=environment, graph=graph, history=history
+            )
         ),
     )
     parents = _pair_inside_padding_streams(
@@ -7259,9 +7273,11 @@ def _assemble_final_node(
             environment,
         )
         _carry_asked_keys([*parents, *arg_nodes], origin, asks, environment)
+        # a demand counts once delivered: a side over grouped rows can hold none
         carried = frozenset().union(
             *(
                 asks.carry_demands.get(gid, frozenset())
+                & {o.address for o in parent.output_concepts}
                 for parent in parents
                 for gid in side_members(parent, origin) or ()
             )
