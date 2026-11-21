@@ -2594,7 +2594,8 @@ def _fold_inner_rejoins(joins: list[Join | UnnestJoin]) -> list[Join | UnnestJoi
             continue
         # a cross join to a CTE an INNER join already brought in adds nothing
         if (
-            _is_cross_join(join)
+            isinstance(join, Join)
+            and _is_cross_join(join)
             and join.right.name in introduced
             and _joins_inner(out[introduced[join.right.name]])
         ):

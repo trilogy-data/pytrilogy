@@ -294,7 +294,7 @@ or fix their planning beyond keeping existing tests green.
 - A stored partial is no finished value until it is re-aggregated at its own
   grain, wherever it is read: as a gate's value, a set's condition, a key a
   merge pairs on, or a total beside keys (0.3.525 fixed one of each). Nor is
-  a value stored at another grain a column of a host's rows, nor what a
+  a stored value a column of a host over another stored value, nor what a
   merged aggregate groups by a partial of its parent (0.3.526).
 - `existence_arguments` of a literal `in (...)` is `[()]`, truthy: test with
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
