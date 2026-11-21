@@ -407,6 +407,21 @@ def pending_rollups(
     return [c for c in rollups if not at_own_grain(c, grain)]
 
 
+def reads_partial_coarser(
+    outputs: list[BuildConcept], rollups: list[BuildConcept], grain: BuildGrain
+) -> bool:
+    """A value over a partial the parent still holds per finer key (`min(x)`
+    kept per species for a nested aggregate beside it) is computed once the
+    partial is re-aggregated to the value's own grain."""
+    pending = {c.address for c in pending_rollups(rollups, grain)}
+    return any(
+        not set(o.grain.components) >= set(grain.components)
+        and pending & {a.address for a in o.concept_arguments}
+        for o in outputs
+        if o.grain is not None
+    )
+
+
 def holds_every_kept_row(
     datasource: BuildDatasource | BuildUnionDatasource,
     conditions: BuildWhereClause | None,

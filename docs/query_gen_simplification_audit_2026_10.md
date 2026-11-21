@@ -654,8 +654,9 @@ election, not the padded fallback.
    (6), `test_oracle_compositions_laws` (5), the rest four or fewer each.
    Most of the planner's new INNERs were already the optimizer's, so they
    move no SQL. One law seed changed outcome: compositions 83051 (summary),
-   an `OPEN` wrong-rows lead, now plans right (two aggregates over one
-   stream typed INNER) and joins `FOUND_SEEDS`. Corpus (205 statements, tpc-ds
+   an `OPEN` wrong-rows lead, planned right (two aggregates over one stream
+   typed INNER); main fixed it independently in 0.3.525 before this landed.
+   Corpus (205 statements, tpc-ds
    aggregates included): 0 moved. The first cut of the guest refusal moved
    hackernews adhoc05 (twin groups over one stream INNER to LEFT): the
    optimizer reads the two CTEs' sources, and one predates the WHERE the

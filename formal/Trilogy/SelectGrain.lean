@@ -1885,4 +1885,81 @@ theorem partial_read_as_total_splits :
     per.length = 3 ∧ per.foldl min 100 = 2 := by
   decide
 
+/-! ## Sets in an OR, partials beside a membership (0.3.525)
+
+The `compositions` sweep to 130,000. -/
+
+/-- Does `a` reach `b` along `edges` in at most `n` steps? -/
+def reachesIn (edges : List (Nat × Nat)) : Nat → Nat → Nat → Bool
+  | 0, a, b => a == b
+  | n + 1, a, b => a == b || edges.any fun e => e.1 == a && reachesIn edges n e.2 b
+
+/-- `max(h) by city, form - sum(h) by form = 2 or (form in (form ? count(id) by
+form != 10) and form in (form ? max(h) by city, form is null))`. Groups: the
+`(city, form)` max 0, the form group holding the sum and the count 1, the two
+sets 2 and 3, the form column 4. Each set is read by its own membership, the
+form: ordered before 4, the plan is acyclic. Ordered before every row
+argument of the OR, each set precedes the aggregate the other is computed
+from, and the groups close a loop (`set_read_by_its_own_membership`, seeds
+41277, 66218 raised `Graph contains a cycle`). -/
+theorem set_read_by_its_own_membership :
+    let lineage := [(0, 2), (1, 3)]
+    let own := lineage ++ [(2, 4), (3, 4)]
+    let every := own ++ [(2, 1), (3, 0)]
+    ([0, 1, 2, 3, 4].all fun n => !(own.any fun e => e.1 == n && reachesIn own 4 e.2 n)) ∧
+      (every.any fun e => e.1 == 0 && reachesIn every 4 e.2 0) := by
+  decide
+
+/-- `count(id) by species != 3 or city in S`, off a summary of `(city,
+species)` counts: Acer's count is 3, so its trees fail the gate, but read off
+the stored `(A, Acer)` and `(B, Acer)` partials, 2 and 1, each passes
+(`partial_is_no_gate_value`, seed 37601). -/
+theorem partial_is_no_gate_value :
+    let acer : List Int := [2, 1]
+    acer.foldl (· + ·) 0 = 3 ∧ acer.all (· != 3) := by
+  decide
+
+/-- `species in (species ? max(h) by * = 7)`: the total is 7, so every species
+is in. Re-maxed per species off the summary, the set compared each species'
+own maximum and kept Acer alone (`stored_total_not_remaxed`, seed 47456).
+Maxima by species: Acer 7, Quercus 5, Tilia 2, Ulmus NULL. -/
+theorem stored_total_not_remaxed :
+    let maxima : List (Option Int) := [some 7, some 5, some 2, none]
+    (maxima.filterMap id).foldl max 0 = 7 ∧
+      (maxima.filter (· == some 7)).length = 1 := by
+  decide
+
+/-- `count(max(h) by city)` per city is 1. A scan whose one parent is a set's
+feeder at city grain still holds its own `(city, species)` rows: read as at
+the city, city A counts its three species' maxima, two non-null
+(`feeder_is_no_row_parent`, seed 23531). -/
+theorem feeder_is_no_row_parent :
+    let cityA : List (Option Int) := [some 3, some 5, none]
+    (dedup [cityA.filterMap id |>.foldl max 0]).length = 1 ∧
+      (cityA.filterMap id).length = 2 := by
+  decide
+
+/-- `sum(h) by form - count(id) by form` over the kept broadleaf trees is
+`15 - 4 = 11`. Computed off the per-species partials before the re-sum, it is
+`10 - 3 = 7` for Acer and `5 - 1 = 4` for Quercus, and a join on the value
+pairs no row (`value_off_partials_is_no_key`, seed 38002). -/
+theorem value_off_partials_is_no_key :
+    let parts : List (Int × Int) := [(10, 3), (5, 1)]
+    let whole := parts.foldl (fun a p => a + p.1) 0 - parts.foldl (fun a p => a + p.2) 0
+    whole = 11 ∧ (parts.map fun p => p.1 - p.2).all (· != whole) := by
+  decide
+
+/-- `city ? count(id) by city, species > 1` keeps a city with a `(city,
+species)` group of two trees: A alone. Its condition re-summed to the city off
+the stored counts reads A's 4 and B's 2, and keeps B too
+(`set_condition_at_its_own_keys`, seed 83051). Rows are `(city, species,
+count)`. -/
+theorem set_condition_at_its_own_keys :
+    let counts : List (Int × Int × Int) :=
+      [(0, 0, 2), (0, 1, 1), (0, 2, 1), (1, 0, 1), (1, 3, 1)]
+    let byCity := fun c => (counts.filter (·.1 == c)).foldl (fun a r => a + r.2.2) 0
+    dedup ((counts.filter (·.2.2 > 1)).map (·.1)) = [0] ∧
+      ([0, 1].filter fun c => byCity c > 1) = [0, 1] := by
+  decide
+
 end Trilogy.SelectGrain

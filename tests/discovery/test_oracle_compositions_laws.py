@@ -368,31 +368,22 @@ FOUND_SEEDS = [
     9016, 15258, 24246, 26698, 30553, 39273, 44364, 46333, 48060, 49126,
     49263, 50635, 50815, 54254, 55114, 55868, 57225, 59820, 59941, 60061,
     60632, 63195, 63640, 64769, 65089, 67175, 74943, 75378, 89049, 89137,
-    # seam 2's sixth slice (twin aggregates of one stream) fixed
-    83051,
+    # 0-130,000 leads 0.3.525 fixed
+    23531, 34415, 37601, 38002, 41277, 47456, 66218, 77768, 83051, 84985,
+    85861, 94262, 96519, 104172, 106559,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises, or None for wrong rows
 OPEN: dict[tuple[int, str], str | None] = {
     (5754, "summary"): "Merge sources",
     (13009, "summary"): "Missing source reference",
-    (15155, "summary"): None,
-    (23531, "summary"): None,
     (32125, "summary"): "Merge sources",
     (32239, "summary"): "Ambiguous reference",
-    (34415, "summary"): None,
-    (37601, "summary"): None,
-    (38002, "summary"): None,
-    (41277, "base"): "Graph contains a cycle",
-    (41277, "summary"): "Graph contains a cycle",
-    (47456, "summary"): None,
-    (66218, "base"): "Graph contains a cycle",
-    (66218, "summary"): "Graph contains a cycle",
     (71000, "summary"): "Ambiguous reference",
-    (77768, "summary"): None,
-    (84985, "summary"): None,
-    (85861, "summary"): None,
     (89278, "summary"): "keyless join",
+    (91633, "summary"): "Invalid input concepts",
+    (108631, "summary"): "keyless join",
+    (127138, "summary"): "Missing source reference",
 }
 
 
