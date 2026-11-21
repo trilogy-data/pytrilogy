@@ -28,7 +28,6 @@ _TRACKED = (
     "_rowset_definition_boundary",
     "_joined_complete",
     "_recursion_seed",
-    "_unnested_parent",
     "_on_complete_grain",
     "_authoritative_scan",
     "_same_filter_chain",

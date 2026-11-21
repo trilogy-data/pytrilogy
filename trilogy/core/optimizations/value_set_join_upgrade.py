@@ -47,7 +47,6 @@ from trilogy.core.models.execute import (
     Join,
     RecursiveCTE,
     UnionCTE,
-    UnnestJoin,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
@@ -613,17 +612,7 @@ def _complete_values(
         return bool(args) and all(
             _complete_values(arg, side_cte, graph) for arg in args
         )
-    if _joined_complete(concept, side_cte, graph):
-        return True
-    if concept.derivation == Derivation.UNNEST:
-        # Every element of every list read comes out, so the elements are
-        # complete when the lists are, over the rows the unnest reads.
-        sides = [side_cte, *_unnested_parent(side_cte)]
-        return bool(concept.concept_arguments) and all(
-            any(_complete_values(arg, side, graph) for side in sides)
-            for arg in concept.concept_arguments
-        )
-    return False
+    return _joined_complete(concept, side_cte, graph)
 
 
 def _joined_complete(concept: BuildConcept, side_cte: CTE, graph: DomainGraph) -> bool:
@@ -664,19 +653,6 @@ def _subset_first(
     if right_is_subset:
         return pair.right, right_cte, pair.left, pair.node
     return pair.left, pair.node, pair.right, right_cte
-
-
-def _unnested_parent(side_cte: CTE) -> list[CTE]:
-    """The single parent a CTE unnests with no WHERE and no other join."""
-    if (
-        side_cte.condition is not None
-        or not side_cte.joins
-        or not all(isinstance(j, UnnestJoin) for j in side_cte.joins)
-        or len(side_cte.parent_ctes) != 1
-        or not isinstance(side_cte.parent_ctes[0], CTE)
-    ):
-        return []
-    return [side_cte.parent_ctes[0]]
 
 
 def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
