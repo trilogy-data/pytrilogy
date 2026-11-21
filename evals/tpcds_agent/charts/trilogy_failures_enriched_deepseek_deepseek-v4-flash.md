@@ -1,355 +1,96 @@
-# Trilogy failure analysis — 20261001-122723
+# Trilogy failure analysis — 20261121-223356
 
-- Run `20261001-122722_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 1508 | failed: 67 (4%)
+- Run `20261121-223355_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 1347 | failed: 65 (5%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `undefined-concept` | 22 | 33% |
-| `syntax-parse` | 17 | 25% |
-| `join-resolution` | 12 | 18% |
-| `other` | 9 | 13% |
-| `cli-misuse` | 3 | 4% |
-| `syntax-missing-alias` | 1 | 1% |
-| `file-not-found` | 1 | 1% |
-| `import-path` | 1 | 1% |
-| `no-output` | 1 | 1% |
+| `syntax-parse` | 36 | 55% |
+| `other` | 14 | 22% |
+| `undefined-concept` | 7 | 11% |
+| `join-resolution` | 7 | 11% |
+| `planner-recursion` | 1 | 2% |
 
 ## Detail
 
-### `undefined-concept`
-
-- `trilogy file write answer_4077069387.preql --run`
-
-  ```text
-  Syntax error in answer_4077069387.preql: Undefined concept: item.id. Suggestions: ['web_sales.item.id', 'web_sales.web_site.id', 'web_sales.ship_date.id', 'web_sales.ship_customer.id', 'web_sales.sale_date.id', 'web_sales.sale_time.id']
-  ```
-- `trilogy file write probe_bench.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_bench.preql: Undefined concept: sales.sale_date (line 6, in SELECT). Suggestions: ['sales.sale_date.sk', 'sales.sale_date.id', 'sales.sale_date.date', 'sales.sale_date.year', 'sales.sale_date.day_of_week', 'sales.sale_date.day_of_month']
-  ```
-- `trilogy file write probe_triple.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_triple.preql: Undefined concept: sales.sale_date. Suggestions: ['sales.sale_date.sk', 'sales.sale_date.id', 'sales.sale_date.date', 'sales.sale_date.year', 'sales.sale_date.day_of_week', 'sales.sale_date.day_of_month']
-  ```
-- `trilogy file write _probe5.preql --run-and-delete`
-
-  ```text
-  Syntax error in _probe5.preql: Undefined concept: csr.store_state (line 6, in SELECT). Suggestions: ['csr.store.state', 'csr.store.name', 'csr.store_sale_date.sk']
-  ```
-- `trilogy file write probe_counts.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_counts.preql: Undefined concept: x.store_id (line 4, in SELECT). Suggestions: ['x.store.id', 'x.store.zip', 'x.store.city']
-  ```
-- `trilogy file write probe1.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe1.preql: Undefined concept: _virt_agg_grouping_2599847655796781.
-  ```
-- `trilogy file write probe1.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe1.preql: Undefined concept: _virt_agg_grouping_3513081987384927.
-  ```
-- `trilogy file write probe3.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe3.preql: Undefined concept: _virt_agg_grouping_2599847655796781.
-  ```
-- `trilogy file write probe4.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe4.preql: Undefined concept: _virt_agg_grouping_3513081987384927.
-  ```
-- `trilogy file write probe5.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe5.preql: Undefined concept: _virt_agg_grouping_3513081987384927.
-  ```
-- `trilogy file write probe6.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe6.preql: Undefined concept: _virt_agg_grouping_2599847655796781.
-  ```
-- `trilogy file write answer_609701806.preql --run`
-
-  ```text
-  Syntax error in answer_609701806.preql: 5 undefined concept references; fix all before re-running:
-    - local.ext_sales_price (line 6, in SELECT); did you mean: ss.ext_sales_price, total_ext_sales_price, ss.sales_price?
-    - sale_date.year (line 8, col 3, in WHERE); did you mean: ss.sale_date.year, sale_date.month_of_year, ss.return_date.year, ss.customer.first_sales_date.year, ss.return_customer.first_sales_date.year, ss.customer.first_shipto_date.year?
-    - sale_date.month_of_year (line 9, col 7, in WHERE); did you mean: ss.sale_date.month_of_year, sale_date.year, ss.return_date.month_of_year, ss.customer.first_sales_date.month_of_year, ss.return_customer.first_sales_date.month_of_year, ss.customer.first_shipto_date.month_of_year?
-    - item.manager_id (line 10, col 7, in WHERE); did you mean: ss.item.manager_id, item.brand_id, ss.item.manufacturer_id?
-    - item.brand_id (line 11, col 38, in ORDER BY); did you mean: ss.item.brand_id, item.brand_name, item.manager_id, brand_id?
-  ```
-- `trilogy file write answer_3036656719.preql --run`
-
-  ```text
-  Syntax error in answer_3036656719.preql: Undefined concept: _virt_agg_grouping_9185816277693433.
-  ```
-- `trilogy file write probeB.preql --run-and-delete`
-
-  ```text
-  Syntax error in probeB.preql: Undefined concept: _virt_agg_grouping_3448352567439983.
-  ```
-- `trilogy file write answer_2874833976.preql --run`
-
-  ```text
-  Syntax error in answer_2874833976.preql: Undefined concept: _virt_agg_grouping_4453574046401692.
-  ```
-- `trilogy file write probe_a.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_a.preql: Undefined concept: _virt_agg_grouping_4453574046401692.
-  ```
-- `trilogy file write probe_b.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_b.preql: Undefined concept: _virt_agg_grouping_9769516219811737.
-  ```
-- `trilogy file write probe_main.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_main.preql: Undefined concept: c.current_demographics. Suggestions: ['c.current_demographics.sk', 'c.current_demographics.gender', 'c.current_demographics.marital_status', 'c.current_demographics.education_status', 'c.current_demographics.purchase_estimate', 'c.current_demographics.credit_rating']
-  ```
-- `trilogy file write answer_2852230229.preql --run`
-
-  ```text
-  Syntax error in answer_2852230229.preql: Undefined concept: _virt_agg_grouping_5549377253046357.
-  ```
-- `trilogy file write probe3.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe3.preql: Undefined concept: _virt_agg_grouping_164218295708188.
-  ```
-- `trilogy file write probe4.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe4.preql: Undefined concept: _virt_agg_grouping_5549377253046357.
-  ```
-- `trilogy file write answer_32504671.preql --run`
-
-  ```text
-  Syntax error in answer_32504671.preql: Undefined concept: line_item. Suggestions: ['ss.line_item', 'ss.line_item_count']
-  ```
-
 ### `syntax-parse`
 
-- `trilogy file write probe_struct.preql --run-and-delete`
+- `trilogy file write probe2.preql --run-and-delete`
 
   ```text
-  refused to write 'probe_struct.preql': not syntactically valid Trilogy.
+  refused to write 'probe2.preql': not syntactically valid Trilogy.
 
   Parse error:
   Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...eturn_date.sk) as n_ret_date  ??? group by a.channel  order by a...
+  ...:date and '2000-09-06'::date  ??? group by s.channel, s.return_c...
   ```
-- `trilogy file write probe_q1.preql --run-and-delete`
+- `trilogy file write probe3.preql --run-and-delete`
 
   ```text
-  refused to write 'probe_q1.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [211]: Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
-  Location:
-  ...d ss.sale_date.year <= 2003)) ??? by ss.item.sk, (substring(ss.i...
-  ```
-- `trilogy file write probe_a.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_a.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:41
-    |
-  9 |   and lower(ss.customer.birth_country) <> lower(ss.customer.current_address.country)
-    |                                         ^---
-    |
-    = expected sum_operator
-  Location:
-  ...r(ss.customer.birth_country) < ??? > lower(ss.customer.current_ad...
-  ```
-- `trilogy file write probe_csr.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_csr.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:1
-    |
-  7 | limit 20;
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...ntity, csr.catalog_quantity;  ??? limit 20;
-  ```
-- `trilogy file write probe_cand_b.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_cand_b.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [231]: A `subset|union join` cannot follow a trailing `where`. Put the join right after the select list, with the filter either before `select` or after the join: `where <filters> select <cols> subset join a.key = b.key` or `select <cols> subset join a.key = b.key where <filters>`. Full reference: `trilogy agent-info syntax example query-structure`.
-  Location:
-  ...e.year in (1999, 2000, 2001)  ??? union join ss.customer.sk = cs...
-  ```
-- `trilogy file write probe10.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe10.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:1
-    |
-  7 | by ss.item.class
-    | ^---
-    |
-    = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
-  Location:
-  ...ss.item.category = 'Jewelry'  ??? by ss.item.class  order by n a...
-  ```
-- `trilogy file write _probeB.preql --run-and-delete`
-
-  ```text
-  refused to write '_probeB.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 12:1
-     |
-  12 | by *;
-     | ^---
-     |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...nd item.size = 'N/A')) as p8  ??? by *;
-  ```
-- `trilogy file write probe_itemids2.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_itemids2.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 10:1
-     |
-  10 | by ref_item_ids.ref_id;
-     | ^---
-     |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-   count(item.sk) as item_rows  ??? by ref_item_ids.ref_id;
-  ```
-- `trilogy file write probeA.preql --run-and-delete`
-
-  ```text
-  refused to write 'probeA.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-   a, cs.net_paid_inc_tax as b  ??? from raw.catalog_sales as cs
-  ```
-- `trilogy file write probeB.preql --run-and-delete`
-
-  ```text
-  refused to write 'probeB.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-  ...e.sk as tsk, a.quantity as q  ??? from raw.all_sales as a  limit...
-  ```
-- `trilogy file write probeF.preql --run-and-delete`
-
-  ```text
-  refused to write 'probeF.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 4:44
-    |
-  4 |   count(web.line_item ? (web.sale_time.sk <> web.sale_time.time)) as web_mismatch,
-    |                                            ^---
-    |
-    = expected sum_operator
-  Location:
-  ...ine_item ? (web.sale_time.sk < ??? > web.sale_time.time)) as web_...
-  ```
-- `trilogy file write probe_roles.preql --run-and-delete --content import raw.all_sales as s;
-
-select
-  s.channel as channel,
-  sum(1 ? s.channel is not null) a…ustomer.sk is not null and s.purchasing_customer.sk <> s.ship_customer.sk) as ps_diff,
-  count_distinct(s.purchasing_customer.id) as cust_distinct
-;
-`
-
-  ```text
-  refused to write 'probe_roles.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:116
-    |
-  7 |   sum(1 ? s.purchasing_customer.sk is not null and s.billing_customer.sk is not null and s.purchasing_customer.sk <> s.billing_customer.sk) as pb_diff,
-    |                                                                                                                    ^---
-    |
-    = expected sum_operator
-  Location:
-  ...and s.purchasing_customer.sk < ??? > s.billing_customer.sk) as pb...
-  ```
-- `trilogy file write answer_2910545909.preql --run`
-
-  ```text
-  refused to write 'answer_2910545909.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 22:9
-     |
-  22 |        --ss.pos_address.sk
-     |         ^---
-     |
-     = expected access_chain
-  Location:
-      --ss.customer.sk         - ??? -ss.pos_address.sk         --s...
-  ```
-- `trilogy file write probe_main.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_main.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [231]: A `subset|union join` cannot follow a trailing `where`. Put the join right after the select list, with the filter either before `select` or after the join: `where <filters> select <cols> subset join a.key = b.key` or `select <cols> subset join a.key = b.key where <filters>`. Full reference: `trilogy agent-info syntax example query-structure`.
-  Location:
-  ...me_band.upper_bound <= 88128  ??? union join c.current_demograph...
-  ```
-- `trilogy file write answer_840315271.preql --run`
-
-  ```text
-  refused to write 'answer_840315271.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 40:16
-     |
-  40 |     avg_total <> 0
-     |                ^---
-     |
-     = expected sum_operator
-  Location:
-  ...otal,  having      avg_total < ??? > 0      and abs(monthly_total...
-  ```
-- `trilogy file write probe_d.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_d.preql': not syntactically valid Trilogy.
+  refused to write 'probe3.preql': not syntactically valid Trilogy.
 
   Parse error:
   Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...count(ws.line_item) as lines  ??? group by ws.web_site.company_n...
+  ...:date and '2000-09-06'::date  ??? group by s.channel, s.channel_...
+  ```
+- `trilogy file write probe16.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe16.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [233]: Trilogy has no select-level `by` clause - remove it. Grouping is automatic by the non-aggregated select columns, and a select of only aggregates already returns one row. To pin ONE aggregate's grain, put the `by` on that aggregate, before its alias: `sum(x) by * as total` or `sum(x) by store.id as total`. (For subtotals wrap the select in a call: `rollup((select ...), key1, key2);`.)
+  Location:
+  ...s.net_profit) as sales_profit ??? by *;    select sum(s.return_a...
+  ```
+- `trilogy file write probe01.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe01.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
+  Location:
+  ...(s.sale_date.year) as max_yr  ???
+  ```
+- `trilogy file write probe03.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe03.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [233]: Trilogy has no select-level `by` clause - remove it. Grouping is automatic by the non-aggregated select columns, and a select of only aggregates already returns one row. To pin ONE aggregate's grain, put the `by` on that aggregate, before its alias: `sum(x) by * as total` or `sum(x) by store.id as total`. (For subtotals wrap the select in a call: `rollup((select ...), key1, key2);`.)
+  Location:
+   overall_avg_all_years_99_01  ??? by *;
+  ```
+- `trilogy file write probe08.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe08.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 13:37
+     |
+  13 | ) -> (brand_id, class_id, class_id2 as category_id);
+     |                                     ^---
+     |
+     = expected metadata, PURPOSE, validated_type, or data_type
+  Location:
+  ...brand_id, class_id, class_id2 ??? as category_id);    select 1 a...
+  ```
+- `trilogy file write probe17.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe17.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [230]: Join groups are separated by `and`, not commas. A query-scoped `subset|union join` takes one or more key-equality groups chained with `and` - write `subset join a.k1 = b.k1 and a.k2 = b.k2` (or stack a second `subset join a.k2 = b.k2` clause on its own line). A comma is only a select-list separator; here it ends the join clause, so the statement stops at this character. To pull a THIRD column into the SAME key instead, extend the equality: `a.k = b.k = c.k`.
+  Location:
+  ...ple.brand_id = s.item.brand_id ??? , triple.class_id = s.item.cla...
   ```
 - `trilogy file write probe_e.preql --run-and-delete`
 
@@ -359,301 +100,711 @@ select
   Parse error:
   Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...:date and '1999-04-02'::date  ??? group by ws.pos_ship_address.s...
-  ```
-
-### `join-resolution`
-
-- `trilogy file write answer_4199102535.preql --run`
-
-  ```text
-  Resolution error in answer_4199102535.preql: Could not resolve connections for query with output ['local.gen<Purpose.PROPERTY>Derivation.BASIC>', 'local.ms<Purpose.PROPERTY>Derivation.BASIC>', 'local.edu<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt1<Purpose.METRIC>Derivation.AGGREGATE>', 'local.pe<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt2<Purpose.METRIC>Derivation.AGGREGATE>', 'local.cr<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt3<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dc<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt4<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dec<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt5<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dcc<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt6<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write probe2.preql --run-and-delete`
-
-  ```text
-  Resolution error in probe2.preql: Could not resolve connections for query with output ['local.gen<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt1<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write probe4.preql --run-and-delete`
-
-  ```text
-  Resolution error in probe4.preql: Could not resolve connections for query with output ['local.gen<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt1<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write answer_3809267817.preql --run`
-
-  ```text
-  Resolution error in answer_3809267817.preql: Could not resolve connections for query with output ['local.state<Purpose.PROPERTY>Derivation.BASIC>', 'local.gender<Purpose.PROPERTY>Derivation.BASIC>', 'local.marital_status<Purpose.PROPERTY>Derivation.BASIC>', 'local.dep_count<Purpose.PROPERTY>Derivation.BASIC>', 'local.dep_cnt<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dep_min<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dep_max<Purpose.METRIC>Derivation.AGGREGATE>', 'local.dep_avg<Purpose.METRIC>Derivation.AGGREGATE>', 'local.emp_count<Purpose.PROPERTY>Derivation.BASIC>', 'local.emp_cnt<Purpose.METRIC>Derivation.AGGREGATE>', 'local.emp_min<Purpose.METRIC>Derivation.AGGREGATE>', 'local.emp_max<Purpose.METRIC>Derivation.AGGREGATE>', 'local.emp_avg<Purpose.METRIC>Derivation.AGGREGATE>', 'local.coll_count<Purpose.PROPERTY>Derivation.BASIC>', 'local.coll_cnt<Purpose.METRIC>Derivation.AGGREGATE>', 'local.coll_min<Purpose.METRIC>Derivation.AGGREGATE>', 'local.coll_max<Purpose.METRIC>Derivation.AGGREGATE>', 'local.coll_avg<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write p3.preql --run-and-delete`
-
-  ```text
-  Resolution error in p3.preql: Could not resolve connections for query with output ['local.state<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write p4.preql --run-and-delete`
-
-  ```text
-  Resolution error in p4.preql: Could not resolve connections for query with output ['local.state<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy file write answer_3553309440.preql --run`
-
-  ```text
-  Resolution error in answer_3553309440.preql: Could not resolve connections for query with output ['local.segment<Purpose.PROPERTY>Derivation.BASIC>', 'local.cust_count<Purpose.METRIC>Derivation.AGGREGATE>', 'local.seg_x_50<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
+  ...EB' or s.channel = 'CATALOG'  ??? group by auto  order by channe...
   ```
 - `trilogy file write probe_c.preql --run-and-delete`
 
   ```text
-  Resolution error in probe_c.preql: Could not resolve connections for query with output ['cust_totals.customer_sk<Purpose.KEY>Derivation.ROWSET>', 'cust_totals.total<Purpose.METRIC>Derivation.ROWSET>'] from current model.
+  refused to write 'probe_c.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
+  Location:
+  ...01, web_2002)) as same_count  ??? from (    select s.billing_cus...
   ```
-- `trilogy file write probe_f.preql --run-and-delete`
+- `trilogy file write probe_b.preql --run-and-delete`
 
   ```text
-  Resolution error in probe_f.preql: Could not resolve connections for query with output ['local.segment<Purpose.PROPERTY>Derivation.BASIC>', 'local.cust_count<Purpose.METRIC>Derivation.AGGREGATE>', 'local.seg_x_50<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
+  refused to write 'probe_b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:1
+     |
+  12 | select
+     | ^---
+     |
+     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...t_sales_price) as item_total  ??? select    item_totals.category...
+  ```
+- `trilogy file write probe3.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe3.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 36:1
+     |
+  36 | equal join store_side.item_sk = catalog_side.item_sk and store_side.customer_sk = catalog_side.customer_sk
+     | ^---
+     |
+     = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...ide.order_number is not null  ??? equal join store_side.item_sk
+  ```
+- `trilogy file write probe3.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe3.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 37:1
+     |
+  37 | equal join store_side.item_sk = catalog_side.item_sk and store_side.customer_sk = catalog_side.customer_sk;
+     | ^---
+     |
+     = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...ide.order_number is not null  ??? equal join store_side.item_sk
+  ```
+- `trilogy file write answer_2844519538.preql --run`
+
+  ```text
+  refused to write 'answer_2844519538.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 23:43
+     |
+  23 |     and lower(ss.customer.birth_country) <> lower(ss.customer.current_address.country)
+     |                                           ^---
+     |
+     = expected sum_operator
+  Location:
+  ...r(ss.customer.birth_country) < ??? > lower(ss.customer.current_ad...
   ```
 - `trilogy file write probe_a.preql --run-and-delete`
 
   ```text
-  Resolution error in probe_a.preql: Could not resolve connections for query with output ['local.st<Purpose.PROPERTY>Derivation.BASIC>', 'local.c1<Purpose.METRIC>Derivation.AGGREGATE>', 'local.c2<Purpose.METRIC>Derivation.AGGREGATE>', 'local.c3<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 7:1
+    |
+  7 | by *;
+    | ^---
+    |
+    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ..._quantity) as n_catalog_rows  ??? by *;    where c.store_sale_da...
   ```
-- `trilogy file write answer_755724379.preql --run`
+- `trilogy file write p_a.preql --run-and-delete`
 
   ```text
-  Resolution error in answer_755724379.preql: Could not resolve connections for query with output ['local.cd_gender<Purpose.PROPERTY>Derivation.BASIC>', 'local.cd_marital_status<Purpose.PROPERTY>Derivation.BASIC>', 'local.cd_education_status<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt1<Purpose.METRIC>Derivation.AGGREGATE>', 'local.cd_purchase_estimate<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt2<Purpose.METRIC>Derivation.AGGREGATE>', 'local.cd_credit_rating<Purpose.PROPERTY>Derivation.BASIC>', 'local.cnt3<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  refused to write 'p_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [213]: A `by <grain>` clause must follow an aggregate, but the expression before it has none. If the `by` sits inside an aggregate's parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. To take each distinct value once per grain, wrap it in `group(...)` - e.g. `group(item.current_price) by item.id, item.category`. For a reduction, use an aggregate: `sum(x) by ...`, `avg(x) by ...`, `max(x) by ...`.
+  Location:
+  ...nth_of_year between 9 and 12  ??? by *;
   ```
-- `trilogy file write probe_d.preql --run-and-delete`
+- `trilogy file write p_b.preql --run-and-delete`
 
   ```text
-  Resolution error in probe_d.preql: Could not resolve connections for query with output ['local.total<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  refused to write 'p_b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [213]: A `by <grain>` clause must follow an aggregate, but the expression before it has none. If the `by` sits inside an aggregate's parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. To take each distinct value once per grain, wrap it in `group(...)` - e.g. `group(item.current_price) by item.id, item.category`. For a reduction, use an aggregate: `sum(x) by ...`, `avg(x) by ...`, `max(x) by ...`.
+  Location:
+  ...r.sk = ss.return_customer.sk  ??? by *;
+  ```
+- `trilogy file write probe_chk.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_chk.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [231]: A `subset|union join` cannot follow a trailing `where`. Put the join right after the select list, with the filter either before `select` or after the join: `where <filters> select <cols> subset join a.key = b.key` or `select <cols> subset join a.key = b.key where <filters>`. Full reference: `trilogy agent-info syntax example query-structure`.
+  Location:
+  ..._demographics.sk is not null  ??? subset join store_custs.csk =
+  ```
+- `trilogy file write probe8_751385098.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe8_751385098.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 10:33
+     |
+  10 |          or (all_sales.channel <> 'STORE' and all_sales.billing_customer.sk is not null))
+     |                                 ^---
+     |
+     = expected sum_operator
+  Location:
+         or (all_sales.channel < ??? > 'STORE' and all_sales.billin...
+  ```
+- `trilogy file write probe_b.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 25:4
+     |
+  25 | -- the profile rows themselves
+     |    ^---
+     |
+     = expected PURPOSE, PROPERTY, UNIQUE, or AUTO
+  Location:
+   item.size = 'N/A')  );    -- ??? the profile rows themselves  s...
+  ```
+- `trilogy file write answer_1965638525.preql --run`
+
+  ```text
+  refused to write 'answer_1965638525.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 7:41
+    |
+  7 |   and ss.customer.current_address.city <> ss.pos_address.city
+    |                                         ^---
+    |
+    = expected sum_operator
+  Location:
+  ...ustomer.current_address.city < ??? > ss.pos_address.city  select
+  ```
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
+  Location:
+  ...sale_date.month_of_year = 12  ???
+  ```
+- `trilogy file write probe_b.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 7:44
+    |
+  7 |   count(ss.line_item ? is_not_distinct_from(ss.customer.sk, ss.return_customer.sk)) as same_cust_null_safe,
+    |                                            ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...ne_item ? is_not_distinct_from ??? (ss.customer.sk, ss.return_cus...
+  ```
+- `trilogy file write probe_w6.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_w6.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [231]: A `subset|union join` cannot follow a trailing `where`. Put the join right after the select list, with the filter either before `select` or after the join: `where <filters> select <cols> subset join a.key = b.key` or `select <cols> subset join a.key = b.key where <filters>`. Full reference: `trilogy agent-info syntax example query-structure`.
+  Location:
+  ...eligible.cust_sk is not null  ??? union join ss.customer.sk = el...
+  ```
+- `trilogy file write probe_w8.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_w8.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [231]: A `subset|union join` cannot follow a trailing `where`. Put the join right after the select list, with the filter either before `select` or after the join: `where <filters> select <cols> subset join a.key = b.key` or `select <cols> subset join a.key = b.key where <filters>`. Full reference: `trilogy agent-info syntax example query-structure`.
+  Location:
+  ...eligible.cust_sk is not null  ??? union join ss.customer.sk = el...
+  ```
+- `trilogy file write probe2.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe2.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...d s.sale_date.week_seq <= 62  ??? group by s.sale_date.week_seq
+  ```
+- `trilogy file write answer_3063407983.preql --run`
+
+  ```text
+  refused to write 'answer_3063407983.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:41
+     |
+  12 |   and ss.customer.current_address.city <> ss.pos_address.city
+     |                                         ^---
+     |
+     = expected sum_operator
+  Location:
+  ...ustomer.current_address.city < ??? > ss.pos_address.city  select
+  ```
+- `trilogy file write probe05.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 19:1
+     |
+  19 | order by cnt asc
+     | ^---
+     |
+     = expected EOI, block, or show_statement
+  Location:
+  ....customer_sk)) as grp_count;  ??? order by cnt asc  limit 12;
+  ```
+- `trilogy file write probe_bvs.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_bvs.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 7:28
+    |
+  7 |     sum(1 ? is_not_distinct(ws.billing_customer.id, ws.ship_customer.id)) as same_customer
+    |                            ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...,      sum(1 ? is_not_distinct ??? (ws.billing_customer.id, ws.sh...
+  ```
+- `trilogy file write probe3.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe3.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 8:1
+    |
+  8 | grouping
+    | ^---
+    |
+    = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...e_date.date) in (2001, 2002)  ??? grouping
+  ```
+- `trilogy file write answer_3046445280.preql --run`
+
+  ```text
+  refused to write 'answer_3046445280.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 28:17
+     |
+  28 |   and prev_qty <> 0
+     |                 ^---
+     |
+     = expected sum_operator
+  Location:
+   = 2002) > 0    and prev_qty < ??? > 0    and (curr_qty * 1.0) /
+  ```
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 17:35
+     |
+  17 |     count_distinct(ss.customer.sk?) as x;
+     |                                   ^---
+     |
+     = expected _and_conditional
+  Location:
+  ...count_distinct(ss.customer.sk? ??? ) as x;
+  ```
+- `trilogy file write probe_b.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 25:19
+     |
+  25 | having avg_total <> 0
+     |                   ^---
+     |
+     = expected sum_operator
+  Location:
+   avg_total  having avg_total < ??? > 0     and (abs(total - avg_t...
+  ```
+- `trilogy file write probe10_1197120511.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe10_1197120511.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [105]: A `rowset`/`auto`/`metric`/`property` definition connects its name to its expression with `<-`, not `as` - write `rowset base <- select ...;` (a `rowset` may also use the `with base as select ...;` form). For `auto`/`metric`/`property` only `<-` is valid, e.g. `auto total <- sum(sales.amount);`.
+  Location:
+  ...les as ws;    rowset item_avg ??? as      where ws.sale_date.dat...
+  ```
+- `trilogy file write answer_3734509910.preql --run`
+
+  ```text
+  refused to write 'answer_3734509910.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
+  Location:
+     class_pct asc nulls first  ???
+  ```
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 4:1
+    |
+  4 | order by i.class asc nulls first
+    | ^---
+    |
+    = expected metadata, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ..._code, i.class as item_class  ??? order by i.class asc nulls fir...
+  ```
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 4:1
+    |
+  4 | order by i.class asc
+    | ^---
+    |
+    = expected metadata, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ..._code, i.class as item_class  ??? order by i.class asc  limit 3
   ```
 
 ### `other`
 
-- `trilogy file write probe_q1.preql --run-and-delete`
+- `trilogy file write probe1.preql --run-and-delete`
 
   ```text
-  Syntax error in probe_q1.preql: Cannot compare ArrayType<UNKNOWN> ((AggregateWrapper(function=count(<Filter: ref:ss.ticket_number where (ref:ss.sale_date.year >= 2000 and ref:ss.sale_date.year <= 2003) = True>), by=[ref:ss.item.sk], grouping=<AggregateGroupingMode.STANDARD: 'standard'>, grouping_sets=[], grain_inherited=False), (substring(ref:ss.item.desc,1,30)), ref:ss.sale_date.date)) and INTEGER (4) of different types with operator > in (AggregateWrapper(function=count(<Filter: ref:ss.ticket_number where (ref:ss.sale_date.year >= 2000 and ref:ss.sale_date.year <= 2003) = True>), by=[ref:ss.item.sk], grouping=<AggregateGroupingMode.STANDARD: 'standard'>, grouping_sets=[], grain_inherited=False), (substring(ref:ss.item.desc,1,30)), ref:ss.sale_date.date) > 4
+  Resolution error in probe1.preql: Planner emitted a keyless join between row-bearing sources that share a join axis or one source relation: (s.catalog_dim_return_unified_at_s_channel_s_return_channel_dim_id_union_s.store_dim_return_unified_at_s_channel_s_return_channel_dim_id_union_s.web_dim_return_unified_at_s_channel_s_return_channel_dim_id_unioned_join_s.catalog_dim_unified_at_s_channel_s_channel_dim_id_union_s.store_dim_unified_at_s_channel_s_channel_dim_id_union_s.web_dim_unified_at_s_channel_s_channel_dim_id_unioned_join_s.catalog_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_returns_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.catalog_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.return_date.date_at_s_return_date_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_order_id_filtered_by_6784057197632311_preserving_9811205205220783_at_s_channel_s_item_sk_s_order_id_grouped_by_local.returned_s.return_date.sk_at_s_return_date_sk onto (s.catalog_dim_return_unified_at_s_channel_s_return_channel_dim_id_union_s.store_dim_return_unified_at_s_channel_s_return_channel_dim_id_union_s.web_dim_return_unified_at_s_channel_s_return_channel_dim_id_unioned_join_s.catalog_dim_unified_at_s_channel_s_channel_dim_id_union_s.store_dim_unified_at_s_channel_s_channel_dim_id_union_s.web_dim_unified_at_s_channel_s_channel_dim_id_unioned_join_s.catalog_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_returns_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.catalog_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_returns_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.return_date.date_at_s_return_date_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_order_id_filtered_by_6784057197632311_preserving_9811205205220783_at_s_channel_s_item_sk_s_order_id_grouped_by_local.sold_s.sale_date.sk_at_s_sale_date_sk. This would render as a cross join (ON 1=1) and fan out; the join axis was lost upstream. This is a planner bug.
   ```
-- `trilogy file write probe_d.preql --run-and-delete`
+- `trilogy file write probe17.preql --run-and-delete`
 
   ```text
-  Syntax error in probe_d.preql: Output column 'subtotal' renames 'local.subtotal' back to the name of an existing concept 'subtotal' (defined at line 3) that 'local.subtotal' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'subtotal_out').
+  Unexpected error in probe17.preql: Could not find CTE for datasource (s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_6299819196067424_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_0_brand_id_local.___triple_arm_0_category_id_local.___triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_union_(s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk_join_s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_1030318040582692_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_1_brand_id_local.___triple_arm_1_category_id_local.___triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_union_(s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_4132387600832793_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_2_brand_id_local.___triple_arm_2_category_id_local.___triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_intersected_at_triple_brand_id_triple_category_id_triple_class_id; have {'(s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk_join_s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_1030318040582692_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_1_brand_id_local.___triple_arm_1_category_id_local.___triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_union_(s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_6299819196067424_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_0_brand_id_local.___triple_arm_0_category_id_local.___triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_union_(s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_4132387600832793_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_2_brand_id_local.___triple_arm_2_category_id_local.___triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_unioned', '(s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_union_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_unioned_join_s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_order_id_filtered_by_307091846632844', '(s.catalog_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk_join_s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_1030318040582692_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_1_brand_id_local.___triple_arm_1_category_id_local.___triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_at_local____triple_arm_1_brand_id_local____triple_arm_1_category_id_local____triple_arm_1_class_id_union_(s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.store_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_6299819196067424_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_0_brand_id_local.___triple_arm_0_category_id_local.___triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_at_local____triple_arm_0_brand_id_local____triple_arm_0_category_id_local____triple_arm_0_class_id_union_(s.item.items_at_s_item_sk_join_s.sale_date.date_at_s_sale_date_sk_join_s.web_sales_unified_at_s_channel_s_item_sk_s_order_id_grouped_by_s.channel_s.item.sk_s.sale_date.sk_at_s_channel_s_item_sk_s_sale_date_sk)_at_s_channel_s_item_sk_s_sale_date_sk_filtered_by_4132387600832793_at_s_channel_s_item_sk_s_sale_date_sk_grouped_by_local.___triple_arm_2_brand_id_local.___triple_arm_2_category_id_local.___triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_at_local____triple_arm_2_brand_id_local____triple_arm_2_category_id_local____triple_arm_2_class_id_unioned_at_triple_brand_id_triple_category_id_triple_class_id'}
   ```
-- `trilogy file write probe_d.preql --run-and-delete`
+- `trilogy file write answer_3036656719.preql --run`
 
   ```text
-  Syntax error in probe_d.preql: Output column 'avg_all' renames 'local.avg_all' back to the name of an existing concept 'avg_all' (defined at line 4) that 'local.avg_all' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'avg_all_out').
+  Resolution error in answer_3036656719.preql: The plan renders no column for ['r.gid']; the group producing it could not source its inputs. This is a planner bug.
   ```
-- `trilogy file write probe3.preql --run-and-delete`
+- `trilogy file write p_c.preql --run-and-delete`
 
   ```text
-  Syntax error in probe3.preql: Output column 'parent' renames 'local.parent' back to the name of an existing concept 'parent' (defined at line 6) that 'local.parent' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'parent_out').
-  ```
-- `trilogy file write answer_145690531.preql --run`
+  Unexpected error in p_c.preql: (_duckdb.BinderException) Binder Error: Referenced table "abundant" not found!
+  Candidate tables: "wakeful"
 
-  ```text
-  Syntax error in answer_145690531.preql: Output column 'store_total' renames 'local.store_total' back to the name of an existing concept 'store_total' (defined at line 3) that 'local.store_total' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'store_total_out').
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ':' delimiter: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy file write probe3.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe3.preql: ORDER BY references 'agg99.sum_ws', which is not in the SELECT projection (line 69). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --agg99.sum_ws order by agg99.sum_ws asc`.
-  ```
-- `trilogy file write probe_e.preql --run-and-delete`
-
-  ```text
-  Resolution error in probe_e.preql: WHERE input(s) ['ss.customer.current_address.state', 'ss.customer.sk', 'ss.sale_date.month_of_year', 'ss.sale_date.year'] cannot restrict output(s) ['x'] (statement at line 12): no join or merge relates the filter's source to the source of those outputs, so the WHERE has no single row population to define -- the outputs would cross-join in unfiltered. Add a join/merge relating them, or scope the filter to the source it belongs to with an inline filtered aggregate (e.g. `sum(x ? <condition>)`).
-  ```
-- `trilogy file write answer_2852230229.preql --run`
-
-  ```text
-  Syntax error in answer_2852230229.preql: ORDER BY references 'rolled.parent', which is not in the SELECT projection (line 15). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --rolled.parent order by rolled.parent asc`.
-  ```
-
-### `cli-misuse`
-
-- `trilogy file write _probe2.preql --run --dry-run`
-
-  ```text
-  No such option '--dry-run'. Did you mean '--run'?
-  ```
-- `trilogy file delete _probe2.preql _probe3.preql`
-
-  ```text
-  Got unexpected extra argument (_probe3.preql)
-  ```
-- `trilogy explore raw/customer_address.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
-  ```
-
-### `syntax-missing-alias`
-
-- `trilogy file write probe_ops.preql --run-and-delete`
-
-  ```text
-  refused to write 'probe_ops.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `count(ss.line_item ? (
-              (ss.pos_customer_demographic.marital_status = 'M'
-               and ss.pos_customer_demographic.education_status = 'Advanced Degree'
-               and ss.sales_price between 100 and 150
-               and ss.pos_household_demographic.dependent_count = 3)
-           or (ss.pos_customer_demographic.marital_status = 'S'
-               and ss.pos_customer_demographic.education_status = 'College'
-               and ss.sales_price between 50 and 100
-               and ss.pos_household_demographic.dependent_count = 1)
-           or (ss.pos_customer_demographic.marital_status = 'W'
-               and ss.pos_customer_demographic.education_status = '2 yr Degree'
-               and ss.sales_price between 150 and 200
-               and ss.pos_household_demographic.dependent_count = 1))
-           and
-              (ss.pos_address.country = 'United States'
-               and ss.pos_address.state in ('TX', 'OH')
-               and ss.net_profit between 100 and 200
-              or ss.pos_address.country = 'United States'
-               and ss.pos_address.state in ('OR', 'NM', 'KY')
-               and ss.net_profit between 150 and 300
-              or ss.pos_address.country = 'United States'
-               and ss.pos_address.state in ('VA', 'TX', 'MS')
-               and ss.net_profit between 50 and 250))) as both_between_in,
-         count(ss.line_item ? (
-              (ss.pos_customer_demographic.marital_status = 'M'
-               and ss.pos_customer_demographic.education_status = 'Advanced Degree'
-               and ss.sales_price >= 100 and ss.sales_price <= 150
-               and ss.pos_household_demographic.dependent_count = 3)
-           or (ss.pos_customer_demographic.marital_status = 'S'
-               and ss.pos_customer_demographic.education_status = 'College'
-               and ss.sales_price >= 50 and ss.sales_price <= 100
-               and ss.pos_household_demographic.dependent_count = 1)
-           or (ss.pos_customer_demographic.marital_status = 'W'
-               and ss.pos_customer_demographic.education_status = '2 yr Degree'
-               and ss.sales_price >= 150 and ss.sales_price <= 200
-               and ss.pos_household_demographic.dependent_count = 1))
-           and
-              ((ss.pos_address.country = 'United States'
-               and (ss.pos_address.state = 'TX' or ss.pos_address.state = 'OH')
-               and ss.net_profit >= 100 and ss.net_profit <= 200)
-              or (ss.pos_address.country = 'United States'
-               and (ss.pos_address.state = 'OR' or ss.pos_address.state = 'NM' or ss.pos_address.state = 'KY')
-               and ss.net_profit >= 150 and ss.net_profit <= 300)
-              or (ss.pos_address.country = 'United States'
-               and (ss.pos_address.state = 'VA' or ss.pos_address.state = 'TX' or ss.pos_address.state = 'MS')
-               and ss.net_profit >= 50 and ss.net_profit <= 250)))) as both_ge_or
-  where ss.sale_date.year = 2001; as count_ss_line_item_ss_pos_customer_demog`
-  Location:
-  ...et_profit between 50 and 250)) ??? ) as both_between_in,
-  ```
-
-### `file-not-found`
-
-- `trilogy file write probe_3770074305.preql --run-and-delete`
-
-  ```text
-  Unexpected error in probe_3770074305.preql: (_duckdb.CatalogException) Catalog Error: Table with name cs_item_items does not exist!
-  Did you mean "item"?
-
-  LINE 40:     (exists (select 1 from cs_item_items where cs_item_items."cs_item_sk" is not distinct...
-                                      ^
+  LINE 31:     "abundant"."pairs_cust_sk" as "pairs_cust_sk",
+               ^
   [SQL:
   WITH
   abundant as (
   SELECT
-      "cs_item_items"."I_ITEM_SK" as "cs_item_sk"
+      "ss_store_returns"."SR_ITEM_SK" as "pairs_item_sk",
+      "ss_store_sales"."SS_CUSTOMER_SK" as "pairs_cust_sk"
   FROM
-      "item" as "cs_item_items"),
-  juicy as (
-  SELECT
-      "inv_item_items"."I_ITEM_ID" as "item_code",
-      "inv_item_items"."I_ITEM_SK" as "inv_item_sk",
-      "inv_item_items"."I_ITEM_SK" as "item_sk"
-  FROM
-      "item" as "inv_item_items"),
-  cooperative as (
-  SELECT
-      "inv_item_items"."I_CURRENT_PRICE" as "inv_item_current_price",
-      "inv_item_items"."I_ITEM_SK" as "inv_item_sk",
-      "inv_item_items"."I_MANUFACT_ID" as "inv_item_manufacturer_id",
-      "inv_warehouse_inventory"."inv_quantity_on_hand" as "inv_quantity_on_hand",
-      cast("inv_date_date"."D_DATE" as date) as "inv_date_date"
-  FROM
-      "inventory" as "inv_warehouse_inventory"
-      INNER JOIN "date_dim" as "inv_date_date" on "inv_warehouse_inventory"."inv_date_sk" = "inv_date_date"."D_DATE_SK"
-      INNER JOIN "item" as "inv_item_items" on "inv_warehouse_inventory"."inv_item_sk" = "inv_item_items"."I_ITEM_SK"
+      "store_sales" as "ss_store_sales"
+      INNER JOIN "store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+      INNER JOIN "date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+      INNER JOIN "date_dim" as "ss_return_date_date" on "ss_store_returns"."SR_RETURNED_DATE_SK" = "ss_return_date_date"."D_DATE_SK"
   WHERE
-      "inv_item_items"."I_CURRENT_PRICE" >= 68 and "inv_item_items"."I_CURRENT_PRICE" <= 98 and ("inv_item_items"."I_MANUFACT_ID" is not null and "inv_item_items"."I_MANUFACT_ID" in (677,940,694,808)) and "inv_warehouse_inventory"."inv_quantity_on_hand" >= 100 and "inv_warehouse_inventory"."inv_quantity_on_hand" <= 500 and cast("inv_date_date"."D_DATE" as date) >= date '2000-02-01' and cast("inv_date_date"."D_DATE" as date) <= date '2000-04-01'
-  ),
-  quizzical as (
+      "ss_sale_date_date"."D_YEAR" = 1999 and "ss_sale_date_date"."D_MOY" = 9 and "ss_return_date_date"."D_YEAR" = 1999 and "ss_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "ss_store_sales"."SS_CUSTOMER_SK" = "ss_store_returns"."SR_CUSTOMER_SK"
+
+  GROUP BY
+      1,
+      2),
+  wakeful as (
   SELECT
-      "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+      "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_sk",
+      "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+      "cs_catalog_sales"."CS_QUANTITY" as "cs_quantity"
   FROM
       "catalog_sales" as "cs_catalog_sales"
-  GROUP BY
-      1),
-  questionable as (
-  SELECT
-      "cooperative"."inv_item_sk" as "inv_item_sk",
-      "quizzical"."cs_order_number" as "cs_order_number",
-      (exists (select 1 from cs_item_items where cs_item_items."cs_item_sk" is not distinct from "cooperative"."inv_item_sk")) as "appears"
-  FROM
-      "quizzical"
-      RIGHT OUTER JOIN "cooperative" on 1=1
+      INNER JOIN "date_dim" as "cs_sale_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sale_date_date"."D_DATE_SK"
   WHERE
-      "cooperative"."inv_item_current_price" >= 68 and "cooperative"."inv_item_current_price" <= 98 and ("cooperative"."inv_item_manufacturer_id" is not null and "cooperative"."inv_item_manufacturer_id" in (677,940,694,808)) and "cooperative"."inv_quantity_on_hand" >= 100 and "cooperative"."inv_quantity_on_hand" <= 500 and "cooperative"."inv_date_date" >= date '2000-02-01' and "cooperative"."inv_date_date" <= date '2000-04-01'
+      ("cs_sale_date_date"."D_YEAR" is not null and "cs_sale_date_date"."D_YEAR" in (1999,2000,2001)) and exists (select 1 from abundant where abundant."pairs_cust_sk" is not distinct from "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" and abundant."pairs_item_sk" is not distinct from "cs_catalog_sales"."CS_ITEM_SK")
   ),
-  vacuous as (
+  concerned as (
   SELECT
-      "questionable"."appears" as "appears",
-      "questionable"."cs_order_number" as "cs_order_number",
-      "questionable"."inv_item_sk" as "inv_item_sk"
+      "abundant"."pairs_cust_sk" as "pairs_cust_sk",
+      "abundant"."pairs_item_sk" as "pairs_item_sk",
+      "wakeful"."cs_item_sk" as "cs_item_sk",
+      "wakeful"."cs_order_number" as "cs_order_number",
+      "wakeful"."cs_quantity" as "cs_quantity"
   FROM
-      "questionable"
-      LEFT OUTER JOIN "juicy" on "questionable"."inv_item_sk" = "juicy"."inv_item_sk"
+      "wakeful"),
+  sparkling as (
+  SELECT
+      sum("concerned"."cs_quantity") as "per_pair_qty"
+  FROM
+      "concerned"
+  GROUP BY
+      "concerned"."pairs_cust_sk",
+      "concerned"."pairs_item_sk"),
+  young as (
+  SELECT
+      count(md5(CONCAT_WS('', coalesce(cast("concerned"."cs_item_sk" as string),'
+  '), coalesce(cast("concerned"."cs_order_number" as string),'
+  ')))) as "n_cat_lines",
+      sum("concerned"."cs_quantity") as "catalog_qty"
+  FROM
+      "concerned")
+  SELECT
+      "young"."catalog_qty" as "catalog_qty",
+      "young"."n_cat_lines" as "n_cat_lines",
+      "sparkling"."per_pair_qty" as "per_pair_qty"
+  FROM
+      "young"
+      INNER JOIN "sparkling" on 1=1
   GROUP BY
       1,
       2,
-      3),
-  young as (
-  SELECT
-      "vacuous"."appears" as "appears",
-      "vacuous"."inv_item_sk" as "inv_item_sk",
-      count("vacuous"."cs_order_number") as "catalog_lines"
-  FROM
-      "vacuous"
-  GROUP BY
-      1,
-      2)
-  SELECT
-      "juicy"."item_code" as "item_code",
-      "juicy"."item_sk" as "item_sk",
-      "young"."catalog_lines" as "catalog_lines",
-      "young"."appears" as "appears"
-  FROM
-      "young"
-      LEFT OUTER JOIN "juicy" on "young"."inv_item_sk" = "juicy"."inv_item_sk"
-  ORDER BY
-      "juicy"."item_code" asc
-  LIMIT (100)]
+      3]
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-
-### `import-path`
-
-- `trilogy file write probe_q.preql --run-and-delete`
+- `trilogy file write answer_2802535988.preql --run`
 
   ```text
-  Import error in probe_q.preql: Unable to import '.\raw\catalogue_sales.preql': [Errno 2] No such file or directory: '.\\raw\\catalogue_sales.preql'.
+  trilogy error: subprocess timed out after 600s.
+  ```
+- `trilogy file write probe_ctx.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_ctx.preql: Output column 'a_full' renames 'local.a_full' back to the name of an existing concept 'a_full' (defined at line 5) that 'local.a_full' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'a_full_out').
+  ```
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_a.preql: Output column 'total_sk' renames 'local.total_sk' back to the name of an existing concept 'total_sk' (defined at line 25) that 'local.total_sk' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'total_sk_out').
+  ```
+- `trilogy file write probe_h.preql --run-and-delete`
+
+  ```text
+  Unexpected error in probe_h.preql: Could not render the query: Missing source reference to ss.net_profit; global (by *) aggregate local._virt_agg_avg_1147483187926681_wscope rendered in CTE yummy at keyed grain Grain<ss.item.sk. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
+
+  Full SQL with sentinel(s):
+
+  WITH
+  wakeful as (
+  SELECT
+      "ss_store_sales"."SS_ADDR_SK" as "ss_pos_address_sk",
+      "ss_store_sales"."SS_ITEM_SK" as "ss_item_sk",
+      "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+      "ss_store_sales"."SS_STORE_SK" as "ss_store_sk"
+  FROM
+      "store_sales" as "ss_store_sales"
+  WHERE
+      "ss_store_sales"."SS_STORE_SK" = 1
+  ),
+  thoughtful as (
+  SELECT
+      "wakeful"."ss_item_sk" as "ss_item_sk",
+      avg("wakeful"."ss_net_profit") as "_virt_agg_avg_4106532836187985_wscope"
+  FROM
+      "wakeful"
+  GROUP BY
+      1),
+  cheerful as (
+  SELECT
+      avg(CASE WHEN ( "wakeful"."ss_store_sk" = 1 and "wakeful"."ss_pos_address_sk" is null ) THEN "wakeful"."ss_net_profit" ELSE NULL END) as "_virt_agg_avg_1147483187926681_wscope"
+  FROM
+      "wakeful"),
+  cooperative as (
+  SELECT
+      "wakeful"."ss_item_sk" as "ss_item_sk",
+      avg("wakeful"."ss_net_profit") as "_best_perf_avg_np",
+      avg("wakeful"."ss_net_profit") as "_virt_agg_avg_7425509928788153"
+  FROM
+      "wakeful"
+      INNER JOIN "thoughtful" on "wakeful"."ss_item_sk" = "thoughtful"."ss_item_sk"
+      INNER JOIN "cheerful" on 1=1
+  GROUP BY
+      1),
+  abundant as (
+  SELECT
+      "cooperative"."_best_perf_avg_np" as "_best_perf_avg_np",
+      "cooperative"."ss_item_sk" as "ss_item_sk",
+      rank() over (order by "cooperative"."_virt_agg_avg_7425509928788153" asc ) as "_best_perf_rk"
+  FROM
+      "cooperative"),
+  quizzical as (
+  SELECT
+      "ss_item_items"."I_ITEM_SK" as "_best_perf_item_sk",
+      "ss_item_items"."I_PRODUCT_NAME" as "_best_perf_pname"
+  FROM
+      "item" as "ss_item_items"),
+  uneven as (
+  SELECT
+      "abundant"."_best_perf_avg_np" as "_best_perf_avg_np",
+      "abundant"."_best_perf_rk" as "_best_perf_rk",
+      "quizzical"."_best_perf_pname" as "_best_perf_pname"
+  FROM
+      "abundant"
+      INNER JOIN "thoughtful" on "abundant"."ss_item_sk" = "thoughtful"."ss_item_sk"
+      INNER JOIN "quizzical" on "abundant"."ss_item_sk" = "quizzical"."_best_perf_item_sk"
+      INNER JOIN "cheerful" on 1=1
+  WHERE
+      "thoughtful"."_virt_agg_avg_4106532836187985_wscope" > 0.9 * ("cheerful"."_virt_agg_avg_1147483187926681_wscope")
+  ),
+  yummy as (
+  SELECT
+      "uneven"."_best_perf_avg_np" as "_best_perf_avg_np",
+      "uneven"."_best_perf_pname" as "_best_perf_pname",
+      "uneven"."_best_perf_rk" as "_best_perf_rk"
+  FROM
+      "uneven"
+  WHERE
+      INVALID_REFERENCE_BUG<Missing source reference to ss.net_profit> > 0.9 * (INVALID_REFERENCE_BUG_AGG_GRAIN_MISMATCH<global (by *) aggregate local._virt_agg_avg_1147483187926681_wscope rendered in CTE yummy at keyed grain Grain<ss.item.sk>>) and "uneven"."_best_perf_rk" <= 10
+  )
+  SELECT
+      "yummy"."_best_perf_rk" as "rk",
+      "yummy"."_best_perf_pname" as "pname",
+      "yummy"."_best_perf_avg_np" as "avg_np"
+  FROM
+      "yummy"
+  ORDER BY
+      "rk" asc
+  LIMIT (100)
+  ```
+- `trilogy file write answer_2118989494.preql --run`
+
+  ```text
+  Syntax error in answer_2118989494.preql: Output column 'month_total' renames 'local.month_total' back to the name of an existing concept 'month_total' (defined at line 5) that 'local.month_total' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'month_total_out').
+  ```
+- `trilogy file write answer_2118989494.preql --run`
+
+  ```text
+  Syntax error in answer_2118989494.preql: ORDER BY references 'local.dev', which is not in the SELECT projection (line 24). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --local.dev order by local.dev asc`.
+  ```
+- `trilogy file write probe_d.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_d.preql: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 13). Move the filter to WHERE to filter before aggregation.
+  ```
+- `trilogy file write answer_3544057080.preql --run`
+
+  ```text
+  trilogy error: subprocess timed out after 600s.
+  ```
+- `trilogy file write probe_books.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_books.preql: Cannot use is not with non-null or boolean value <Filter: MagicConstants.NULL where bool(1) = True>
+  ```
+- `trilogy file write probe_e.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_e.preql: HAVING clause aggregate `avg(local.tot) by local.st` is not in the SELECT projection and would change the select grain if added (line 13). HAVING can only filter on off-grain or nested aggregates that are also computed in the SELECT. Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --avg(local.tot) by local.st`; (b) move the filter to WHERE — for an aggregate condition on a non-output grain, write the aggregate inline as `agg(x) by grain` directly in WHERE.
   ```
 
-### `no-output`
+### `undefined-concept`
 
-- `trilogy file write probe01.preql --run-and-delete`
+- `trilogy file write probe04.preql --run-and-delete`
 
   ```text
-  Nothing was executed: the script contains no statements. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
+  Syntax error in probe04.preql: Undefined concept: overall_probe.avg_amt (line 25, in SELECT).
+  ```
+- `trilogy file write probe_r.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_r.preql: Undefined concept: r.ss_item_category. Suggestions: ['r.ss.item.category', 'r.category', 'r.ss.item.class', 'r.class', 'ss.item.category', 'ss.item.category_id']
+  ```
+- `trilogy file write answer_2133330107.preql --run`
+
+  ```text
+  Syntax error in answer_2133330107.preql: 6 undefined concept references; fix all before re-running:
+    - local.ext_sales_price (line 15, in SELECT); did you mean: ss.ext_sales_price, ss.sales_price, ss.ext_list_price?
+    - item.manager_id (line 6, col 7, in WHERE); did you mean: ss.item.manager_id, item.manufacturer_id, item.brand_id, item.manufact, ss.item.manufacturer_id?
+    - sale_date.year (line 7, col 7, in WHERE); did you mean: ss.sale_date.year, sale_date.month_of_year, ss.return_date.year, ss.customer.first_sales_date.year, ss.return_customer.first_sales_date.year, ss.customer.first_shipto_date.year?
+    - sale_date.month_of_year (line 8, col 7, in WHERE); did you mean: ss.sale_date.month_of_year, sale_date.year, ss.return_date.month_of_year, ss.customer.first_sales_date.month_of_year, ss.return_customer.first_sales_date.month_of_year, ss.customer.first_shipto_date.month_of_year?
+    - customer.current_address.zip (line 6, in WHERE); did you mean: ss.customer.current_address.zip, ss.return_customer.current_address.zip, ss.return_address.zip, ss.pos_address.zip, store.zip, ss.store.zip?
+    - store.zip (line 6, in WHERE); did you mean: ss.store.zip, ss.return_store.zip, ss.pos_address.zip, customer.current_address.zip, ss.return_address.zip, ss.customer.current_address.zip?
+  ```
+- `trilogy file write answer_4207382245.preql --run`
+
+  ```text
+  Syntax error in answer_4207382245.preql: 14 undefined concept references; fix all before re-running:
+    - cq.web_q2 (line 19, in SELECT); did you mean: cq.web_q3, cq.web_q1, cq.store_q2, county_quarter.web_q2?
+    - cq.web_q1 (line 19, in SELECT); did you mean: cq.web_q3, cq.web_q2, cq.store_q1, county_quarter.web_q1?
+    - cq.store_q2 (line 20, in SELECT); did you mean: cq.store_q3, cq.store_q1, cq.web_q2, county_quarter.store_q2?
+    - cq.store_q1 (line 20, in SELECT); did you mean: cq.store_q3, cq.store_q2, cq.web_q1, county_quarter.store_q1?
+    - cq.web_q3 (line 21, in SELECT); did you mean: cq.web_q2, cq.web_q1, cq.store_q3, county_quarter.web_q3?
+    - cq.web_q2 (line 21, in SELECT); did you mean: cq.web_q3, cq.web_q1, cq.store_q2, county_quarter.web_q2?
+    - cq.store_q3 (line 22, in SELECT); did you mean: cq.store_q2, cq.store_q1, cq.web_q3, county_quarter.store_q3?
+    - cq.store_q2 (line 22, in SELECT); did you mean: cq.store_q3, cq.store_q1, cq.web_q2, county_quarter.store_q2?
+    - cq.web_q2 (line 17, in WHERE); did you mean: cq.web_q3, cq.web_q1, cq.store_q2, county_quarter.web_q2?
+    - cq.web_q1 (line 17, in WHERE); did you mean: cq.web_q3, cq.web_q2, cq.store_q1, county_quarter.web_q1?
+    - cq.store_q2 (line 17, in WHERE); did you mean: cq.store_q3, cq.store_q1, cq.web_q2, county_quarter.store_q2?
+    - cq.store_q1 (line 17, in WHERE); did you mean: cq.store_q3, cq.store_q2, cq.web_q1, county_quarter.store_q1?
+    - cq.web_q3 (line 17, in WHERE); did you mean: cq.web_q2, cq.web_q1, cq.store_q3, county_quarter.web_q3?
+    - cq.store_q3 (line 17, in WHERE); did you mean: cq.store_q2, cq.store_q1, cq.web_q3, county_quarter.store_q3?
+  ```
+- `trilogy file write probe_scale.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe_scale.preql: Undefined concept: s.row_counter.
+  ```
+- `trilogy file write probe5.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe5.preql: Undefined concept: sb.cust_code. Suggestions: ['cust_code', 'ss.customer.sk', 'ss.customer.id']
+  ```
+- `trilogy file write probe6.preql --run-and-delete`
+
+  ```text
+  Syntax error in probe6.preql: Undefined concept: STORE.
+  ```
+
+### `join-resolution`
+
+- `trilogy file write probe_a.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_a.preql: Could not resolve connections for query with output ['local.n_rows<Purpose.METRIC>Derivation.AGGREGATE>', 'local.n_store_rows<Purpose.METRIC>Derivation.AGGREGATE>', 'local.n_catalog_rows<Purpose.METRIC>Derivation.AGGREGATE>', 'local.ss_profit<Purpose.METRIC>Derivation.AGGREGATE>', 'local.sr_loss<Purpose.METRIC>Derivation.AGGREGATE>', 'local.cs_profit<Purpose.METRIC>Derivation.AGGREGATE>'] from current model. Group grp:aggregate:d0:∅ (Derivation.AGGREGATE) could not be built, and nothing else delivers what it owes: WHERE atoms [], readers [], outputs ['local.n_rows'].
+  ```
+- `trilogy file write probe_nulls.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_nulls.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 27). The requested concepts split into 2 disconnected subgraphs: {c.current_address.state, c.sk, n, no_demo}; {n2}. Are you missing a join or merge statement to relate them?
+  Note: the membership predicate(s) `(c.sk) in (store_cust.cid)` span these subgraphs, but membership only filters rows on its left side, it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
+  ```
+- `trilogy file write probe1.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe1.preql: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 3 disconnected subgraphs: {cs.sale_date.year}; {ss.sale_date.year}; {ws.sale_date.year}.
+    - `ss.sale_date.year` is disconnected, did you mean `cs.ship_customer.first_sales_date.year`? (connected to the other concepts)
+    - `ws.sale_date.year` is disconnected, did you mean `cs.ship_customer.first_sales_date.year`? (connected to the other concepts)
+  These look like separately-imported copies of models already reachable through a connected import; chain through that path (e.g. `cs.ship_customer.first_sales_date.year`) instead of importing a second, disconnected copy.
+  ```
+- `trilogy file write probe_c.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_c.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {in_store_sales, inv.item.current_price, inv.item.manufacturer_id, inv.item.sk, item_code (= inv.item.id), item_desc (= inv.item.desc), item_sk (= inv.item.sk), manuf (= inv.item.manufacturer_id), price (= inv.item.current_price), qualifying_snaps}; {ss.item.sk}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file write probe_i.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_i.preql: Could not resolve connections for query with output ['local.inv_items<Purpose.METRIC>Derivation.AGGREGATE>', 'local.matched_by_membership<Purpose.METRIC>Derivation.AGGREGATE>', 'local.ss_items_direct<Purpose.METRIC>Derivation.AGGREGATE>'] from current model. Group grp:root:root:∅ (Derivation.ROOT) could not be built, and nothing else delivers what it owes: WHERE atoms [], readers ['grp:aggregate:d0:∅:input:inv.item.sk', 'grp:aggregate:d0:∅:input:ss.item.sk', 'grp:filter:d*:∅:sig:90c29f06380c'], outputs ['ss.item.sk'].
+  ```
+- `trilogy file write probe_c.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_c.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {dim_name (= st.name)}; {m_max, m_min, n, ss.sale_date.year, store_sk (= ss.store.sk)}.
+    - `st.name` (as `dim_name`) is disconnected, did you mean `ss.store.name`? (connected to the other concepts)
+  These look like separately-imported copies of models already reachable through a connected import; chain through that path (e.g. `ss.store.name`) instead of importing a second, disconnected copy.
+  ```
+- `trilogy file write probe_verify.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe_verify.preql: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {_catalog_only_cust_key}; {_catalog_only_item_key}. Are you missing a join or merge statement to relate them?
+  ```
+
+### `planner-recursion`
+
+- `trilogy file write probe4_751385098.preql --run-and-delete`
+
+  ```text
+  Resolution error in probe4_751385098.preql: query could not be planned; this is a bug.
   ```
