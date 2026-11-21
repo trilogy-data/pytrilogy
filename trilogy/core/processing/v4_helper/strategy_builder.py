@@ -7153,6 +7153,7 @@ def _assemble_final_node(
         _planned_region_reads(group_graph, attrs, parents, origin),
     )
     unbridged = len(parents)
+    looked_up = [gid for gid in bridges if plan.carry_demands.get(gid)]
     parents = _join_elected_bridges(
         parents,
         [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
@@ -7163,17 +7164,25 @@ def _assemble_final_node(
         ),
     )
     # a bridge over grouped rows takes the keys widening could not as a lookup
-    parents = parents[:unbridged] + _project_planned_keys(
-        parents[unbridged:],
-        origin,
-        plan,
-        environment,
-        list(built.values()),
-        lambda outputs: plan_source(
-            SourceRequest(
-                outputs=outputs, environment=environment, graph=graph, history=history
-            )
-        ),
+    widened = {id(_planned_side(built, gid)) for gid in looked_up}
+    parents = (
+        parents[:unbridged]
+        + [p for p in parents[unbridged:] if id(p) not in widened]
+        + _project_planned_keys(
+            [p for p in parents[unbridged:] if id(p) in widened],
+            origin,
+            plan,
+            environment,
+            list(built.values()),
+            lambda outputs: plan_source(
+                SourceRequest(
+                    outputs=outputs,
+                    environment=environment,
+                    graph=graph,
+                    history=history,
+                )
+            ),
+        )
     )
     parents = _pair_inside_padding_streams(
         parents,
