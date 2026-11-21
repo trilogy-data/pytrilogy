@@ -375,6 +375,8 @@ FOUND_SEEDS = [
     5754, 13009, 32125, 32239, 71000, 89278, 91633, 108631, 127138, 136658,
     144193, 144532, 152426, 158975, 166064, 168375, 172633, 183295, 185880,
     192180, 193722,
+    # 200,000-260,000 leads 0.3.527 fixed
+    203313, 227275, 234282,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises, or None for wrong rows

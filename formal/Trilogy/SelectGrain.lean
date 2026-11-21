@@ -2002,4 +2002,50 @@ theorem set_column_is_no_row :
     (rows.filter fun r => feeder.contains r.1) = rows := by
   decide
 
+/-! ## Gate keys owed at FINAL, sets' condition columns, lookup bridges (0.3.527)
+
+The `compositions` sweep from 200,000 to 260,000. -/
+
+/-- `select city, fc, ... where max(h) by species < 6`: the pair `(A, b)`
+holds Acer (max 7) and Quercus (max 5), so the gate keeps one and rejects
+the other. It is no function of the pair: re-applied at FINAL, it needs a
+side holding `species` (`gate_key_owed_at_final`, seed 203313 raised a
+keyless join when the side asked to carry `species` was computed off grouped
+rows and held none). -/
+theorem gate_key_owed_at_final :
+    let pairA_b : List (String × Option Int) := [("Acer", some 7), ("Quercus", some 5)]
+    let gate : Option Int → Bool := fun m => match m with
+      | some v => v < 6
+      | none => false
+    (pairA_b.map (gate ·.2)) = [false, true] := by
+  decide
+
+/-- `species in (species ? tree_form = 'broadleaf') and tree_form =
+'broadleaf'`: the set's feeder carries `tree_form`, the column its own
+condition reads, for the species it kept. Beside the enrichment rows that
+supply `tree_form`, it adds no row and changes no value; it is read as a
+subselect (`set_condition_column_is_no_row`, seed 227275 raised an
+unplanned merge source). -/
+theorem set_condition_column_is_no_row :
+    let enrichment : List (String × Option String) :=
+      [("Acer", some "broadleaf"), ("Quercus", some "broadleaf"),
+        ("Tilia", some "linden"), ("Ulmus", none)]
+    let feeder := enrichment.filter (·.2 == some "broadleaf")
+    let kept := enrichment.filter fun r => r.2 == some "broadleaf" && feeder.contains r
+    kept = feeder := by
+  decide
+
+/-- `select species, sum(h) by form, rank species order by ...`: the
+species scan, widened to `tree_form`, keeps one row per species, since a
+lookup adds none. It pairs the window by species with the value by form
+(`lookup_bridge_adds_no_rows`, seed 234282 raised a keyless join between
+them). -/
+theorem lookup_bridge_adds_no_rows :
+    let species := ["Acer", "Quercus", "Tilia", "Ulmus"]
+    let form : String → Option String := fun s =>
+      if s == "Tilia" then some "linden" else if s == "Ulmus" then none
+      else some "broadleaf"
+    (species.map fun s => (s, form s)).length = species.length := by
+  decide
+
 end Trilogy.SelectGrain
