@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 from trilogy.core.constants import rowset_alias_prefix
 from trilogy.core.enums import ConceptSource, Derivation, Granularity
 from trilogy.core.models.author import (
-    AggregateWrapper,
     Concept,
     ConceptRef,
     FilterItem,
@@ -29,9 +28,13 @@ from trilogy.core.models.author import (
     SelectLineage,
     address_with_namespace,
 )
-from trilogy.core.models.build import GROUPING_IDENTITY_FUNCTIONS
 from trilogy.core.models.environment import Environment
-from trilogy.core.statements.author import RowsetDerivationStatement
+from trilogy.core.statements.author import (
+    MultiSelectStatement,
+    RollupSelectStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+)
 
 if TYPE_CHECKING:
     from trilogy.parsing.v2.rules_context import RuleContext
@@ -103,10 +106,18 @@ def _rowset_concept(
     alias_updates: list[AliasUpdate],
 ) -> None:
     orig_concept = context.concepts.require(orig_address.address)
-    name = _unmangle_alias_name(orig_concept.name, rowset.name)
-    if isinstance(orig_concept.lineage, FilterItem):
-        lineage = orig_concept.lineage
-        if lineage.where == rowset.select.where_clause and isinstance(
+    # a rollup TVF's output is named for the arm column it re-exposes
+    body: SelectStatement | MultiSelectStatement = rowset.select
+    surface = orig_concept
+    if isinstance(body, RollupSelectStatement):
+        surface = context.concepts.require(
+            body.arm_concept[orig_address.address].address
+        )
+        body = body.selects[0]
+    name = _unmangle_alias_name(surface.name, rowset.name)
+    if isinstance(surface.lineage, FilterItem):
+        lineage = surface.lineage
+        if lineage.where == body.where_clause and isinstance(
             lineage.content, (ConceptRef, Concept)
         ):
             name = _unmangle_alias_name(
@@ -114,7 +125,7 @@ def _rowset_concept(
                 rowset.name,
             )
     base_namespace = rowset_output_namespace(
-        rowset.name, rowset.namespace, orig_concept.namespace
+        rowset.name, rowset.namespace, surface.namespace
     )
     new_concept = Concept(
         name=name,
@@ -217,22 +228,6 @@ def rowset_to_concepts_v2(
                 x.keys = {orig[k].address if k in orig else k for k in x.keys}
             else:
                 x.keys = set()
-        orig_lineage = orig_map[x.address].lineage
-        if (
-            rowset_grain
-            and isinstance(orig_lineage, AggregateWrapper)
-            and orig_lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
-        ):
-            # A grouping() flag is part of the rollup row's identity — it is a
-            # rowset grain component itself (rowset_grain includes it via the
-            # select-grain extension), so it must carry the full row grain like
-            # any other identity column. Leaving it grain-less makes it read as
-            # a scalar and puts an empty-grain metric inside sibling outputs'
-            # grains (build recursion).
-            x.grain = Grain(components=set(rowset_grain))
-            x.keys = set(rowset_grain)
-            x.granularity = Granularity.MULTI_ROW
-            continue
         if not x.grain.components and rowset_grain and x.address not in rowset_grain:
             x.grain = Grain(components=set(rowset_grain))
             x.keys = set(rowset_grain)

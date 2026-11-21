@@ -43,6 +43,7 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     OrderBy,
     Parenthetical,
+    RollupSelectLineage,
     RowsetItem,
     SelectLineage,
     SubselectItem,
@@ -699,6 +700,29 @@ class UnionSelectStatement(MultiSelectStatement):
     def output_components(self) -> list[ConceptRef]:
         # Only the bound union outputs; arm columns are internal.
         return unique([x.reference for x in self.derived_concepts], "address")
+
+
+@dataclass
+class RollupSelectStatement(UnionSelectStatement):
+    """Relational `rollup`/`cube`/`grouping sets` TVF over one arm select (see
+    `RollupSelectLineage`). `selects` is that single arm, carrying the spec;
+    `derived_concepts` are the relation's outputs, one per arm column."""
+
+    def as_lineage(self, environment: Environment) -> RollupSelectLineage:
+        arm = self.selects[0]
+        return RollupSelectLineage(
+            selects=[arm.as_lineage(environment)],
+            align=self.align,
+            derive=None,
+            namespace=self.namespace,
+            hidden_components=self.hidden_components,
+            grouping=arm.grouping,
+        )
+
+    @property
+    def arm_concept(self) -> dict[str, ConceptRef]:
+        """Each output's arm column: its authored name and meaning."""
+        return {item.aligned_concept: item.concepts[0] for item in self.align.items}
 
 
 @dataclass

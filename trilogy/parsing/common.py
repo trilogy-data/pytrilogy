@@ -1872,6 +1872,7 @@ def union_item_to_concept(
     datatype: DataType | TraitDataType | ValidatedType | None = None,
     nullable: bool = False,
     keys: set[str] | None = None,
+    lineage: UnionSelectLineage | None = None,
 ) -> Concept:
     """Build one positional output concept of a relational ``union(...)`` TVF.
 
@@ -1910,13 +1911,15 @@ def union_item_to_concept(
     # the set op's grain (its arms' grain positions, plus a UNION ALL's arm
     # key). Never a metric: a metric output would be dropped from downstream
     # grain and break consumers that re-aggregate the stacked result.
-    new_selects = [x.as_lineage(environment) for x in selects]
-    union_lineage = UnionSelectLineage(
-        selects=new_selects,
-        align=align_clause,
-        namespace=align.namespace,
-        hidden_components={y for x in new_selects for y in x.hidden_components},
-    )
+    if lineage is None:
+        new_selects = [x.as_lineage(environment) for x in selects]
+        lineage = UnionSelectLineage(
+            selects=new_selects,
+            align=align_clause,
+            namespace=align.namespace,
+            hidden_components={y for x in new_selects for y in x.hidden_components},
+        )
+    union_lineage = lineage
     purpose = purpose or Purpose.KEY
     new = Concept(
         name=align.alias,

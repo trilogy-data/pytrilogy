@@ -90,6 +90,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    RollupSelectLineage,
     RowsetItem,
     RowsetLineage,
     SelectLineage,
@@ -2147,6 +2148,12 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                         ):
                             return out
 
+                # a consumer folded into this CTE reads the arm column off the
+                # parent it came from, where the CTE itself no longer projects it
+                for c in x.concepts:
+                    if cte.source_map.get(c.address):
+                        return c
+
         # Reaching here means this CTE can't source the column directly
         # (typically an outer aggregate grouped it away before a projection
         # re-referenced it, or a collapsed join kept it only as a pseudonym).
@@ -2172,6 +2179,12 @@ class BuildUnionSelectLineage(BuildMultiSelectLineage):
     For EXCEPT the arm order is semantic (left-fold)."""
 
     operator: SetOperator = SetOperator.UNION_ALL
+
+
+@dataclass(slots=True)
+class BuildRollupSelectLineage(BuildUnionSelectLineage):
+    """Build form of a relational `rollup`/`cube`/`grouping sets` TVF: one arm
+    select, its columns re-exposed as this relation's own outputs."""
 
 
 @dataclass(slots=True)
@@ -4883,7 +4896,11 @@ class Factory:
     def _(self, base: UnionSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(
             base,
-            build_cls=BuildUnionSelectLineage,
+            build_cls=(
+                BuildRollupSelectLineage
+                if isinstance(base, RollupSelectLineage)
+                else BuildUnionSelectLineage
+            ),
             derivation=Derivation.TVF_UNION,
             outputs_only=True,
             extra_lineage_kwargs={"operator": base.operator},

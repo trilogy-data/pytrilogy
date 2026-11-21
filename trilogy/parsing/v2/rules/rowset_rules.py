@@ -15,6 +15,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
+from trilogy.parsing.v2.rules.tvf_rules import lower_grouping_select
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -43,6 +44,8 @@ def rowset_derivation_statement(
     # select(s) finalized before lineage conversion. finalize runs outside
     # the scope intentionally — it operates on already-resolved addresses.
     finalize_select_tree(select, context)
+    if isinstance(select, SelectStatement):
+        select = lower_grouping_select(select, context, name, node)
     output = RowsetDerivationStatement(
         name=name,
         select=select,
@@ -117,9 +120,10 @@ def scalar_subquery(
             "a `(select ...)` used as a scalar value must return one row: "
             "aggregate it with no `by` (`(select max(v))`) or add `limit 1`",
         )
+    body = lower_grouping_select(select, context, name, node)
     output = RowsetDerivationStatement(
         name=name,
-        select=select,
+        select=body,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
         scalar=scalar,
     )
@@ -128,7 +132,7 @@ def scalar_subquery(
         context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
     if result.alias_updates:
         context.semantic_state.stage_rowset_aliases(result.alias_updates)
-    context.environment.add_rowset(name, select.as_lineage(context.environment))
+    context.environment.add_rowset(name, body.as_lineage(context.environment))
     return SubqueryItem(
         content=result.concepts[0].reference,
         select=select,

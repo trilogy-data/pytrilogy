@@ -110,6 +110,7 @@ from trilogy.core.statements.author import (
     PersistStatement,
     PropertiesDeclarationStatement,
     RawSQLStatement,
+    RollupSelectStatement,
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
@@ -1361,6 +1362,11 @@ class Renderer:
                 )
         outputs = ", ".join(self.to_string(o) for o in arg.outputs)
         return f"{surface}(\n" + ",\n".join(arms) + f"\n) -> ({outputs});"
+
+    @to_string.register
+    def _(self, arg: RollupSelectStatement):
+        # authored as the arm select's own `by rollup (...)` clause
+        return self.to_string(arg.selects[0])
 
     @to_string.register
     def _(self, arg: TVFOutputItem):

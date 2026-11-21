@@ -39,6 +39,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
+    BuildRollupSelectLineage,
     BuildUnionDatasource,
     BuildUnionSelectLineage,
     BuildWhereClause,
@@ -103,6 +104,9 @@ from trilogy.core.processing.v4_helper.projection import lineage_existence_parts
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
 from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
+from trilogy.core.processing.v4_node_generators.rollup_select import (
+    gen_rollup_select,
+)
 from trilogy.core.processing.v4_node_generators.rowset_witness import (
     statement_keyspace,
 )
@@ -1757,6 +1761,13 @@ def _search_concepts(
     # A relational union TVF is a column-positional row stack (UNION), not a
     # key-join. Its lineage subclasses BuildMultiSelectLineage, so check it
     # first and route to the union combiner.
+    rollup_concept = _own_build_of(mandatory_list, BuildRollupSelectLineage)
+    if rollup_concept is not None:
+        return _combined_build_info(
+            gen_rollup_select(
+                rollup_concept, mandatory_list, environment, depth, history
+            )
+        )
     union_concept = _own_build_of(mandatory_list, BuildUnionSelectLineage)
     if union_concept is not None:
         return _combined_build_info(
