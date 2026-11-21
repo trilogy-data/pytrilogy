@@ -449,6 +449,18 @@ def _collect_aggregate_wrappers(
     return found
 
 
+def _and_atoms(node: Any) -> list[Any]:
+    if isinstance(node, Parenthetical):
+        return _and_atoms(node.content)
+    if isinstance(node, Conditional) and node.operator == BooleanOperator.AND:
+        return _and_atoms(node.left) + _and_atoms(node.right)
+    return [node]
+
+
+def _reads_set(node: Any) -> bool:
+    return any(arg for group in node.existence_arguments for arg in group)
+
+
 def _is_grouping_aggregate(node: Any) -> bool:
     return (
         isinstance(node, AggregateWrapper) and node.function.operator in _GROUPING_FNS
@@ -862,23 +874,25 @@ class _HavingNormalization:
         stable.extend(sorted(window_keys - set(stable)))
         return stable if stable else grain_keys
 
-    def where_reapplies_as_itself(self) -> bool:
-        """Whether the WHERE, applied to the rows it kept, keeps them all: it
-        reads no set, and either no aggregate or aggregates at one grain alone
-        (whole groups of that grain pass or fail). Read off the rows it kept,
-        a set, a total beside a row column, or aggregates at two grains change
-        (``SelectGrain.where_over_total_not_idempotent``)."""
+    def where_restated_in_set(self) -> bool:
+        """Whether the HAVING set's filter also states the WHERE. Applied to
+        the rows it kept, a WHERE reading a set reads another set
+        (``SelectGrain.where_over_total_not_idempotent``), so it is left to the
+        plan, which applies it beneath the set. An atom reading an aggregate
+        and no set is still restated: planned beneath a filtered key alone it
+        finds no host (docs/handoff_formalization_next.md, area 4)."""
         where = self.base.where_clause
         if where is None:
-            return True
-        if any(where.existence_arguments):
             return False
-        wrappers = _collect_aggregate_wrappers(
-            where.conditional, lambda node: isinstance(node, AggregateWrapper)
+        atoms = _and_atoms(where.conditional)
+        sets = [_reads_set(atom) for atom in atoms]
+        return not any(sets) or any(
+            not has_set
+            and _collect_aggregate_wrappers(
+                atom, lambda node: isinstance(node, AggregateWrapper)
+            )
+            for atom, has_set in zip(atoms, sets)
         )
-        grains = {frozenset(c.address for c in w.by) for w in wrappers}
-        rows = bool(_bare_row_refs(where.conditional))
-        return not grains or (len(grains) == 1 and not rows)
 
     def build_grain_key_membership(
         self, leaf: Comparison | Between, grain_keys: list[str]
@@ -894,9 +908,9 @@ class _HavingNormalization:
 
         The set is planned under the select's WHERE (``append_existence_check``),
         so a group only survives if it has a matching row *that also passed
-        WHERE*. The WHERE is restated in the filter only where applying it
-        again keeps every row (``where_reapplies_as_itself``): a copy reads its
-        sets and aggregates off the rows the WHERE kept."""
+        WHERE*. The WHERE is restated in the filter too unless it reads a set
+        (``where_restated_in_set``): a copy reads that set off the rows the
+        WHERE kept."""
         from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
 
         if not grain_keys:
@@ -907,10 +921,11 @@ class _HavingNormalization:
                 f"aggregation."
             )
         predicate: Any = leaf
-        if self.base.where_clause is not None and self.where_reapplies_as_itself():
+        where = self.base.where_clause
+        if where is not None and self.where_restated_in_set():
             predicate = Conditional(
                 left=leaf,
-                right=self.base.where_clause.conditional,
+                right=where.conditional,
                 operator=BooleanOperator.AND,
             )
         key_refs: list[ConceptRef] = []

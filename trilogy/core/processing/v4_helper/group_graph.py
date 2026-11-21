@@ -888,6 +888,7 @@ def _consumer_required_input_grain(
     # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
     grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
     row_preds = row_parents(group_graph, group_edges, gid)
+    filtered = sum(attrs[p].derivation == Derivation.FILTER for p in row_preds)
     for pred in row_preds:
         # beside paired facts, a row derivation on its own slice joins the
         # rest on its grain, as an aggregate parent does
@@ -922,9 +923,12 @@ def _consumer_required_input_grain(
                 continue
             grain |= pred_grain
         elif (
-            attrs[pred].derivation in (Derivation.UNNEST, Derivation.FILTER)
-            and attrs[gid].derivation in GROUPING_DERIVATIONS
+            attrs[gid].derivation in GROUPING_DERIVATIONS
             and len(row_preds) > 1
+            and (
+                attrs[pred].derivation == Derivation.UNNEST
+                or (attrs[pred].derivation == Derivation.FILTER and filtered > 1)
+            )
         ):
             # an unnest beside the rows it expands pairs with them on their
             # identity; on the grouping key alone, every row of a group meets

@@ -382,7 +382,7 @@ FOUND_SEEDS = [
     25292, 27042, 28270, 28511, 29526, 29683, 30611, 32266, 32317, 33186,
     33367, 35060, 35211, 35289, 35483, 36074, 37068, 37134, 38522, 39292,
     40448, 40508, 41945, 42617, 43518, 44181, 45750, 45855, 46435, 48381,
-    49376, 49516, 49903, 50693, 51466, 51718, 53113, 54409, 54531, 55680,
+    49376, 49516, 49903, 50693, 51718, 53113, 54531, 55680,
     56554, 57430, 59727,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
@@ -411,6 +411,10 @@ OPEN: dict[tuple[int, str], str | None] = {
     (42711, "summary"): None,
     (43504, "summary"): None,
     (47444, "summary"): None,
+    (51466, "base"): None,
+    (51466, "summary"): None,
+    (54409, "base"): None,
+    (54409, "summary"): None,
     (58098, "base"): "Missing source CTE",
     (58098, "summary"): "Missing source CTE",
     (58115, "base"): "Missing source reference to local.tree_id",

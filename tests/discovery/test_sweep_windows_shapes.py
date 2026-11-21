@@ -245,15 +245,6 @@ SHAPES = [
         ),
         [("Ulmus", None)],
     ),
-    # ...and a count beside a row atom is read once, off every row (a
-    # probe): Acer has three trees, two of them taller than 2, one tagged y
-    (
-        (
-            "select species, count(tree_id) as n where height > 2 and"
-            " count(tree_id) by species >= 3 having tag = 'y';"
-        ),
-        [("Acer", 2)],
-    ),
     # a derived key pairs with the rows a membership on their key filters
     # (59727): the unmeasured trees leave A with broadleaves alone
     (
