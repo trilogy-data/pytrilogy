@@ -5,6 +5,8 @@ six trees."""
 import pytest
 
 from tests.discovery.test_oracle_sweep_laws import executor, normalize
+from tests.discovery.test_rollup_resolution_laws import BASE, SUMMARY
+from trilogy import Dialects
 
 FC = "case when tree_form = 'broadleaf' then 'b' else 'o' end as fc"
 
@@ -226,6 +228,100 @@ SHAPES = [
         ),
         [("A", None, 3, 1.0), ("B", "broadleaf", 3, 0.5), ("B", "linden", 3, 0.5)],
     ),
+    # a set in an OR is read by its own membership, not by the WHERE aggregate
+    # the other set is computed from (41277, 66218 raised a cycle): only the
+    # NULL form's (A, none) maximum is NULL
+    (
+        (
+            "select tree_form where max(height) by city, tree_form - sum(height) by"
+            " tree_form = 2 or (tree_form in (tree_form ? count(tree_id) by tree_form"
+            " != 10) and tree_form in (tree_form ? max(height) by city, tree_form is"
+            " null));"
+        ),
+        [(None,)],
+    ),
+    # a per-species gate beside a membership is no scan column of the summary's
+    # (city, species) rows (37601): Acer's three trees are out, a3, a4, b2 in
+    (
+        (
+            "select city, count(tree_id) as c where count(tree_id) by species != 3"
+            " or city in (city ? tag = 'q');"
+        ),
+        [("A", 2), ("B", 1)],
+    ),
+    # a stored total a set reads is not re-maxed per species (47456): the
+    # tallest tree is 7, so every species is in
+    (
+        (
+            "select species where species in (species ? max(height) by * = 7) and"
+            " max(height) by * is not null;"
+        ),
+        [("Acer",), ("Quercus",), ("Tilia",), ("Ulmus",)],
+    ),
+    (
+        (
+            "select species where species in (species ? max(height) by * = 2) and"
+            " max(height) by * is not null;"
+        ),
+        [],
+    ),
+    # a scan whose one parent is a set's feeder holds its own rows, not the
+    # feeder's (23531): the per-city maximum is re-maxed to the city before
+    # it is counted
+    (
+        (
+            "select city, count(max(height) by city) as v1, max(count(tree_id) by"
+            " city, species, tree_form) as v2 where city in (city ? sum(height) by"
+            " city > 0);"
+        ),
+        [("A", 1, 2), ("B", 1, 1)],
+    ),
+    # ...and a set's own `species = 'Acer'` pins none of them (15155): every
+    # city has a tree, so the city minima are 3 and 2
+    (
+        (
+            "select max(min(height) by city) as v0 where city in (city ? height > 0)"
+            " or species in (species ? species = 'Acer');"
+        ),
+        [(3,)],
+    ),
+    # a value over per-species partials is no join key of the form's rows
+    # (38002): the kept broadleaf trees sum to 15 over 4 trees, max 7, min 3
+    (
+        (
+            "select tree_form, min(max(height) by tree_form) / (max(height) -"
+            " min(height)) as v0, sum(height) by tree_form - count(tree_id) by"
+            " tree_form as v1 where species in (species ? species != 'Tilia' and"
+            " species != 'Ulmus');"
+        ),
+        [("broadleaf", 1.75, 11)],
+    ),
+    # ...nor a group key under a dedup beside a nested re-sum (94262): Acer's
+    # 10 over 10 - 5 is one value, not one per city
+    (
+        (
+            "select species, tree_form, min(max(height) by species) / (max(height) -"
+            " min(height)) as v0, sum(height) by species / (sum(height) - 5) as v1,"
+            " sum(min(height) by city, species) as v2;"
+        ),
+        [
+            ("Acer", "broadleaf", 1.75, 2, 10),
+            ("Quercus", "broadleaf", None, None, 5),
+            ("Tilia", "linden", None, -0.666667, 2),
+            ("Ulmus", None, None, None, None),
+        ],
+    ),
+    # a set's count by (city, form) is no count by city off the summary's
+    # rows (83051): no (city, form) group holds more than 3 trees, so the set
+    # is empty, though city A holds 4
+    (
+        (
+            "select city, tree_form, count_distinct(tag) + count(min(height) by"
+            " city, species) as v1, min(height) as v2 where city in (city ?"
+            " count(tree_id) by city, tree_form > 3);"
+        ),
+        [],
+    ),
 ]
 
 
@@ -235,3 +331,31 @@ def test_composition_shape(query: str, expected: list[tuple], model: str):
     sql = executor(model).generate_sql(query)[-1]
     rows = executor(model).execute_raw_sql(sql).fetchall()
     assert normalize(rows) == normalize(expected), sql
+
+
+@pytest.mark.parametrize("model", ["base", "summary"])
+def test_set_off_a_finer_stored_count(model: str):
+    """A set's condition at keys its content lacks reads a row per (city,
+    species) group (83051): only (A, Acer) holds two trees."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(BASE + (SUMMARY if model == "summary" else ""))
+    rows = exec.execute_text(
+        "auto s <- city ? count(tree_id) by city, species > 1; select s;"
+    )[-1].fetchall()
+    assert normalize(rows) == [("A",)]
+
+
+@pytest.mark.parametrize("model", ["base", "summary"])
+@pytest.mark.parametrize(
+    "threshold, expected", [(5, [("A", 4), ("B", 2)]), (9, [("A", 4)])]
+)
+def test_literal_membership_in_an_or(model: str, threshold: int, expected: list):
+    """A set tested by a literal pairs with the atom's row arguments: b1 (7)
+    puts B in the set past 5, and nothing passes 9."""
+    query = (
+        f"select city, count(tree_id) as c where 'B' in (city ? height > {threshold})"
+        " or city = 'A';"
+    )
+    sql = executor(model).generate_sql(query)[-1]
+    rows = executor(model).execute_raw_sql(sql).fetchall()
+    assert normalize(rows) == expected, sql

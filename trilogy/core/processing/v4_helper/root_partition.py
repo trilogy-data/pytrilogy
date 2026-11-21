@@ -28,7 +28,7 @@ from dataclasses import dataclass
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -334,6 +334,25 @@ def _split_strands_condition_scan(
         component & condition_addresses and component & select_addresses
         for component in _bound_column_components(datasources)
     )
+
+
+def _single_rows_apart(
+    root_sets: list[set[str]], concept_attrs: dict[str, ConceptAttrs]
+) -> list[set[str]]:
+    """A one-row root (a stored `max(h) by *`) is its own condition scan, as in
+    `partition_roots`: scanned beside keyed roots, a summary re-aggregates it
+    at their keys (`max(h) by species`), and a set compares that as the
+    total."""
+    out: list[set[str]] = []
+    for roots in root_sets:
+        single = {
+            n
+            for n in roots
+            if concept_attrs[n].granularity == Granularity.SINGLE_ROW
+            and not concept_attrs[n].scan_filtered
+        }
+        out += [roots - single, single] if single and single != roots else [roots]
+    return out
 
 
 def _condition_scans(
@@ -1279,6 +1298,10 @@ def partition_root_demand(
         condition_roots | {n for n, a in concept_attrs.items() if a.scan_filtered},
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
+    roots_by_stage = {
+        stage: _single_rows_apart(root_sets, concept_attrs)
+        for stage, root_sets in roots_by_stage.items()
+    }
     scans = _condition_scans(concept_attrs, roots_by_stage)
     buckets.update(
         {scan.group_id: scan for stage_scans in scans.values() for scan in stage_scans}

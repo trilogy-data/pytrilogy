@@ -73,6 +73,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
     finer_than_grain,
     pending_rollups,
+    reads_partial_coarser,
     sourced_arguments,
     sourced_function_arguments,
 )
@@ -2428,7 +2429,7 @@ def _subtree_pinned_addresses(
                     extended.add(join.left.identifier)
         child_pins: list[set[str]] = []
         child_outputs: list[set[str]] = []
-        for parent in node.parents:
+        for parent in _row_source_parents(node):
             identifier = parent.resolve().identifier
             null_extended = identifier in extended or any(
                 identifier != right for right in implicit_left_rights
@@ -2446,7 +2447,7 @@ def _subtree_pinned_addresses(
                 ):
                     pinned.add(addr)
         return pinned
-    for parent in node.parents:
+    for parent in _row_source_parents(node):
         pinned |= _subtree_pinned_addresses(parent, seen)
     return pinned
 
@@ -2507,6 +2508,18 @@ def _window_rows_at_grain(
     ]
 
 
+def _row_source_parents(node: StrategyNode) -> list[StrategyNode]:
+    """`node`'s parents less a membership's set feeders, which it reads by a
+    subselect and never as rows: a scan of a table with one wired feeder has
+    no row parent."""
+    sets = {c.address for c in node.existence_concepts}
+    return [
+        p
+        for p in node.parents
+        if not sets or not {o.address for o in p.output_concepts} <= sets
+    ]
+
+
 def _parents_already_at_input_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -2557,12 +2570,9 @@ def _parents_already_at_input_grain(
             _subtree_pinned_addresses(parent) - _unnested_addresses(parent)
         ):
             return True
-        if (
-            isinstance(parent, SelectNode)
-            and parent.force_group is False
-            and len(parent.parents) == 1
-        ):
-            return at_input_grain(parent.parents[0], seen)
+        rows = _row_source_parents(parent)
+        if isinstance(parent, SelectNode) and parent.force_group is False:
+            return len(rows) == 1 and at_input_grain(rows[0], seen)
         if isinstance(parent, MergeNode) and parent.force_group is not True:
             grained = [
                 candidate
@@ -2638,7 +2648,9 @@ def _widen_scan_chain(
         available = renderable_addresses(node)
     # an aggregate or window computed here would read this node's rows, not
     # the statement's (a rank over a scan's raw launches)
-    if _carry_needs_own_node(concept, available):
+    if _carry_needs_own_node(concept, available) or _reads_pending_partial(
+        node, concept
+    ):
         return False
     widen_projection(
         node,
@@ -2647,6 +2659,13 @@ def _widen_scan_chain(
         available_addresses=available,
     )
     return True
+
+
+def _reads_pending_partial(node: StrategyNode, concept: BuildConcept) -> bool:
+    """A value over a partial `node` holds per finer key is computed once the
+    partial is re-summed, never carried here as a key."""
+    resolved = node.resolve()
+    return reads_partial_coarser([concept], resolved.rollup_concepts, resolved.grain)
 
 
 def _widen_below(
@@ -3189,6 +3208,8 @@ def _carry_join_keys(
             # so widening a plain scan onto one emits a column nothing can
             # source (`avg(amount) by part` asked of the bare `rows` scan).
             if _carry_needs_own_node(concept, available):
+                continue
+            if _reads_pending_partial(parent, concept):
                 continue
             carried.append(concept)
             input_candidates.extend(_row_lineage_closure(concept))

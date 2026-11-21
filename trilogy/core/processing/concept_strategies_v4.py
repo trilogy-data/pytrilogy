@@ -35,6 +35,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
@@ -1267,6 +1268,7 @@ def _nested_rollup_roots(
     exact: set[str] = set()
     out: dict[str, list[BuildDatasource]] = {}
     rows = _nested_row_grains(mandatory_list, roots, environment)
+    finer = _filtered_at_finer_rows(mandatory_list, environment)
     for concept in walk_lineage(
         mandatory_list,
         descend=lambda c: c.address not in roots,
@@ -1275,6 +1277,7 @@ def _nested_rollup_roots(
     ):
         if (
             concept.address in mandatory
+            or concept.address in finer
             or concept.derivation != Derivation.AGGREGATE
             or not _is_rollable_aggregate(concept)
             or not all(
@@ -1294,6 +1297,34 @@ def _nested_rollup_roots(
         if sources:
             out[concept.address] = sources
     return exact, out
+
+
+def _filtered_at_finer_rows(
+    mandatory_list: list[BuildConcept], environment: BuildEnvironment
+) -> set[str]:
+    """Aggregates a filter's condition reads at keys its content does not hold
+    (`city ? count(x) by city, species > 1`): each row of the condition is a
+    `(city, species)` group, and a scan of the content's keys beside the
+    stored value would re-sum it to the city."""
+    out: set[str] = set()
+    for concept in walk_lineage(
+        mandatory_list,
+        resolve=lambda c: environment.concepts.get(c.address) or c,
+        partials=environment.partial_sources,
+    ):
+        lineage = concept.lineage
+        if not isinstance(lineage, BuildFilterItem):
+            continue
+        held = strict_fd_closure(
+            environment, {c.address for c in lineage.content_concept_arguments}
+        )
+        out |= {
+            arg.address
+            for arg in lineage.where.row_arguments
+            if arg.derivation == Derivation.AGGREGATE
+            and not set(arg.grain.components) <= held
+        }
+    return out
 
 
 def _nested_row_grains(
