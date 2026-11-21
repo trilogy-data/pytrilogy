@@ -231,3 +231,39 @@ def test_a_merged_attribute_keeps_one_facts_undated_rows(
         MERGED_YEARS, "select s_year, count(ticket) as s, count(order_number) as w;"
     )
     assert rows == [(2020, 1, 0), (2021, 0, 1), (None, 1, 0)]
+
+
+UNNESTED = """
+key ecoregion_id int;
+property ecoregion_id.biome string;
+datasource eco (ecoregion_id, biome) grain (ecoregion_id)
+query '''select 1 ecoregion_id, 'forest' biome union all select 2, 'desert'
+union all select 3, 'tundra' ''';
+key species string;
+property species.native_ecoregions list<int>;
+datasource enrich (species, ?native_ecoregions) grain (species)
+query '''select 'oak' species, [1, 2] native_ecoregions
+union all select 'cactus', [2] union all select 'moss', []''';
+auto native_ecoregion <- unnest(native_ecoregions);
+merge native_ecoregion into ecoregion_id;
+"""
+
+
+def test_elements_of_complete_lists_carry_an_equal_key():
+    joins, rows = _joins_and_rows(
+        UNNESTED, "select species, array_sort(array_agg(biome)) as b;"
+    )
+    assert joins and all(j.startswith("INNER JOIN") for j in joins), joins
+    assert rows == [("cactus", ["desert"]), ("oak", ["desert", "forest"])]
+
+
+def test_an_owner_with_an_empty_list_keeps_its_row():
+    joins, rows = _joins_and_rows(
+        UNNESTED,
+        "select species, native_ecoregions, array_sort(array_agg(biome)) as b;",
+    )
+    assert rows == [
+        ("cactus", [2], ["desert"]),
+        ("moss", [], None),
+        ("oak", [1, 2], ["desert", "forest"]),
+    ], joins

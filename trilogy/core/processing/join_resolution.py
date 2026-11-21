@@ -1642,10 +1642,14 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
     out: frozenset[str] = frozenset()
     for sub in ds.datasources:
         out |= partial_binding_sources(sub, address)
+    stamped = any(c.address == address for c in ds.partial_concepts)
+    # an unnest drops the owners whose list is empty: its own subset
+    if stamped and any(isinstance(j, UnnestJoin) for j in ds.joins):
+        return out | {ds.identifier}
     # a rowset boundary built not to extend a span (its reader holds the
     # region) is partial on the handle with no leaf `~` behind it: the
     # boundary is the binding, and two projections of it are one
-    if not out and any(c.address == address for c in ds.partial_concepts):
+    if not out and stamped:
         return frozenset({ds.identifier})
     return out
 
@@ -1681,12 +1685,36 @@ def complete_key_domain(
         return False
     if rowset_boundaries and _rowset_boundary(ds, address):
         return address not in deep_extent_free_spans(ds)
+    unnested = _unnested_lists(ds, address)
+    if unnested is not None:
+        return all(
+            _carries_every_value(ds.datasources[0], c, rowset_boundaries, relation_stamps)
+            for c in unnested
+        )
     preserved = preserved_sources(ds.datasources, ds.joins)
     return any(
         sub.identifier in preserved
         and complete_key_domain(sub, address, rowset_boundaries, relation_stamps)
         for sub in ds.datasources
     )
+
+
+def _unnested_lists(
+    ds: QueryDatasource, address: str
+) -> list[BuildConcept] | None:
+    """The lists `ds` unnests into the element `address`, when it reads one
+    source and only unnests it: every element of every list read comes out,
+    so the elements are complete when the lists are. An owner whose list is
+    empty or NULL drops out, so nothing else read here is."""
+    if len(ds.datasources) != 1 or not ds.joins:
+        return None
+    if not all(isinstance(j, UnnestJoin) for j in ds.joins):
+        return None
+    for join in ds.joins:
+        if any(c.address == address for c in join.concepts):
+            target = join.object_to_unnest
+            return [target] if isinstance(target, BuildConcept) else None
+    return None
 
 
 def key_providers(
