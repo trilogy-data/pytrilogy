@@ -387,6 +387,27 @@ SHAPES = [
         ),
         [("B", "broadleaf", 7, 7), ("B", "linden", 2, 2)],
     ),
+    # a set's own rows supply no gate value to FINAL beside a sole
+    # contributor (136658): the tag set is empty, the species set keeps Acer
+    # and Quercus
+    (
+        (
+            f"select city, {FC}, count_distinct(tag) by fc * count(tree_id) by city as"
+            " v0 where count(tree_id) by city, species > 5 or tag in (tag ? max(height)"
+            " by city, species < 2) or species in (species ? height > 2);"
+        ),
+        [("A", "b", 6), ("B", "b", 2)],
+    ),
+    # a semi-join mirrored onto a group reads the CTE its feeder collapsed
+    # into (152426 named a dropped CTE): Ulmus fails the gate, Tilia the set
+    (
+        (
+            "select city, tree_form, sum(max(height) by city, species) as v1 where"
+            " (species in (species ? height > 2) or min(height) by * is null) and"
+            " max(height) by city, species <= 10;"
+        ),
+        [("A", "broadleaf", 8), ("B", "broadleaf", 7)],
+    ),
 ]
 
 

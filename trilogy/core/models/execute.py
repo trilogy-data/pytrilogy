@@ -1087,6 +1087,13 @@ class CTE:
                 self.existence_source_map[k] = [
                     new_key if x in old_keys else x for x in v
                 ]
+        self.semi_join_filters = unique(
+            [
+                replace(semi, feeder=new.name) if semi.feeder in old_keys else semi
+                for semi in self.semi_join_filters
+            ],
+            "identity",
+        )
         if self.base_alias_override == old.safe_identifier:
             self.base_alias_override = new.safe_identifier
         if self.base_name_override == old.safe_identifier:

@@ -6446,6 +6446,7 @@ def _assemble_sole_contributor(
     built: dict[str, StrategyNode],
     cover: "_FinalCover",
     environment: BuildEnvironment,
+    arg_candidates: Sequence[str],
 ) -> StrategyNode:
     """FINAL when one group covers every output: that group's node, deduped
     to the output grain, under the WHERE deferred onto FINAL."""
@@ -6510,7 +6511,7 @@ def _assemble_sole_contributor(
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)
             for feeder in _filter_arg_producers(
-                group_graph, attrs, cover.groups, filter_only_addrs - sole_avail
+                group_graph, attrs, arg_candidates, filter_only_addrs - sole_avail
             ).values()
         ]
         scoped_addrs = environment.all_scoped_join_group_members()
@@ -6891,6 +6892,10 @@ def _assemble_final_node(
         - mandatory_addresses
     )
 
+    # a set produces no argument: it holds only the rows its own condition kept
+    arg_candidates = [
+        g for g in cover.groups if not _only_a_set(group_graph, group_edges, g)
+    ]
     apply_final_conditions = partial(
         _apply_final_conditions,
         final_conditions=final_conditions,
@@ -6899,7 +6904,7 @@ def _assemble_final_node(
         group_graph=group_graph,
         attrs=attrs,
         built=built,
-        candidates=cover.groups,
+        candidates=arg_candidates,
         environment=environment,
         feeder_cache=feeder_cache,
     )
@@ -6943,6 +6948,7 @@ def _assemble_final_node(
             built,
             cover,
             environment,
+            arg_candidates,
         )
 
     # The join plan states, from stage-2 facts over the cover, what identifies
