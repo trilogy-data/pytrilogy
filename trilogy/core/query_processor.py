@@ -1686,12 +1686,17 @@ def _process_query(
     )
     scoped_merge_map = dict(domain_graph.canonical_map())
     output_columns = authored.output_components
+    hidden_columns = set(authored.hidden_components)
     if isinstance(authored, SelectStatement):
         scoped_merge_map.update(authored.relational_names)
         scoped_merge_map.update(
             {shown.address: handle for handle, shown in authored.labels.items()}
         )
         output_columns = [authored.labels.get(c.address, c) for c in output_columns]
+        hidden_columns = {
+            authored.labels[x].address if x in authored.labels else x
+            for x in hidden_columns
+        }
 
     final_ctes = optimize_ctes(
         deduped_ctes,
@@ -1733,7 +1738,7 @@ def _process_query(
         output_columns=output_columns,
         ctes=final_ctes,
         base=root_cte,
-        hidden_columns={x for x in authored.hidden_components},
+        hidden_columns=hidden_columns,
         local_concepts=authored.local_concepts,
         locally_derived=authored.locally_derived,
         parameters=_extract_params(environment.concepts, authored.local_concepts),

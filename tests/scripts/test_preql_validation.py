@@ -37,7 +37,7 @@ def test_detect_grouping_clause():
         "select x, sum(y) as t\nby cube (x)\nhaving sum(y) > 5\norder by x;"
     )
     assert pv.detect_grouping_clause("select x, sum(y) as t by grouping sets ((x));")
-    assert not pv.detect_grouping_clause("rollup((select x, sum(y) as t), x);")
+    assert not pv.detect_grouping_clause("select *rollup((select x, sum(y) as t), x);")
     # a raw SQL body and a comment are not the clause
     assert not pv.detect_grouping_clause(
         "datasource d (x: x) query '''select x from t group by rollup (x)''';"
@@ -58,8 +58,10 @@ def test_validate_preql_content_refuses_the_removed_grouping_clause():
     content = MODEL + "select s.c, sum(s.a) as t by rollup (s.c) order by s.c;\n"
     msg = pv.validate_preql_content("q.preql", content)
     assert msg is not None
-    assert "rollup((select" in msg
-    migrated = MODEL + "rollup((select s.c, sum(s.a) as t order by s.c), s.c);\n"
+    assert "select *rollup((select" in msg
+    migrated = (
+        MODEL + "select *rollup((select s.c, sum(s.a) as t order by s.c), s.c);\n"
+    )
     assert pv.validate_preql_content("q.preql", migrated) is None
 
 
@@ -73,4 +75,4 @@ def test_validate_preql_content_hints_grouping_after_having():
     msg = pv.validate_preql_content("q.preql", content)
     assert msg is not None
     assert "not syntactically valid Trilogy" in msg
-    assert "rollup((select" in msg
+    assert "select *rollup((select" in msg

@@ -94,10 +94,10 @@ def test_render_aggregate_grouping_sets():
 key a int;
 key b int;
 key x int;
-grouping_sets((select a, b, sum(x) as gx), (a, b), (a), ());
+select *grouping_sets((select a, b, sum(x) as gx), (a, b), (a), ());
 """)
     rendered = Renderer().to_string(parsed[-1])
-    assert rendered.startswith("grouping_sets("), rendered
+    assert rendered.startswith("select *grouping_sets("), rendered
     assert "(a, b)" in rendered, rendered
     assert "(a)" in rendered, rendered
 
@@ -109,10 +109,10 @@ def test_render_aggregate_by_cube():
 key a int;
 key b int;
 key x int;
-cube((select a, b, sum(x) as gx), a, b);
+select *cube((select a, b, sum(x) as gx), a, b);
 """)
     rendered = Renderer().to_string(parsed[-1])
-    assert rendered.startswith("cube("), rendered
+    assert rendered.startswith("select *cube("), rendered
 
 
 # ---------------------------------------------------------------------------

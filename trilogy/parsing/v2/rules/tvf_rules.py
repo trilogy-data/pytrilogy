@@ -65,9 +65,10 @@ def tvf_output_item(
     datatype: DataType | TraitDataType | ValidatedType | None = None
     nullable = False
     metadata: Metadata | None = None
+    hidden = False
     for arg in hydrated_children(node, hydrate):
         if arg is Modifier.HIDDEN:
-            continue
+            hidden = True
         elif arg is Modifier.NULLABLE:
             nullable = True
         elif isinstance(arg, Purpose):
@@ -88,6 +89,7 @@ def tvf_output_item(
         datatype=datatype,
         nullable=nullable,
         metadata=metadata,
+        hidden=hidden,
     )
 
 
@@ -433,24 +435,6 @@ def tvf_grouping_invocation(
     return arm
 
 
-def grouping_statement(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> SelectStatement:
-    """A grouping call as the whole statement: the arm select carrying the
-    spec, whose rows (in its ORDER BY, to its LIMIT) are the result."""
-    arm: SelectStatement = hydrate(node.child_nodes()[0])
-    if arm.signature:
-        raise fail(
-            node,
-            "a grouping call run as a statement shows the arm's own column names; "
-            "alias them in the arm, or read it with "
-            "`from rollup(...) -> (names) select ...`.",
-        )
-    return arm
-
-
 def tvf_set_op_invocation(
     node: SyntaxNode,
     context: RuleContext,
@@ -468,38 +452,24 @@ def tvf_set_op_invocation(
     )
 
 
-def set_op_select_statement(
-    node: SyntaxNode,
+def bind_set_op(
+    call: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-):
-    """Inline `from union|except|intersect(...) -> (...) select ...`.
-
-    Lowers the set op under a hidden magic namespace, then exposes its outputs
-    as bare ROWSET-derived local bindings (so they resolve in the trailing
-    select without leaking globally, and build via the rowset path rather than
-    recursing as a directly-selected multiselect concept)."""
-    union_node: SyntaxNode | None = None
-    operator: SetOperator | None = None
-    select_node: SyntaxNode | None = None
-    for child in node.child_nodes():
-        if child.kind is not None and child.kind in TVF_INVOCATION_OPERATORS:
-            union_node = child
-            operator = TVF_INVOCATION_OPERATORS[child.kind]
-        elif child.kind == SyntaxNodeKind.SELECT_STATEMENT:
-            select_node = child
-    if union_node is None or operator is None or select_node is None:
-        raise fail(
-            node,
-            "inline set op requires `from union|except|intersect(...) -> (...) select ...`",
-        )
-
+    meta: Any,
+) -> tuple[UnionSelectStatement, list[Concept]]:
+    """Lower an inline `union|except|intersect(...) -> (...)` under a hidden
+    magic namespace and expose its signature columns as bare ROWSET-derived
+    local bindings, so they resolve in the select that reads them without
+    leaking globally and build via the rowset path. Returns the set op and
+    those bindings, in signature order."""
+    assert call.kind is not None
     union_stmt = _lower_set_op(
-        node=union_node,
+        node=call,
         context=context,
         hydrate=hydrate,
         namespace=MAGIC_TVF_UNION_NAME,
-        operator=operator,
+        operator=TVF_INVOCATION_OPERATORS[call.kind],
     )
     union_lineage = union_stmt.as_lineage(context.environment)
     env_ns = context.environment.namespace
@@ -510,6 +480,7 @@ def set_op_select_statement(
         ConceptRef(address=f"{env_ns}.{uc.name}", datatype=uc.datatype)
         for uc in derived
     ]
+    wrappers: list[Concept] = []
     for uc in derived:
         wrapper = Concept(
             name=uc.name,
@@ -533,8 +504,9 @@ def set_op_select_statement(
                 ),
             ),
         )
-        context.add_select_concept(wrapper, meta=core_meta(node.meta))
-    return hydrate(select_node)
+        context.add_select_concept(wrapper, meta=meta)
+        wrappers.append(wrapper)
+    return union_stmt, wrappers[: len(union_stmt.outputs)]
 
 
 TVF_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
@@ -547,5 +519,4 @@ TVF_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.TVF_ROLLUP_INVOCATION: tvf_grouping_invocation,
     SyntaxNodeKind.TVF_CUBE_INVOCATION: tvf_grouping_invocation,
     SyntaxNodeKind.TVF_GROUPING_SETS_INVOCATION: tvf_grouping_invocation,
-    SyntaxNodeKind.GROUPING_STATEMENT: grouping_statement,
 }

@@ -388,9 +388,10 @@ def select_grouping(
     raise fail(
         node,
         "`by rollup|cube|grouping sets (...)` is no longer a select clause. "
-        f"Wrap the select in a call and move the keys after it: `{call};` runs "
-        "it as a statement (ORDER BY and LIMIT stay inside the select), and "
-        f"`with r as {call};` names it to read as `r.<column>`.",
+        f"Wrap the select in a call and move the keys after it: `select *{call} "
+        "having ... order by ... limit ...;` runs it (`*` spreads its columns "
+        f"into the result), and `with r as {call};` names it to read as "
+        "`r.<column>`.",
     )
 
 

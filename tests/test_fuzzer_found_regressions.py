@@ -84,7 +84,7 @@ order by grouped.gid asc;
 
 def test_rollup_grouping_window_keeps_grand_total_rank() -> None:
     rows, sql = _run("""
-rollup((select
+select *rollup((select
     group_id,
     sum(event_amount) as total,
     grouping(group_id) as grouping_level,
@@ -120,7 +120,7 @@ auto named_rank <- rank(active) over (
     order by sum(event_amount) desc
 );
 
-rollup((select
+select *rollup((select
     group_id,
     active,
     sum(event_amount) as total,

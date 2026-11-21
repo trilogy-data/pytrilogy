@@ -191,3 +191,50 @@ def test_render_round_trips(query):
     assert "_virt" not in first and "_rollup_" not in first
     _, reparsed = Environment().parse(MODEL + first)
     assert Renderer().to_string(reparsed[-1]) == first
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select *rollup((select department, sum(credits) as t), department)"
+            + " having t > 2 order by t desc limit 2;",
+            [(None, 9), ("math", 7)],
+        ),
+        (
+            "select *cube((select department, sum(credits) as t,"
+            + " grouping(department) as g), department) -> (d, total, --g)"
+            + " where total > 2 order by g asc, total desc;",
+            [("math", 7), (None, 9)],
+        ),
+        (
+            "select *union((select department as x), (select course as x)) -> (name)"
+            + " where name != 'art' order by name asc limit 2;",
+            [("algebra",), ("calc",)],
+        ),
+        (
+            "select *except((select department as x), (select 'math' as x)) -> (name);",
+            [("art",)],
+        ),
+    ],
+)
+def test_spread_runs_a_call_as_the_query(executor, query, expected):
+    assert rows(executor, query) == expected
+    _, statements = Environment().parse(MODEL + query)
+    first = Renderer().to_string(statements[-1])
+    assert first.startswith("select *")
+    _, reparsed = Environment().parse(MODEL + first)
+    assert Renderer().to_string(reparsed[-1]) == first
+
+
+def test_spread_shows_signature_names_and_hides_dashed_ones(executor):
+    result = executor.execute_text(
+        "select *rollup((select department, sum(credits) as t,"
+        " grouping(department) as g), department) -> (dept, total, --g);"
+    )[-1]
+    assert list(result.keys()) == ["dept", "total"]
+
+
+def test_scalar_union_is_still_an_expression(executor):
+    query = "select union((select max(credits)), (select min(credits))) as v;"
+    assert sorted(rows(executor, query)) == [(2,), (4,)]

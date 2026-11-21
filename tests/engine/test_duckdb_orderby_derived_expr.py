@@ -97,7 +97,7 @@ def test_order_by_compound_aggregate_duplicating_output():
     # matchable from ORDER BY, not rejected as an unprojected inline aggregate
     rows, _ = _run(
         "\n"
-        "rollup((select\n"
+        "select *rollup((select\n"
         "    channel,\n"
         "    item_id,\n"
         "    sum(quantity) as total,\n"

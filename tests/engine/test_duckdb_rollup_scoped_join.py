@@ -57,7 +57,7 @@ select channel as ch, brand as b, class_id as c, category as g,
 """
 
 SUBSET_JOIN_ROLLUP = """
-rollup((select per_ch.ch,
+select *rollup((select per_ch.ch,
     case when grouping(per_ch.b) = 1 then null else per_ch.b end as out_b,
     case when grouping(per_ch.c) = 1 then null else per_ch.c end as out_c,
     case when grouping(per_ch.g) = 1 then null else per_ch.g end as out_g,
@@ -81,7 +81,7 @@ rowset per_ch2 <-
 where tuple_key in cross_tuples.ck
 select channel as ch, brand as b, class_id as c, category as g,
     sum(qty * price) as ts, count(sale_id) as cnt;
-rollup((select per_ch2.ch,
+select *rollup((select per_ch2.ch,
     case when grouping(per_ch2.b) = 1 then null else per_ch2.b end as out_b,
     case when grouping(per_ch2.c) = 1 then null else per_ch2.c end as out_c,
     case when grouping(per_ch2.g) = 1 then null else per_ch2.g end as out_g,
@@ -138,7 +138,7 @@ order by per_ch.ch asc, per_ch.b asc;
 
 def test_two_key_subset_join_partial_rollup_builds(executor):
     rows = executor.execute_text("""
-rollup((select per_ch.ch, sum(per_ch.ts) as total_sales
+select *rollup((select per_ch.ch, sum(per_ch.ts) as total_sales
 subset join per_ch.b = all_ch.b and per_ch.c = all_ch.c
 where all_ch.b is not null and all_ch.c is not null
 ), per_ch.ch);

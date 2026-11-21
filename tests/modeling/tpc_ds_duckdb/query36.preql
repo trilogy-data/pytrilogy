@@ -16,7 +16,7 @@ auto partition_cat <- case when g_class = 0 then ss.item.category else null end;
 auto rank_within_parent <- rank(ss.item.category, ss.item.class)
     over (partition by lochierarchy, partition_cat order by gross_margin asc);
 
-rollup((where
+select *rollup((where
     ss.sale_date.year = 2001 and ss.store.state = 'TN'
 select
     gross_margin,

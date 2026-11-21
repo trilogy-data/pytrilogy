@@ -249,7 +249,8 @@ class SyntaxNodeKind(str, Enum):
     TVF_CUBE_INVOCATION = "tvf_cube_invocation"
     TVF_GROUPING_SETS_INVOCATION = "tvf_grouping_sets_invocation"
     TVF_SELECT_STATEMENT = "tvf_select_statement"
-    GROUPING_STATEMENT = "grouping_statement"
+    TVF_STATEMENT = "tvf_statement"
+    TVF_SPREAD = "tvf_spread"
     TVF_OUTPUT = "tvf_output"
     TVF_OUTPUT_ITEM = "tvf_output_item"
     TVF_REL_ARG = "tvf_rel_arg"
@@ -618,7 +619,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "tvf_cube_invocation": SyntaxNodeKind.TVF_CUBE_INVOCATION,
     "tvf_grouping_sets_invocation": SyntaxNodeKind.TVF_GROUPING_SETS_INVOCATION,
     "tvf_select_statement": SyntaxNodeKind.TVF_SELECT_STATEMENT,
-    "grouping_statement": SyntaxNodeKind.GROUPING_STATEMENT,
+    "tvf_statement": SyntaxNodeKind.TVF_STATEMENT,
+    "tvf_spread": SyntaxNodeKind.TVF_SPREAD,
     "tvf_output": SyntaxNodeKind.TVF_OUTPUT,
     "tvf_output_item": SyntaxNodeKind.TVF_OUTPUT_ITEM,
     "tvf_rel_arg": SyntaxNodeKind.TVF_REL_ARG,

@@ -1,6 +1,6 @@
 import inventory as inventory;
 
-rollup((where
+select *rollup((where
     inventory.date.month_seq between 1200 and 1211
 select
     inventory.item.product_name,

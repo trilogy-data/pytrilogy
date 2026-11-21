@@ -342,7 +342,7 @@ import store_sales as ss;
 auto part <- case when grouping(ss.item.category) = 1 then '~GT~'
              else ss.item.category end;
 auto rnk <- rank(ss.item.class) over (partition by part order by sum(ss.quantity) desc);
-rollup((where ss.sale_date.year = 2000
+select *rollup((where ss.sale_date.year = 2000
 select ss.item.category, ss.item.class, sum(ss.quantity) as q, rnk as r
 order by r asc limit 15
 ), ss.item.category, ss.item.class);

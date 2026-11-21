@@ -13,7 +13,7 @@ on subtotal rows -- fanning 133 rows out to 9030 (or 535k for variant D).
 from collections import Counter
 
 TAIL = """
-rollup((where ss.sale_date.year = 2001 and ss.store.state = 'TN'
+select *rollup((where ss.sale_date.year = 2001 and ss.store.state = 'TN'
 select
     gm,
     ss.item.category,

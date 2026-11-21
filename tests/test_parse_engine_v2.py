@@ -711,13 +711,13 @@ def test_aggregate_grouping_modes_parse_and_render() -> None:
 key a int;
 key b int;
 key x int;
-rollup((select a, b, sum(x) as sx), a, b);
+select *rollup((select a, b, sum(x) as sx), a, b);
 """
     sets_query = """
 key a int;
 key b int;
 key x int;
-grouping_sets((select a, b, sum(x) as sx_sets), (a, b), (a), ());
+select *grouping_sets((select a, b, sum(x) as sx_sets), (a, b), (a), ());
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
@@ -734,7 +734,7 @@ grouping_sets((select a, b, sum(x) as sx_sets), (a, b), (a), ());
         assert env.concepts["local.sx"].lineage.grouping == (
             AggregateGroupingMode.STANDARD
         )
-        assert str(select).startswith("rollup(")
+        assert str(select).startswith("select *rollup(")
 
         with _using_backend(backend):
             env, output = parse_text(sets_query, Environment())
@@ -748,7 +748,7 @@ grouping_sets((select a, b, sum(x) as sx_sets), (a, b), (a), ());
         assert env.concepts["local.sx_sets"].lineage.grouping == (
             AggregateGroupingMode.STANDARD
         )
-        assert str(select).startswith("grouping_sets(")
+        assert str(select).startswith("select *grouping_sets(")
 
 
 def test_empty_rollup_leaves_lineage_unstamped() -> None:
@@ -759,7 +759,7 @@ def test_empty_rollup_leaves_lineage_unstamped() -> None:
 key a int;
 key b int;
 key x int;
-rollup((select
+select *rollup((select
     a,
     b,
     sum(x) as sx,
@@ -783,7 +783,7 @@ def test_empty_top_level_rollup_inherits_build_grain() -> None:
 const a <- unnest([1, 2, 3]);
 const b <- unnest([1, 1, 2]);
 auto sx <- sum(1);
-rollup((select
+select *rollup((select
     a,
     b,
     sx,

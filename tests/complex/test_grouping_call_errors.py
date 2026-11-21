@@ -21,10 +21,10 @@ def backend(request, monkeypatch):
 @pytest.mark.parametrize(
     "query",
     [
-        f"rollup({ARM}, department);",
-        f"rollup(({ARM}), department) order by t desc limit 5;",
+        f"select *rollup({ARM}, department);",
+        f"rollup(({ARM}), department);",
+        f"select rollup(({ARM}), department) order by t desc;",
         f"with r as cube(({ARM}), department) having t > 1;",
-        f"grouping_sets(({ARM}), (department), ()) where credits > 1;",
     ],
 )
 def test_misshapen_call_names_the_shape(query):
@@ -41,14 +41,33 @@ def test_misshapen_call_names_the_shape(query):
     ],
 )
 def test_removed_clause_names_its_call(clause, call):
-    with pytest.raises(HydrationError, match=rf"`{call}\(\(select"):
+    with pytest.raises(HydrationError, match=rf"`select \*{call}\(\(select"):
         Environment().parse(MODEL + f"{ARM} {clause};")
+
+
+@pytest.mark.parametrize(
+    "query,message",
+    [
+        (f"select *rollup(({ARM}), department) where credits > 1;", "with `having`"),
+        (
+            f"select *rollup(({ARM} order by t asc), department) order by t desc;",
+            "written once",
+        ),
+        (
+            f"select *rollup(({ARM}), department), *cube(({ARM}), department);",
+            "one `\\*<call>` per select",
+        ),
+    ],
+)
+def test_spread_limits(query, message):
+    with pytest.raises(HydrationError, match=message):
+        Environment().parse(MODEL + query)
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        f"rollup(({ARM}), department);",
+        f"select *rollup(({ARM}), department);",
         f"from rollup(({ARM}), department) -> (d, t) select d, t frm;",
         f"with r as rollup(({ARM}), department);\nselect r.department frm;",
         "datasource d (x: x) query '''select x from t group by rollup(x)''' oops;",

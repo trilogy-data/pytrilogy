@@ -83,7 +83,7 @@ select 202, 'US', 'NY', 'Kings'
 
 QUERY = """
 auto row_dependent_count <- group(dependent_count) by order_number, item_sk;
-rollup((select
+select *rollup((select
     item_id as item_code,
     country as ctry,
     state as st,
@@ -166,8 +166,8 @@ _RENAMED = "item_id as item_code, country as ctry, state as st, county as cty"
 # Every ORDER BY is total: a tie under LIMIT would pick rows arbitrarily and
 # make the comparison flap rather than report a defect.
 _SHAPES = [
-    "rollup((select {X}, avg(rdc) as m), {D});",
-    "cube((select {X}, avg(rdc) as m), {D});",
+    "select *rollup((select {X}, avg(rdc) as m), {D});",
+    "select *cube((select {X}, avg(rdc) as m), {D});",
     "select {X}, avg(rdc) as m;",
     "select {X}, sum(rdc) as m;",
     "select {X}, avg(rdc) as m, rank() over (order by avg(rdc) desc) as k;",
@@ -176,17 +176,17 @@ _SHAPES = [
         " rank() over (partition by country order by avg(rdc) desc) as k;"
     ),
     (
-        "rollup((select {X}, avg(rdc) as m, rank() over (order by avg(rdc) desc) as "
+        "select *rollup((select {X}, avg(rdc) as m, rank() over (order by avg(rdc) desc) as "
         "k), {D});"
     ),
     (
-        "rollup((select {X}, grouping(item_id) as g1, grouping(county) as g2, avg(rdc) "
+        "select *rollup((select {X}, grouping(item_id) as g1, grouping(county) as g2, avg(rdc) "
         "as m), {D});"
     ),
     "select {X}, avg(rdc) as m, sum(dependent_count) as t;",
     "select {X}, avg(rdc) as m having m > 0;",
     (
-        "rollup((select {X}, avg(rdc) as m order by m desc nulls first, item_id asc "
+        "select *rollup((select {X}, avg(rdc) as m order by m desc nulls first, item_id asc "
         "nulls first, country asc nulls first, state asc nulls first, county asc nulls "
         "first limit 6), {D});"
     ),

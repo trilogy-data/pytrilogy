@@ -21,7 +21,7 @@ auto partition_state <- case when g_county = 0 then ss.store.state else null end
 auto rank_within_parent <- rank(ss.store.state, ss.store.county)
     over (partition by lochierarchy, partition_state order by total_sum desc);
 
-rollup((where
+select *rollup((where
     ss.sale_date.month_seq between 1200 and 1211
     and ss.store.state is not null
 then where

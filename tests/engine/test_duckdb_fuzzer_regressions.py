@@ -222,7 +222,7 @@ def test_rollup_extra_leaf_dim_dedups_pairs():
     rows = run(
         GROUPS_EVENTS,
         """
-rollup((select group_id, event_active, sum(event_amount) as total order by group_id asc nulls last, event_active asc nulls last), group_id);
+select *rollup((select group_id, event_active, sum(event_amount) as total order by group_id asc nulls last, event_active asc nulls last), group_id);
 """,
     )
     assert rows == [
@@ -240,7 +240,7 @@ def test_rollup_extra_leaf_dim_with_grouping_sets():
     rows = run(
         GROUPS_EVENTS,
         """
-grouping_sets((select group_id, event_active, sum(event_amount) as total order by group_id asc nulls last, event_active asc nulls last), (group_id), ());
+select *grouping_sets((select group_id, event_active, sum(event_amount) as total order by group_id asc nulls last, event_active asc nulls last), (group_id), ());
 """,
     )
     assert rows == [
@@ -269,7 +269,7 @@ select group_id as g, sum(sale_amount) as sales;
 rowset return_side <-
 select group_id as g, sum(return_amount) as returns;
 
-rollup((select
+select *rollup((select
     'g' || coalesce(sale_side.g, return_side.g)::string as label,
     coalesce(sale_side.g, return_side.g) as g,
     sum(coalesce(sale_side.sales, 0)) as sales,

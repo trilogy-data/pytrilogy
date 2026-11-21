@@ -47,14 +47,14 @@ union all select 4, 2002) d on s.date_id = d.date_id
 
 CASES = [
     pytest.param(
-        "rollup((select category as cat, year as yr, total where year = 2000), "
+        "select *rollup((select category as cat, year as yr, total where year = 2000), "
         "category, year);",
         f"""select category, "year", coalesce(sum(qty), 0) {JOINED}
         where "year" = 2000 group by rollup (category, "year")""",
         id="filtered_rollup",
     ),
     pytest.param(
-        "rollup((select category as cat, year as yr, total, rnk where year = 2000), "
+        "select *rollup((select category as cat, year as yr, total, rnk where year = 2000), "
         "category, year);",
         f"""select category, "year", coalesce(sum(qty), 0) t,
         rank() over (partition by category order by coalesce(sum(qty), 0) desc)
@@ -62,7 +62,7 @@ CASES = [
         id="filtered_rollup_rank",
     ),
     pytest.param(
-        "rollup((where year in (2000, 2001) select category as cat, year as yr, total, "
+        "select *rollup((where year in (2000, 2001) select category as cat, year as yr, total, "
         "rnk), category, year);",
         f"""select category, "year", coalesce(sum(qty), 0) t,
         rank() over (partition by category order by coalesce(sum(qty), 0) desc)
@@ -70,7 +70,7 @@ CASES = [
         id="two_dimension_rollup_rank",
     ),
     pytest.param(
-        "rollup((where year in (2000, 2001) select category as cat, cls as c, year as "
+        "select *rollup((where year in (2000, 2001) select category as cat, cls as c, year as "
         "yr, total, rnk), category, cls, year);",
         f"""select category, cls, "year", coalesce(sum(qty), 0) t,
         rank() over (partition by category order by coalesce(sum(qty), 0) desc)
@@ -97,39 +97,39 @@ full join (select 1 date_id, 2000 "year" union all select 2, 2000 union all sele
 # computed on the sales before the unsold dates enter below the pass.
 DERIVED_BELOW_CASES = [
     pytest.param(
-        "rollup((select year, count(big) as n), year);",
+        "select *rollup((select year, count(big) as n), year);",
         f"""select "year", count(big) {UNITED} group by rollup ("year")""",
         id="count_of_derived",
     ),
     pytest.param(
-        "rollup((select year, sum(qty_or_zero) as t), year);",
+        "select *rollup((select year, sum(qty_or_zero) as t), year);",
         f"""select "year", sum(qty_or_zero) {UNITED} group by rollup ("year")""",
         id="sum_of_derived",
     ),
     pytest.param(
-        "rollup((select category, year, count(big) as n), category, year);",
+        "select *rollup((select category, year, count(big) as n), category, year);",
         f"""select category, "year", count(big) {UNITED}
         group by rollup (category, "year")""",
         id="two_keys",
     ),
     pytest.param(
-        "cube((select year, count(big) as n, sum(qty) as q), year);",
+        "select *cube((select year, count(big) as n, sum(qty) as q), year);",
         f"""select "year", count(big), sum(qty) {UNITED} group by cube ("year")""",
         id="cube",
     ),
     pytest.param(
-        "rollup((select year as yr, coalesce(count(big), 0) as n), year);",
+        "select *rollup((select year as yr, coalesce(count(big), 0) as n), year);",
         f"""select "year", coalesce(count(big), 0) {UNITED} group by rollup ("year")""",
         id="scalar_over_the_pass",
     ),
     pytest.param(
-        "rollup((select year, count(big) as n where year > 2000), year);",
+        "select *rollup((select year, count(big) as n where year > 2000), year);",
         f"""select "year", count(big) {UNITED} where "year" > 2000
         group by rollup ("year")""",
         id="filtered",
     ),
     pytest.param(
-        "rollup((select year, count(sale_id) as n where big = 'big' or big is null), "
+        "select *rollup((select year, count(sale_id) as n where big = 'big' or big is null), "
         "year);",
         f"""select "year", count(sale_id) {UNITED} where big = 'big' or big is null
         group by rollup ("year")""",

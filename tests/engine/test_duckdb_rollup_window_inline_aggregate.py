@@ -60,7 +60,7 @@ def _oracle_sql(measure: str, grouping: str) -> str:
 CASES = [
     pytest.param(
         f"""
-rollup((select g1, g2, total,
+select *rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
 {ORDER}
 ), g1, g2);
@@ -70,7 +70,7 @@ rollup((select g1, g2, total,
     ),
     pytest.param(
         f"""
-rollup((select g1, g2, total,
+select *rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(w) desc) as r
 {ORDER}
 ), g1, g2);
@@ -80,7 +80,7 @@ rollup((select g1, g2, total,
     ),
     pytest.param(
         f"""
-rollup((select g1, g2, total, wtotal,
+select *rollup((select g1, g2, total, wtotal,
     rank(g1, g2) over (partition by g1 order by wtotal desc) as r
 {ORDER}
 ), g1, g2);
@@ -96,7 +96,7 @@ rollup((select g1, g2, total, wtotal,
     ),
     pytest.param(
         f"""
-rollup((select g1, g2,
+select *rollup((select g1, g2,
     sum(coalesce(v, 0) * coalesce(w, 0)) as total,
     rank(g1, g2) over (partition by g1 order by sum(coalesce(v, 0) * coalesce(w, 0)) desc) as r
 {ORDER}
@@ -113,7 +113,7 @@ rollup((select g1, g2,
     ),
     pytest.param(
         """
-rollup((select g1, g2, total as total_q,
+select *rollup((select g1, g2, total as total_q,
     rank(g1, g2) over (partition by g1 order by total desc) as r
 order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first
 ), g1, g2);
@@ -124,7 +124,7 @@ order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first
     pytest.param(
         f"""
 auto ctotal <- coalesce(sum(v), 0);
-rollup((select g1, g2, ctotal as total,
+select *rollup((select g1, g2, ctotal as total,
     rank(g1, g2) over (partition by g1 order by ctotal desc) as r
 {ORDER}
 ), g1, g2);
@@ -134,7 +134,7 @@ rollup((select g1, g2, ctotal as total,
     ),
     pytest.param(
         f"""
-cube((select g1, g2, total,
+select *cube((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
 {ORDER}
 ), g1, g2);
@@ -144,7 +144,7 @@ cube((select g1, g2, total,
     ),
     pytest.param(
         f"""
-grouping_sets((select g1, g2, total,
+select *grouping_sets((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
 {ORDER}
 ), (g1), (g1, g2));
@@ -202,7 +202,7 @@ auto bucket <- case when gg = 1 then '~total~' else g1 end;
 def test_grouping_derived_partition_keeps_rollup(executor, partition):
     executor.execute_text(GROUPING_PARTITION_DEFS)
     sql = executor.generate_sql(f"""
-rollup((select g1, g2, total,
+select *rollup((select g1, g2, total,
     rank(g1, g2) over (partition by {partition} order by total desc) as r
 ), g1, g2);
 """)[-1]
@@ -217,7 +217,7 @@ def test_inferred_rollup_keys_inline(executor):
     at the select grain into the same grouping pass (it used to co-grain to the
     window anchor, landing in a different pass whose stitch join collided sets)."""
     query = f"""
-rollup((select g1, g2, total,
+select *rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
 {ORDER}
 ));

@@ -40,7 +40,7 @@ QUERY = """
 auto tnp <- sum(sale_id.np);
 auto tesp <- sum(sale_id.esp);
 auto gross_margin <- tnp / nullif(tesp, 0);
-rollup((select
+select *rollup((select
     grouping(sale_id.cat) + grouping(sale_id.cls) as hierarchy_level,
     sale_id.cat,
     sale_id.cls,

@@ -102,7 +102,7 @@ def test_lineage_and_grain_carry_the_minimal_by():
 def test_rollup_by_is_not_reduced():
     rows = _rows(
         _engine(summary=False),
-        "rollup((select order_id, customer_id, sum(amount) as t), order_id, "
+        "select *rollup((select order_id, customer_id, sum(amount) as t), order_id, "
         "customer_id);",
     )
     assert sorted(rows, key=str) == sorted(

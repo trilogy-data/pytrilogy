@@ -210,7 +210,7 @@ def test_composite_subset_join_union_reproject_rollup(executor):
     `by rollup`. test_duckdb_rollup_scoped_join.py covers the rollup family
     with a plain-rowset RHS only; this is the union-RHS cell."""
     rows = executor.execute_text("""
-rollup((select
+select *rollup((select
     case when grouping(nov_data.brand_id) = 1 then null else nov_data.brand_id end as out_b,
     case when grouping(nov_data.class_id) = 1 then null else nov_data.class_id end as out_c,
     sum(nov_data.total_sales) as q

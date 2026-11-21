@@ -86,7 +86,7 @@ def test_rowset_reads_are_the_statement_rows(measure, spec, having, where):
     flag_items = ", ".join(f"grouping({k}) as g_{k}" for k in keys)
     body = call(f"{where}select {', '.join(keys)}, {items}, {flag_items}{having}", spec)
     columns = keys + names + flags
-    oracle = run(body + ";")
+    oracle = run("select *" + body + ";")
     rowset = f"with r as {body};\n"
     every = ", ".join(f"r.{c}" for c in columns)
     flag_at = columns.index("g_department")

@@ -36,7 +36,7 @@ auto tesp <- sum(v * 2);
 auto ratio <- tnp / tesp;
 """
 
-ROLLUP_G1 = "rollup((select g1, total), g1);"
+ROLLUP_G1 = "select *rollup((select g1, total), g1);"
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_plain_select_after_rollup_select(executor):
 
 def test_two_rollup_selects_different_keys_one_script(executor):
     sqls = executor.generate_sql(
-        "rollup((select g1, total), g1);\nrollup((select g2, total), g2);"
+        "select *rollup((select g1, total), g1);\nselect *rollup((select g2, total), g2);"
     )
     assert _rollups(sqls[0]) == 1
     assert _rollups(sqls[1]) == 1
@@ -92,7 +92,7 @@ def test_rollup_then_plain_one_script(executor):
 
 def test_alias_defined_aggregate_not_stamped_in_env(executor):
     sqls = executor.generate_sql(
-        "rollup((select g1, sum(v) as t2), g1);\nselect g1, g2, t2;"
+        "select *rollup((select g1, sum(v) as t2), g1);\nselect g1, g2, t2;"
     )
     assert _rollups(sqls[0]) == 1
     assert _rollups(sqls[1]) == 0
@@ -101,7 +101,7 @@ def test_alias_defined_aggregate_not_stamped_in_env(executor):
 
 
 def test_transitive_derived_measure_stamps_select_locally(executor):
-    sql = executor.generate_sql("rollup((select g1, ratio), g1);")[0]
+    sql = executor.generate_sql("select *rollup((select g1, ratio), g1);")[0]
     assert _rollups(sql) == 1
     assert len(executor.execute_raw_sql(sql).fetchall()) == 4
     later = executor.generate_sql("select g1, g2, ratio;")[0]
@@ -112,7 +112,7 @@ def test_rollup_undefined_ref_surfaces_undefined_not_found_none(executor):
     """A rollup select referencing a rowset output WITHOUT its namespace must
     report the undefined concept (naming the namespaced fix) — the grouping
     passthrough check used to mask it with a generic 'found none'."""
-    query = "with rs as select g1, sum(v) as tv;\nrollup((select g1, tv), g1);"
+    query = "with rs as select g1, sum(v) as tv;\nselect *rollup((select g1, tv), g1);"
     with pytest.raises(UndefinedConceptException) as exc:
         executor.generate_sql(query)
     msg = str(exc.value)

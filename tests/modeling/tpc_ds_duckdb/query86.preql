@@ -13,7 +13,7 @@ auto partition_cat <- case when g_class = 0 then web_sales.item.category else nu
 auto rank_within_parent <- rank(web_sales.item.category, web_sales.item.class)
     over (partition by lochierarchy, partition_cat order by total_sum desc);
 
-rollup((where
+select *rollup((where
     web_sales.sale_date.month_seq between 1200 and 1211
 select
     total_sum,

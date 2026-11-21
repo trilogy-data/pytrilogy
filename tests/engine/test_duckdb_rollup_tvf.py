@@ -116,7 +116,7 @@ def test_rowset_matches_the_single_statement(executor, spec):
     order = (
         " order by {0}department asc nulls first, {0}course asc nulls first, {0}t asc"
     )
-    direct = rows(executor, call.format(order.format("")) + ";")
+    direct = rows(executor, "select *" + call.format(order.format("")) + ";")
     through = rows(
         executor,
         f"with a as {call.format('')};\nselect a.department, a.course, a.t"
@@ -147,7 +147,7 @@ def test_rollup_of_a_rollup(executor):
     assert rows(
         executor,
         CREDITS
-        + "rollup((where a.g_course = 0 select a.department, sum(a.total_credits) as t "
+        + "select *rollup((where a.g_course = 0 select a.department, sum(a.total_credits) as t "
         "order by a.department asc nulls first), a.department);",
     ) == [(None, 9), ("art", 2), ("math", 7)]
 
@@ -269,7 +269,7 @@ def test_imported_rollup_rowset(tmp_path):
 
 def rolled(tail: str = "") -> str:
     return (
-        "rollup((select department, sum(credits) as total_credits, "
+        "select *rollup((select department, sum(credits) as total_credits, "
         f"--grouping(department) as g{tail}), department);"
     )
 
@@ -297,7 +297,7 @@ def test_statement_is_planned_over_its_own_tvf():
 
 def test_statement_over_no_keys_stays_a_select():
     env = Environment()
-    _, statements = env.parse(MODEL + "rollup((select sum(credits) as t));")
+    _, statements = env.parse(MODEL + "select *rollup((select sum(credits) as t));")
     assert statements[-1].relational is None
 
 
@@ -331,7 +331,7 @@ def test_reparsed_statement_reuses_its_relation():
 def test_two_statements_keep_their_own_relations(executor):
     _, first = executor.environment.parse(rolled(" order by g asc, department asc"))
     _, second = executor.environment.parse(
-        "rollup((select course, sum(credits) as by_course order by course asc nulls "
+        "select *rollup((select course, sum(credits) as by_course order by course asc nulls "
         "first), course);"
     )
     assert [tuple(r) for r in executor.execute_query(first[-1]).fetchall()] == [
@@ -350,7 +350,7 @@ def test_two_statements_keep_their_own_relations(executor):
 def test_statement_with_a_renamed_key(executor):
     assert rows(
         executor,
-        "rollup((select department as dept_name, sum(credits) as t order by dept_name "
+        "select *rollup((select department as dept_name, sum(credits) as t order by dept_name "
         "asc nulls first), department);",
     ) == [(None, 9), ("art", 2), ("math", 7)]
 
@@ -369,7 +369,9 @@ def test_rollup_body_keeps_its_scoped_join(executor):
         "rollup((select department, sum(credits) as t, sum(salary) as paid union join "
         "department = dept{0}), department)"
     )
-    direct = rows(executor, body.format(" order by department asc nulls first") + ";")
+    direct = rows(
+        executor, "select *" + body.format(" order by department asc nulls first") + ";"
+    )
     assert direct == rows(
         executor,
         f"with a as {body.format('')};\nselect a.department, a.t, a.paid"
@@ -397,9 +399,9 @@ def test_a_statement_join_stays_its_own():
     join = ("local.department", "local.dept", JoinType.FULL)
     _, statements = env.parse(
         MODEL
-        + "rollup((select department, sum(credits) as t union join department = dept), "
+        + "select *rollup((select department, sum(credits) as t union join department = dept), "
         "department);\n"
-        "rollup((select course, sum(credits) as c), course);"
+        "select *rollup((select course, sum(credits) as c), course);"
     )
     joined, plain = statements[-2], statements[-1]
     assert join in _collect_rowset_scoped_joins(env, joined.planned)

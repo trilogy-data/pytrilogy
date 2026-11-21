@@ -204,6 +204,8 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     labels: dict[str, ConceptRef] = field(
         default_factory=dict, repr=False, compare=False
     )
+    # written `select *<call>`: the selection is that relation's outputs
+    spread: bool = field(default=False, repr=False, compare=False)
     # A top-level `by rollup|cube|grouping sets` select is planned as this
     # select over the rollup TVF's handles, one per output and in output
     # order; the statement itself is the TVF's arm and the authored surface.
@@ -697,6 +699,8 @@ class TVFOutputItem:
     datatype: DataType | TraitDataType | ValidatedType | None = None
     nullable: bool = False
     metadata: Metadata | None = None
+    # `--name`: bound, but left out of a `select *<call>`
+    hidden: bool = False
 
 
 @dataclass

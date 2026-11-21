@@ -7,7 +7,7 @@ auto row_dep_count <- group(cs.pos_customer_demographic.dependent_count) by cs.o
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2));
 
-rollup((where
+select *rollup((where
     cs.pos_customer_demographic.gender = 'F'
     and cs.pos_customer_demographic.education_status = 'Unknown'
     and cs.billing_customer.current_demographics.sk is not null

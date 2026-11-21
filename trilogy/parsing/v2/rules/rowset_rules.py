@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, MAGIC_TVF_UNION_NAME
 from trilogy.core.constants import ROLLUP_NAMESPACE_PREFIX, SUBQUERY_NAMESPACE_PREFIX
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Modifier, Purpose
 from trilogy.core.functions import LITERAL_CONSTANT_TYPES
@@ -25,10 +25,12 @@ from trilogy.core.statements.author import (
     SelectStatement,
 )
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
+from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules.tvf_rules import (
     TVF_GROUPING_MODES,
+    TVF_INVOCATION_OPERATORS,
+    bind_set_op,
     lower_grouping_select,
-    set_op_select_statement,
 )
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -216,6 +218,55 @@ def lower_statement_grouping(select: SelectStatement, context: RuleContext) -> N
     select.relational = outer
 
 
+def _is_call(node: SyntaxNode) -> bool:
+    return node.kind in TVF_GROUPING_MODES or node.kind in TVF_INVOCATION_OPERATORS
+
+
+def _call_node(node: SyntaxNode) -> SyntaxNode:
+    return next(c for c in node.child_nodes() if _is_call(c))
+
+
+def _bind_grouping_call(
+    call: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+    meta: Any,
+) -> tuple[RowsetDerivationStatement, dict[str, Concept]]:
+    """Lower a signed grouping call read in place to an anonymous rowset.
+    Returns it with each signature name's handle. The handles live in the
+    rowset's own namespace, so a signature name may repeat a model concept's
+    name or another statement's."""
+    place = (
+        f"{context.source_text}:{getattr(call.meta, 'line', 0)}:"
+        f"{getattr(call.meta, 'column', 0)}"
+    )
+    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
+    with context.semantic_state.rowset_alias_scope(name):
+        arm: SelectStatement = hydrate(call)
+    finalize_select_tree(arm, context)
+    body = lower_grouping_select(arm, context, name, meta)
+    assert isinstance(body, RollupSelectStatement)
+    rowset = RowsetDerivationStatement(
+        name=name,
+        select=body,
+        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+    )
+    handles = _register_rowset(rowset, context, meta)
+    context.environment.add_rowset(name, body.as_lineage(context.environment))
+    shown = [h for item, h in zip(body.align.items, handles) if not item.hidden]
+    return rowset, {out.name: h for out, h in zip(arm.signature, shown)}
+
+
+def _label(select: SelectStatement, named: dict[str, Concept], namespace: str) -> None:
+    """Show each handle the select reads under its signature name."""
+    select.labels = {
+        handle.address: ConceptRef(
+            address=f"{namespace}.{name}", datatype=handle.datatype
+        )
+        for name, handle in named.items()
+    }
+
+
 def tvf_select_statement(
     node: SyntaxNode,
     context: RuleContext,
@@ -223,48 +274,132 @@ def tvf_select_statement(
 ) -> SelectStatement:
     """Inline `from <tvf>(...) -> (...) select ...`: the trailing select, with
     the TVF's outputs bound under their signature names."""
-    call = next(
-        (c for c in node.child_nodes() if c.kind in TVF_GROUPING_MODES),
-        None,
-    )
-    if call is None:
-        return set_op_select_statement(node, context, hydrate)
+    call = _call_node(node)
     select_node = next(
         c for c in node.child_nodes() if c.kind == SyntaxNodeKind.SELECT_STATEMENT
     )
-    meta = call.meta
-    place = (
-        f"{context.source_text}:{getattr(meta, 'line', 0)}:"
-        f"{getattr(meta, 'column', 0)}"
-    )
-    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
-    with context.semantic_state.rowset_alias_scope(name):
-        arm = hydrate(call)
-    if not arm.signature:
+    meta = core_meta(node.meta)
+    if call.kind in TVF_INVOCATION_OPERATORS:
+        union, _ = bind_set_op(call, context, hydrate, meta)
+        select: SelectStatement = hydrate(select_node)
+        select.source = RowsetDerivationStatement(
+            name=MAGIC_TVF_UNION_NAME, select=union, namespace=union.namespace
+        )
+        return select
+    if not call.child_nodes(SyntaxNodeKind.TVF_OUTPUT):
         raise fail(
             call,
             "an inline grouping call names its outputs: "
             "`from rollup((select ...), keys) -> (col1, col2) select ...`. "
-            "Or name the relation: `with r as rollup((select ...), keys);`.",
+            "To show every column as the select names it, write "
+            "`select *rollup((select ...), keys);`.",
         )
-    finalize_select_tree(arm, context)
-    body = lower_grouping_select(arm, context, name, core_meta(node.meta))
-    namespace = context.environment.namespace or DEFAULT_NAMESPACE
-    rowset = RowsetDerivationStatement(name=name, select=body, namespace=namespace)
-    handles = _register_rowset(rowset, context, core_meta(node.meta))
-    context.environment.add_rowset(name, body.as_lineage(context.environment))
-    # a signature name means its handle inside the trailing select only, so it
-    # may repeat a model concept's name or another statement's
-    assert isinstance(body, RollupSelectStatement)
-    named = [h for item, h in zip(body.align.items, handles) if not item.hidden]
-    bindings = {out.name: h.address for out, h in zip(arm.signature, named)}
+    rowset, named = _bind_grouping_call(call, context, hydrate, meta)
+    bindings = {name: handle.address for name, handle in named.items()}
     with context.semantic_state.name_bindings(bindings):
-        select: SelectStatement = hydrate(select_node)
+        select = hydrate(select_node)
     select.source = rowset
-    select.labels = {
-        h.address: ConceptRef(address=f"{namespace}.{out.name}", datatype=h.datatype)
-        for out, h in zip(arm.signature, named)
-    }
+    _label(select, named, rowset.namespace)
+    return select
+
+
+def _spread_items(outputs: list[Concept], signature: list[Any]) -> list[SelectItem]:
+    return [
+        SelectItem(
+            content=concept.reference,
+            modifiers=[Modifier.HIDDEN] if out.hidden else [],
+        )
+        for concept, out in zip(outputs, signature)
+    ]
+
+
+def _clause(node: SyntaxNode, kind: SyntaxNodeKind, hydrate: HydrateFunction) -> Any:
+    found = node.child_nodes(kind)
+    return hydrate(found[0]) if found else None
+
+
+def _spread_arm(
+    node: SyntaxNode, call: SyntaxNode, hydrate: HydrateFunction
+) -> SelectStatement:
+    """An unsigned grouping call spread into a select: the wrapped select is
+    the statement, and the clauses after the call are its own."""
+    arm: SelectStatement = hydrate(call)
+    having = _clause(node, SyntaxNodeKind.HAVING, hydrate)
+    order_by = _clause(node, SyntaxNodeKind.ORDER_BY, hydrate)
+    limit = _clause(node, SyntaxNodeKind.LIMIT, hydrate)
+    if node.child_nodes(SyntaxNodeKind.WHERE_SERIES):
+        raise fail(
+            node,
+            "after `select *rollup(...)`, filter the rolled-up rows with `having`; "
+            "a `where` on the input rows goes inside the wrapped select.",
+        )
+    twice = [
+        name
+        for name, outer, inner in (
+            ("having", having, arm.having_clause),
+            ("order by", order_by, arm.order_by),
+            ("limit", limit, arm.limit),
+        )
+        if outer is not None and inner is not None
+    ]
+    if twice:
+        raise fail(
+            node,
+            f"`{twice[0]}` is written once: after the call, not also inside the "
+            "select it wraps.",
+        )
+    arm.having_clause = having or arm.having_clause
+    arm.order_by = order_by or arm.order_by
+    arm.limit = limit.count if limit else arm.limit
+    return arm
+
+
+def tvf_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> SelectStatement:
+    """`select *<tvf call> [where] [having] [order by] [limit]`: every output
+    of the call, under the names the call gives them."""
+    spreads = node.child_nodes(SyntaxNodeKind.TVF_SPREAD)
+    if len(spreads) > 1:
+        raise fail(
+            node,
+            "one `*<call>` per select for now: name each relation "
+            "(`with a as rollup(...);`) and join the names in a select.",
+        )
+    call = _call_node(spreads[0])
+    meta = core_meta(node.meta)
+    named: dict[str, Concept] = {}
+    if call.kind in TVF_INVOCATION_OPERATORS:
+        union, outputs = bind_set_op(call, context, hydrate, meta)
+        source = RowsetDerivationStatement(
+            name=MAGIC_TVF_UNION_NAME, select=union, namespace=union.namespace
+        )
+        signature = union.outputs
+    elif call.child_nodes(SyntaxNodeKind.TVF_OUTPUT):
+        source, named = _bind_grouping_call(call, context, hydrate, meta)
+        outputs = list(named.values())
+        signature = source.select.selects[0].signature  # type: ignore[union-attr]
+    else:
+        return _spread_arm(node, call, hydrate)
+    bindings = {name: handle.address for name, handle in named.items()}
+    with context.semantic_state.name_bindings(bindings):
+        where = _clause(node, SyntaxNodeKind.WHERE_SERIES, hydrate)
+        having = _clause(node, SyntaxNodeKind.HAVING, hydrate)
+        order_by = _clause(node, SyntaxNodeKind.ORDER_BY, hydrate)
+    limit = _clause(node, SyntaxNodeKind.LIMIT, hydrate)
+    select = SelectStatement(
+        selection=_spread_items(outputs, signature),
+        where_clauses=where.stages if where else [],
+        having_clause=having,
+        order_by=order_by,
+        limit=limit.count if limit else None,
+        meta=metadata_from_meta(node.meta),
+        source=source,
+        spread=True,
+    )
+    _label(select, named, source.namespace)
     return select
 
 
@@ -330,4 +465,5 @@ ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT: rowset_derivation_statement,
     SyntaxNodeKind.SCALAR_SUBQUERY: scalar_subquery,
     SyntaxNodeKind.TVF_SELECT_STATEMENT: tvf_select_statement,
+    SyntaxNodeKind.TVF_STATEMENT: tvf_statement,
 }

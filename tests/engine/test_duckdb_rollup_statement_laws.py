@@ -86,7 +86,7 @@ def test_statement_rows_are_the_sql_rows(measure, spec, having, where):
         f"select {', '.join(keys)}, {sql_items}, {flags} from ({ROWS}) {where}"
         f"group by {spec}{having}"
     )
-    result = executor.execute_text(call(select, spec) + ";")[-1]
+    result = executor.execute_text("select *" + call(select, spec) + ";")[-1]
     assert list(result.keys()) == columns
     assert ordered(result.fetchall()) == ordered(
         executor.execute_raw_sql(sql).fetchall()
@@ -97,7 +97,7 @@ def test_statement_rows_are_the_sql_rows(measure, spec, having, where):
     assert [
         tuple(r)
         for r in executor.execute_text(
-            call(f"{select} order by {order} limit 3", spec) + ";"
+            "select *" + call(f"{select} order by {order} limit 3", spec) + ";"
         )[-1].fetchall()
     ] == [
         tuple(r)

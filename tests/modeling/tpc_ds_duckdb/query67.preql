@@ -1,6 +1,6 @@
 import store_sales as ss;
 
-rollup((where
+select *rollup((where
     ss.sale_date.month_seq between 1200 and 1211 and ss.store.sk is not null
 select
     ss.item.category,

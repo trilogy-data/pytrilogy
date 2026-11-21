@@ -6,7 +6,7 @@
     | type_declaration
     | multi_select_statement
     | tvf_select_statement
-    | grouping_statement
+    | tvf_statement
     | select_statement
     | persist_statement
     | rowset_derivation_statement
@@ -482,8 +482,11 @@
     tvf_grouping_sets_invocation: _GROUPING_SETS_TVF tvf_rel_arg ("," grouping_set)+ ")" tvf_output?
     _tvf_invocation: tvf_union_invocation | tvf_except_invocation | tvf_intersect_invocation | tvf_rollup_invocation | tvf_cube_invocation | tvf_grouping_sets_invocation
     tvf_select_statement: "from"i _tvf_invocation select_statement
-    // a grouping call as the whole statement: its rows are the result
-    grouping_statement: tvf_rollup_invocation | tvf_cube_invocation | tvf_grouping_sets_invocation
+    // `select *<tvf call>`: `*` spreads the call's outputs into the select, so
+    // its rows are the result. One rule for every TVF: a new one needs no
+    // statement keyword, and `*union(...)` is never the `union(a, b)` expression.
+    tvf_spread: "*" _tvf_invocation
+    tvf_statement: "select"i tvf_spread ("," tvf_spread)* _where_series_opt _having_opt _order_by_opt _limit_opt
 
     //indexing into an expression is a function
     index_access: atom "[" int_lit "]"

@@ -100,9 +100,9 @@ generator-agnostic and wired into `gen_aggregate` and the ROOT generator
 Multi-level grouping is written as a call, `rollup((select ...), keys)`
 (`cube`, `grouping_sets`), and lowers to a one-arm TVF (`RollupSelectLineage`,
 `gen_rollup_select`): named (`with r as rollup(...)`), inline
-(`from rollup(...) -> (names) select ...`), or as a whole statement, which is
-planned as `SelectStatement.relational`, a select over an anonymous rowset's
-handles rendered under the authored names. The `by rollup|cube|grouping sets`
+(`from rollup(...) -> (names) select ...`), or spread into a query
+(`select *rollup(...)`), which is planned as `SelectStatement.relational`, a
+select over an anonymous rowset's handles rendered under the authored names. The `by rollup|cube|grouping sets`
 select clause is gone: it still parses, to raise a migration error. Every read
 of a keyed rollup is of new key and property concepts, so nothing above the arm
 tracks grouping-set padding. The arm itself is still planned by the select

@@ -58,7 +58,7 @@ having
 ;
 
 # Final ROLLUP(channel, brand_id, class_id, category_id) over the per-channel L0.
-rollup((select
+select *rollup((select
     l0_filtered.channel_l0 as channel,
     l0_filtered.brand_l0 as i_brand_id,
     l0_filtered.class_l0 as i_class_id,

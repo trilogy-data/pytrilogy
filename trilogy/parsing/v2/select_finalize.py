@@ -785,8 +785,8 @@ def _validate_grouping_args_are_concepts(
                     f"(column) reference as its argument, not an inline expression "
                     f"like '{arg}'. Assign the expression to a named concept and "
                     f"use that concept in both the grouping key and grouping() - "
-                    f"e.g. `auto channel <- coalesce(a, b); rollup((select ..., "
-                    f"grouping(channel) ...), channel);`."
+                    f"e.g. `auto channel <- coalesce(a, b); select *rollup((select "
+                    f"..., grouping(channel) ...), channel);`."
                 )
 
 

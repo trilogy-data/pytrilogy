@@ -40,7 +40,7 @@ auto entity_id <- case
     else null
 end;
 
-rollup((select
+select *rollup((select
     channel_label,
     entity_id,
     sum(entity_rows.u_sales) as sales,

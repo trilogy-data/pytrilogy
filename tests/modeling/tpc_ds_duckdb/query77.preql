@@ -94,7 +94,7 @@ with l0_union as union(
 
 # Final ROLLUP(channel, sk) over the unioned L0. The sales<-returns joins are
 # now declared inside each arm (arm-local query-scoped joins).
-rollup((select
+select *rollup((select
     l0_union.u_channel as channel,
     l0_union.u_id as sk,
     sum(l0_union.u_sales) as sales,

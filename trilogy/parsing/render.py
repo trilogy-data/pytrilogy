@@ -141,6 +141,16 @@ limit {{ limit }}{% endif %}
 ;"""
 )
 
+SPREAD_TEMPLATE = Template("""select *{{ call }}{% for where in wheres %}
+{{ 'where' if loop.first else 'then where' }}
+{{ where }}{% endfor %}{% if having %}
+having
+{{ having }}{% endif %}{%- if order_by %}
+order by{% for order in order_by %}
+{{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
+limit {{ limit }}{% endif %}
+;""")
+
 
 @dataclass
 class IndentationContext:
@@ -844,8 +854,12 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: RowsetDerivationStatement):
+        body = arg.select
         with self._rowset_scope(arg.name):
-            select_str = self.to_string(arg.select)
+            if isinstance(body, SelectStatement) and body.grouping is not None:
+                select_str = self._render_grouping_call(body)
+            else:
+                select_str = self.to_string(body)
         return f"""rowset {arg.name} <- {select_str}"""
 
     @to_string.register
@@ -1253,7 +1267,7 @@ class Renderer:
     @to_string.register
     def _(self, arg: SelectStatement):
         if arg.grouping is not None:
-            return self._render_grouping_call(arg)
+            return "select *" + self._render_grouping_call(arg)
         with self.indented():
             select_columns = [
                 self.indent_lines(self.to_string(c))
@@ -1297,8 +1311,16 @@ class Renderer:
         source = ""
         if arg.source is not None:
             with self._rowset_scope(arg.source.name):
-                call = self.to_string(arg.source.select)
-            source = f"from {call.removesuffix(';')}\n"
+                call = self.to_string(arg.source.select).removesuffix(";")
+            if arg.spread:
+                return SPREAD_TEMPLATE.render(
+                    call=call,
+                    wheres=where_stages,
+                    having=having_clause,
+                    order_by=order_by,
+                    limit=arg.limit,
+                )
+            source = f"from {call}\n"
         return source + QUERY_TEMPLATE.render(
             select_columns=select_columns,
             wheres=where_stages,
@@ -1409,7 +1431,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: TVFOutputItem):
-        parts = [arg.name]
+        parts = [("--" if arg.hidden else "") + arg.name]
         if arg.datatype is not None:
             if arg.purpose is not None:
                 parts.append(arg.purpose.value)
