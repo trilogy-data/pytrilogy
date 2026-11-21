@@ -249,7 +249,7 @@ fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, and 101 after the seventh, from 255; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed its rowset boundary; 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -896,8 +896,8 @@ election, not the padded fallback.
    boundary) is the same thing a union arm scope is. The three partition
    rules are already one scope-keyed rule; the tag itself remains.
 
-10. **Grouping sets as a relational TVF (first slice landed: the rowset
-    boundary).** `by rollup|cube|grouping sets` is a select mutator: its
+10. **Grouping sets as a relational TVF (two slices landed: the rowset
+    boundary, then the statement).** `by rollup|cube|grouping sets` is a select mutator: its
     aggregates carry the mode, its keys keep their own addresses, and about a
     hundred planner sites (`nulls_grouping_keys`, `rollup_padded`,
     `rollup_padded_keys`, `node_nulls_grouping_keys`, the `rollup_padding`
@@ -952,20 +952,81 @@ election, not the padded fallback.
       handed the arm key, an inline constant, to the rowset boundary as an
       input no parent supplies. Not a rollup defect, but it is what a union
       of two rollups hits first.
+    - **Second slice: the statement.** A top-level `select ... by rollup`
+      is lowered at finalize (`lower_statement_grouping`, reached from every
+      statement plan: select, persist, copy, show, call, chart). The select
+      less its ORDER BY and LIMIT is the arm of a rollup TVF read through an
+      anonymous rowset (`_rollup_<hash of the text and the statement's place
+      in it>`, so a re-parse reuses its concepts and two statements never
+      share them), and `SelectStatement.relational` is the select over that
+      rowset's handles: every arm column, hidden ones hidden, with the ORDER
+      BY re-pointed at the handles and the LIMIT. `process_query` plans
+      `statement.planned` and keeps the authored statement for the contract:
+      output columns, hidden set, local concepts and parameters are the
+      authored ones, and `relational_names` (authored address to handle)
+      rides `scoped_merge_map`, the map `sort_select_output_processed`
+      already renders a column under its written name with. The shadowing
+      step (a) asked for is not needed: no concept is redefined, the final
+      projection re-labels. The authored statement, its renderer and a
+      persist's datasource binding are untouched. The statement's joins now
+      ride the arm, so `_collect_rowset_scoped_joins` reads them off the
+      rollup's arm and skips every other statement's rollup relation.
+    - **The SQL is the same.** Two optimizer facts keep the outer select from
+      costing a query anything. `rename_reference` reads a rollup TVF output
+      as the rename of its arm column it is, so the rename node and the
+      boundary fold into the pass (`CollapseSingleParent`) with the outer
+      select's ORDER BY and LIMIT. And `carry_root_contract` hides, on the CTE
+      a fold makes the root, the TVF outputs the old root did not show: they
+      are read through their handles alone, and left visible until the final
+      projection they read as used, so the injected flags were carried
+      through a window CTE above the pass for nothing. (Hiding every column
+      the old root did not show is unsound: the final projection re-labels a
+      target from a pseudonym twin the optimizer-time contract never named.)
+      The seven TPC-DS rollup queries (18, 22, 27, 36, 67, 70, 86) render
+      within four characters of their committed size.
+    - **What the statement met.** Reading every rollup through the TVF sent
+      shapes down it that only statements had: about 30 of the suite's
+      17,300 rollup tests. Seven defects, the first four reproducing on main
+      through a rowset:
+      (1) the rename node inherited the arm's grain, so a read of the whole
+      identity still regrouped; it now declares the relation's keys and a
+      full read is a passthrough (a read that drops a flag still dedups).
+      (2) A grouping key the arm does not project
+      (`select label, sum(x) by rollup (dept)`) was listed as a rename input
+      no parent supplied; the node now takes the arm's visible aligned
+      columns only. (3) The align clause built the arm's columns in a
+      factory without the arm's grouping spec, which recursed on a flag over
+      a scoped-join key; a rollup's align now reads the arm's built outputs.
+      (4) `find_source` did not find an arm column a FULL join had emitted
+      under its partner's address once the consumer folded
+      (`with a as select d, sum(x), grouping(d) as g union join d = e by
+      rollup (d)` read with its flag). (5) `apply_child_merge` re-pointed a
+      passed-through rename (`dept as d`) at itself when the rename node
+      folded into the pass. (6) `find_source` and `_resolve_output_target`
+      returned a same-address copy over the folded CTE's own column, whose
+      lineage is the one the pass rewrote. (7) ORDER BY on a handle
+      re-derived the expression where a visible output already carries it
+      (`render_order_item`).
+    - **Gate.** `tests/engine/test_duckdb_rollup_statement_laws.py` runs 100
+      bodies as a statement and as hand-written DuckDB SQL, bare and under
+      ORDER BY + LIMIT; the rowset laws keep the statement as their oracle.
+    - **Found, not fixed.** A persist whose select hides a column writes a
+      table one column wider than its INSERT (`to_datasource` lists hidden
+      outputs), and a rollup always hides its injected flags, so
+      `persist ... from select ... by rollup` fails at the warehouse, on
+      main as here.
     - **Not yet.** The arm is still planned by the mutator, so every site
-      above stays live for the statement's own pass. Next, in order: (a)
-      split a `by rollup` select into a pure arm (keys, aggregates, flags)
-      and an outer select holding the post-aggregate scalars, HAVING, ORDER
-      BY and LIMIT, top-level statements included. That needs an output to
-      shadow an environment address inside one statement
-      (`select dept, sum(x) by rollup (dept) order by dept` names the base
-      dimension under the pass and the rolled one above it); (b) plan the
-      arm as a STANDARD select and have the generator set the grouping sets
-      on its root `GroupNode`, with a per-grouping-set union as the fallback
-      where the arm is not one group; (c) delete the mode from
+      above stays live for the arm's own pass, and a merge arm or union arm
+      carrying a spec is still a mutated select. Next, in order: (a) move
+      the post-aggregate scalars and HAVING out of the arm into the outer
+      select, leaving a pure arm (keys, aggregates, flags); the statement's
+      outer select is where they land, with no shadowing needed; (b) plan
+      the arm as a STANDARD select and have the generator set the grouping
+      sets on its root `GroupNode`, with a per-grouping-set union as the
+      fallback where the arm is not one group; (c) delete the mode from
       `BuildAggregateWrapper` and the sites above with it. An explicit
-      `rollup(...)` call form waits on the lark and pest grammars moving
-      together.
+      `rollup(...)` call form, and with it retiring the `by rollup` clause,
+      waits on the lark and pest grammars moving together.
 
 ## Gate used
 

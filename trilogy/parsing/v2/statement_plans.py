@@ -43,6 +43,7 @@ from trilogy.parsing.v2.rules.import_rules import (
     selective_import_statement,
     self_import_statement,
 )
+from trilogy.parsing.v2.rules.rowset_rules import lower_statement_grouping
 from trilogy.parsing.v2.select_finalize import (
     finalize_select_tree as _v2_finalize_select_tree,
 )
@@ -124,7 +125,11 @@ def finalize_select_tree(output: Any, hydrator: NativeHydrator) -> None:
     lookups resolve against ``RuleContext.concepts`` instead of reading
     directly from ``environment.concepts``.
     """
-    _v2_finalize_select_tree(output, hydrator.rule_context())
+    context = hydrator.rule_context()
+    _v2_finalize_select_tree(output, context)
+    select = output.select if isinstance(output, PersistStatement) else output
+    if isinstance(select, SelectStatement):
+        lower_statement_grouping(select, context)
 
 
 @dataclass

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from trilogy.constants import MAGIC_TVF_UNION_NAME, UNION_ARM_KEY
 from trilogy.core.enums import (
     ConceptSource,
@@ -321,7 +323,7 @@ def _is_grouping_flag(address: str, context: RuleContext) -> bool:
 
 
 def lower_grouping_select(
-    arm: SelectStatement, context: RuleContext, scope: str, node: SyntaxNode
+    arm: SelectStatement, context: RuleContext, scope: str, meta: Any = None
 ) -> SelectStatement | RollupSelectStatement:
     """Lower a finalized `select ... by rollup|cube|grouping sets (...)` to the
     relational TVF over it: one new output concept per arm column, registered
@@ -366,7 +368,7 @@ def lower_grouping_select(
             lineage=lineage,
         )
         statement.derived_concepts.append(concept)
-        context.add_multiselect_concept(concept, meta=core_meta(node.meta))
+        context.add_multiselect_concept(concept, meta=meta)
     return statement
 
 
