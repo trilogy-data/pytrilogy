@@ -110,4 +110,22 @@ theorem Grain.chasm_join_fans_out :
     ((sales.flatMap (fun s => (returns.filter (·.1 == s.1)).map (fun _ => s.2))).sum)
       ≠ (sales.map Prod.snd).sum := by decide
 
+/-- Pairing a row stream with a copy of itself on a key no two rows share
+gives each row its own copy back ... -/
+theorem Rows.identity_pair_exact [DecidableEq κ] (key : α → κ) (l : α)
+    (rows : List α) (h : ∀ r ∈ rows, key r = key l → r = l) :
+    ∀ r ∈ rows.filter (fun r => key r = key l), r = l := by
+  intro r hr
+  simp only [List.mem_filter, decide_eq_true_eq] at hr
+  exact h r hr.1 hr.2
+
+/-- ... whereas two filtered copies paired on the key their reader groups by
+(`select city, count(id ? a), count(id ? b)`, each `?` its own stream of the
+trees) pair every tree of a city with every tree of it: two trees are counted
+as four. Paired on the tree, two. -/
+theorem Rows.coarse_pair_squares :
+    let trees : List (Nat × Nat) := [(1, 0), (2, 0)]
+    (trees.flatMap fun l => trees.filter fun r => r.2 == l.2).length = 4 ∧
+      (trees.flatMap fun l => trees.filter fun r => r.1 == l.1).length = 2 := by decide
+
 end Trilogy

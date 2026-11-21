@@ -449,6 +449,18 @@ def _collect_aggregate_wrappers(
     return found
 
 
+def _and_atoms(node: Any) -> list[Any]:
+    if isinstance(node, Parenthetical):
+        return _and_atoms(node.content)
+    if isinstance(node, Conditional) and node.operator == BooleanOperator.AND:
+        return _and_atoms(node.left) + _and_atoms(node.right)
+    return [node]
+
+
+def _reads_set(node: Any) -> bool:
+    return any(arg for group in node.existence_arguments for arg in group)
+
+
 def _is_grouping_aggregate(node: Any) -> bool:
     return (
         isinstance(node, AggregateWrapper) and node.function.operator in _GROUPING_FNS
@@ -862,6 +874,26 @@ class _HavingNormalization:
         stable.extend(sorted(window_keys - set(stable)))
         return stable if stable else grain_keys
 
+    def where_restated_in_set(self) -> bool:
+        """Whether the HAVING set's filter also states the WHERE. Applied to
+        the rows it kept, a WHERE reading a set reads another set
+        (``SelectGrain.where_over_total_not_idempotent``), so it is left to the
+        plan, which applies it beneath the set. An atom reading an aggregate
+        and no set is still restated: planned beneath a filtered key alone it
+        finds no host (docs/handoff_formalization_next.md, area 4)."""
+        where = self.base.where_clause
+        if where is None:
+            return False
+        atoms = _and_atoms(where.conditional)
+        sets = [_reads_set(atom) for atom in atoms]
+        return not any(sets) or any(
+            not has_set
+            and _collect_aggregate_wrappers(
+                atom, lambda node: isinstance(node, AggregateWrapper)
+            )
+            for atom, has_set in zip(atoms, sets)
+        )
+
     def build_grain_key_membership(
         self, leaf: Comparison | Between, grain_keys: list[str]
     ) -> SubselectComparison:
@@ -874,10 +906,11 @@ class _HavingNormalization:
         rendering is null-safe row identity matching; a scalar ``key IN
         (select ...)`` deletes any group whose key is NULL (q11/q59).
 
-        The select's WHERE clause is AND-ed into the filter so the existence
-        set is evaluated within the same pre-aggregation universe the aggregate
-        saw — a group only survives if it has a matching row *that also passed
-        WHERE*."""
+        The set is planned under the select's WHERE (``append_existence_check``),
+        so a group only survives if it has a matching row *that also passed
+        WHERE*. The WHERE is restated in the filter too unless it reads a set
+        (``where_restated_in_set``): a copy reads that set off the rows the
+        WHERE kept."""
         from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
 
         if not grain_keys:
@@ -888,10 +921,11 @@ class _HavingNormalization:
                 f"aggregation."
             )
         predicate: Any = leaf
-        if self.base.where_clause is not None:
+        where = self.base.where_clause
+        if where is not None and self.where_restated_in_set():
             predicate = Conditional(
                 left=leaf,
-                right=self.base.where_clause.conditional,
+                right=where.conditional,
                 operator=BooleanOperator.AND,
             )
         key_refs: list[ConceptRef] = []

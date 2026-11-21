@@ -144,6 +144,117 @@ SHAPES = [
         ),
         [("Acer", "broadleaf", 7), ("Tilia", "linden", 7)],
     ),
+    # two filtered columns pair on the tree, not the city (7437): only B has
+    # a linden, only x tags a Quercus
+    (
+        (
+            "select city, count(tree_id ? city in (city ? tree_form = 'linden')) as"
+            " v1, count(tree_id ? tag in (tag ? species = 'Quercus')) as v2;"
+        ),
+        [("A", 0, 3), ("B", 2, 1)],
+    ),
+    (
+        (
+            "select count(tree_id ? city in (city ? tree_form = 'linden')) as v1,"
+            " count(tree_id ? tag in (tag ? species = 'Quercus')) as v2;"
+        ),
+        [(2, 4)],
+    ),
+    # a filtered column is no key of a window's rows (11606): the WHERE drops
+    # the Ulmus, Acer's three trees are one group
+    (
+        (
+            "select species, tree_form, count(tree_id ? height is not null) as v0,"
+            " row_number() over (partition by tree_form order by species asc nulls"
+            " first) as v1 where (tree_id in (tree_id ? max(height) by city,"
+            " species >= 0) or city in (city ? tree_form = 'linden'));"
+        ),
+        [
+            ("Acer", "broadleaf", 2, 1),
+            ("Quercus", "broadleaf", 1, 2),
+            ("Tilia", "linden", 1, 1),
+        ],
+    ),
+    # a membership moved to the group's WHERE reads its set (1955): every tag
+    # is in B
+    (
+        (
+            "select city, min(height ? tag in (tag ? city = 'B')) as v0 where"
+            " sum(height) by * > 5 having v0 >= 1;"
+        ),
+        [("A", 3), ("B", 2)],
+    ),
+    # a set's filter over values at two grains pairs them on the rows that
+    # hold both keys (5168): only Tilia's 2 is at most its (city, form)'s 2
+    (
+        (
+            "select city, species, min(height) as v0 having city in (city ?"
+            " sum(height) by species < min(height) by city, tree_form);"
+        ),
+        [],
+    ),
+    (
+        (
+            "select city, species, min(height) as v0 having city in (city ?"
+            " sum(height) by species <= min(height) by city, tree_form);"
+        ),
+        [("B", "Acer", 7), ("B", "Tilia", 2)],
+    ),
+    # a derived key counted by is read off the rows, not off the groups a
+    # filter reads (8156): four broadleaf trees, and only b1's group reaches 7
+    (
+        (
+            "select city, case when tree_form = 'broadleaf' then 'b' else 'o' end"
+            " as fc, count(tree_id) by fc as v0, min(height ? max(height) by city,"
+            " tree_form >= 7) as v2;"
+        ),
+        [
+            ("A", "b", 4, None),
+            ("A", "o", 2, None),
+            ("B", "b", 4, 7),
+            ("B", "o", 2, None),
+        ],
+    ),
+    # one set written in the select and in the WHERE: each is rendered off its
+    # own rows (the 17 is every tree's height, so every city is in both)
+    (
+        (
+            "select species ? city in (city ? sum(height) by * = 17) as f where city"
+            " in (city ? sum(height) by * = 17);"
+        ),
+        [("Acer",), ("Quercus",), ("Tilia",), ("Ulmus",)],
+    ),
+    # a HAVING on an unprojected column restates no WHERE (49376): only
+    # Tilia's 6 - 2 passes 3, its tag keeps a1, a3, a4 and b2, and of those
+    # only the Quercus has a minimum of 5
+    (
+        (
+            "select tree_id, count_distinct(tag) as v1 where tag in (tag ?"
+            " count(tree_id) by * - sum(height) by species > 3) having species in"
+            " (species ? min(height) by species = 5);"
+        ),
+        [("a3", 1)],
+    ),
+    # ...nor a set over a total it could not build (48381): the WHERE keeps
+    # the Ulmus, whose form is unknown like the one x-tagged tree's kept
+    (
+        (
+            "select species, sum(height) as v0 where min(height) by species is null"
+            " or city in (city ? sum(height) by * = 3) having tree_form in"
+            " (tree_form ? tag = 'x');"
+        ),
+        [("Ulmus", None)],
+    ),
+    # a derived key pairs with the rows a membership on their key filters
+    # (59727): the unmeasured trees leave A with broadleaves alone
+    (
+        (
+            "select city, case when tree_form = 'broadleaf' then 'b' else 'o' end"
+            " as fc, row_number() over (partition by city order by fc desc nulls"
+            " last) as v0 where tree_id in (tree_id ? height is not null);"
+        ),
+        [("A", "b", 1), ("B", "b", 2), ("B", "o", 1)],
+    ),
 ]
 
 

@@ -952,6 +952,18 @@ def _pair(
     return Pairing(left, right, frozenset(keys), kind, frozenset(implied))
 
 
+def _filtered_row_keys(
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    contracted: dict[str, frozenset[str]] | None,
+) -> frozenset[str]:
+    """A filtered column's grain is the select's, its rows the ones it filters:
+    the keys a consumer asks it to carry name them (`Rows.coarse_pair_squares`)."""
+    if attrs[gid].derivation != Derivation.FILTER or not contracted:
+        return frozenset()
+    return contracted.get(gid, frozenset())
+
+
 def _looked_up_keys(
     keys: frozenset[str],
     identity: frozenset[str],
@@ -1049,7 +1061,7 @@ def plan_final_join(
     identity = {
         gid: identity[gid]
         | (
-            attrs[gid].grain_components
+            (attrs[gid].grain_components | _filtered_row_keys(attrs, gid, contracted))
             & _held(group_graph, attrs, gid, carry_demands, environment)
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()

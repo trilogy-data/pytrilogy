@@ -1,6 +1,6 @@
 # thelook Result Summary
 
-Timing fingerprint: `amd64-intel64_family_6_model_183_stepping_1_genuineintel-16`
+Timing fingerprint: `x86_64-x86_64-4`
 
 Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Reference SQL execution` for performance. Negative values mean PreQL is shorter or Trilogy is faster.
 
@@ -25,20 +25,20 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 10 | 175 | 170 | +5 |
 | 02 | 198 | 194 | +4 |
 
-Trilogy execution is faster than the reference SQL for 8/22 queries. Total Trilogy execution time is 0.098s vs 0.087s reference SQL time.
+Trilogy execution is faster than the reference SQL for 6/22 queries. Total Trilogy execution time is 0.080s vs 0.066s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.002s | +0.000s | +0.003s |
-| Trilogy vs Reference SQL | -36.3% | +12.6% | +122.0% |
-| Trilogy / Reference SQL | 0.64x | 1.13x | 2.22x |
+| Trilogy - Reference SQL seconds | -0.000s | +0.000s | +0.001s |
+| Trilogy vs Reference SQL | -13.0% | +9.0% | +60.2% |
+| Trilogy / Reference SQL | 0.87x | 1.09x | 1.60x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 02 | 0.008s | 0.003s | +0.005s |
-| 10 | 0.007s | 0.003s | +0.004s |
-| 08 | 0.005s | 0.002s | +0.003s |
-| 22 | 0.007s | 0.005s | +0.002s |
-| 19 | 0.011s | 0.009s | +0.001s |
+| 03 | 0.008s | 0.003s | +0.005s |
+| 16 | 0.007s | 0.003s | +0.004s |
+| 02 | 0.004s | 0.002s | +0.001s |
+| 08 | 0.003s | 0.002s | +0.001s |
+| 01 | 0.004s | 0.003s | +0.001s |
