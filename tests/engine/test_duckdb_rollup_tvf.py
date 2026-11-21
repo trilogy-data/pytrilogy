@@ -243,3 +243,18 @@ def test_rowset_renders_as_authored():
     assert rendered.startswith("rowset a <- select")
     assert "by rollup (department)" in rendered
     assert "union" not in rendered
+
+
+def test_imported_rollup_rowset(tmp_path):
+    (tmp_path / "enroll.preql").write_text(
+        MODEL + "with rolled as select department, sum(credits) as total,"
+        " grouping(department) as g by rollup (department);"
+    )
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    assert rows(
+        exec,
+        "import enroll as e; select e.rolled.department, e.rolled.total, e.rolled.g"
+        " order by e.rolled.g asc, e.rolled.department asc;",
+    ) == [("art", 2, 0), ("math", 7, 0), (None, 9, 1)]
