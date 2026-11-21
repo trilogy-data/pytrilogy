@@ -68,14 +68,22 @@ def _model(
     )
 
 
-def matrix_rows(nullable: bool) -> tuple[list[tuple], list[tuple]]:
-    if nullable:
-        return LEFT_ROWS + [LEFT_NULL_ROW], RIGHT_ROWS + [RIGHT_NULL_ROW]
-    return LEFT_ROWS, RIGHT_ROWS
+def matrix_rows(
+    nullable: bool, null_sides: str = "both"
+) -> tuple[list[tuple], list[tuple]]:
+    """`null_sides` puts the NULL-key row on `left`, `right` or `both`: a
+    NULL group only one side holds must never pair with nothing."""
+    if not nullable:
+        return LEFT_ROWS, RIGHT_ROWS
+    left = LEFT_ROWS + ([LEFT_NULL_ROW] if null_sides != "right" else [])
+    right = RIGHT_ROWS + ([RIGHT_NULL_ROW] if null_sides != "left" else [])
+    return left, right
 
 
-def write_models(tmp_path: Path, nullable: bool = False) -> Path:
-    left_rows, right_rows = matrix_rows(nullable)
+def write_models(
+    tmp_path: Path, nullable: bool = False, null_sides: str = "both"
+) -> Path:
+    left_rows, right_rows = matrix_rows(nullable, null_sides)
     (tmp_path / "left_fact.preql").write_text(_model("l", left_rows, "lsrc", nullable))
     (tmp_path / "right_fact.preql").write_text(
         _model("r", right_rows, "rsrc", nullable)

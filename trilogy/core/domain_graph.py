@@ -482,6 +482,18 @@ class DomainGraph:
             for addr in (e.source, e.target)
         } - self.incomparable_keys()
 
+    def declared_relation_keys(self) -> frozenset[str]:
+        """Canonicalized endpoints of every declared relation. Such a relation
+        speaks for the two keys' populations, NULL groups included; a
+        binding's completeness speaks only for the key's domain, which holds
+        no NULL."""
+        return frozenset(
+            self.canonical(addr)
+            for e in self.edges
+            if e.provenance is EdgeProvenance.DECLARED
+            for addr in (e.source, e.target)
+        )
+
     def full_relation_keys(self) -> set[str]:
         """The outer-relation keys no narrowing may collapse: an EQUAL key
         (`merge a into b`, `equal join`) narrows once both sides prove

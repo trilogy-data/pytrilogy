@@ -333,6 +333,8 @@ class SideFacts:
     complete_equal: frozenset[str] = frozenset()
     # the filter atoms every row of the side passed
     filters: tuple[BoolExpr, ...] = ()
+    # the tables the side reads
+    leaves: frozenset[str] = frozenset()
     # extent-free span or `~` key -> the leaf tables whose own `~` column
     # binds it here
     span_bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -793,6 +795,13 @@ def _nullable_join(
         # (extension-family cross products). Preserve the host and let plain
         # equality drop the feeder's padding.
         if host is not None:
+            # a feeder's guest NULL is a fact row, not extension padding: it
+            # pairs only with the host's NULL for the same rows
+            feeder = right_facts if host == left else left_facts
+            if keys & feeder.guest_padded and _null_groups_unanchored(
+                keys, left_facts, right_facts
+            ):
+                return JoinType.FULL
             return _preserving(host == left)
         # A value NULL on one side (a guest order's address, grouped) names a
         # real row; the other side's padding names nothing. Keep the row. An
@@ -822,6 +831,14 @@ def _nullable_join(
             keys & right_facts.value_nullables
         ) and not facts.authored(keys):
             return _preserving(left_value)
+        # Off a declared relation, whether each of two sides reading other
+        # rows holds a value NULL group is data: keep both.
+        if (
+            left_value
+            and not facts.authored(keys)
+            and _null_groups_unanchored(keys, left_facts, right_facts)
+        ):
+            return JoinType.FULL
         return JoinType.INNER
     if left_is_nullable != right_is_nullable:
         # A nullable key weakens that side's EQUAL-domain claim to "some
@@ -841,7 +858,7 @@ def _nullable_join(
         fact = right_facts if left_is_nullable else left_facts
         if (
             _dimension_of(lookup, fact)
-            and not keys & lookup.value_nullables
+            and not keys & (lookup.value_nullables | lookup.guest_padded)
             and not facts.authored(keys)
         ):
             return _preserving(not left_is_nullable)
@@ -850,6 +867,21 @@ def _nullable_join(
     if unfiltered is not None:
         return _preserving(unfiltered)
     return JoinType.INNER
+
+
+def _null_groups_unanchored(keys: set[str], left: SideFacts, right: SideFacts) -> bool:
+    """Each side's NULL-key group is its own data: no key of the join is
+    solid on both sides (one would say which row is which), and the sides
+    read other tables through the same filters. Sides whose filters differ
+    may be a gate and its gated rows (a WHERE over an aggregate the join
+    applies), whose INNER drops rows by intent."""
+    if keys - left.nullables - right.nullables:
+        return False
+    return (
+        left.leaves != right.leaves
+        and all(any(a == b for b in right.filters) for a in left.filters)
+        and all(any(a == b for b in left.filters) for a in right.filters)
+    )
 
 
 def _rejected_nulls(passed: SideFacts, skipped: SideFacts) -> set[str]:
@@ -1460,6 +1492,19 @@ def _same_filters(left: DataSource, right: DataSource) -> bool:
     return all(any(a == b for b in rights) for a in lefts) and all(
         any(a == b for b in lefts) for a in rights
     )
+
+
+def _leaves(source: DataSource) -> frozenset[str]:
+    if isinstance(source, QueryDatasource):
+        return frozenset().union(*(_leaves(sub) for sub in source.datasources))
+    return frozenset({source.identifier})
+
+
+def same_rows(left: DataSource, right: DataSource) -> bool:
+    """Both sides read the same tables through the same filters, so a NULL
+    key group one holds the other holds too: whether a side has one at all is
+    data, not domain (NULL is no member of a complete key's domain)."""
+    return _leaves(left) == _leaves(right) and _same_filters(left, right)
 
 
 def preserved_sources(
@@ -2817,6 +2862,7 @@ def _side_facts(
             if span not in extent_free_spans
         ),
         filters=tuple(applied_atoms(datasource)),
+        leaves=_leaves(datasource),
         span_bindings={
             canon_node(address): partial_binding_sources(datasource, address)
             for address in extent_free_spans
@@ -2872,10 +2918,13 @@ def _covered_keys(
     between two concepts (an unfiltered rowset over its anchor). One concept
     bound complete on both sides covers only between twins (`_twins`): a
     side NULLing it where the other does not keeps rows no partner matches
-    (`test_dim_peel_composite_grain_axis`). The plan-time half of the
-    optimizer's subset proof (`_pair_side_fully_matches`)."""
+    (`test_dim_peel_composite_grain_axis`). NULL is no value of a domain, so
+    a NULL-key row is covered only under a declared relation, whose NULL
+    groups pair by declaration. The plan-time half of the optimizer's subset
+    proof (`_pair_side_fully_matches`)."""
     graph = environment.domain_graph
     carries = _Carries(ds_node_map, ds_concept_map, graph.subset_sources())
+    declared = graph.declared_relation_keys()
     out: set[tuple[str, str, str]] = set()
     for sub, sub_facts in sides.items():
         for key in sub_facts.columns:
@@ -2884,15 +2933,20 @@ def _covered_keys(
                 if sup == sub or key not in sup_facts.columns:
                     continue
                 sup_concept = ds_concept_map[(sup, key)]
+                related = graph.canonical(sub_concept.address) in declared
                 if (
                     key not in sub_facts.partials
                     and sub_concept.address == sup_concept.address
                 ):
-                    if _twins(key, sub, sup, sides, carries):
+                    if _twins(key, sub, sup, sides, carries, related):
                         out.add((sub, sup, key))
                     continue
                 if (
-                    key not in sub_facts.nullables
+                    (
+                        key not in sub_facts.nullables
+                        or related
+                        and _null_alike(key, sub_facts, sup_facts)
+                    )
                     and graph.relation(sub_concept.address, sup_concept.address)
                     in _WITHIN
                     and carries(sup, key)
@@ -2925,16 +2979,28 @@ class _Carries:
 
 
 def _twins(
-    key: str, a: str, b: str, sides: Mapping[str, SideFacts], carries: _Carries
+    key: str,
+    a: str,
+    b: str,
+    sides: Mapping[str, SideFacts],
+    carries: _Carries,
+    related: bool,
 ) -> bool:
     """Two reads of one concept that each carry every value of it, and NULL it
     alike: on no row, or only as a value (a `?` column), which the pair
     matches null-safely (`get_modifiers`). Every row of either has a partner
-    on the other. The plan-time half of the optimizer's twin key sets
+    on the other. A NULL group is no value of the domain, so only a declared
+    relation (`related`) or reading the same rows (`same_rows`) says both
+    sides hold it. The plan-time half of the optimizer's twin key sets
     (`_pair_key_sets_equivalent`), for sides no filter thinned."""
     return (
         key not in sides[b].partials
         and _null_alike(key, sides[a], sides[b])
+        and (
+            related
+            or key not in sides[a].nullables | sides[b].nullables
+            or same_rows(carries.nodes[a], carries.nodes[b])
+        )
         and carries(a, key)
         and carries(b, key)
     )

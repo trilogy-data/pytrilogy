@@ -93,9 +93,11 @@ CELLS = [
 ]
 
 
-def _oracle(kind: str, join_type: str, nullable: bool = False) -> list[tuple]:
+def _oracle(
+    kind: str, join_type: str, nullable: bool = False, null_sides: str = "both"
+) -> list[tuple]:
     key_fn = (lambda k: k + 1) if kind == "derived" else None
-    left_rows, right_rows = matrix_rows(nullable)
+    left_rows, right_rows = matrix_rows(nullable, null_sides)
     left = aggregate(left_rows, key_fn)
     right = aggregate(right_rows, key_fn)
     return TYPES[join_type][0](left, right)
@@ -116,17 +118,20 @@ def test_two_source_single_key(tmp_path: Path, kind: str, join_type: str, form: 
 
 
 # Nullable axis: the same cells with the key columns DECLARED nullable (`?`)
-# and a NULL-key row on each side. NULL keys are valid members: they must match
-# null-safely (one (None, 16, 1600) row, never two half-rows or a drop), and an
-# authored LEFT must stay LEFT (no nullable-driven widening to FULL).
+# and a NULL-key row on one side or both. Under a declared relation NULL keys
+# are members: they match null-safely (one (None, 16, 1600) row, never two
+# half-rows), a NULL group one side alone holds follows the relation like any
+# side-exclusive key, and an authored LEFT stays LEFT (no nullable-driven
+# widening to FULL). `test_null_group_matrix.py` holds the undeclared case.
 # The former derived-LEFT zip xfails dissolved with the always-preserving flip:
 # the scan-level nullability stamp for computed BASIC keys keeps the zip
 # null-safe, so narrowing to INNER stays row-identical.
+@pytest.mark.parametrize("null_sides", ["both", "left", "right"])
 @pytest.mark.parametrize("kind,join_type,form", CELLS)
 def test_two_source_single_key_nullable(
-    tmp_path: Path, kind: str, join_type: str, form: str
+    tmp_path: Path, kind: str, join_type: str, form: str, null_sides: str
 ):
     query = _query(kind, join_type, form)
-    rows = run_cell(write_models(tmp_path, nullable=True), query)
-    want = _oracle(kind, join_type, nullable=True)
+    rows = run_cell(write_models(tmp_path, True, null_sides), query)
+    want = _oracle(kind, join_type, True, null_sides)
     assert rows == want, f"{kind}/{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"

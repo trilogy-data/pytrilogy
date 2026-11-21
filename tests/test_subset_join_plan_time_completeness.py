@@ -81,17 +81,74 @@ key order_id int;
 property order_id.amount int;
 key visit_id int;
 property visit_id.pages int;
-datasource orders (order_id, ?cust_id, amount) grain (order_id)
+datasource orders (order_id, cust_id, amount) grain (order_id)
+query '''select 1 order_id, 1 cust_id, 10 amount union all select 2, 2, 20''';
+datasource visits (visit_id, cust_id, pages) grain (visit_id)
+query '''select 1 visit_id, 1 cust_id, 5 pages union all select 2, 2, 7''';
+"""
+
+TWIN_QUERY = "select cust_id, sum(amount) as spend, sum(pages) as seen;"
+
+ONE_SIDED_NULL = """
+key cust_id int;
+key order_id int;
+property order_id.amount int;
+key visit_id int;
+property visit_id.pages int;
+datasource orders (order_id, {order_binding}, amount) grain (order_id)
 query '''select 1 order_id, 1 cust_id, 10 amount union all select 2, null, 20''';
 datasource visits (visit_id, ?cust_id, pages) grain (visit_id)
-query '''select 1 visit_id, 1 cust_id, 5 pages union all select 2, null, 7''';
+query '''select 1 visit_id, 1 cust_id, 5 pages union all select 2, 2, 7''';
 """
 
 
 def test_twin_reads_of_one_complete_key_are_typed_inner():
-    joins, rows = _joins_and_rows(
-        TWINS, "select cust_id, sum(amount) as spend, sum(pages) as seen;"
-    )
+    joins, rows = _joins_and_rows(TWINS, TWIN_QUERY)
     assert [j.split(" JOIN ")[0] for j in joins] == ["INNER"], joins
-    assert "is not distinct from" in joins[0]
-    assert rows == [(1, 10, 5), (None, 20, 7)]
+    assert rows == [(1, 10, 5), (2, 20, 7)]
+
+
+@pytest.mark.parametrize("order_binding", ["?cust_id", "cust_id: ~?cust_id"])
+def test_a_null_group_on_one_side_is_no_value_of_the_domain(order_binding: str):
+    joins, rows = _joins_and_rows(
+        ONE_SIDED_NULL.format(order_binding=order_binding), TWIN_QUERY
+    )
+    assert joins[-1].startswith("FULL JOIN"), joins
+    assert (None, 20, None) in rows
+
+
+@pytest.mark.usefixtures("planner_only")
+@pytest.mark.parametrize("order_binding", ["?cust_id", "cust_id: ~?cust_id"])
+def test_the_optimizer_keeps_a_one_sided_null_group(
+    order_binding: str, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.undo()
+    _, rows = _joins_and_rows(
+        ONE_SIDED_NULL.format(order_binding=order_binding), TWIN_QUERY
+    )
+    assert (None, 20, None) in rows
+
+
+SHARED_DATES = """
+key date_id int;
+property date_id.year int;
+key ticket int;
+key order_number int;
+datasource dates (date_id, y: year) grain (date_id)
+query '''select 1 date_id, 2020 y union all select 2, 2021''';
+datasource store_sales (ticket, date_id: ~?date_id) grain (ticket)
+query '''select 1 ticket, 1 date_id union all select 2, null''';
+datasource web_sales (order_number, date_id: ~?date_id) grain (order_number)
+query '''select 1 order_number, 2 date_id''';
+"""
+
+
+def test_undated_sales_of_one_fact_keep_their_null_year(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.undo()
+    _, rows = _joins_and_rows(
+        SHARED_DATES,
+        "select year + 1 as y, count(ticket) as s, count(order_number) as w;",
+    )
+    assert rows == [(2021, 1, 0), (2022, 0, 1), (None, 1, 0)]
