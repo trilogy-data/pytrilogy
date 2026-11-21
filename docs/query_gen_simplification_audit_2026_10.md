@@ -239,14 +239,15 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-fifth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+sixth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
 `~`-subset, graph-subset and twin proofs and decided NULL membership (the
 optimizer rule's firings over the non-law suite: 912 before the first slice,
 796 after it, 522 after the second, 407 after the third, 377 after the
-fourth, 299 after the fifth, most of that last drop refusals of unsound
-narrowings; over the whole suite, laws included, its CTE rewrites fell from
-1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
+fourth, 299 after the fifth, most of that drop refusals of unsound
+narrowings, and 256 after the sixth, measured from 324 once the null-group
+matrix joined the suite; over the whole suite, laws included, its CTE
+rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done; 1 and the rest of 2 remain, and hold nearly all of the
 estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
@@ -586,6 +587,83 @@ election, not the padded fallback.
    select cust_id, count(order_id), count(visit_id)` over orders and visits
    sharing one `date_id` types the final join INNER at plan time and returns
    no rows when no customer both ordered and visited in 2024.
+
+   **Sixth slice (landed): twins of one stream, EQUAL keys both sides carry
+   whole, handles through their content.** The census on `aebcc35`
+   (`upgrade_census_plugin.py`, non-law suite) read 324 firings: unnest of
+   complete lists 163, twin equivalence 88, graph subsets 43, `~` stamps 6,
+   recursion seeds 7, `_joined_complete` 17. Three planner gaps held most of
+   the twin class, each now closed:
+   - **Twin aggregates of one stream** (`_one_read`). Two groups over the
+     same merged rows, joined back on their key, read one value set whatever
+     NULLs it: the null-group matrix's derived cells FULL-join the two facts
+     on `k`, group each sum by `k + 1` over that stream, and rejoin. `_twins`
+     refused the guest NULL both sides hold. Two sides that read the same
+     rows (`same_rows`) and take the key off the same leaf tables, every row
+     of which their shared filters pass is still on each (`key_providers`,
+     through BASIC and ROWSET lineage), now cover each other. A NULL group
+     pairs when both sides NULL the key, the pair is null-safe
+     (`get_modifiers`) and no span pads it for one side alone. A grouping
+     set's subtotal NULL is no row of the stream: a ROLLUP beside its own
+     input keeps its RIGHT (`test_rollup_label_over_union_joined_rowsets`
+     lost its grand total in the first cut). Same leaves are not enough on
+     their own: a FULL and a LEFT of the same two tables can each carry the
+     key complete off different providers.
+   - **EQUAL keys both sides carry whole.** `_independent_full_keys`
+     exempted an EQUAL key both sides carry every value of
+     (`complete_equal`), but `_covered_sides` still refused any key in
+     `full_join_keys`, so the walk typed such joins by `_nullable_join` and
+     left the narrowing to the optimizer. Both now read `_full_keys`.
+   - **A handle carries its content's domain.** `_carries_every_value`
+     transferred completeness through BASIC lineage only; the optimizer
+     (`_COMPLETENESS_TRANSFERRING`) also goes through ROWSET. A handle whose
+     body reads every row of a complete binding, no filter or limit on the
+     way, carries the whole domain, so `equal join ra.k = rb.k` over two
+     unfiltered rowsets types INNER at plan time. A filtered body still
+     refuses (`test_join_merge_parity`'s `yoy_independent_rowsets` keeps its
+     FULL), so a handle is still complete for itself only at its boundary.
+
+   **A bug on `main`, found by the twin census:** under `merge w_year into
+   s_year` the optimizer's equivalence upgrade typed the year join INNER
+   null-safe whenever both sides NULLed the year, and the undated store sales
+   vanished when web held no undated row. The fifth slice let a declared
+   relation speak for its keys' NULL groups; it speaks for value NULLs, not
+   for a guest (a fact row whose key found no dimension row).
+   `_null_groups_differ` now refuses a guest NULL under a declared relation
+   too, unless both sides read the same rows. The shared-dimension and
+   `union join` forms of the same query were already right.
+   `test_a_merged_attribute_keeps_one_facts_undated_rows` pins it (red on
+   `main`).
+
+   Census over the non-law suite: 324 to 256 (twin equivalence 88 to 31,
+   unnest of complete lists 163 to 155, `_joined_complete` 17 to 14: the
+   twins' joins fed those). What is left of the twin class: a side whose filter only the
+   merge applies (`facts.applied`, `test_split_key_gates`: the gate group
+   joins counts over the stream INNER-joined to it, and the HAVING reaches
+   the gate only when the optimizer pushes it down), multi-left and later
+   joins, and twins over an unnest connector. No optimizer helper reached 0.
+   `test_subset_join_plan_time_completeness.py` pins the three planner
+   proofs with the optimizer rule stubbed (all red on `main`).
+
+   Gates, against `aebcc35`: suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`,
+   laws included, 50,207 tests) moved the join shape of 98 tests
+   whose statement count held (INNER +44, FULL -42, LEFT -34, RIGHT +32), none
+   gaining a CTE or a join, each under a row oracle that stayed green:
+   `test_dimension_chain_oracle_laws` (43), `test_summary_cover_laws` (10),
+   `test_rollup_resolution_laws` (10), `test_grain_pin_unnest_merge_filter`
+   (6), `test_oracle_compositions_laws` (5), the rest four or fewer each.
+   Most of the planner's new INNERs were already the optimizer's, so they
+   move no SQL. One law seed changed outcome: compositions 83051 (summary),
+   an `OPEN` wrong-rows lead, now plans right (two aggregates over one
+   stream typed INNER) and joins `FOUND_SEEDS`. Corpus (205 statements, tpc-ds
+   aggregates included): 0 moved. The first cut of the guest refusal moved
+   hackernews adhoc05 (twin groups over one stream INNER to LEFT): the
+   optimizer reads the two CTEs' sources, and one predates the WHERE the
+   optimizer pushed into their shared parent, so it judges the rows by the
+   CTE filter chain too (`_same_filtered_rows`). The suite fails the same 25
+   tests as `main` (credential-bound and
+   `the_look::test_wrapped_aggregate_with_dependent_by_grain`). Fuzzer
+   522/522.
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle

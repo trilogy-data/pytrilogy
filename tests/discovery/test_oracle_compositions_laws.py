@@ -368,6 +368,8 @@ FOUND_SEEDS = [
     9016, 15258, 24246, 26698, 30553, 39273, 44364, 46333, 48060, 49126,
     49263, 50635, 50815, 54254, 55114, 55868, 57225, 59820, 59941, 60061,
     60632, 63195, 63640, 64769, 65089, 67175, 74943, 75378, 89049, 89137,
+    # seam 2's sixth slice (twin aggregates of one stream) fixed
+    83051,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises, or None for wrong rows
@@ -388,7 +390,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (66218, "summary"): "Graph contains a cycle",
     (71000, "summary"): "Ambiguous reference",
     (77768, "summary"): None,
-    (83051, "summary"): None,
     (84985, "summary"): None,
     (85861, "summary"): None,
     (89278, "summary"): "keyless join",

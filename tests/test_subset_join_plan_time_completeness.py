@@ -1,6 +1,11 @@
+from pathlib import Path
+
 import pytest
 
+import tests.join_matrix.test_null_group_matrix as null_groups
+import tests.join_matrix.test_two_source_matrix as two_source
 from tests.engine.test_padded_null_pairing import TWO_REGIONS
+from tests.join_matrix.harness import make_engine, run_cell, write_models
 from trilogy import Dialects, Environment
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
@@ -152,3 +157,77 @@ def test_undated_sales_of_one_fact_keep_their_null_year(
         "select year + 1 as y, count(ticket) as s, count(order_number) as w;",
     )
     assert rows == [(2021, 1, 0), (2022, 0, 1), (None, 1, 0)]
+
+
+def test_twin_aggregates_of_one_stream_are_typed_inner():
+    env = Environment()
+    env.parse(
+        null_groups._model(
+            null_groups._rows("complete", True, 1),
+            null_groups._rows("complete", False, 100),
+            "complete",
+            "complete",
+            False,
+        )
+    )
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    query = "select k + 1 as key, sum(l_val) as l, sum(r_val) as r;"
+    joins = [
+        line.strip()
+        for line in executor.generate_sql(query)[-1].splitlines()
+        if " JOIN " in line
+    ]
+    assert joins[-1].startswith("INNER JOIN"), joins
+    rows = sorted(executor.execute_text(query)[-1].fetchall(), key=str)
+    assert rows == [(2, 3, 300), (3, 4, 400), (4, 8, 800), (None, 16, None)]
+
+
+@pytest.mark.parametrize("null_sides", ["left", "right", "both"])
+def test_equal_keys_both_sides_carry_whole_are_typed_inner(
+    tmp_path: Path, null_sides: str
+):
+    query = two_source._query("root", "equal", "merge")
+    workdir = write_models(tmp_path, True, null_sides)
+    sql = make_engine(workdir).generate_sql(query)[-1]
+    assert "INNER JOIN" in sql and " OUTER " not in sql and "FULL" not in sql, sql
+    assert run_cell(workdir, query) == two_source._oracle(
+        "root", "equal", True, null_sides
+    )
+
+
+@pytest.mark.parametrize("form", ["join", "merge", "into"])
+def test_rowsets_over_complete_bodies_carry_an_equal_key(tmp_path: Path, form: str):
+    query = two_source._query("rowset", "equal", form)
+    workdir = write_models(tmp_path)
+    sql = make_engine(workdir).generate_sql(query)[-1]
+    assert "INNER JOIN" in sql and "FULL" not in sql, sql
+    assert run_cell(workdir, query) == two_source._oracle("rowset", "equal")
+
+
+MERGED_YEARS = """
+key s_date_id int;
+property s_date_id.s_year int;
+datasource s_dates (d: s_date_id, y: s_year) grain (s_date_id)
+query '''select 1 d, 2020 y union all select 2, 2021''';
+key w_date_id int;
+property w_date_id.w_year int;
+datasource w_dates (d: w_date_id, y: w_year) grain (w_date_id)
+query '''select 1 d, 2020 y union all select 2, 2021''';
+key ticket int;
+datasource store_sales (t: ticket, d: ~?s_date_id) grain (ticket)
+query '''select 1 t, 1 d union all select 2, null''';
+key order_number int;
+datasource web_sales (o: order_number, d: ~?w_date_id) grain (order_number)
+query '''select 1 o, 2 d''';
+merge w_year into s_year;
+"""
+
+
+def test_a_merged_attribute_keeps_one_facts_undated_rows(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.undo()
+    _, rows = _joins_and_rows(
+        MERGED_YEARS, "select s_year, count(ticket) as s, count(order_number) as w;"
+    )
+    assert rows == [(2020, 1, 0), (2021, 0, 1), (None, 1, 0)]

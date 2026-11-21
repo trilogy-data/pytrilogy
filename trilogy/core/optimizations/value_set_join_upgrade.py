@@ -57,6 +57,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     DIRECTIONAL_OUTER_JOIN_TYPES,
     OUTER_JOIN_TYPES,
+    leaf_tables,
     same_rows,
 )
 from trilogy.core.processing.null_provenance import (
@@ -428,13 +429,8 @@ def _unpaired_guest_padding(
     found no partner: the guest sale's description) and the sup side does
     not. Null-safe equality pairs that NULL only with a NULL member the sup
     side happens to hold, so the sub side's preservation stays load-bearing."""
-    if not isinstance(sub_cte, CTE):
-        return False
-    if not sub_concept.all_spellings & provenance(sub_cte.source).guest:
-        return False
-    return not (
-        isinstance(sup_cte, CTE)
-        and sup_concept.all_spellings & provenance(sup_cte.source).guest
+    return _guest_padded(sub_concept, sub_cte) and not _guest_padded(
+        sup_concept, sup_cte
     )
 
 
@@ -443,16 +439,41 @@ def _null_groups_differ(
     left_cte: CTE | UnionCTE,
     right: BuildConcept,
     right_cte: CTE | UnionCTE,
+    declared: bool = False,
 ) -> bool:
     """A side can NULL the key and the two do not read the same rows
     (`same_rows`): whether either holds a NULL group is data, so null-safe
-    equality may find it no partner. NULL is no member of a complete domain."""
+    equality may find it no partner. NULL is no member of a complete domain.
+    A `declared` relation speaks for its keys' value NULLs, never for a guest
+    (a fact row whose key found no dimension row: an undated sale)."""
+    if declared:
+        if not (_guest_padded(left, left_cte) or _guest_padded(right, right_cte)):
+            return False
+        return not _same_filtered_rows(left_cte, right_cte)
     if not (_key_nullable(left, left_cte) or _key_nullable(right, right_cte)):
         return False
     return not (
         isinstance(left_cte, CTE)
         and isinstance(right_cte, CTE)
         and same_rows(left_cte.source, right_cte.source)
+    )
+
+
+def _same_filtered_rows(left_cte: CTE | UnionCTE, right_cte: CTE | UnionCTE) -> bool:
+    """`same_rows` as the CTEs stand: a filter pushed down after planning
+    reaches one side's plan only through its CTE chain."""
+    if not (isinstance(left_cte, CTE) and isinstance(right_cte, CTE)):
+        return False
+    if same_rows(left_cte.source, right_cte.source):
+        return True
+    return leaf_tables(left_cte.source) == leaf_tables(right_cte.source) and (
+        _same_filter_chain(left_cte, right_cte)
+    )
+
+
+def _guest_padded(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
+    return isinstance(cte, CTE) and bool(
+        concept.all_spellings & provenance(cte.source).guest
     )
 
 
@@ -981,8 +1002,12 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 witness, right_cte
             ):
                 return False
-            if not self._pair_declared(witness) and _null_groups_differ(
-                witness.left, witness.node, pair.right, right_cte
+            if _null_groups_differ(
+                witness.left,
+                witness.node,
+                pair.right,
+                right_cte,
+                self._pair_declared(witness),
             ):
                 return False
             if pair.is_nullable:

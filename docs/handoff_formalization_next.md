@@ -350,7 +350,8 @@ Open in the `compositions` family (`OPEN` in
 
 - Summary only (a membership or a `by *` gate beside a derived key or a
   nested aggregate): 15155, 23531, 34415, 37601, 38002, 47456, 71000, 77768,
-  83051, 84985, 85861, 89278. Two are reduced:
+  84985, 85861, 89278 (83051 plans right since seam 2's sixth slice). Two are
+  reduced:
   - `select city, count(tree_id) where count(tree_id) by species != 3 or
     city in (city ? tag = 'q')` reads the per-species count off the stored
     `(city, species)` count, re-sums it to city and applies the atom as a
