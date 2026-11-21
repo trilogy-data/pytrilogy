@@ -2584,7 +2584,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     computed per summary row and carried as a join key, so FINAL paired it
     with the finished value and kept nothing (38002, 94262;
     `SelectGrain.value_off_partials_is_no_key`). A key reading a pending
-    partial is not carried; partials under a regrouped scan are marked.
+    partial is not carried.
   - A set's condition at keys its content lacks (`city ? count(id) by city,
     form > 3`) was answered by a stored count re-summed to the city (83051;
     `SelectGrain.set_condition_at_its_own_keys`). Such an aggregate is not

@@ -1533,9 +1533,9 @@ def _summary_partials(
     needs) cannot sum them yet; it carries them as partials, so the group that
     drops those keys re-sums them instead of deduplicating them."""
     scanned = {
-        concept.address: (ds, parent.resolve().grain)
+        concept.address: parent.datasource
         for parent in parents
-        if (ds := _scanned_datasource(parent)) is not None
+        if isinstance(parent, SelectNode) and parent.datasource is not None
         for concept in parent.output_concepts
     }
     return [
@@ -1543,27 +1543,9 @@ def _summary_partials(
         for concept in targets
         if concept.is_aggregate
         and _is_rollable_aggregate(concept)
-        and (read := scanned.get(concept.address)) is not None
-        and not at_own_grain(concept, read[0].grain)
-        and not at_own_grain(concept, read[1])
+        and (ds := scanned.get(concept.address)) is not None
+        and not at_own_grain(concept, ds.grain)
     ]
-
-
-def _scanned_datasource(node: StrategyNode) -> BuildDatasource | None:
-    """The table under a chain of one-parent projections and groups: a
-    summary scan regrouped to a join handle (`species`) still holds partials
-    of a coarser aggregate (`sum(h) by tree_form`)."""
-    while isinstance(node, (SelectNode, GroupNode)):
-        if isinstance(node, SelectNode) and node.datasource is not None:
-            return (
-                node.datasource
-                if isinstance(node.datasource, BuildDatasource)
-                else None
-            )
-        if len(node.parents) != 1:
-            return None
-        node = node.parents[0]
-    return None
 
 
 def _summary_partial_hosts(
