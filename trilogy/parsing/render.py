@@ -1811,10 +1811,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         func_str = self.to_string(arg.function)
-        # Multi-level grouping (rollup/cube/grouping-sets) is a SELECT-level
-        # clause now — the planner stamps it onto un-grouped aggregates, so a
-        # non-standard wrapper renders as the bare aggregate (the select renders
-        # `by rollup (…)`). Only an explicit `by <grain>` override renders here.
+        # Multi-level grouping (rollup/cube/grouping-sets) belongs to the whole
+        # select — the planner stamps it onto un-grouped aggregates, so a
+        # non-standard wrapper renders as the bare aggregate (the select renders as a
+        # `rollup(...)` call). Only an explicit `by <grain>` override renders here.
         if arg.grouping.value != "standard" or not arg.by:
             return func_str
         by = ", ".join([self.to_string(x) for x in arg.by])

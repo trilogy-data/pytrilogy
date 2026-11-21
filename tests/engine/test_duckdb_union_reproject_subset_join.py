@@ -210,14 +210,14 @@ def test_composite_subset_join_union_reproject_rollup(executor):
     `by rollup`. test_duckdb_rollup_scoped_join.py covers the rollup family
     with a plain-rowset RHS only; this is the union-RHS cell."""
     rows = executor.execute_text("""
-select
+rollup((select
     case when grouping(nov_data.brand_id) = 1 then null else nov_data.brand_id end as out_b,
     case when grouping(nov_data.class_id) = 1 then null else nov_data.class_id end as out_c,
     sum(nov_data.total_sales) as q
 subset join nov_data.brand_id = cross_channel.brand_id
 subset join nov_data.class_id = cross_channel.class_id
 where cross_channel.brand_id is not null and cross_channel.class_id is not null
-by rollup (nov_data.brand_id, nov_data.class_id);
+), nov_data.brand_id, nov_data.class_id);
 """)[0].fetchall()
     normed = sorted(
         (tuple(r) for r in rows), key=lambda t: tuple((x is None, x) for x in t)

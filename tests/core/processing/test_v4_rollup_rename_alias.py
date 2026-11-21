@@ -44,11 +44,11 @@ auto chan_label <- case
     when chan = 'WEB' then 'web channel'
     else null
 end;
-select
+rollup((select
     chan_label as channel,
-    sum(profit - coalesce(loss, 0)) as total,
-by rollup (chan_label)
-order by channel asc nulls first;
+    sum(profit - coalesce(loss, 0)) as total
+order by channel asc nulls first
+), chan_label);
 """
 
 _EXPECTED_ROWS = [

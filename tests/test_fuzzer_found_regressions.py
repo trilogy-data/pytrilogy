@@ -84,7 +84,7 @@ order by grouped.gid asc;
 
 def test_rollup_grouping_window_keeps_grand_total_rank() -> None:
     rows, sql = _run("""
-select
+rollup((select
     group_id,
     sum(event_amount) as total,
     grouping(group_id) as grouping_level,
@@ -92,8 +92,8 @@ select
         partition by grouping(group_id)
         order by sum(event_amount) desc
     ) as level_rank
-by rollup (group_id)
-order by grouping_level asc, level_rank asc, group_id asc nulls last;
+order by grouping_level asc, level_rank asc, group_id asc nulls last
+), group_id);
 """)
 
     assert rows == [
@@ -120,13 +120,13 @@ auto named_rank <- rank(active) over (
     order by sum(event_amount) desc
 );
 
-select
+rollup((select
     group_id,
     active,
     sum(event_amount) as total,
     named_rank as ranked
-by rollup (group_id, active)
-order by group_id asc nulls last, active asc nulls last;
+order by group_id asc nulls last, active asc nulls last
+), group_id, active);
 """)
 
     assert rows == [

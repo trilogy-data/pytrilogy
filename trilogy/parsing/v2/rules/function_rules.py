@@ -359,26 +359,6 @@ def grouping_spec(
     return AggregateGrouping(mode=mode, by=by, grouping_sets=sets)
 
 
-def select_rollup(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> AggregateGrouping:
-    return grouping_spec(
-        AggregateGroupingMode.ROLLUP, hydrated_children(node, hydrate), context, node
-    )
-
-
-def select_cube(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> AggregateGrouping:
-    return grouping_spec(
-        AggregateGroupingMode.CUBE, hydrated_children(node, hydrate), context, node
-    )
-
-
 def grouping_set(
     node: SyntaxNode,
     context: RuleContext,
@@ -390,17 +370,11 @@ def grouping_set(
     return args[0]
 
 
-def select_grouping_sets(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> AggregateGrouping:
-    return grouping_spec(
-        AggregateGroupingMode.GROUPING_SETS,
-        hydrated_children(node, hydrate),
-        context,
-        node,
-    )
+_GROUPING_CALLS = {
+    SyntaxNodeKind.SELECT_ROLLUP: "rollup((select ...), k1, k2)",
+    SyntaxNodeKind.SELECT_CUBE: "cube((select ...), k1, k2)",
+    SyntaxNodeKind.SELECT_GROUPING_SETS: "grouping_sets((select ...), (k1, k2), (k1), ())",
+}
 
 
 def select_grouping(
@@ -408,7 +382,16 @@ def select_grouping(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    return hydrated_children(node, hydrate)[0]
+    """The removed `by rollup|cube|grouping sets (...)` select clause still
+    parses, to say what replaced it."""
+    call = _GROUPING_CALLS[node.child_nodes()[0].kind]  # type: ignore[index]
+    raise fail(
+        node,
+        "`by rollup|cube|grouping sets (...)` is no longer a select clause. "
+        f"Wrap the select in a call and move the keys after it: `{call};` runs "
+        "it as a statement (ORDER BY and LIMIT stay inside the select), and "
+        f"`with r as {call};` names it to read as `r.<column>`.",
+    )
 
 
 def aggregate_all(
@@ -1209,9 +1192,6 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.AGGREGATE_BY: aggregate_by,
     SyntaxNodeKind.AGGREGATE_PAREN_BY: aggregate_paren_by,
     SyntaxNodeKind.SELECT_GROUPING: select_grouping,
-    SyntaxNodeKind.SELECT_ROLLUP: select_rollup,
-    SyntaxNodeKind.SELECT_CUBE: select_cube,
-    SyntaxNodeKind.SELECT_GROUPING_SETS: select_grouping_sets,
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.FDISTINCT: fdistinct,
     SyntaxNodeKind.OVER_LIST: over_list,

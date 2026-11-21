@@ -26,20 +26,20 @@ union all select 3, 'b', 5 v
 """
 
 CASES = [
-    ("select sum(v) as total by rollup ();", [(35,)]),
+    ("rollup((select sum(v) as total));", [(35,)]),
     (
-        "select 'store sales' as part, coalesce(sum(v), 0) as total by rollup ();",
+        "rollup((select 'store sales' as part, coalesce(sum(v), 0) as total));",
         [("store sales", 35)],
     ),
     (
-        "select coalesce(sum(v), 0) as total where g1 = 'a' by rollup ();",
+        "rollup((select coalesce(sum(v), 0) as total where g1 = 'a'));",
         [(30,)],
     ),
     (
-        "select sum(v) as total by rollup () having total > 1;",
+        "rollup((select sum(v) as total having total > 1));",
         [(35,)],
     ),
-    ("select sum(v) as total by grouping sets (());", [(35,)]),
+    ("grouping_sets((select sum(v) as total), ());", [(35,)]),
 ]
 
 
@@ -60,7 +60,7 @@ def test_keyless_rollup_renders_grand_total(executor, query, expected):
 
 
 def test_keyed_rollup_still_rolls_up(executor):
-    query = "select g1, sum(v) as total by rollup (g1) order by total desc;"
+    query = "rollup((select g1, sum(v) as total order by total desc), g1);"
     assert "ROLLUP" in executor.generate_sql(query)[-1]
     assert executor.execute_text(query)[-1].fetchall() == [
         (None, 35),
@@ -70,7 +70,7 @@ def test_keyed_rollup_still_rolls_up(executor):
 
 
 def test_inferred_key_rollup_still_rolls_up(executor):
-    query = "select g1, sum(v) as total by rollup () order by total desc;"
+    query = "rollup((select g1, sum(v) as total order by total desc));"
     assert "ROLLUP" in executor.generate_sql(query)[-1]
     assert executor.execute_text(query)[-1].fetchall() == [
         (None, 35),

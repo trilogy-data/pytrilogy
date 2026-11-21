@@ -173,8 +173,8 @@ ERROR_CODES: dict[int, str] = {
         "automatic by the non-aggregated select columns, and a select of only "
         "aggregates already returns one row. To pin ONE aggregate's grain, put "
         "the `by` on that aggregate, before its alias: `sum(x) by * as total` "
-        "or `sum(x) by store.id as total`. (`by rollup/cube/grouping sets` is "
-        "the only select-level grouping clause.)"
+        "or `sum(x) by store.id as total`. (For subtotals wrap the select in a "
+        "call: `rollup((select ...), key1, key2);`.)"
     ),
     234: (
         "Input is nested too deeply to parse - parentheses, brackets, calls, "
@@ -189,22 +189,26 @@ ERROR_CODES: dict[int, str] = {
 NESTING_LIMIT_MESSAGE = "nesting depth limit reached"
 
 
-# A `by rollup/cube/grouping sets` clause placed *after* HAVING is a parse
-# error — Trilogy orders the grouping clause *before* HAVING, matching SQL's
-# `GROUP BY ... HAVING` (this was the reverse until 2026-07; older queries hit
-# an opaque "expected order_by or limit"). Detect the legacy shape to add a
-# targeted hint: `having` followed by a grouping clause within the same
-# statement (no `;` between). A `by rollup/cube/grouping sets` lead can never
-# be an aggregate's own `by` grain (those keywords are reserved), so the match
-# is unambiguous. Advisory only — gated behind an actual syntax error.
-_GROUPING_AFTER_HAVING = re.compile(
-    r"\bhaving\b(?:(?!;).)*?\bby\s+(?:rollup|cube|grouping\s+sets)\b",
-    re.IGNORECASE | re.DOTALL,
+# The removed `by rollup/cube/grouping sets` select clause still parses where
+# it used to be legal (before HAVING), so the parser can say what replaced it;
+# written after HAVING it is an opaque parse error. This finds either, for
+# callers that only check syntax. SQL's `group by rollup (...)` (a raw query
+# body) is not the clause, and literals and comments are masked.
+_GROUPING_CLAUSE = re.compile(
+    r"(?<!group)\s\bby\s+(?:rollup|cube|grouping\s+sets)\s*\(", re.IGNORECASE
+)
+
+GROUPING_CLAUSE_HINT = (
+    "Trilogy has no `by rollup/cube/grouping sets` clause. Wrap the whole select "
+    "in a call and list the keys after it:\n"
+    "    rollup((select <cols> having <cond> order by <cols> limit <n>), <keys>);\n"
+    "`cube((select ...), <keys>)` and `grouping_sets((select ...), (<k1>, <k2>), "
+    "(<k1>), ())` take the same shape."
 )
 
 
-def detect_grouping_after_having(content: str) -> bool:
-    return bool(_GROUPING_AFTER_HAVING.search(content))
+def detect_grouping_clause(content: str) -> bool:
+    return bool(_GROUPING_CLAUSE.search(_mask_literals(content)))
 
 
 _SUBSELECT_RE = re.compile(r"\(\s*(with)\b", re.IGNORECASE)

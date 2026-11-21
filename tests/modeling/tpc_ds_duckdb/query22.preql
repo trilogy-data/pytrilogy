@@ -1,14 +1,13 @@
 import inventory as inventory;
 
-where
+rollup((where
     inventory.date.month_seq between 1200 and 1211
 select
     inventory.item.product_name,
     inventory.item.brand_name,
     inventory.item.class,
     inventory.item.category,
-    avg(inventory.quantity_on_hand) as qoh,
-by rollup (inventory.item.product_name, inventory.item.brand_name, inventory.item.class, inventory.item.category)
+    avg(inventory.quantity_on_hand) as qoh
 order by
     qoh asc nulls first,
     inventory.item.product_name asc nulls first,
@@ -16,4 +15,4 @@ order by
     inventory.item.class asc nulls first,
     inventory.item.category asc nulls first
 limit 100
-;
+), inventory.item.product_name, inventory.item.brand_name, inventory.item.class, inventory.item.category);

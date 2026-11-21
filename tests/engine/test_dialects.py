@@ -88,12 +88,10 @@ def test_aggregate_grouping_modes_render(dialect):
     executor = _make_executor(dialect)
     executor.parse_text(_SCHEMA)
 
-    rollup_sql = executor.generate_sql("select a, b, sum(x) as sx by rollup (a, b);")[
-        -1
-    ]
-    cube_sql = executor.generate_sql("select a, b, sum(x) as sx by cube (a, b);")[-1]
+    rollup_sql = executor.generate_sql("rollup((select a, b, sum(x) as sx), a, b);")[-1]
+    cube_sql = executor.generate_sql("cube((select a, b, sum(x) as sx), a, b);")[-1]
     grouping_sets_sql = executor.generate_sql(
-        "select a, b, sum(x) as sx by grouping sets ((a, b), (a), ());"
+        "grouping_sets((select a, b, sum(x) as sx), (a, b), (a), ());"
     )[-1]
 
     assert "ROLLUP" in rollup_sql.upper(), rollup_sql
@@ -106,7 +104,7 @@ def test_aggregate_grouping_modes_rejected_on_sqlite():
     executor.parse_text(_SCHEMA)
 
     with raises(NotImplementedError, match="aggregate grouping mode"):
-        executor.generate_sql("select a, b, sum(x) as sx by rollup (a, b);")
+        executor.generate_sql("rollup((select a, b, sum(x) as sx), a, b);")
 
 
 # DuckDB's QUALIFY lowering is covered e2e in test_duckdb.py (the mock engine

@@ -13,16 +13,15 @@ on subtotal rows -- fanning 133 rows out to 9030 (or 535k for variant D).
 from collections import Counter
 
 TAIL = """
-where ss.sale_date.year = 2001 and ss.store.state = 'TN'
+rollup((where ss.sale_date.year = 2001 and ss.store.state = 'TN'
 select
     gm,
     ss.item.category,
     ss.item.class,
     level,
     rnk
-by rollup (ss.item.category, ss.item.class)
 order by level desc nulls first, ss.item.category asc nulls first, rnk asc nulls first
-;
+), ss.item.category, ss.item.class);
 """
 
 # chained aggregate AND chained grouping intermediates

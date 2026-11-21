@@ -28,7 +28,7 @@ def _walks(width: int) -> int:
     env.parse(model)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     listed = ", ".join(dims)
-    query = f"select {listed}, sum(amount) as total by rollup ({listed});"
+    query = f"rollup((select {listed}, sum(amount) as total), {listed});"
     with mock.patch.object(
         keyspace, "_entity_keys", wraps=keyspace._entity_keys
     ) as walk:

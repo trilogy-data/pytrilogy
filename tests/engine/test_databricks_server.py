@@ -80,7 +80,7 @@ def test_aggregate_by_group(executor: Executor):
 def test_rollup(executor: Executor):
     rows = _rows(
         executor,
-        "select region, sum(amount) as total by rollup (region) order by total desc;",
+        "rollup((select region, sum(amount) as total order by total desc), region);",
     )
     assert rows[0] == (None, 23.5)
 

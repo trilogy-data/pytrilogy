@@ -795,10 +795,10 @@ def test_parse_render_roundtrip_aggregate_rollup_empty():
     from trilogy.parsing.parse_engine_v2 import parse_text
 
     env = Environment()
-    text = "key x int;\nselect sum(x) as sx by rollup ();"
+    text = "key x int;\nrollup((select sum(x) as sx));"
     _, parsed = parse_text(text, env)
     rendered = str(parsed[-1])
-    assert "by rollup ()" in rendered, rendered
+    assert rendered.startswith("rollup("), rendered
 
 
 def test_parse_render_roundtrip_aggregate_no_grouping():

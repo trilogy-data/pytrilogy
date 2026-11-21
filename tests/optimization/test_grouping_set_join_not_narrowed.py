@@ -38,11 +38,11 @@ QUERY = """
 rowset left_rows <- select left_id as row_id, left_key as k, left_value as v;
 rowset kept <- where subset_value >= 20 select subset_key as k;
 
-select left_rows.k, sum(left_rows.v) as total
+rollup((select left_rows.k, sum(left_rows.v) as total
 subset join left_rows.k = kept.k
 where kept.k is not null
-by rollup (left_rows.k)
-order by left_rows.k asc nulls last;
+order by left_rows.k asc nulls last
+), left_rows.k);
 """
 
 

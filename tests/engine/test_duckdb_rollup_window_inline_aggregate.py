@@ -60,30 +60,30 @@ def _oracle_sql(measure: str, grouping: str) -> str:
 CASES = [
     pytest.param(
         f"""
-select g1, g2, total,
+rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
-by rollup (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         _oracle_sql("sum(v)", "rollup (g1, g2)"),
         id="inline_same_measure",
     ),
     pytest.param(
         f"""
-select g1, g2, total,
+rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(w) desc) as r
-by rollup (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         _oracle_sql("sum(w)", "rollup (g1, g2)"),
         id="inline_different_measure",
     ),
     pytest.param(
         f"""
-select g1, g2, total, wtotal,
+rollup((select g1, g2, total, wtotal,
     rank(g1, g2) over (partition by g1 order by wtotal desc) as r
-by rollup (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         f"""
     select g1, g2, sum(v) as total, sum(w) as wtotal,
@@ -96,11 +96,11 @@ by rollup (g1, g2)
     ),
     pytest.param(
         f"""
-select g1, g2,
+rollup((select g1, g2,
     sum(coalesce(v, 0) * coalesce(w, 0)) as total,
     rank(g1, g2) over (partition by g1 order by sum(coalesce(v, 0) * coalesce(w, 0)) desc) as r
-by rollup (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         f"""
     select g1, g2, sum(coalesce(v, 0) * coalesce(w, 0)) as total,
@@ -113,10 +113,10 @@ by rollup (g1, g2)
     ),
     pytest.param(
         """
-select g1, g2, total as total_q,
+rollup((select g1, g2, total as total_q,
     rank(g1, g2) over (partition by g1 order by total desc) as r
-by rollup (g1, g2)
-order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first;
+order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first
+), g1, g2);
 """,
         _oracle_sql("sum(v)", "rollup (g1, g2)"),
         id="aliased_measure",
@@ -124,30 +124,30 @@ order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first;
     pytest.param(
         f"""
 auto ctotal <- coalesce(sum(v), 0);
-select g1, g2, ctotal as total,
+rollup((select g1, g2, ctotal as total,
     rank(g1, g2) over (partition by g1 order by ctotal desc) as r
-by rollup (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         _oracle_sql("sum(v)", "rollup (g1, g2)"),
         id="window_over_scalar_of_measure",
     ),
     pytest.param(
         f"""
-select g1, g2, total,
+cube((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
-by cube (g1, g2)
-{ORDER};
+{ORDER}
+), g1, g2);
 """,
         _oracle_sql("sum(v)", "cube (g1, g2)"),
         id="inline_cube",
     ),
     pytest.param(
         f"""
-select g1, g2, total,
+grouping_sets((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
-by grouping sets ((g1), (g1, g2))
-{ORDER};
+{ORDER}
+), (g1), (g1, g2));
 """,
         _oracle_sql("sum(v)", "grouping sets ((g1), (g1, g2))"),
         id="inline_grouping_sets",
@@ -202,9 +202,9 @@ auto bucket <- case when gg = 1 then '~total~' else g1 end;
 def test_grouping_derived_partition_keeps_rollup(executor, partition):
     executor.execute_text(GROUPING_PARTITION_DEFS)
     sql = executor.generate_sql(f"""
-select g1, g2, total,
+rollup((select g1, g2, total,
     rank(g1, g2) over (partition by {partition} order by total desc) as r
-by rollup (g1, g2);
+), g1, g2);
 """)[-1]
     assert sql.upper().count("ROLLUP") == 1, sql
     assert " JOIN " not in sql.upper(), sql
@@ -213,14 +213,14 @@ by rollup (g1, g2);
 
 
 def test_inferred_rollup_keys_inline(executor):
-    """Inferred-key `by rollup ()`: the inline window aggregate resolves at the
-    select grain into the same grouping pass (it used to co-grain to the window
-    anchor, landing in a different pass whose stitch join collided sets)."""
+    """Inferred-key `rollup((select ...))`: the inline window aggregate resolves
+    at the select grain into the same grouping pass (it used to co-grain to the
+    window anchor, landing in a different pass whose stitch join collided sets)."""
     query = f"""
-select g1, g2, total,
+rollup((select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r
-by rollup ()
-{ORDER};
+{ORDER}
+));
 """
     sql = executor.generate_sql(query)[-1]
     assert sql.upper().count("ROLLUP") == 1, sql

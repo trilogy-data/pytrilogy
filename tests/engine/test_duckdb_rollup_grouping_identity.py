@@ -40,7 +40,7 @@ QUERY = """
 auto tnp <- sum(sale_id.np);
 auto tesp <- sum(sale_id.esp);
 auto gross_margin <- tnp / nullif(tesp, 0);
-select
+rollup((select
     grouping(sale_id.cat) + grouping(sale_id.cls) as hierarchy_level,
     sale_id.cat,
     sale_id.cls,
@@ -51,11 +51,11 @@ select
             case when grouping(sale_id.cls) = 0 then sale_id.cat else 'X' end
         order by gross_margin asc
     ) as within_parent_rank
-by rollup (sale_id.cat, sale_id.cls)
 order by
     hierarchy_level desc nulls first,
     sale_id.cat nulls first,
-    within_parent_rank nulls first;
+    within_parent_rank nulls first
+), sale_id.cat, sale_id.cls);
 """
 
 # Hand-written single-statement ROLLUP + window — the oracle.

@@ -28,12 +28,12 @@ query '''select 1 as chan, 1 as oid, 'p' as txt, 10.0 as amt
 """
 
 _QUERY = """
-select
+rollup((select
   case when chan = 1 then 'aa' else 'bb' end as channel,
   'x' || txt as outlet,
-  sum(amt) as sales,
-by rollup (chan, txt)
-order by channel asc, sales asc, outlet asc nulls first;
+  sum(amt) as sales
+order by channel asc, sales asc, outlet asc nulls first
+), chan, txt);
 """
 
 

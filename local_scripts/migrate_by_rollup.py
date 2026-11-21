@@ -15,7 +15,10 @@ import re
 import sys
 from pathlib import Path
 
-CLAUSE = re.compile(r"\bby\s+(rollup|cube|grouping\s+sets)\s*\(", re.IGNORECASE)
+CLAUSE = re.compile(
+    r"(?<!group )(?<!group\n)\bby\s+(rollup|cube|grouping\s+sets)\s*\(", re.IGNORECASE
+)
+COMMENTED = re.compile(r"(?:#|//)[^\n]*$")
 LEAD = re.compile(r"\s*(?:(?:with\s+\w+\s+as|rowset\s+\w+\s*<-)\s+)?", re.IGNORECASE)
 COMMENTS = re.compile(r"\s*(?:(?:#|//)[^\n]*\n\s*)*")
 UNSUPPORTED = re.compile(r"\b(merge|align|persist)\b", re.IGNORECASE)
@@ -69,9 +72,15 @@ def statement_end(text: str, at: int) -> int:
 
 
 def migrate_one(text: str, match: re.Match[str]) -> str | None:
+    line_start = text.rfind(NEWLINE, 0, match.start()) + 1
+    if COMMENTED.search(text[line_start : match.start()]):
+        return None
     name = re.sub(r"\s+", "_", match.group(1).lower())
     keys_open = match.end() - 1
-    keys_close = close_paren(text, keys_open)
+    try:
+        keys_close = close_paren(text, keys_open)
+    except ValueError:
+        return None
     keys = text[keys_open + 1 : keys_close].strip()
     start = statement_start(text, match.start())
     end = statement_end(text, keys_close + 1)
@@ -145,10 +154,17 @@ def migrate_python(source: str) -> tuple[str, int]:
     formatted = {
         id(v) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for v in n.values
     }
+    docstrings = {
+        id(n.body[0].value)
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Module, ast.FunctionDef, ast.ClassDef))
+        and n.body
+        and isinstance(n.body[0], ast.Expr)
+    }
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
             continue
-        if id(node) in formatted or not CLAUSE.search(node.value):
+        if id(node) in formatted | docstrings or not CLAUSE.search(node.value):
             continue
         new, missed = migrate_text(node.value)
         skipped += missed
