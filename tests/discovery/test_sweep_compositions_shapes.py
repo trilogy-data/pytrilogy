@@ -343,3 +343,19 @@ def test_set_off_a_finer_stored_count(model: str):
         "auto s <- city ? count(tree_id) by city, species > 1; select s;"
     )[-1].fetchall()
     assert normalize(rows) == [("A",)]
+
+
+@pytest.mark.parametrize("model", ["base", "summary"])
+@pytest.mark.parametrize(
+    "threshold, expected", [(5, [("A", 4), ("B", 2)]), (9, [("A", 4)])]
+)
+def test_literal_membership_in_an_or(model: str, threshold: int, expected: list):
+    """A set tested by a literal pairs with the atom's row arguments: b1 (7)
+    puts B in the set past 5, and nothing passes 9."""
+    query = (
+        f"select city, count(tree_id) as c where 'B' in (city ? height > {threshold})"
+        " or city = 'A';"
+    )
+    sql = executor(model).generate_sql(query)[-1]
+    rows = executor(model).execute_raw_sql(sql).fetchall()
+    assert normalize(rows) == expected, sql
