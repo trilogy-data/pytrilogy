@@ -2659,7 +2659,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 
 - **The `windows` family to 60,000** (0.3.529). Seeds 12,000-60,000 (96,000
   queries) held 54 wrong answers, 51 raises and 18 invalid statements on main;
-  21 are left (12 wrong, 9 raising), each failing on main too, and no query
+  25 are left (16 wrong, 9 raising), each failing on main too, and no query
   that planned on main fails. Nine of the 13 seeds 0.3.528 left `OPEN` pass. The four older
   families, 20,000 queries each, are unchanged.
   - Two filtered columns of one aggregate (`select city, count(id ? city in
@@ -2694,16 +2694,17 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     parent's.
   - A HAVING on a column the select does not project is a semijoin on the
     select's keys, planned under the WHERE. The WHERE was also written into
-    the set's own filter, where its sets and aggregates were read again off
-    the rows it had kept: `where tag in (tag ? count(id) by * - sum(h) by
-    species > 3) having species in (...)` dropped every group, `where h > 2
-    and count(id) by species >= 3 having tag = 'y'` recounted two trees for
-    three (found by a probe), and a total in such a copy could not be planned
-    at all (`Could not resolve existence clause`, 12 of the raises). The copy
-    is now written only where applying the WHERE twice is applying it once
-    (`SelectGrain.row_where_idempotent`): it reads no set, and no aggregate
-    or aggregates at one grain alone
-    (`SelectGrain.where_over_total_not_idempotent`).
+    the set's own filter, where a set it reads was read again off the rows it
+    had kept: `where tag in (tag ? count(id) by * - sum(h) by species > 3)
+    having species in (...)` dropped every group, and a total in such a copy
+    could not be planned at all (`Could not resolve existence clause`, 12 of
+    the raises). A WHERE reading a set is no longer copied
+    (`SelectGrain.where_over_total_not_idempotent`); a row predicate is safe
+    to copy (`SelectGrain.row_where_idempotent`). A WHERE with an aggregate
+    atom and no set is still copied, wrongly where the atom is not decided
+    per whole group (`where h > 2 and count(id) by species >= 3 having tag =
+    'y'` recounts two trees for three): dropping that copy raised on 78
+    queries that plan on main, so it is a lead.
   - A window over a derived key beside a WHERE membership on the row key
     (`row_number() over (partition by city order by fc) where tree_id in
     (...)`) joined the key's stream to the rows on nothing and returned every

@@ -20,7 +20,7 @@ History lives elsewhere, so this file stays short:
 expression) to 260,000 and the `windows` family (other windows over the
 select's groups, memberships in a select target's `?` and in a HAVING, `/` by
 a `by` aggregate) to 60,000; the PR of each round holds its sweep totals.
-`windows` has 17 `OPEN` seeds (area 4); `expressions` 8628 raises on the
+`windows` has 19 `OPEN` seeds (area 4); `expressions` 8628 raises on the
 summary model on main (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -510,7 +510,7 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 
 Open in the `windows` family (`OPEN` in `test_oracle_windows_laws.py`, each
 failing on main too). 12,000-60,000 held 123 failing queries on main and
-holds 21, a fifth of the first 12,000's yield per seed: write the next
+holds 25, a fifth of the first 12,000's yield per seed: write the next
 generator (a `?` as a select target, below) before sweeping on.
 
 - A filtered key under a WHERE gate reads rows the gate never filtered:
@@ -527,8 +527,11 @@ generator (a `?` as a select target, below) before sweeping on.
 - `select tree_id ? species in (species ? tag = 'y') as f where
   count(tree_id) by species <= 2` recurses (the set's kept feeder outputs
   `f`, its claimed grain, and asks for itself); as a HAVING set it raises
-  `cannot be related` (10318). Until it plans, the HAVING semijoin restates
-  a WHERE that is idempotent.
+  `cannot be related` (10318), as does any HAVING set under a gate atom with
+  no set once the HAVING semijoin stops restating the WHERE (78 queries in
+  60,000 seeds). So the semijoin still restates such a WHERE, wrongly where
+  the gate is not decided per whole group (51466, 54409; `where height > 2
+  and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
 - Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444, 58721
   (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
   15366, 11457.
