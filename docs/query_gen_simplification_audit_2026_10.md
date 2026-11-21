@@ -1024,9 +1024,22 @@ election, not the padded fallback.
       the arm as a STANDARD select and have the generator set the grouping
       sets on its root `GroupNode`, with a per-grouping-set union as the
       fallback where the arm is not one group; (c) delete the mode from
-      `BuildAggregateWrapper` and the sites above with it. An explicit
-      `rollup(...)` call form, and with it retiring the `by rollup` clause,
-      waits on the lark and pest grammars moving together.
+      `BuildAggregateWrapper` and the sites above with it.
+    - **Third slice: the syntax.** `rollup((select ...), k1, k2)`,
+      `cube(...)` and `grouping_sets((select ...), (k1, k2), (k1), ())` are
+      the authoring forms, in both grammars: named
+      (`with r as rollup(...) [-> (names)]`), inline
+      (`from rollup(...) -> (names) select ...`), or as a whole statement
+      (`rollup(...);`, where the arm's ORDER BY and LIMIT are the result's).
+      Each hydrates to the arm select carrying the spec and reaches
+      `lower_grouping_select` / `lower_statement_grouping` unchanged, so the
+      generated SQL did not move. An inline call's signature names are bound
+      only inside its trailing select (`SemanticState.name_bindings`) and its
+      handles live in a per-statement namespace, shown under the signature
+      names through `SelectStatement.labels`. The `by rollup` select clause
+      still parses, to raise a migration error naming the call; a merge and a
+      persist can no longer carry a spec directly and read a named call
+      instead. `local_scripts/migrate_by_rollup.py` rewrites the clause.
 
 ## Gate used
 
