@@ -95,20 +95,25 @@ generator-agnostic and wired into `gen_aggregate` and the ROOT generator
 (`v4_node_generators/root.py`). Wire it into `gen_basic` / `gen_filter` /
 `gen_window` only if a test shape needs it. Nothing fires today.
 
-## 4. Grouping sets as a relational TVF (rowset boundary landed)
+## 4. Grouping sets as a relational TVF (every keyed read landed)
 
-A rowset whose body is `by rollup|cube|grouping sets` lowers to a one-arm TVF
-(`RollupSelectLineage`, `gen_rollup_select`): its handles read new key and
-property concepts, so nothing above the rowset tracks grouping-set padding.
-The arm itself is still planned by the select mutator, and a top-level
-`by rollup` select is untouched. Design, gates and the three remaining steps
-(split the select into a pure arm and an outer select, plan the arm standard
-with the generator owning the grouping sets, delete the mode) are seam 10 of
+A select whose body is `by rollup|cube|grouping sets` lowers to a one-arm TVF
+(`RollupSelectLineage`, `gen_rollup_select`): a rowset body, an inline
+`(select ...)`, and a top-level statement, which is planned as
+`SelectStatement.relational`, a select over an anonymous rowset's handles
+rendered under the authored names. Every read of a keyed rollup is of new key
+and property concepts, so nothing above the arm tracks grouping-set padding.
+The arm itself is still planned by the select mutator (as are a merge arm and a
+union arm that carry a spec). Design, gates and the remaining steps (move the
+post-aggregate scalars and HAVING out of the arm, plan the arm standard with
+the generator owning the grouping sets, delete the mode) are seam 10 of
 `docs/query_gen_simplification_audit_2026_10.md`.
 
-Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`: the
-suite's own rollup-in-rowset coverage is about twenty tests and passed two
-render defects the laws caught.
+Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`
+(rowset reads against the statement) and
+`tests/engine/test_duckdb_rollup_statement_laws.py` (the statement against
+DuckDB): the suite's own rollup-in-rowset coverage is about twenty tests and
+passed two render defects the laws caught.
 
 ## Closed: do not re-chase
 

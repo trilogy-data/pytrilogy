@@ -386,7 +386,8 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
                 if rename_reference(column) is not None
                 else None
             )
-            if consumed is not None:
+            # a passthrough of the parent's own rename reads itself
+            if consumed is not None and consumed.address != column.address:
                 column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
             # The child derives this column over the parent's rows. A column

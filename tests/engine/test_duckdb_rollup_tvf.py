@@ -9,8 +9,9 @@ rowset has to know the NULLs came from a grouping set.
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.enums import Derivation, Modifier, Purpose
+from trilogy.core.enums import Derivation, JoinType, Modifier, Purpose
 from trilogy.core.models.author import RollupSelectLineage, RowsetItem, SelectLineage
+from trilogy.core.query_processor import _collect_rowset_scoped_joins
 from trilogy.parsing.render import Renderer
 
 MODEL = """
@@ -258,3 +259,153 @@ def test_imported_rollup_rowset(tmp_path):
         "import enroll as e; select e.rolled.department, e.rolled.total, e.rolled.g"
         " order by e.rolled.g asc, e.rolled.department asc;",
     ) == [("art", 2, 0), ("math", 7, 0), (None, 9, 1)]
+
+
+STATEMENT = (
+    "select department, sum(credits) as total_credits, --grouping(department) as g"
+    " by rollup (department)"
+)
+
+
+def test_statement_is_planned_over_its_own_tvf():
+    env = Environment()
+    _, statements = env.parse(MODEL + STATEMENT + " order by g asc limit 2;")
+    statement = statements[-1]
+    outer = statement.relational
+    assert outer is not None and outer.grouping is None
+    assert outer.limit == 2 and statement.limit == 2
+    handles = [env.concepts[ref.address] for ref in outer.output_components]
+    assert all(isinstance(h.lineage, RowsetItem) for h in handles)
+    assert isinstance(handles[0].lineage.rowset.select, RollupSelectLineage)
+    assert statement.relational_names == {
+        authored.address: handle.address
+        for authored, handle in zip(statement.output_components, handles)
+    }
+    assert [ref.address for ref in statement.output_components] == [
+        "local.department",
+        "local.total_credits",
+        "local.g",
+    ]
+
+
+def test_statement_over_no_keys_stays_a_select():
+    env = Environment()
+    _, statements = env.parse(MODEL + "select sum(credits) as t by rollup ();")
+    assert statements[-1].relational is None
+
+
+def test_statement_renders_under_authored_names(executor):
+    result = executor.execute_text(
+        STATEMENT + " order by g asc, department asc limit 2;"
+    )[-1]
+    assert list(result.keys()) == ["department", "total_credits"]
+    assert [tuple(r) for r in result.fetchall()] == [("art", 2), ("math", 7)]
+
+
+def test_statement_is_one_pass_ordered_by_its_columns(executor):
+    sql = executor.generate_sql(
+        STATEMENT.replace("--", "") + " order by g asc, department asc;"
+    )[-1]
+    assert sql.count("ROLLUP (") == 1
+    assert sql.count("GROUP BY") == 1
+    assert "grouping(" not in sql.split("ORDER BY")[-1]
+
+
+def test_reparsed_statement_reuses_its_relation():
+    env = Environment()
+    env.parse(MODEL)
+    before = len(env.concepts)
+    env.parse(STATEMENT + ";")
+    once = len(env.concepts)
+    env.parse(STATEMENT + ";")
+    assert once > before and len(env.concepts) == once
+
+
+def test_two_statements_keep_their_own_relations(executor):
+    _, first = executor.environment.parse(
+        STATEMENT + " order by g asc, department asc;"
+    )
+    _, second = executor.environment.parse(
+        "select course, sum(credits) as by_course by rollup (course)"
+        " order by course asc nulls first;"
+    )
+    assert [tuple(r) for r in executor.execute_query(first[-1]).fetchall()] == [
+        ("art", 2),
+        ("math", 7),
+        (None, 9),
+    ]
+    assert [tuple(r) for r in executor.execute_query(second[-1]).fetchall()] == [
+        (None, 9),
+        ("algebra", 3),
+        ("calc", 4),
+        ("paint", 2),
+    ]
+
+
+def test_statement_with_a_renamed_key(executor):
+    assert rows(
+        executor,
+        "select department as dept_name, sum(credits) as t by rollup (department)"
+        " order by dept_name asc nulls first;",
+    ) == [(None, 9), ("art", 2), ("math", 7)]
+
+
+def test_rowset_with_an_unprojected_key(executor):
+    assert rows(
+        executor,
+        "with a as select case when grouping(department) = 1 then 'all'"
+        " else department end as label, sum(credits) as t by rollup (department);\n"
+        "select a.label, a.t order by a.label asc;",
+    ) == [("all", 9), ("art", 2), ("math", 7)]
+
+
+def test_rollup_body_keeps_its_scoped_join(executor):
+    body = (
+        "select department, sum(credits) as t, sum(salary) as paid"
+        " union join department = dept by rollup (department)"
+    )
+    direct = rows(executor, body + " order by department asc nulls first;")
+    assert direct == rows(
+        executor,
+        f"with a as {body};\nselect a.department, a.t, a.paid"
+        " order by a.department asc nulls first;",
+    )
+    assert (None, 9, 220) in direct
+
+
+def test_rollup_body_with_a_scoped_join_reads_its_flag(executor):
+    assert rows(
+        executor,
+        "with a as select department, sum(credits) as t, sum(salary) as paid,"
+        " grouping(department) as g union join department = dept"
+        " by rollup (department);\n"
+        "select a.department, a.t, a.paid, a.g"
+        " order by a.g asc, a.department asc;",
+    ) == [
+        ("art", 2, None, 0),
+        ("math", 7, 150, 0),
+        ("music", None, 70, 0),
+        (None, 9, 220, 1),
+    ]
+
+
+def test_persisted_statement_is_planned_over_its_tvf():
+    env = Environment()
+    _, statements = env.parse(
+        MODEL + "persist rolled into rolled_table from select department,"
+        " sum(credits) as total_credits by rollup (department);"
+    )
+    assert statements[-1].select.relational is not None
+
+
+def test_a_statement_join_stays_its_own():
+    env = Environment()
+    join = ("local.department", "local.dept", JoinType.FULL)
+    _, statements = env.parse(
+        MODEL + "select department, sum(credits) as t union join department = dept"
+        " by rollup (department);\n"
+        "select course, sum(credits) as c by rollup (course);"
+    )
+    joined, plain = statements[-2], statements[-1]
+    assert join in _collect_rowset_scoped_joins(env, joined.planned)
+    assert _collect_rowset_scoped_joins(env, plain.planned) == []

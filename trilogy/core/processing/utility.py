@@ -334,7 +334,11 @@ def _resolve_output_target(
 ) -> tuple[BuildConcept, bool] | None:
     """The CTE column that renders `target`, and whether it must be re-aliased
     to the written name. None when the CTE cannot render it at all."""
-    mapping = {x.address: x for x in cte.output_columns}
+    # first wins: a folded consumer's passthrough copy follows the CTE's own
+    # column, whose lineage is the one this CTE renders
+    mapping: dict[str, BuildConcept] = {}
+    for column in cte.output_columns:
+        mapping.setdefault(column.address, column)
     if target.address in mapping:
         return mapping[target.address], False
     for oc in cte.output_columns:
@@ -422,7 +426,7 @@ def sort_select_output_processed(
 
     cte.hidden_concepts = {
         c.address
-        for c in cte.output_columns
+        for c in new_output
         if (c.address not in output_addresses or c.address in hidden)
     }
     cte.output_columns = new_output
