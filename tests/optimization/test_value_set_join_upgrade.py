@@ -29,6 +29,7 @@ from trilogy.core.models.execute import (
     ConceptPair,
     Join,
     QueryDatasource,
+    UnionCTE,
 )
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
@@ -36,6 +37,8 @@ from trilogy.core.optimizations.value_set_join_upgrade import (
     _complete_distinct,
     _filters_equivalent,
     _pair_key_sets_equivalent,
+    _same_filtered_rows,
+    _unpaired_guest_padding,
 )
 
 
@@ -710,3 +713,39 @@ def test_a_left_an_outer_join_pads_is_no_witness():
     root = _read_through_equated_left(JoinType.RIGHT_OUTER)
     UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert root.joins[1].join_type == JoinType.LEFT_OUTER
+
+
+def _filtered_child(name: str, parent: CTE, key: BuildConcept, in_source: bool):
+    cte = _grouped_child(name, parent, key)
+    cte.condition = BuildComparison(left=key, right="x", operator=ComparisonOperator.EQ)
+    if in_source:
+        cte.source.condition = cte.condition
+    return cte
+
+
+def test_same_filtered_rows_reads_the_cte_chain_past_its_sources():
+    key = _concept("CLASS")
+    base = _datasource_cte("base", [key])
+    assert _same_filtered_rows(
+        _grouped_child("left", base, key), _grouped_child("right", base, key)
+    )
+    planned = _filtered_child("planned", base, key, in_source=True)
+    pushed = _filtered_child("pushed", base, key, in_source=False)
+    assert _same_filtered_rows(planned, pushed)
+    assert not _same_filtered_rows(planned, _grouped_child("bare", base, key))
+    union = UnionCTE(
+        name="union",
+        source=planned.source,
+        parent_ctes=[planned],
+        internal_ctes=[planned],
+        output_columns=[key],
+        grain=planned.grain,
+    )
+    assert not _same_filtered_rows(planned, union)
+
+
+def test_a_side_with_no_guest_rows_pads_no_unpaired_guest():
+    key = _concept("CLASS")
+    base = _datasource_cte("base", [key])
+    child = _grouped_child("child", base, key)
+    assert not _unpaired_guest_padding(key, child, key, base)
