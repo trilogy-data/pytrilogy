@@ -2522,6 +2522,19 @@ def _subtree_pinned_addresses(
     return pinned
 
 
+def _keyed_finer(
+    concept: BuildConcept, grain: set[str], environment: BuildEnvironment
+) -> bool:
+    """A filtered column claims the select's grain and holds a value per row
+    it filters: its keys say so (`Windows.filtered_passenger_repeats_groups`)."""
+    keys = concept.keys or set()
+    return (
+        concept.derivation == Derivation.FILTER
+        and bool(keys)
+        and not build_fd_determines_all(environment, grain, keys)
+    )
+
+
 def _window_rows_at_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -2556,7 +2569,10 @@ def _window_rows_at_grain(
             for concept in parent.output_concepts
             if concept.address in needed
             or concept.grain.abstract
-            or concept.grain.components <= grain
+            or (
+                concept.grain.components <= grain
+                and not _keyed_finer(concept, grain, environment)
+            )
         ],
         "address",
     )
@@ -2708,11 +2724,12 @@ def _widen_scan_chain(
         # grouping key.
         if isinstance(node, UnionNode):
             return False
-        if isinstance(node, (SelectNode, FilterNode)) and len(node.parents) != 1:
+        # A set a membership reads is no stream of this node's rows.
+        rows = _row_source_parents(node)
+        if isinstance(node, (SelectNode, FilterNode)) and len(rows) != 1:
             return False
         if not any(
-            _widen_below(below, concept, depth + 1, environment)
-            for below in node.parents
+            _widen_below(below, concept, depth + 1, environment) for below in rows
         ) and not _widen_inputs_below(node, concept, available, depth):
             return False
         available = renderable_addresses(node)
@@ -4237,7 +4254,11 @@ def _plan_group_bridges(
         # a bridge elected to key a pairing joins no islands and repeats a row
         # its keys do not identify: a BASIC's repeats dedup away, an
         # aggregate would count them, so its merge never joins one
-        basic = attrs[gid].derivation in (Derivation.BASIC, Derivation.WINDOW)
+        basic = attrs[gid].derivation in (
+            Derivation.BASIC,
+            Derivation.WINDOW,
+            Derivation.FILTER,
+        )
         if basic:
             attrs[gid].keying_bridges = bridged.keying
         attrs[gid].joined_bridges = tuple(

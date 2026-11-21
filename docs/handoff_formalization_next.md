@@ -13,14 +13,14 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.528.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.529.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
 expression) to 260,000 and the `windows` family (other windows over the
 select's groups, memberships in a select target's `?` and in a HAVING, `/` by
-a `by` aggregate) to 12,000; the PR of each round holds its sweep totals.
-`windows` has 13 `OPEN` seeds (area 4); `expressions` 8628 raises on the
+a `by` aggregate) to 60,000; the PR of each round holds its sweep totals.
+`windows` has 17 `OPEN` seeds (area 4); `expressions` 8628 raises on the
 summary model on main (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -102,7 +102,9 @@ or fix their planning beyond keeping existing tests green.
   rerun on unchanged sources is free. Iterate on a slice (`--seeds @file`
   replays the seeds a diff named), then confirm on the whole range. Run
   `--carry-state` once a round: the default plans each seed on a clean model
-  and cannot see a bug that needs an earlier statement's definition.
+  and cannot see a bug that needs an earlier statement's definition. A
+  family's law file is part of its cache key: edit `OPEN`/`FOUND_SEEDS` after
+  the last sweep, or copy the ref's records to the new key.
 - **Sweep limits.** A background command stops at 2 hours and a container can
   restart: rerun the same command and it continues. One sweep at a time; a
   second on the same records refuses to start. Never start one with a
@@ -312,6 +314,12 @@ or fix their planning beyond keeping existing tests green.
   merged aggregate groups by a partial of its parent (0.3.526).
 - `existence_arguments` of a literal `in (...)` is `[()]`, truthy: test with
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
+- A filtered column (`x ? c`) and a set claim the grain of the select they
+  were built in; their rows are the ones they filter. Read `keys`, the
+  contract's asks or the node, never that grain.
+- A WHERE is applied once: a rewrite that restates it re-reads its sets and
+  aggregates off the rows it kept. An optimizer rule that moves or folds a
+  membership checks the CTE it lands in is wired to that set.
 - Efficiency: "summary reads lost" is a cost only where the base scans grew.
   Attribute cost per change and per lost seed, and gate a planner-wide
   efficiency change with a full A/B before narrowing it.
@@ -370,8 +378,7 @@ Open in the `expressions` family (each fails on main too):
   A/B of 0-10,000; the family's nightly sweep is not in the matrix).
 
 Open in the `compositions` family: none of seeds 0-260,000 is wrong or
-raises. It is nearly spent (4 raising queries in 120,000 past 200,000); the
-`windows` family (area 4) is where the yield is.
+raises. It is nearly spent (4 raising queries in 120,000 past 200,000).
 - Efficiency: a set the group graph builds is planned a second time as a
   standalone feeder (`_CleanFeederCache`) for a dimension root hosting the
   same membership. Seed 83051, which showed it, no longer generates a
@@ -382,9 +389,6 @@ raises. It is nearly spent (4 raising queries in 120,000 past 200,000); the
 
 Reads the summary could serve:
 
-- `min(count(tree_id) by tree_form) where city = 'B' and species = 'Acer'`
-  (first 446174) now reads the trees: the summary answers it with the WHERE
-  on its scan, below the re-sum.
 - A stored count read beside tree rows joins the summary to the trees and
   groups back (`count(tree_id) / count(tree_id) by *` beside a mixed grain).
 
@@ -505,20 +509,34 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 ### 4. Windows, ORDER BY, set operators (`Windows.lean`, `SetOps.lean`, `SelectGrain.lean`)
 
 Open in the `windows` family (`OPEN` in `test_oracle_windows_laws.py`, each
-failing on main too; 12,000 seeds held 1 failure in 21 queries on main, so
-sweep on before reducing these):
+failing on main too). 12,000-60,000 held 123 failing queries on main and
+holds 21, a fifth of the first 12,000's yield per seed: write the next
+generator (a `?` as a select target, below) before sweeping on.
 
-- Wrong rows: a HAVING membership whose set reads two gates beside a
-  filtered aggregate (5168); an `over ()` total beside two filtered counts
-  under a HAVING membership fans out (7437); a `row_number` partitioned by a
-  property beside a WHERE of two memberships numbers repeats (11606).
-- A keyless join between a filtered aggregate's set and a `by` denominator
-  (8156, 9809); `Could not resolve existence clause` for a HAVING membership
-  on a property under a window (10318); a membership's left side a window
-  group never carries (3018).
-- Invalid SQL: a CTE joined twice or referenced past its scope when two
-  select-phase sets share a feeder (1210, 1955, 1977, 6336, 10654); a
-  summary column read off the wrong scan (11457).
+- A filtered key under a WHERE gate reads rows the gate never filtered:
+  `select city ? species != 'Tilia' and min(height) by city <= 10 as f where
+  max(height) by tree_form = sum(height) by tree_form` returns B (24973).
+  `_hosts_reading_unfiltered_rows` pools only GROUP BY groups; pooling FILTER
+  groups too filtered another shape twice.
+- `select fc, row_number fc order by fc where max(height) by species <= 1 or
+  tag = 'x'`: the atom is hosted on the window, whose parents (the derived
+  key off the species dimension) hold no tree column (3018, 58115).
+- One set written in the WHERE and again in the HAVING or a select target,
+  under a WHERE no scan carries: `Missing source CTE` (16181, 58098),
+  `Ambiguous reference` (1210), or the select-phase copy's total is unbuilt.
+- `select tree_id ? species in (species ? tag = 'y') as f where
+  count(tree_id) by species <= 2` recurses (the set's kept feeder outputs
+  `f`, its claimed grain, and asks for itself); as a HAVING set it raises
+  `cannot be related` (10318). Until it plans, the HAVING semijoin restates
+  a WHERE that is idempotent.
+- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444, 58721
+  (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
+  15366, 11457.
+- `select species ? city in (<set>) as f` returns a NULL row per rejected
+  species, twice, where `select species ? tag = 'x' as f` returns none:
+  decide what a selected `?` shows of the rows it rejects.
+- Two parents of one group with no pairing render as a cross join; the
+  keyless-join guard does not fire (59727 before its fix).
 - Efficiency: a summary no longer answers `agg(x ? k in <set>)` (301 of
   3,449 summary reads in the family, 85 queries scan the trees more). The
   refusal is in `_datasource_has_matching_rollup_aggregate`, which cannot see
@@ -537,7 +555,8 @@ sweep on before reducing these):
   plans each case on a fresh copy of the model; `--carry-state` over 0-4,000
   shows no other pair.
 - The generator writes no frames (`rows between`), no window over a window,
-  and no membership whose set is a derived key.
+  no membership whose set is a derived key, and no `?` as a select target
+  outside an aggregate (the probes above found four failures in ten tries).
 
 - Decide whether to warn: a select of only a window ordered by a bare
   aggregate repeats ranks per tuple, and with no keys every row ties

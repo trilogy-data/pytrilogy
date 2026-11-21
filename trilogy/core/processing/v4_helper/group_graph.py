@@ -922,13 +922,14 @@ def _consumer_required_input_grain(
                 continue
             grain |= pred_grain
         elif (
-            attrs[pred].derivation == Derivation.UNNEST
+            attrs[pred].derivation in (Derivation.UNNEST, Derivation.FILTER)
             and attrs[gid].derivation in GROUPING_DERIVATIONS
             and len(row_preds) > 1
         ):
             # an unnest beside the rows it expands pairs with them on their
             # identity; on the grouping key alone, every row of a group meets
-            # every element (`Unnest.coarse_pair_overcounts`)
+            # every element (`Unnest.coarse_pair_overcounts`). So do two
+            # filtered row streams (`Rows.coarse_pair_squares`)
             grain |= attrs[gid].aggregate_input_grain
     return pairing_keys(grain)
 
@@ -2725,6 +2726,9 @@ def _regraft_candidate(
         for pred in lineage_predecessors(group_graph, group_edges, gid):
             pred_outputs |= sets.outputs_of(pred)
     my_ancestors = nx.ancestors(group_graph, gid)
+    paired_downstream = any(
+        reader != FINAL_NODE_ID for reader in group_graph.successors(gid)
+    )
     best_gid: str | None = None
     best_score: tuple[int, ...] = ()
     for candidate in group_graph.nodes:
@@ -2747,6 +2751,15 @@ def _regraft_candidate(
         if not covered:
             continue
         full = covered >= needed
+        # a redirect onto grouped rows keeps only their keys: a reader pairing
+        # `gid` with other rows on its own grain finds none of it there
+        if (
+            full
+            and paired_downstream
+            and cattrs.derivation in GROUPING_DERIVATIONS
+            and not pairing_keys(grain) <= sets.outputs_of(candidate)
+        ):
+            continue
         if not full:
             # Partial spine: join-bearing, so gate for safety only. Any
             # non-ROOT/BASIC sibling at the BASIC's exact grain (1:1, no fan-out)

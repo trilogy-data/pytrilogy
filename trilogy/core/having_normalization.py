@@ -862,6 +862,24 @@ class _HavingNormalization:
         stable.extend(sorted(window_keys - set(stable)))
         return stable if stable else grain_keys
 
+    def where_reapplies_as_itself(self) -> bool:
+        """Whether the WHERE, applied to the rows it kept, keeps them all: it
+        reads no set, and either no aggregate or aggregates at one grain alone
+        (whole groups of that grain pass or fail). Read off the rows it kept,
+        a set, a total beside a row column, or aggregates at two grains change
+        (``SelectGrain.where_over_total_not_idempotent``)."""
+        where = self.base.where_clause
+        if where is None:
+            return True
+        if any(where.existence_arguments):
+            return False
+        wrappers = _collect_aggregate_wrappers(
+            where.conditional, lambda node: isinstance(node, AggregateWrapper)
+        )
+        grains = {frozenset(c.address for c in w.by) for w in wrappers}
+        rows = bool(_bare_row_refs(where.conditional))
+        return not grains or (len(grains) == 1 and not rows)
+
     def build_grain_key_membership(
         self, leaf: Comparison | Between, grain_keys: list[str]
     ) -> SubselectComparison:
@@ -874,10 +892,11 @@ class _HavingNormalization:
         rendering is null-safe row identity matching; a scalar ``key IN
         (select ...)`` deletes any group whose key is NULL (q11/q59).
 
-        The select's WHERE clause is AND-ed into the filter so the existence
-        set is evaluated within the same pre-aggregation universe the aggregate
-        saw — a group only survives if it has a matching row *that also passed
-        WHERE*."""
+        The set is planned under the select's WHERE (``append_existence_check``),
+        so a group only survives if it has a matching row *that also passed
+        WHERE*. The WHERE is restated in the filter only where applying it
+        again keeps every row (``where_reapplies_as_itself``): a copy reads its
+        sets and aggregates off the rows the WHERE kept."""
         from trilogy.parsing.common import arbitrary_to_concept, row_tuple_function
 
         if not grain_keys:
@@ -888,7 +907,7 @@ class _HavingNormalization:
                 f"aggregation."
             )
         predicate: Any = leaf
-        if self.base.where_clause is not None:
+        if self.base.where_clause is not None and self.where_reapplies_as_itself():
             predicate = Conditional(
                 left=leaf,
                 right=self.base.where_clause.conditional,
