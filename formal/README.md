@@ -2592,6 +2592,30 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     `SelectGrain.set_condition_at_its_own_keys`). Such an aggregate is not
     read off a summary scan of the content's keys.
 
+- **`compositions` to 200,000** (0.3.526). On main seeds 0-200,000 (400,000
+  queries) hold 2 wrong, 14 raising and 8 invalid, all but three on the
+  summary model; the branch leaves none and breaks none. The fixes cost 12
+  scans and 39 joins, all in the queries they fix; the queries already right
+  plan 10 fewer joins and none more, and no summary read is lost. Fixed:
+  - A value the child of a merged aggregate groups by, or reads as its own
+    input, was kept as a partial of the parent, so `select city, min(height)
+    by city, species` re-minned the stored per-species minima to the city
+    (found by a probe; `SelectGrain.value_at_its_own_grain_kept`).
+  - A value a source stores at its own grain (`max(height) by tree_form` off
+    the summary) was hosted on a row-preserving aggregate over another stored
+    value, whose rows hold none of its keys, and the join back had no key
+    (89278, 108631; `SelectGrain.stored_value_is_no_host_key`). It still
+    rides a host over rows, or one at its own grain.
+  - A filtered set's content column was read as a planned group, and the
+    merge of the set beside its membership raised `Merge sources` (5754,
+    32125; `SelectGrain.set_column_is_no_row`). The gate a FINAL condition
+    reads is no longer produced by a set's own filter group (136658), and a
+    semi-join repointed with the CTE it reads (152426).
+  - A cross join to a CTE already joined INNER with no condition was emitted
+    twice (`Ambiguous reference`; 32239, 71000); a window parent FINAL read
+    a value through was sliced to its own outputs (13009, 127138); and a
+    membership side's hidden column the WHERE reads stayed hidden (91633).
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.

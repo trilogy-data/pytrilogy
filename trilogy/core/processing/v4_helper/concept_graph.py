@@ -2356,17 +2356,29 @@ def _host_outputs_on_row_preserving_aggregates(
     if not hosts:
         return
     candidates = [
-        nid
+        (nid, concept)
         for concept in mandatory_list
         if (nid := walk.node_of(concept)) in attrs
         and _is_row_scalar(graph, edges, attrs, nid)
     ]
     for host in hosts:
         grain = attrs[host].grain_components
+        # a value a source stores at its own grain (`max(h) by form` off a
+        # summary) scans as a ROOT, but joins only to rows that hold its keys:
+        # a host over rows, or over another stored value at that same grain
+        over_rows = not any(
+            attrs[n].address in walk.materialized_roots
+            for n in _lineage_ancestors(graph, edges, host)
+        )
         riders = [
             nid
-            for nid in candidates
+            for nid, concept in candidates
             if attrs[nid].address not in grain
+            and (
+                over_rows
+                or concept.derivation != Derivation.AGGREGATE
+                or concept.grain.components == grain
+            )
             and _whole_grain_determines(environment, grain, attrs[nid].address)
         ]
         attrs[host].grain_components = grain | {attrs[nid].address for nid in riders}

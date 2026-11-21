@@ -1087,6 +1087,13 @@ class CTE:
                 self.existence_source_map[k] = [
                     new_key if x in old_keys else x for x in v
                 ]
+        self.semi_join_filters = unique(
+            [
+                replace(semi, feeder=new.name) if semi.feeder in old_keys else semi
+                for semi in self.semi_join_filters
+            ],
+            "identity",
+        )
         if self.base_alias_override == old.safe_identifier:
             self.base_alias_override = new.safe_identifier
         if self.base_name_override == old.safe_identifier:
@@ -2585,10 +2592,26 @@ def _fold_inner_rejoins(joins: list[Join | UnnestJoin]) -> list[Join | UnnestJoi
             and _fold_pairs(out, introduced, join)
         ):
             continue
+        # a cross join to a CTE an INNER join already brought in adds nothing
+        if (
+            isinstance(join, Join)
+            and _is_cross_join(join)
+            and join.right.name in introduced
+            and _joins_inner(out[introduced[join.right.name]])
+        ):
+            continue
         if isinstance(join, Join):
             introduced.setdefault(join.right.name, len(out))
         out.append(join)
     return out
+
+
+def _joins_inner(join: Join | UnnestJoin) -> bool:
+    return (
+        isinstance(join, Join)
+        and join.join_type == JoinType.INNER
+        and join.condition is None
+    )
 
 
 def _fold_pairs(

@@ -371,20 +371,14 @@ FOUND_SEEDS = [
     # 0-130,000 leads 0.3.525 fixed
     23531, 34415, 37601, 38002, 41277, 47456, 66218, 77768, 83051, 84985,
     85861, 94262, 96519, 104172, 106559,
+    # 0-200,000 leads 0.3.526 fixed
+    5754, 13009, 32125, 32239, 71000, 89278, 91633, 108631, 127138, 136658,
+    144193, 144532, 152426, 158975, 166064, 168375, 172633, 183295, 185880,
+    192180, 193722,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 1):
 # what the planner raises, or None for wrong rows
-OPEN: dict[tuple[int, str], str | None] = {
-    (5754, "summary"): "Merge sources",
-    (13009, "summary"): "Missing source reference",
-    (32125, "summary"): "Merge sources",
-    (32239, "summary"): "Ambiguous reference",
-    (71000, "summary"): "Ambiguous reference",
-    (89278, "summary"): "keyless join",
-    (91633, "summary"): "Invalid input concepts",
-    (108631, "summary"): "keyless join",
-    (127138, "summary"): "Missing source reference",
-}
+OPEN: dict[tuple[int, str], str | None] = {}
 
 
 def cases():

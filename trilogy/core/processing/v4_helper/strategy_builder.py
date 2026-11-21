@@ -5523,6 +5523,8 @@ def _bridge_candidates(
 
 
 def _only_a_set(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    if gid not in group_graph:
+        return False
     kinds = {
         edge_kind(group_edges, gid, succ)
         for succ in group_graph.successors(gid)
@@ -6446,6 +6448,7 @@ def _assemble_sole_contributor(
     built: dict[str, StrategyNode],
     cover: "_FinalCover",
     environment: BuildEnvironment,
+    arg_candidates: Sequence[str],
 ) -> StrategyNode:
     """FINAL when one group covers every output: that group's node, deduped
     to the output grain, under the WHERE deferred onto FINAL."""
@@ -6510,7 +6513,7 @@ def _assemble_sole_contributor(
         feeder_outs = [
             carries(attrs[feeder], frozenset(), frozenset(), environment)
             for feeder in _filter_arg_producers(
-                group_graph, attrs, cover.groups, filter_only_addrs - sole_avail
+                group_graph, attrs, arg_candidates, filter_only_addrs - sole_avail
             ).values()
         ]
         scoped_addrs = environment.all_scoped_join_group_members()
@@ -6625,6 +6628,10 @@ def _apply_final_conditions(
     row_concepts = [
         concept for concept in node.output_concepts if concept.address in row_arg_addrs
     ]
+    # a WHERE argument the contributor carries hidden is read by the WHERE
+    if hidden := [c for c in row_concepts if c.address in node.hidden_concepts]:
+        node = node.copy()
+        node.unhide_output_concepts(hidden)
     # A membership (`x in <set>`) deferred onto FINAL is hosted on a merge
     # built here, so its subselect feeder is wired here too.
     ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
@@ -6887,6 +6894,10 @@ def _assemble_final_node(
         - mandatory_addresses
     )
 
+    # a set produces no argument: it holds only the rows its own condition kept
+    arg_candidates = [
+        g for g in cover.groups if not _only_a_set(group_graph, group_edges, g)
+    ]
     apply_final_conditions = partial(
         _apply_final_conditions,
         final_conditions=final_conditions,
@@ -6895,7 +6906,7 @@ def _assemble_final_node(
         group_graph=group_graph,
         attrs=attrs,
         built=built,
-        candidates=cover.groups,
+        candidates=arg_candidates,
         environment=environment,
         feeder_cache=feeder_cache,
     )
@@ -6939,6 +6950,7 @@ def _assemble_final_node(
             built,
             cover,
             environment,
+            arg_candidates,
         )
 
     # The join plan states, from stage-2 facts over the cover, what identifies
@@ -7611,6 +7623,9 @@ class _GroupBuild:
     # the plan before any fold: a group's build reads its readers there
     readers: "_Plan"
     folds: "_FoldPlan"
+    # columns the FINAL reads through a group off an ancestor
+    # (`_FinalCover.passthroughs`): a slice of its parents keeps them
+    passthroughs: dict[str, list[BuildConcept]]
 
 
 def _merge_origin_intermediates(
@@ -7689,7 +7704,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     preexisting = _wrap_atoms(accumulated_atoms_above(group_graph, attrs, gid))
     needed = _group_needed(
         group_graph, group_edges, attrs, gid, outputs, injected, environment
-    )
+    ) | {c.address for c in ctx.passthroughs.get(gid, ())}
     parent_builds = _parent_nodes_for(
         group_graph,
         group_edges,
@@ -8464,6 +8479,7 @@ def build_strategy_node(
         cover.groups,
         readers,
         folds,
+        cover.passthroughs,
     )
     for gid in order:
         if gid == FINAL_NODE_ID or gid in folds.inlined:

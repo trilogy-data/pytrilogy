@@ -422,11 +422,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         # The child's re-sum of a summary column now runs over the parent's
         # rows, and so does the parent's, except one an aggregate the child
         # computes reads: that is the aggregate's input, already at the
-        # child's input grain, and re-summing it there would nest them.
-        aggregated = aggregate_inputs(cte)
+        # child's input grain, and re-summing it there would nest them. Nor
+        # is a value the child groups by: it is a key of the child's rows.
+        kept = aggregate_inputs(cte) | cte.grain.components
         parent.rollup_concepts = unique(
             cte.rollup_concepts
-            + [r for r in parent.rollup_concepts if r.address not in aggregated],
+            + [r for r in parent.rollup_concepts if r.address not in kept],
             "address",
         )
     elif merge_mode == MergeMode.WINDOW:
