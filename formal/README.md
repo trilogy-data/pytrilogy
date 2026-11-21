@@ -2660,8 +2660,11 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 - **The `windows` family to 60,000** (0.3.529). Seeds 12,000-60,000 (96,000
   queries) held 54 wrong answers, 51 raises and 18 invalid statements on main;
   25 are left (16 wrong, 9 raising), each failing on main too, and no query
-  that planned on main fails. Nine of the 13 seeds 0.3.528 left `OPEN` pass. The four older
-  families, 20,000 queries each, are unchanged.
+  that was right on main fails. Nine of the 13 seeds 0.3.528 left `OPEN`
+  pass. The four older families, 20,000 queries each, hold nothing new; the
+  cost is joins (+433 in the family's 120,000 queries, +143 in `spellings`,
+  +10 in `compositions`): a filtered stream is now paired on the keys it is
+  asked to carry.
   - Two filtered columns of one aggregate (`select city, count(id ? city in
     <set>), count(id ? tag in <set>)`) are two streams of the trees. Each
     claimed the select's grain, so they were paired on `city` and every tree
