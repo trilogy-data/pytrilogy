@@ -5523,6 +5523,8 @@ def _bridge_candidates(
 
 
 def _only_a_set(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    if gid not in group_graph:
+        return False
     kinds = {
         edge_kind(group_edges, gid, succ)
         for succ in group_graph.successors(gid)
