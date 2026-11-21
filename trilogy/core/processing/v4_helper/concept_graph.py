@@ -2363,15 +2363,20 @@ def _host_outputs_on_row_preserving_aggregates(
     ]
     for host in hosts:
         grain = attrs[host].grain_components
+        # a value a source stores at its own grain (`max(h) by form` off a
+        # summary) scans as a ROOT, but joins only to rows that hold its keys:
+        # a host over rows, or over another stored value at that same grain
+        over_rows = not any(
+            attrs[n].address in walk.materialized_roots
+            for n in _lineage_ancestors(graph, edges, host)
+        )
         riders = [
             nid
             for nid, concept in candidates
             if attrs[nid].address not in grain
-            # a value a source stores at another grain is no column of the
-            # host's rows, though its scan is a ROOT (`max(h) by form` off a
-            # summary)
             and (
-                concept.derivation != Derivation.AGGREGATE
+                over_rows
+                or concept.derivation != Derivation.AGGREGATE
                 or concept.grain.components == grain
             )
             and _whole_grain_determines(environment, grain, attrs[nid].address)
