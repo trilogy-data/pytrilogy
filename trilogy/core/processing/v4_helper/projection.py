@@ -4,7 +4,6 @@ from collections.abc import Collection, Iterable, Iterator, Mapping
 from types import MappingProxyType
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -340,9 +339,11 @@ def widen_projection(
         # the boundary computes its handles off their content, its inputs
         output_concepts = list(output_concepts)
         bounded = {h.address for h in _bounded_handles(node)}
+        # a constant renders inline: no parent supplies it
         input_candidates = [
             content
             for c in [*input_candidates, *output_concepts]
+            if c.derivation != Derivation.CONSTANT
             for content in (
                 iter_row_lineage(c.lineage.content)
                 if c.address in bounded and isinstance(c.lineage, BuildRowsetItem)
@@ -464,15 +465,6 @@ def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
         wrapper = get_grouped_aggregate_wrapper(concept)
         if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
             padded |= {c.address for c in wrapper.by}
-        # A rowset carries the spec on the SELECT it wraps, not on the
-        # aggregate: at demand time the members are still plain STANDARD
-        # aggregates and only `select.grouping` says the pass NULL-pads.
-        if isinstance(concept.lineage, BuildRowsetItem):
-            select = concept.lineage.rowset.select
-            if isinstance(select, SelectLineage):
-                grouping = select.grouping
-                if grouping is not None and grouping.mode.nulls_grouping_keys:
-                    padded |= {ref.address for ref in grouping.by}
     return frozenset(padded)
 
 

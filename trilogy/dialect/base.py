@@ -2912,8 +2912,12 @@ class BaseDialect:
             # A passthrough rollup (already aggregated upstream, selected here as a
             # plain column) must not drive this CTE's grouping mode: re-emitting
             # its ROLLUP would double-aggregate. Only locally-computed grouped
-            # aggregates set the mode.
+            # aggregates set the mode. A rowset handle renders its content.
             and not cte.source_map.get(c.address)
+            and not (
+                isinstance(c.lineage, BuildRowsetItem)
+                and cte.source_map.get(c.lineage.content.address)
+            )
         ]
         if not grouped:
             return AggregateGroupingMode.STANDARD, [], []

@@ -11,6 +11,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
+    AggregateWrapper,
     AlignClause,
     AlignItem,
     Concept,
@@ -20,6 +21,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     RowsetLineage,
 )
+from trilogy.core.models.build import GROUPING_IDENTITY_FUNCTIONS
 from trilogy.core.models.core import (
     DataType,
     EnumType,
@@ -28,6 +30,7 @@ from trilogy.core.models.core import (
     ValidatedType,
 )
 from trilogy.core.statements.author import (
+    RollupSelectStatement,
     SelectItem,
     SelectStatement,
     TVFOutputItem,
@@ -306,6 +309,65 @@ def _lower_set_op(
         outputs=signature,
         arm_scopes=arm_scopes,
     )
+
+
+def _is_grouping_flag(address: str, context: RuleContext) -> bool:
+    concept = context.concepts.get(address)
+    return (
+        concept is not None
+        and isinstance(concept.lineage, AggregateWrapper)
+        and concept.lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
+    )
+
+
+def lower_grouping_select(
+    arm: SelectStatement, context: RuleContext, scope: str, node: SyntaxNode
+) -> SelectStatement | RollupSelectStatement:
+    """Lower a finalized `select ... by rollup|cube|grouping sets (...)` to the
+    relational TVF over it: one new output concept per arm column, registered
+    under ``scope``. The arm's grain (its keys and grouping flags) is the
+    relation's identity; a rolled key is nullable, its subtotal NULL a value.
+    A spec over no keys is one standard group and stays a plain select."""
+    if arm.grouping is None or not arm.grain.components:
+        return arm
+    namespace = context.environment.namespace
+    columns = arm.output_components
+    hidden = arm.hidden_components
+    align_items = [
+        AlignItem(
+            alias=f"_{scope}_rollup_{ref.address.replace('.', '_')}",
+            namespace=namespace,
+            concepts=[ref],
+            hidden=ref.address in hidden,
+        )
+        for ref in columns
+    ]
+    align_c = AlignClause(items=align_items)
+    positions = _identity_positions([arm], SetOperator.UNION_ALL, len(columns), context)
+    identity = {align_items[p].aligned_concept for p in positions}
+    statement = RollupSelectStatement(
+        selects=[arm],
+        align=align_c,
+        namespace=namespace,
+        derived_concepts=[],
+        meta=arm.meta,
+    )
+    lineage = statement.as_lineage(context.environment)
+    for pos, ref in enumerate(columns):
+        key = pos in positions
+        concept = union_item_to_concept(
+            align_items[pos],
+            align_c,
+            [arm],
+            context.environment,
+            purpose=Purpose.KEY if key else Purpose.PROPERTY,
+            keys=identity,
+            nullable=key and not _is_grouping_flag(ref.address, context),
+            lineage=lineage,
+        )
+        statement.derived_concepts.append(concept)
+        context.add_multiselect_concept(concept, meta=core_meta(node.meta))
+    return statement
 
 
 def tvf_set_op_invocation(

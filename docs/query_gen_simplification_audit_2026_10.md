@@ -249,8 +249,8 @@ fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, and 101 after the seventh, from 255; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done; 1 and the rest of 2 remain, and hold nearly all of the
-estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
+9 half done, 10 landed its rowset boundary; 1 and the rest of 2 remain, and
+hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
 1. **Extension rows as a first-class row source** (about 2,100 lines:
@@ -895,6 +895,77 @@ election, not the padded fallback.
    non-derivable fact it carries (a non-handle node that belongs to a
    boundary) is the same thing a union arm scope is. The three partition
    rules are already one scope-keyed rule; the tag itself remains.
+
+10. **Grouping sets as a relational TVF (first slice landed: the rowset
+    boundary).** `by rollup|cube|grouping sets` is a select mutator: its
+    aggregates carry the mode, its keys keep their own addresses, and about a
+    hundred planner sites (`nulls_grouping_keys`, `rollup_padded`,
+    `rollup_padded_keys`, `node_nulls_grouping_keys`, the `rollup_padding`
+    join rule, `null_provenance.rollup`, `_fold_rollup_key_dims`) exist to
+    remember that a NULL on one of those addresses may be grouping-set
+    padding. The end state is the union TVF's: a rollup is a relation whose
+    outputs are NEW concepts. A rolled key is a nullable key of that relation
+    and its subtotal NULL a value of it, the grouping flags complete the
+    identity, a measure is a property of both, and nothing outside the
+    relation tracks padding.
+
+    - **Landed.** `RollupSelectStatement` / `RollupSelectLineage` /
+      `BuildRollupSelectLineage` sit on the union TVF's base with one arm, the
+      select carrying the spec. `lower_grouping_select` (`tvf_rules.py`) mints
+      one output per arm column: a key where the arm's grain holds it (its
+      keys and the injected flags), nullable unless a flag, else a property
+      of that identity. `gen_rollup_select` plans the arm as any nested
+      select and re-exposes it through a rename-only `SelectNode`, with no
+      `UnionNode`, so no arm pushdown reaches below the pass. A rowset body
+      (`with r as select ... by rollup (...)`) and an inline `(select ...)`
+      lower to it, so every rowset handle over a rollup reads a TVF output
+      and the authoring surface is unchanged (the renderer prints the arm).
+      A spec over no keys is one standard group and stays a select.
+    - **What it changes.** A rollup rowset is now a rowset like any other:
+      the passthrough exemption from the FINAL dedup
+      (`node_nulls_grouping_keys` in `_final_dedup_targets`) no longer
+      reaches it, so `select r.dept, r.total` over a handle set that omits a
+      flag dedups as a plain rowset's does. Rows differ from before only
+      where the data holds a NULL key whose leaf row equals its subtotal
+      row; project the flag to keep both.
+      Two render sites met that dedup for the first time.
+      `BuildMultiSelectLineage.find_source` reads an arm column off the
+      parent a folded consumer came from (`CollapseSingleParent` merges the
+      rowset boundary into the rename CTE, which then projects neither). And
+      `_get_aggregate_grouping` reads a handle rebound to its arm column
+      (`rebind_rename_to_consumed`) as a passthrough when that column comes
+      from a parent: the dedup group above a rollup rendered a second
+      `GROUP BY ROLLUP` otherwise.
+    - **Gate.** `tests/engine/test_duckdb_rollup_tvf_laws.py` runs 140 bodies
+      as a statement and as a rowset read five ways (whole, without flags,
+      filtered on a flag, filtered on a rolled key, re-aggregated per level);
+      the suite held only about twenty rollup-in-rowset tests, and both
+      render defects passed it. On main the laws fail 6 of 700 reads, all
+      the duplicate rows the dedup exemption kept. Suite: the same 25
+      failures as main (credential-bound). Fuzzer 522/522.
+    - **Freed.** `rollup_padded_keys`' rowset branch and
+      `rowset_to_concepts_v2`'s grouping-flag handle (a rowset's select never
+      carries a spec with keys now, and a flag handle reads a TVF key): 0
+      firings over the whole suite against 726 lowerings.
+    - **Also fixed.** A union arm that only passes a rowset through
+      (`union((select r.a, r.b), ...)`) did not plan: `widen_projection`
+      handed the arm key, an inline constant, to the rowset boundary as an
+      input no parent supplies. Not a rollup defect, but it is what a union
+      of two rollups hits first.
+    - **Not yet.** The arm is still planned by the mutator, so every site
+      above stays live for the statement's own pass. Next, in order: (a)
+      split a `by rollup` select into a pure arm (keys, aggregates, flags)
+      and an outer select holding the post-aggregate scalars, HAVING, ORDER
+      BY and LIMIT, top-level statements included. That needs an output to
+      shadow an environment address inside one statement
+      (`select dept, sum(x) by rollup (dept) order by dept` names the base
+      dimension under the pass and the rolled one above it); (b) plan the
+      arm as a STANDARD select and have the generator set the grouping sets
+      on its root `GroupNode`, with a per-grouping-set union as the fallback
+      where the arm is not one group; (c) delete the mode from
+      `BuildAggregateWrapper` and the sites above with it. An explicit
+      `rollup(...)` call form waits on the lark and pest grammars moving
+      together.
 
 ## Gate used
 

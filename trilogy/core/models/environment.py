@@ -45,6 +45,7 @@ from trilogy.core.models.author import (
     CustomFunctionFactory,
     CustomType,
     Function,
+    MultiSelectLineage,
     RowsetItem,
     SelectLineage,
     UndefinedConcept,
@@ -879,7 +880,9 @@ class Environment:
     )
     functions: dict[str, CustomFunctionFactory] = field(default_factory=dict)
     data_types: dict[str, CustomType] = field(default_factory=dict)
-    named_statements: dict[str, SelectLineage] = field(default_factory=dict)
+    named_statements: dict[str, SelectLineage | MultiSelectLineage] = field(
+        default_factory=dict
+    )
     # Address-less datasource declarations, reusable through `extends`. Never
     # planned over, which is why they are not in ``datasources``.
     datasource_templates: dict[str, DatasourceTemplate] = field(default_factory=dict)
@@ -1168,7 +1171,7 @@ class Environment:
         )
         return factory.build_environment_delta(self, baseline)
 
-    def add_rowset(self, name: str, lineage: SelectLineage):
+    def add_rowset(self, name: str, lineage: SelectLineage | MultiSelectLineage):
         if name in self.named_statements:
             self.retire_rowset(name)
         self.named_statements[name] = lineage

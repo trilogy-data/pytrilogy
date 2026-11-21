@@ -3551,6 +3551,27 @@ class UnionSelectLineage(MultiSelectLineage):
 
 
 @dataclass
+class RollupSelectLineage(UnionSelectLineage):
+    """Relational `rollup`/`cube`/`grouping sets` TVF: the rows of ONE arm
+    select computed at every grouping set of its `by rollup (...)` spec.
+
+    Its outputs are new concepts bound positionally to the arm's columns: a
+    rolled key is a dimension of this relation whose subtotal NULL is a value,
+    so nothing outside the arm tracks grouping-set padding. `grouping` is the
+    arm's spec, in arm addresses."""
+
+    grouping: AggregateGrouping | None = None
+
+    def with_namespace(self, namespace: str) -> RollupSelectLineage:
+        base = super().with_namespace(namespace)
+        assert isinstance(base, RollupSelectLineage)
+        base.grouping = (
+            self.grouping.with_namespace(namespace) if self.grouping else None
+        )
+        return base
+
+
+@dataclass
 class LooseConceptList:
     concepts: Sequence[Concept | ConceptRef]
 

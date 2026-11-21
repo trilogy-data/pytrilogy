@@ -1,8 +1,8 @@
 # Query-generation simplification: remaining work
 
 What is left of the 2026-08 simplification audit. Everything that landed has
-been removed from this file; the git history is the record of that. Three items
-remain (2.3(b), 2.1 step 4, 2.7), plus a set of verdicts that exist to stop them being re-opened.
+been removed from this file; the git history is the record of that. Four items
+remain (2.3(b), 2.1 step 4, 2.7, the grouping-set TVF), plus a set of verdicts that exist to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -94,6 +94,21 @@ above ever moves; delete if it reaches 0.
 generator-agnostic and wired into `gen_aggregate` and the ROOT generator
 (`v4_node_generators/root.py`). Wire it into `gen_basic` / `gen_filter` /
 `gen_window` only if a test shape needs it. Nothing fires today.
+
+## 4. Grouping sets as a relational TVF (rowset boundary landed)
+
+A rowset whose body is `by rollup|cube|grouping sets` lowers to a one-arm TVF
+(`RollupSelectLineage`, `gen_rollup_select`): its handles read new key and
+property concepts, so nothing above the rowset tracks grouping-set padding.
+The arm itself is still planned by the select mutator, and a top-level
+`by rollup` select is untouched. Design, gates and the three remaining steps
+(split the select into a pure arm and an outer select, plan the arm standard
+with the generator owning the grouping sets, delete the mode) are seam 10 of
+`docs/query_gen_simplification_audit_2026_10.md`.
+
+Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`: the
+suite's own rollup-in-rowset coverage is about twenty tests and passed two
+render defects the laws caught.
 
 ## Closed: do not re-chase
 
