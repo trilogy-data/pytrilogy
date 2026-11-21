@@ -1,8 +1,9 @@
 # Oracle sweep
 
 Runs the random selects of `tests/discovery/test_oracle_sweep_laws.py`
-(`--family first`), `test_oracle_spellings_laws.py` (`--family spellings`) and
-`test_oracle_expressions_laws.py` (`--family expressions`) past the seeds the
+(`--family first`), `test_oracle_spellings_laws.py` (`--family spellings`),
+`test_oracle_expressions_laws.py` (`--family expressions`) and their later
+siblings (`compositions`, `windows`) past the seeds the
 suites commit, checks each against the raw-row oracle, and
 records what the plan cost. It replaces the scratchpad scripts each
 formalization round rewrote (`effsweep.py` and its kin).

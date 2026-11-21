@@ -1687,6 +1687,7 @@ def _build_from_graph_traced(
                 complete_partials=complete_partials,
                 staged_conditions=staged_conditions,
                 depth=depth,
+                conditions=conditions,
             )
     except UnbuiltGroupException as exc:
         unbuilt_reason = str(exc)

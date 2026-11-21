@@ -974,6 +974,20 @@ def _atom_covered_by_applicable_parents(
     return all(_parent_covers_condition(p, atom) for p in relevant_parents)
 
 
+def _set_feeders(cte: CTE) -> set[str]:
+    """Parents `cte` reads only as a subselect: one enforcing an atom filters
+    its own set, never `cte`'s rows (a set written in the select, planned under
+    the WHERE its host is also under)."""
+    feeders = {name for names in cte.existence_source_map.values() for name in names}
+    rows = {
+        name
+        for address, names in cte.source_map.items()
+        if address not in cte.existence_source_map
+        for name in names
+    }
+    return feeders - rows
+
+
 def _defers_to_join_upgrade(cte: CTE) -> bool:
     """Whether atom removal on `cte` should wait for join types to settle.
 
@@ -1026,7 +1040,7 @@ def _pushdown_removal(
     # that exposes its concepts is redundant.
     if not after_join_upgrades and _defers_to_join_upgrade(cte):
         return None
-    existence_set = set(existence_only)
+    existence_set = set(existence_only) | _set_feeders(cte)
     if (
         isinstance(condition, BuildConditional)
         and condition.operator == BooleanOperator.AND

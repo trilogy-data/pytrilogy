@@ -2593,10 +2593,15 @@ def reads_bare_aggregate(
 
 
 def window_orders_by_bare_aggregate(window: Any, environment: Environment) -> bool:
-    """A window ordered by an aggregate with no `by`: its order is read at the
-    select grain, so the window is a value per select-grain tuple."""
-    return isinstance(window, (NumberingWindowItem, NavigationWindowItem)) and any(
-        reads_bare_aggregate(o.expr, environment) for o in window.order_by
+    """A window ordered by, or reading, an aggregate with no `by`: that value
+    is read at the select grain, so the window is a value per select-grain
+    tuple."""
+    if not isinstance(window, (NumberingWindowItem, NavigationWindowItem)):
+        return False
+    if any(reads_bare_aggregate(o.expr, environment) for o in window.order_by):
+        return True
+    return isinstance(window, NavigationWindowItem) and reads_bare_aggregate(
+        window.content, environment
     )
 
 

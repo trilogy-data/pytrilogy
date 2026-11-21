@@ -2769,7 +2769,9 @@ def build_concept_graph(
             _add_concept(source, existence_walk, slabel)
             src_nid = existence_walk.node_of(source, slabel)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
-                add_edge(graph, edges, src_nid, nid, EdgeKind.EXISTENCE)
+                add_edge(
+                    graph, edges, src_nid, nid, EdgeKind.EXISTENCE, in_lineage=True
+                )
 
     # Collapse pseudonym hubs to a single arm now: after every `_add_concept`
     # call (so all hubs exist) but before the constraint/existence EDGE passes

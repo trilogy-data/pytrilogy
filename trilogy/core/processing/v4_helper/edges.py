@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from trilogy.core import graph as nx
 
-from .constants import DEPENDENCY_EDGE_KINDS, EdgeKind, EdgePhase
+from .constants import DEPENDENCY_EDGE_KINDS, FINAL_NODE_ID, EdgeKind, EdgePhase
 
 Edge = tuple[str, str]
 
@@ -33,6 +33,10 @@ class EdgeAttrs:
     # candidates (e.g. `local.a` reachable via `uA.a` OR `uB.a`). Downstream
     # (group graph onward) never sees a tagged edge: resolution runs first.
     alt_group: str | None = None
+    # An EXISTENCE edge into a concept whose own lineage reads the set
+    # (`x ? k in <set>`): the concept is computed from it. A WHERE membership's
+    # edge only orders the set before the rows it filters.
+    in_lineage: bool = False
 
 
 # A graph's companion edge-metadata map, keyed by ``(source, target)``.
@@ -46,10 +50,11 @@ def add_edge(
     v: str,
     kind: EdgeKind,
     alt_group: str | None = None,
+    in_lineage: bool = False,
 ) -> None:
     """Add a typed edge to both the topology graph and its metadata map."""
     graph.add_edge(u, v)
-    edges[(u, v)] = EdgeAttrs(kind=kind, alt_group=alt_group)
+    edges[(u, v)] = EdgeAttrs(kind=kind, alt_group=alt_group, in_lineage=in_lineage)
 
 
 def remove_edge(graph: nx.DiGraph, edges: EdgeMap, u: str, v: str) -> None:
@@ -61,6 +66,18 @@ def remove_edge(graph: nx.DiGraph, edges: EdgeMap, u: str, v: str) -> None:
 def edge_kind(edges: EdgeMap, u: str, v: str) -> EdgeKind | None:
     attrs = edges.get((u, v))
     return attrs.kind if attrs is not None else None
+
+
+def only_a_set(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    """A group read only as a set: it holds the rows its own condition kept."""
+    if gid not in group_graph:
+        return False
+    kinds = {
+        edge_kind(group_edges, gid, succ)
+        for succ in group_graph.successors(gid)
+        if succ != FINAL_NODE_ID
+    }
+    return kinds == {EdgeKind.EXISTENCE}
 
 
 def lineage_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
@@ -85,6 +102,15 @@ def existence_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list
         pred
         for pred in graph.predecessors(node)
         if edge_kind(edges, pred, node) == EdgeKind.EXISTENCE
+    ]
+
+
+def lineage_set_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    """The sets `node`'s own lineage reads (`EdgeAttrs.in_lineage`)."""
+    return [
+        pred
+        for pred in graph.predecessors(node)
+        if (attrs := edges.get((pred, node))) is not None and attrs.in_lineage
     ]
 
 

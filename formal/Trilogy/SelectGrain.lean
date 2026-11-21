@@ -1282,6 +1282,84 @@ theorem set_rows_are_no_bridge :
       (rows.filter (·.2.2 == some true)).length = 1 := by
   decide
 
+/-! ## Sets written in the select, bridges under a window (0.3.528)
+
+The `windows` oracle family, seeds 0 to 4,000: windows other than a rank,
+memberships inside a select target's `?` and in a HAVING, `/` by a `by`
+aggregate. -/
+
+/-- `select count(id ? species in (species ? h > 6)) where city = 'A'`: a
+set written in the select reads the rows the WHERE kept, as an aggregate
+there does. No tree of city A is taller than 6, so the set is empty and the
+count 0; read over every row the set holds Acer (b1 is 7) and the count is 2
+(`select_set_reads_kept_rows`; the base model answered 0 and the summary 2).
+A set in the WHERE is the other case: it defines the kept rows, so it reads
+every row. -/
+theorem select_set_reads_kept_rows :
+    let rows : List (String × String × Option Int) :=
+      [("A", "Acer", some 3), ("A", "Acer", none), ("A", "Quercus", some 5),
+        ("A", "Ulmus", none), ("B", "Acer", some 7), ("B", "Tilia", some 2)]
+    let tall : String × String × Option Int → Bool := fun r => match r.2.2 with
+      | some h => h > 6
+      | none => false
+    let kept := rows.filter (·.1 == "A")
+    let count (scope : List (String × String × Option Int)) :=
+      (kept.filter fun r => ((scope.filter tall).map (·.2.1)).contains r.2.1).length
+    count kept = 0 ∧ count rows = 2 := by
+  decide
+
+/-- `select species, tree_form, min(h ? id in (id ? tree_form is null))`:
+the set's feeder holds the one species its condition kept. `tree_form` read
+off it, in place of the enrichment rows, keeps Ulmus and drops three species
+from the select (`set_supplies_no_output`, seed 1465). -/
+theorem set_supplies_no_output :
+    let enrichment : List (String × Option String) :=
+      [("Acer", some "broadleaf"), ("Quercus", some "broadleaf"),
+        ("Tilia", some "linden"), ("Ulmus", none)]
+    (enrichment.filter (·.2 == none)).length = 1 ∧ enrichment.length = 4 := by
+  decide
+
+/-- `select h > 2 as big, count(id ? tag in (tag ? city = 'A'))`: the set's
+feeder holds the four trees of city A beside `height`. `big`, computed off
+it in place of the trees, loses the two trees of B and with them the group
+`big = false` held only there once NULLs are apart
+(`set_is_no_row_parent`). -/
+theorem set_is_no_row_parent :
+    let trees : List (String × Option Int) :=
+      [("A", some 3), ("A", none), ("A", some 5), ("A", none), ("B", some 7), ("B", some 2)]
+    let big : String × Option Int → Option Bool := fun r => r.2.map (· > 2)
+    (trees.map big).eraseDups.length = 3 ∧
+      ((trees.filter (·.1 == "A")).map big).eraseDups.length = 2 := by
+  decide
+
+/-- `select species, tree_form, min(h ? species in (...))`: the filtered
+column is read off the trees, three of them Acer, and the set beside it is a
+subselect, one row per species. Taking the stream's grain from the set, the
+`min` saw rows already at `species` and was not computed: Acer came back
+three times (`set_source_is_no_grain`, seed 2257). -/
+theorem set_source_is_no_grain :
+    let trees := ["Acer", "Acer", "Quercus", "Ulmus", "Acer", "Tilia"]
+    let set := ["Tilia"]
+    set.eraseDups.length = set.length ∧ trees.eraseDups.length = 4 ∧
+      trees.length = 6 := by
+  decide
+
+/-- `select id, count_distinct(tag) by city, tree_form + 1, row_number id
+order by sum(h), id`: the value has a row per `(city, tree_form)`, and city A
+holds two forms. Joined to the trees on `city` alone, as the window's merge
+did once it dropped the bridge holding both keys, each of A's four trees
+meets both rows and each of B's two both of B's: twelve rows for six trees,
+and the window numbers all twelve. Through the trees' own `(city,
+tree_form)` each meets one (`keying_bridge_under_window`, seed 3769). -/
+theorem keying_bridge_under_window :
+    let trees : List (String × Option String) :=
+      [("A", some "b"), ("A", some "b"), ("A", some "b"), ("A", none),
+        ("B", some "b"), ("B", some "l")]
+    let groups := trees.eraseDups
+    (trees.flatMap fun t => groups.filter (·.1 == t.1)).length = 12 ∧
+      (trees.flatMap fun t => groups.filter (· == t)).length = 6 := by
+  decide
+
 end Trilogy.SelectGrain
 
 /-! ## A widening ends with the padding it kept

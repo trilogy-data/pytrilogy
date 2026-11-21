@@ -33,6 +33,7 @@ from .edges import (
     existence_predecessors,
     feeds_existence,
     lineage_predecessors,
+    lineage_set_predecessors,
     lineage_subgraph,
     lineage_successors,
 )
@@ -302,7 +303,8 @@ def _lineage_layers(
     concept_edges: EdgeMap,
 ) -> list[list[NodeItem]]:
     """Split same-key members into build layers so no bucket holds both a
-    member and a lineage CONSUMER of it.
+    member and a CONSUMER of it, through its lineage or through a set whose
+    condition reads it (`count(id ? k in (k ? max(x) by k > 4))` by `k`).
 
     Two aggregates at one output grain normally co-source when their arguments
     need the same row grain. But `count(line ? owc > 1) by order_id` where
@@ -320,7 +322,7 @@ def _lineage_layers(
         return [members]
     addrs = {node for node, _ in members}
     ancestors = {
-        node: _lineage_reach(node, lineage_predecessors, concept_graph, concept_edges)
+        node: _lineage_reach(node, _computed_from, concept_graph, concept_edges)
         & (addrs - {node})
         for node in addrs
     }
@@ -397,6 +399,14 @@ def _partition_standard_aggregates(
         _add_members(bucket, layer)
         buckets.append(bucket)
     return buckets
+
+
+def _computed_from(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    """What `node` is computed from: its rows, and a set its own lineage
+    reads. A WHERE membership filters its host's rows and computes nothing."""
+    return lineage_predecessors(graph, edges, node) + lineage_set_predecessors(
+        graph, edges, node
+    )
 
 
 def _feeding_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:

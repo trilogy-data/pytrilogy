@@ -71,6 +71,7 @@ from .edges import (
     lineage_edges,
     lineage_predecessors,
     lineage_subgraph,
+    only_a_set,
     remove_edge,
 )
 from .extent_ownership import (
@@ -2733,6 +2734,9 @@ def _regraft_candidate(
         if cattrs.derivation in {Derivation.ROOT, Derivation.BASIC}:
             continue
         if cattrs.label != current.label:
+            continue
+        # a set holds only the rows its own condition kept
+        if only_a_set(group_graph, group_edges, candidate):
             continue
         candidate_ancestors = nx.ancestors(group_graph, candidate)
         if not (my_ancestors & candidate_ancestors):

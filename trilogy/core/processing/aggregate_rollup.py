@@ -73,6 +73,9 @@ def _datasource_has_matching_rollup_aggregate(
         and _conditions_supported(datasource, filtered[1], joined)
         and bool(filtered[1].row_arguments)
         and not any(c.is_aggregate for c in filtered[1].row_arguments)
+        # a set the condition reads is no column of the partials: its
+        # feeder is planned beside the rows it filters, not beside a re-sum
+        and not any(filtered[1].existence_arguments)
     )
 
 
