@@ -11,6 +11,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildDatasource,
+    BuildFilterItem,
     BuildGrain,
     BuildOrderBy,
     nonstandard_grouping_lineage,
@@ -803,12 +804,20 @@ class MergeNode(StrategyNode):
         its own semijoin probe is likewise incidental: the feeder reaches its
         rows through the EXISTS subselect, not a row join. A feeder exposing
         OTHER coalescing keys is a real bridge row source and stays a join
-        candidate."""
+        candidate. So is the column a filtered set is drawn from (`city` of
+        `city ? c`): a feeder grouped on it holds the set, not rows."""
         existence = {c.address for c in self.existence_concepts}
         out_addrs = {y.address for y in source.output_concepts}
         provided = out_addrs & existence
         if not provided:
             return False
+        existence |= {
+            c.lineage.content.address
+            for c in self.existence_concepts
+            if c.address in provided
+            and isinstance(c.lineage, BuildFilterItem)
+            and isinstance(c.lineage.content, BuildConcept)
+        }
         coalescing = self.environment.domain_graph.coalescing_relation_members()
         probe_keys = {
             k

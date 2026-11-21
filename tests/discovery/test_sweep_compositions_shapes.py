@@ -322,6 +322,71 @@ SHAPES = [
         ),
         [],
     ),
+    # a value at the summary's own grain beside a coarser key is one row per
+    # distinct value, not re-aggregated to the key: A's species minima are
+    # 3, 5 and NULL
+    (
+        "select city, min(height) by city, species as v;",
+        [("A", 3), ("A", 5), ("A", None), ("B", 2), ("B", 7)],
+    ),
+    (
+        "select city, count(tree_id) by city, species as v;",
+        [("A", 1), ("A", 2), ("B", 1)],
+    ),
+    # a value stored at its own grain is no group key of a nested aggregate
+    # beside it (108631): broadleaf's tallest is Acer's 7
+    (
+        (
+            "select species, max(height) by species + min(min(height) by species) as"
+            " v0, max(height) by tree_form as v1;"
+        ),
+        [
+            ("Acer", 10, 7),
+            ("Quercus", 10, 7),
+            ("Tilia", 4, 2),
+            ("Ulmus", None, None),
+        ],
+    ),
+    (
+        (
+            "select species, max(height) by tree_form as v0, count(tree_id) -"
+            " max(sum(height) by species) as v1;"
+        ),
+        [("Acer", 7, -7), ("Quercus", 7, -4), ("Tilia", 2, -1), ("Ulmus", None, None)],
+    ),
+    # one total read by two merged copies of a gate is joined once (32239):
+    # each city has two tags, so 2 < 2 keeps no form
+    (
+        (
+            "select species, max(height) as v0, count(min(height) by city, species) as"
+            " v1 where tree_form in (tree_form ? min(height) by * < count_distinct(tag)"
+            " by city);"
+        ),
+        [],
+    ),
+    # a window's parent keeps the column FINAL reads through it (13009)
+    (
+        (
+            "select species, tree_form, rank tree_form over species order by"
+            " count(tree_id) by species asc as v0, max(height) as v1 where avg(height)"
+            " by * is not null;"
+        ),
+        [
+            ("Acer", "broadleaf", 1, 7),
+            ("Quercus", "broadleaf", 1, 5),
+            ("Tilia", "linden", 1, 2),
+            ("Ulmus", None, 1, None),
+        ],
+    ),
+    # a set's feeder grouped on the column it is drawn from holds no rows of
+    # the merge (32125): city B alone
+    (
+        (
+            "select city, tree_form, min(height) as v0, max(min(height) by city,"
+            " species) as v1 where city in (city ? city = 'B');"
+        ),
+        [("B", "broadleaf", 7, 7), ("B", "linden", 2, 2)],
+    ),
 ]
 
 
@@ -359,3 +424,26 @@ def test_literal_membership_in_an_or(model: str, threshold: int, expected: list)
     sql = executor(model).generate_sql(query)[-1]
     rows = executor(model).execute_raw_sql(sql).fetchall()
     assert normalize(rows) == expected, sql
+
+
+@pytest.mark.parametrize("model", ["base", "summary"])
+def test_hidden_membership_side_read_by_the_where(model: str):
+    """A membership's left side a contributor carries hidden is read by the
+    WHERE (91633): every row passes, Ulmus and Tilia through the second set."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(BASE + (SUMMARY if model == "summary" else ""))
+    rows = exec.execute_text(
+        "select city, species, min(height) by * / max(height) as v0 where"
+        " max(height) by * < max(height) by city, species or (tree_form in"
+        " (tree_form ? coalesce(tree_form, 'none') = 'broadleaf') or species in"
+        " (species ? count_distinct(tag) by tree_form > 0));"
+    )[-1].fetchall()
+    assert normalize(rows) == normalize(
+        [
+            ("A", "Acer", 0.666667),
+            ("A", "Quercus", 0.4),
+            ("A", "Ulmus", None),
+            ("B", "Acer", 0.285714),
+            ("B", "Tilia", 1),
+        ]
+    )

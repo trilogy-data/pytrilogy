@@ -6625,6 +6625,10 @@ def _apply_final_conditions(
     row_concepts = [
         concept for concept in node.output_concepts if concept.address in row_arg_addrs
     ]
+    # a WHERE argument the contributor carries hidden is read by the WHERE
+    if hidden := [c for c in row_concepts if c.address in node.hidden_concepts]:
+        node = node.copy()
+        node.unhide_output_concepts(hidden)
     # A membership (`x in <set>`) deferred onto FINAL is hosted on a merge
     # built here, so its subselect feeder is wired here too.
     ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
@@ -7611,6 +7615,9 @@ class _GroupBuild:
     # the plan before any fold: a group's build reads its readers there
     readers: "_Plan"
     folds: "_FoldPlan"
+    # columns the FINAL reads through a group off an ancestor
+    # (`_FinalCover.passthroughs`): a slice of its parents keeps them
+    passthroughs: dict[str, list[BuildConcept]]
 
 
 def _merge_origin_intermediates(
@@ -7689,7 +7696,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     preexisting = _wrap_atoms(accumulated_atoms_above(group_graph, attrs, gid))
     needed = _group_needed(
         group_graph, group_edges, attrs, gid, outputs, injected, environment
-    )
+    ) | {c.address for c in ctx.passthroughs.get(gid, ())}
     parent_builds = _parent_nodes_for(
         group_graph,
         group_edges,
@@ -8464,6 +8471,7 @@ def build_strategy_node(
         cover.groups,
         readers,
         folds,
+        cover.passthroughs,
     )
     for gid in order:
         if gid == FINAL_NODE_ID or gid in folds.inlined:

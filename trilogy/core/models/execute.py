@@ -2585,10 +2585,25 @@ def _fold_inner_rejoins(joins: list[Join | UnnestJoin]) -> list[Join | UnnestJoi
             and _fold_pairs(out, introduced, join)
         ):
             continue
+        # a cross join to a CTE an INNER join already brought in adds nothing
+        if (
+            _is_cross_join(join)
+            and join.right.name in introduced
+            and _joins_inner(out[introduced[join.right.name]])
+        ):
+            continue
         if isinstance(join, Join):
             introduced.setdefault(join.right.name, len(out))
         out.append(join)
     return out
+
+
+def _joins_inner(join: Join | UnnestJoin) -> bool:
+    return (
+        isinstance(join, Join)
+        and join.join_type == JoinType.INNER
+        and join.condition is None
+    )
 
 
 def _fold_pairs(

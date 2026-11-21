@@ -1962,4 +1962,44 @@ theorem set_condition_at_its_own_keys :
       ([0, 1].filter fun c => byCity c > 1) = [0, 1] := by
   decide
 
+/-! ## Values at their own grain, sets beside their own column (0.3.526)
+
+The `compositions` sweep past 130,000 and the open summary raises. -/
+
+/-- `select city, min(h) by city, species`: one row per distinct `(city,
+value)`. City A's species minima are 3, 5 and NULL, three rows. Folding the
+dedup into the summary scan re-minned the stored minima to the city and
+returned one row, 3 (`value_at_its_own_grain_kept`). -/
+theorem value_at_its_own_grain_kept :
+    let cityA : List (Option Int) := [some 3, some 5, none]
+    (dedup cityA).length = 3 ∧ (cityA.filterMap id).foldl min 100 = 3 := by
+  decide
+
+/-- `max(h) by form` beside `min(min(h) by species)`: the stored value has
+one row per form, the nested aggregate one per species. Hosted as a key of the
+species rows, the value is a column those rows never held: Acer and Quercus
+share the broadleaf 7, so the four species meet three form rows and no species
+key pairs them (`stored_value_is_no_host_key`, seed 108631 raised a keyless
+join). -/
+theorem stored_value_is_no_host_key :
+    let forms : List (Option String × Option Int) :=
+      [(some "broadleaf", some 7), (some "linden", some 2), (none, none)]
+    let species : List (String × Option String) :=
+      [("Acer", some "broadleaf"), ("Quercus", some "broadleaf"),
+        ("Tilia", some "linden"), ("Ulmus", none)]
+    forms.length = 3 ∧ species.length = 4 ∧
+      (species.map fun s => (forms.filter (·.1 == s.2)).length).all (· == 1) := by
+  decide
+
+/-- `city in (city ? city = 'B')`: the set's feeder, grouped on `city`, holds
+one row per city in the set. Joined as a row source on that city, it pairs
+every kept row with the feeder's row and adds nothing; it is read as a
+subselect, never as rows (`set_column_is_no_row`, seeds 5754, 32125 raised an
+unplanned merge source). -/
+theorem set_column_is_no_row :
+    let rows : List (String × Int) := [("B", 7), ("B", 2)]
+    let feeder : List String := ["B"]
+    (rows.filter fun r => feeder.contains r.1) = rows := by
+  decide
+
 end Trilogy.SelectGrain
