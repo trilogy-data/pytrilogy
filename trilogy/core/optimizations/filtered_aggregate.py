@@ -5,6 +5,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
+    BuildWhereClause,
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -95,6 +96,19 @@ def _global_rollup_ignores_null_groups(
     return True
 
 
+def _reads_unwired_set(cte: CTE, where: BuildWhereClause, required: set[str]) -> bool:
+    """A membership renders against the CTE holding its set. The CTE that
+    computed the filtered column was wired to one; this one may name none, or
+    the row parent the column passed through, which joins no set."""
+    rows = {source for address in required for source in cte.source_map[address]}
+    return any(
+        not (wired := cte.existence_source_map.get(member.address))
+        or not rows.isdisjoint(wired)
+        for group in where.existence_arguments
+        for member in group
+    )
+
+
 class PushFilteredAggregateInput(OptimizationRule):
     """Apply a common aggregate filter before grouping when empty groups are rejected."""
 
@@ -150,6 +164,8 @@ class PushFilteredAggregateInput(OptimizationRule):
             ]
         }
         if not required or any(not cte.source_map.get(address) for address in required):
+            return False, None
+        if _reads_unwired_set(cte, filtered[0][1].where, required):
             return False, None
         for concept, (argument, item) in zip(aggregates, filtered):
             _remove_filter(cte, concept, argument, item)

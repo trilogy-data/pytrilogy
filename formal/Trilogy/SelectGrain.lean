@@ -2127,3 +2127,56 @@ theorem lookup_bridge_adds_no_rows :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A derived key read off groups holds only their keys
+
+`select city, fc, count(id) by fc, min(h ? max(h) by city, tree_form >= 8)`
+with `fc` a CASE over `tree_form`: the groups by `(city, tree_form)` hold
+`tree_form`, so `fc` can be computed off them. But `count(id) by fc` pairs
+`fc` with the trees on `species`, which those groups dropped: paired on
+nothing, every tree meets every `fc`
+(`derived_key_off_groups_pairs_on_nothing`). Off the rows that hold `species`
+each tree meets its own. The same blend arises under a filter that reads two
+values at different grains: `blend_under_a_finer_reader_invents_pairs` holds
+for a `?` as for a BASIC. -/
+
+/-- Trees as `(id, species)`, `fc` as a function of species. -/
+theorem derived_key_off_groups_pairs_on_nothing :
+    let trees : List (Nat × Nat) := [(1, 0), (2, 0), (3, 1)]
+    let fc : Nat → Nat := fun s => s % 2
+    let offGroups := dedup (trees.map fun t => fc t.2)
+    let offRows := dedup (trees.map fun t => (t.2, fc t.2))
+    (trees.flatMap fun _ => offGroups).length = 6 ∧
+      (trees.flatMap fun t => offRows.filter fun r => r.1 == t.2).length = 3 := by
+  decide
+
+end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A WHERE is applied once
+
+A HAVING on a column the select does not project is a semijoin on the
+select's keys: the keys of the kept rows the predicate holds on. Those rows
+are the WHERE's, so the set is planned under it. Trilogy also wrote the WHERE
+into the set's own filter. A row predicate applied twice is itself
+(`row_where_idempotent`); one reading a set or a total is not, since the copy
+reads them off the rows the first application kept
+(`where_over_total_not_idempotent`): `where tag in (tag ? count(id) by * -
+sum(h) by species > 3) having species in (...)` counted four trees for six
+and dropped every group. -/
+
+theorem row_where_idempotent {α : Type} (p : α → Bool) (rows : List α) :
+    (rows.filter p).filter p = rows.filter p := by
+  simp [List.filter_filter]
+
+/-- Keep the rows below the count of the rows read. -/
+def keepBelowCount (rows : List Nat) : List Nat := rows.filter fun v => v < rows.length
+
+theorem where_over_total_not_idempotent :
+    keepBelowCount [1, 2, 3] = [1, 2] ∧
+      keepBelowCount (keepBelowCount [1, 2, 3]) = [1] := by decide
+
+end Trilogy.SelectGrain

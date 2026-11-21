@@ -721,4 +721,18 @@ theorem alias_shadowed :
       (fun n => if n = "c" then some 12 else none) "c" = some 1 := by
   decide
 
+/-! ## A filtered aggregate's filter moved to its WHERE (`PushFilteredAggregateInput`) -/
+
+/-- `agg(x ? k in S)` over groups an empty one is rejected from is `agg(x)`
+over the rows where `k in S`, read against `S`. Read against the rows the
+filtered column passed through, which hold `k` itself, the membership holds on
+every row (the rule's check that the set is wired to a CTE that feeds it no
+rows). -/
+theorem moved_membership_reads_its_set :
+    let rows : List Nat := [1, 2]
+    let set : List Nat := [1]
+    (rows.filter fun k => set.contains k).length = 1 ∧
+      (rows.filter fun k => rows.contains k).length = 2 := by
+  decide
+
 end Trilogy.Rewrite

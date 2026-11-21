@@ -29,7 +29,9 @@ every row that holds the tuple. An aggregate window with no order
   tall)` is at the select's grain, so the window reads one row per group
   (`window_over_groups_reads_groups`); over the rows of the order column's own
   key a group lags to itself (`repeated_group_lags_to_itself`,
-  `property_key_rows_repeat_groups`).
+  `property_key_rows_repeat_groups`). A filtered column beside the window is
+  a value per row, never a key of the window's rows
+  (`filtered_passenger_repeats_groups`).
 - An aggregate a window orders by: one with no `by` is at the select's raw
   grain, like any other (`SelectGrain.bare_is_select_grain`). When that grain
   holds the partition it reads only the partition's rows
@@ -297,6 +299,15 @@ theorem property_key_rows_repeat_groups :
     let lagged (xs : List (Nat × Option Nat)) :=
       (List.range xs.length).map fun i => (xs[i]?.map (·.1), (lagAt xs i).map (·.2))
     (lagged groups).length = 3 ∧ (lagged trees).eraseDups.length = 6 := by decide
+
+/-- **A filtered column is a value per row it filters**: `tree_id ? c` beside
+`row_number() over (partition by tree_form order by species)` claims the
+select's grain and holds one value per tree. A window's input grouped by it
+too keeps a row per tree, so a species of three trees is numbered three
+times; grouped by the window's own keys it is numbered once. -/
+theorem filtered_passenger_repeats_groups :
+    let trees : List (Nat × Nat) := [(0, 10), (0, 11), (0, 12), (1, 13)]
+    trees.eraseDups.length = 4 ∧ (trees.map (·.1)).eraseDups.length = 2 := by decide
 
 /-! ## Where NULLs sort -/
 

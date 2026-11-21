@@ -394,7 +394,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             # of the same address the parent's own inputs expose is the value
             # BELOW the parent (a rename of a ROLLUP key computed before the
             # pass), so the folded column keeps rendering from its lineage.
-            if merge_mode == MergeMode.BASIC and not cte.source_map.get(column.address):
+            # So is a set of the same address the parent only reads by a
+            # subselect (the WHERE's `k in (k ? c)` under the select's own).
+            if not cte.source_map.get(column.address) and (
+                merge_mode == MergeMode.BASIC
+                or column.address in parent.existence_source_map
+            ):
                 parent.source_map[column.address] = []
 
     carry_child_state(parent, cte)
