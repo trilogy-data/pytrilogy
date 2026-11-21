@@ -2559,8 +2559,10 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     their atoms.
 
 - **`compositions` to 130,000** (0.3.525). On main seeds 0-130,000 (260,000
-  queries) hold SWEEP_MAIN; the branch leaves SWEEP_BRANCH, breaks none, and
-  SWEEP_COST. Every fix is one of two readings: a membership's set is read by
+  queries) hold 13 wrong, 11 raising and 3 invalid; the branch leaves 0
+  wrong, 7 raising and 2 invalid, and breaks none. The fixes cost 5 scans and
+  53 joins; the queries already right plan 27 fewer joins and 94 fewer CTEs,
+  and no summary read is lost. Every fix is one of two readings: a membership's set is read by
   its own membership and feeds no rows, and a stored partial is no finished
   value until it is re-aggregated at its own grain. Fixed:
   - A set in an OR was ordered before every row argument of the OR, the WHERE

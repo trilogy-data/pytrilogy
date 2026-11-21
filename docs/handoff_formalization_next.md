@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000 and the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
 expression) to 130,000; the PR of each round holds its sweep totals. Only
-`compositions` has `OPEN` seeds (OPEN_COUNT queries, area 1, all on the summary
+`compositions` has `OPEN` seeds (9 queries, area 1, all on the summary
 model).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -354,7 +354,8 @@ Open in the `expressions` family (each fails on main too):
 
 Open in the `compositions` family (`OPEN` in
 `tests/discovery/test_oracle_compositions_laws.py`, each failing on main, all
-on the summary model): OPEN_SEEDS.
+on the summary model): 5754, 13009, 32125, 32239, 71000, 89278, 91633,
+108631, 127138. All raise.
 
 - Raises: `Merge sources` (5754, 32125), `keyless join` (89278, 108631),
   DuckDB's `Ambiguous reference` (32239, 71000), `Missing source reference`
