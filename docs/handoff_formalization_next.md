@@ -13,13 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.525.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.526.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000 and the `compositions` family (memberships,
 `/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
-expression) to 130,000; the PR of each round holds its sweep totals. Only
-`compositions` has `OPEN` seeds (9 queries, area 1, all on the summary
-model).
+expression) to 200,000; the PR of each round holds its sweep totals. No
+family has `OPEN` seeds.
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -294,7 +293,9 @@ or fix their planning beyond keeping existing tests green.
   before its own membership's left side only (0.3.525).
 - A stored partial is no finished value until it is re-aggregated at its own
   grain, wherever it is read: as a gate's value, a set's condition, a key a
-  merge pairs on, or a total beside keys (0.3.525 fixed one of each).
+  merge pairs on, or a total beside keys (0.3.525 fixed one of each). Nor is
+  a value stored at another grain a column of a host's rows, nor what a
+  merged aggregate groups by a partial of its parent (0.3.526).
 - `existence_arguments` of a literal `in (...)` is `[()]`, truthy: test with
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
 - Efficiency: "summary reads lost" is a cost only where the base scans grew.
@@ -352,23 +353,9 @@ Open in the `expressions` family (each fails on main too):
   a summary re-sum beside its row twin (it reads stored partials through
   `partial_sources`, which the rebase would have to carry).
 
-Open in the `compositions` family (`OPEN` in
-`tests/discovery/test_oracle_compositions_laws.py`, each failing on main, all
-on the summary model): 5754, 13009, 32125, 32239, 71000, 89278, 91633,
-108631, 127138. All raise.
+Open in the `compositions` family: none of seeds 0-200,000 is wrong or
+raises.
 
-- Raises: `Merge sources` (5754, 32125), `keyless join` (89278, 108631),
-  DuckDB's `Ambiguous reference` (32239, 71000), `Missing source reference`
-  (13009, 127138) and `Invalid input concepts` (91633). 108631 is reduced:
-  `select species, max(height) by species + min(min(height) by species) as
-  v0, max(height) by tree_form as v1` (either value alone plans). 13009, 5754
-  and 32239 plan when `_split_root_dimension_clusters` peels no aggregate onto
-  a single-key dimension, but that peel is how the summary serves
-  `max(height)` beside `city` (`test_rollup_resolution_laws.py`
-  `max_beside_avg`), so find what 13009's peeled `species` bucket lacks.
-- Found by a probe, in no swept seed: `select city, min(height) by city,
-  species` re-mins the stored per-species minima to the city off the
-  summary, on main too; the base model returns a row per `(city, value)`.
 - Efficiency: a set the group graph builds is planned a second time as a
   standalone feeder (`_CleanFeederCache`) for a dimension root hosting the
   same membership (83051's plan holds both).

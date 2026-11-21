@@ -2356,20 +2356,24 @@ def _host_outputs_on_row_preserving_aggregates(
     if not hosts:
         return
     candidates = [
-        nid
+        (nid, concept)
         for concept in mandatory_list
         if (nid := walk.node_of(concept)) in attrs
         and _is_row_scalar(graph, edges, attrs, nid)
-        # a value a source stores at its own grain is no column of the host's
-        # rows, though its scan is a ROOT (`max(h) by form` off a summary)
-        and concept.derivation != Derivation.AGGREGATE
     ]
     for host in hosts:
         grain = attrs[host].grain_components
         riders = [
             nid
-            for nid in candidates
+            for nid, concept in candidates
             if attrs[nid].address not in grain
+            # a value a source stores at another grain is no column of the
+            # host's rows, though its scan is a ROOT (`max(h) by form` off a
+            # summary)
+            and (
+                concept.derivation != Derivation.AGGREGATE
+                or concept.grain.components == grain
+            )
             and _whole_grain_determines(environment, grain, attrs[nid].address)
         ]
         attrs[host].grain_components = grain | {attrs[nid].address for nid in riders}
