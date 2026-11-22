@@ -275,12 +275,13 @@ property pid.parent int?;
 property pid.name string;
 property pid.mem int;
 datasource procs (pid, parent, name, mem) grain (pid)
-query '''select 1 pid, null parent, 'code' name, 10 mem union all select 2, 1, 'node', 5
-union all select 3, 2, 'py', 1 union all select 4, null, 'fx', 7''';
+query '''select 1 as pid, null as parent, 'code' as name, 10 as mem
+union all select 2, 1, 'node', 5 union all select 3, 2, 'py', 1
+union all select 4, null, 'fx', 7''';
 key app_id int;
 property app_id.app_name string;
 datasource apps (pid: app_id, name: app_name) grain (app_id)
-query '''select 1 pid, 'code' name union all select 2, 'node'
+query '''select 1 as pid, 'code' as name union all select 2, 'node'
 union all select 3, 'py' union all select 4, 'fx' ''';
 auto root <- recurse_edge(pid, parent);
 merge root into app_id;
