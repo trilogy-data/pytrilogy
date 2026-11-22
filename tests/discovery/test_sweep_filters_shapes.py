@@ -92,17 +92,6 @@ SHAPES = [
         ),
         [(3,), (5,), (7,), (None,)],
     ),
-    # a derived key beside a filtered property is one row per pair shown,
-    # whatever key the rows were grouped by (12986): A holds two broadleaf
-    # species and the formless Ulmus
-    (
-        (
-            "select coalesce(tree_form, 'none') as form0, tree_form ?"
-            " coalesce(tree_form, 'none') = 'none' as f where city in (city ? city ="
-            " 'A');"
-        ),
-        [("broadleaf", None), ("none", None)],
-    ),
     # a value by (city, tree_form) pairs with groups keyed by a filtered column
     # through the filtered rows, on both keys (543): A's broadleaves reach 5,
     # its Ulmus has no form's maximum

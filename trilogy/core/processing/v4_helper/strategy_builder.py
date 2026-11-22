@@ -6213,15 +6213,12 @@ def _groups_past_outputs(
     node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
 ) -> bool:
     """A grouping that kept a key the outputs do not determine (a derived
-    key's own grain, `species` of `fc`) holds a row per value of it. A hidden
-    key is still grouped by, except by a filter collapsed to its entity
-    (`select name, bulk_name` is one row per product by design)."""
+    key's own grain, `species` of `fc`) holds a row per value of it."""
     closure = strict_fd_closure(environment, {c.address for c in outputs})
-    hidden = node.hidden_concepts or set() if isinstance(node, FilterNode) else set()
     return any(
         o.address not in closure and not o.is_aggregate
         for o in node.output_concepts
-        if o.address not in hidden
+        if o.address not in (node.hidden_concepts or set())
     )
 
 
