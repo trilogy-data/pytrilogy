@@ -401,8 +401,9 @@ def _function_is_nullable(fn: Function, environment: Environment) -> bool:
         return True
     if op == FunctionType.CAST and cast_introduces_null(arguments):
         return True
-    if op == FunctionType.GROUP:
-        # group(expr, *grain): nullability tracks the wrapped expression.
+    if op in (FunctionType.GROUP, FunctionType.RECURSE_EDGE):
+        # group(expr, *grain): nullability tracks the wrapped expression; a
+        # walk ends on a row whose edge is NULL and takes that row's start.
         return bool(arguments) and _expr_is_nullable(arguments[0], environment)
     # Scalar functions and remaining aggregates propagate NULL from any input.
     return any(_expr_is_nullable(a, environment) for a in arguments)

@@ -29,7 +29,7 @@ structural and binding edges are true by construction. All derivations are
 deterministic in edge insertion order.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -630,6 +630,34 @@ class DomainGraph:
                 return False
             return self._structurally_equal(sub, sup)
         return self._subset_reachable(sub_class, sup_class, rep)
+
+    def proven_within(
+        self, sub: str, sup: str, sup_spellings: Collection[str] = ()
+    ) -> bool:
+        """`proven_subset` from `sub` to `sup` or a spelling of it: rendering
+        may have re-addressed the sup side, so it matches through its
+        pseudonyms, while `sub` keys on its own address (two relation
+        endpoints are distinct concepts, one per side).
+
+        A spelling is no free stand-in for `sup`. A scoped incomparable merge
+        collapses every member of a chained group onto one canonical, so the
+        sup side's pseudonyms include its siblings, populations the
+        declaration says are incomparable: `sub ⊑ sibling` says nothing about
+        `sub ⊑ sup`. Siblings are excluded, and so is a spelling `sup` is
+        itself a subset of: `subset join kb = ka` and `subset join kc = ka`
+        spell `kc` as `ka` too, and `kb ⊑ ka` says nothing about `kb ⊑ kc`."""
+        if sub == sup:
+            return False
+        group = self.join_key_groups().get(self.canonical(sup), set())
+        siblings = (group & self.coalescing_relation_members()) - {sup}
+        for candidate in sorted({sup, *sup_spellings}):
+            if candidate == sub or candidate in siblings:
+                continue
+            if candidate != sup and self.proven_subset(sup, candidate):
+                continue
+            if self.proven_subset(sub, candidate):
+                return True
+        return False
 
     def _structurally_equal(self, left: str, right: str) -> bool:
         """Same ≡-class under STRUCTURAL unconditioned EQUAL edges alone —

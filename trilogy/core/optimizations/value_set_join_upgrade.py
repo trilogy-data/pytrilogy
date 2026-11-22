@@ -590,23 +590,6 @@ def _complete_values(
             )
         ):
             return True
-    seed = _recursion_seed(side_cte)
-    if seed is not None:
-        # A recursive concept's domain is its image over the seed rows; the edge
-        # column is read off those same rows, so only the seed must be complete.
-        targets = (
-            concept.concept_arguments[:1]
-            if concept.derivation == Derivation.RECURSIVE
-            else [concept]
-        )
-        return bool(targets) and all(
-            any(
-                column.all_spellings & target.all_spellings
-                and _complete_values(column, seed, graph)
-                for column in seed.output_columns
-            )
-            for target in targets
-        )
     if concept.derivation in _COMPLETENESS_TRANSFERRING:
         args = concept.concept_arguments
         return bool(args) and all(
@@ -667,39 +650,12 @@ def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
 def _proven_subset_of(
     graph: DomainGraph, sub_concept: BuildConcept, sup_concept: BuildConcept
 ) -> bool:
-    """The graph proves the sub side's concept a subset of the sup side's: a
-    directed subset path over declared and structural edges (rowset/filter
-    lineage mints the latter). Deliberately ignores incomparable declarations:
-    an authored one can be conservatively wrong in one direction, and a proven
-    subset path makes the narrowing row-identical (rule B). The sub side keys
-    on its own exact address (the two relation endpoints are distinct
-    concepts, one per side) while the sup side matches through its
-    pseudonym/canonical closure, since rendering may have re-addressed it.
-
-    That closure is not a free stand-in for the sup side: a scoped
-    incomparable merge collapses every member of a chained group onto one
-    canonical, so the sup side's pseudonyms include its own siblings,
-    independent populations the declaration says are incomparable. Proving
-    `sub ⊑ sibling` says nothing about `sub ⊑ sup`, and rule-B narrowing on
-    it drops rows present on only one side. Siblings are excluded; sup's own
-    address stays, so a genuine subset path through the merge still narrows.
-    So is a spelling sup is itself a subset of: `subset join kb = ka` and
-    `subset join kc = ka` spell `kc` as `ka` too, and `kb ⊑ ka` says nothing
-    about `kb ⊑ kc`."""
-    if sub_concept.address == sup_concept.address:
-        return False
-    group = graph.join_key_groups().get(graph.canonical(sup_concept.address), set())
-    siblings = (group & graph.coalescing_relation_members()) - {sup_concept.address}
-    for candidate in sorted(sup_concept.all_spellings):
-        if candidate == sub_concept.address or candidate in siblings:
-            continue
-        if candidate != sup_concept.address and graph.proven_subset(
-            sup_concept.address, candidate
-        ):
-            continue
-        if graph.proven_subset(sub_concept.address, candidate):
-            return True
-    return False
+    """The graph proves the sub side's concept within the sup side's
+    (`DomainGraph.proven_within`): a directed subset path over declared and
+    structural edges, ignoring incomparable declarations (rule B)."""
+    return graph.proven_within(
+        sub_concept.address, sup_concept.address, sup_concept.all_spellings
+    )
 
 
 def _genuine_partial_stamp(
