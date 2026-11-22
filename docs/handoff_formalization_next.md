@@ -19,7 +19,7 @@ History lives elsewhere, so this file stays short:
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 20,000; the PR of each
 round holds its sweep totals. `filters` has 144 `OPEN` seeds (area 4b),
-`windows` 19 (area 4); `expressions` 8628 raises on the summary model on main
+`windows` 18 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -546,7 +546,7 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.530 wrote the
   60,000 seeds). So the semijoin still restates such a WHERE, wrongly where
   the gate is not decided per whole group (51466, 54409; `where height > 2
   and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
-- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444, 58721
+- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444
   (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
   15366, 11457.
 - Two parents of one group with no pairing render as a cross join; the
