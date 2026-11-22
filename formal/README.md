@@ -2833,9 +2833,12 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     columns the filter passes through.
 - **`filters` to 60,000** (0.3.533). On main seeds 40,000-60,000 (40,000
   queries) hold 67 wrong answers, 233 raises and 12 invalid statements. Over
-  0-60,000 the round fixes 122 queries (42 wrong answers, 66 raises, 14
-  invalid statements) and breaks none, with 308 fewer scans and 244 fewer
-  joins (4,492 more CTEs; 65 summary reads lost, none of them adding a scan).
+  0-60,000 the round fixes 120 queries (42 wrong answers, 64 raises, 14
+  invalid statements) and breaks none, with 296 fewer scans and 204 fewer
+  joins (4,407 more CTEs; 65 summary reads lost, none of them adding a scan).
+  The five older families, seeds 0-10,000, have no status change; `first`,
+  `spellings`, `compositions` and `expressions` plan the same SQL cost, and
+  `windows` has 12 fewer scans and 16 fewer joins.
   - A filtered key's keys were peeled off the row stream it reads: in
     `select tree_form, city ? city = 'A' as f where species in (<set>)` the
     WHERE's set made `species` a grouping key, `tree_form` moved to a scan of
@@ -2843,7 +2846,8 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     forms on nothing, every form met every `f`
     (`Filters.filter_keys_stay_on_its_rows`). The peel now leaves a filter's
     keys, the columns its condition reads and the row columns a derived one
-    is computed from (`fc` of `tree_form`) on the row stream. A filtered
+    is computed from (`fc` of `tree_form`) on the row stream. A filter an
+    aggregate reads (`max(height ? c)`) keeps none there, a filtered
     aggregate's own group keys still peel, and so do a filtered column's keys
     beside a WHERE aggregate they do not determine (FINAL re-applies that
     aggregate on the peel's key). The condition's columns also cleared a
@@ -2857,8 +2861,9 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     host feeds directly, whose own rows bypass every host, now counts as an
     uncovered contributor, and FINAL re-applies the atom where the filter's
     grain determines the keys of the atom's aggregates. A set planned under
-    the WHERE (`_CleanFeederCache`) is left out: there the same rule cost
-    2,000 joins over 40,000 queries and broke six (below).
+    the WHERE (`_CleanFeederCache`, a HAVING membership's subselect) is left
+    out: there the same rule cost 2,000 joins over 40,000 queries and broke
+    six (below).
   - A filter its keys decide was grouped by those keys hidden: `select city,
     fc, tree_form ? species in (<set>) as f` showed `(A, b, NULL)` once per
     broadleaf species (`Filters.decided_filter_repeats_per_key`). The FINAL

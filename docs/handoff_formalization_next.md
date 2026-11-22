@@ -19,7 +19,7 @@ History lives elsewhere, so this file stays short:
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 60,000; the PR of each
 round holds its sweep totals. `filters` has 123 `OPEN` seeds in 0-20,000 and
-543 failing queries in 20,000-60,000 not yet listed (area 4b),
+545 failing queries in 20,000-60,000 not yet listed (area 4b),
 `windows` 18 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -596,7 +596,7 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
 decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (123 seeds of
-0-20,000) and, at 0.3.533, 543 failing queries of 20,000-60,000, each
+0-20,000) and, at 0.3.533, 545 failing queries of 20,000-60,000, each
 failing on main too. The 40,000-60,000 raises on main group as 114 `cannot
 be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
 `Could not resolve connections`, 10 `Merge sources`.
@@ -606,10 +606,11 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
   max(height) by * > 0 and height = 5) as f where min(height) by species < 4`
   returns A (the answer is empty). 0.3.533's re-application of such a gate
   (`_unfiltered_filter_streams`) is switched off inside `_CleanFeederCache`
-  (`IN_SET_PLAN`): there it cost about 2,000 joins over 40,000 queries and
-  broke six (a duplicate CTE alias, a keyless join, wrong rows in 49404).
-  Reading the set's rows off the statement's WHERE-kept stream, which the
-  efficiency lead below asks for anyway, would fix both.
+  and a HAVING membership's subselect (`planning_a_set`): there it cost about
+  2,000 joins over 40,000 queries and broke six (a duplicate CTE alias, a
+  keyless join, wrong rows in 49404). Reading the set's rows off the
+  statement's WHERE-kept stream, which the efficiency lead in area 4 asks for
+  anyway, would fix both.
 - **A filtered column beside a WHERE aggregate its keys do not determine**
   still crosses: `select tree_form, city ? avg(height) by * <= 8 as f where
   count(tree_id) by species = 1` returns six rows for three. Keeping
