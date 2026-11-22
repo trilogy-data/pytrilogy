@@ -69,15 +69,10 @@ UniqueArg = TypeVar("UniqueArg")
 def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]:
     final = []
     dedupe = set()
-    if isinstance(property, str):
-
-        def getter(x):
-            return getattr(x, property, DEFAULT_NAMESPACE)
-
-    else:
-        getter = property
+    name = property if isinstance(property, str) else ""
+    getter = None if isinstance(property, str) else property
     for input in inputs:
-        key = getter(input)
+        key = getter(input) if getter else getattr(input, name, DEFAULT_NAMESPACE)
         if key in dedupe:
             continue
         dedupe.add(key)

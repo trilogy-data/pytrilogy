@@ -27,6 +27,7 @@ class BuildCaches:
     canonical_build_cache: dict = field(default_factory=dict)
     grain_build_cache: dict = field(default_factory=dict)
     datasource_build_cache: dict = field(default_factory=dict)
+    multi_select_build_cache: dict = field(default_factory=dict)
     # Context-free environment materializations (EnvBaseline), keyed by the
     # scoped-join tuple they were built under; nested arms replay only their
     # overlay's delta against these. Scoped to this resolution like every
