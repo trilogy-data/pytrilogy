@@ -814,8 +814,9 @@ def _unfiltered_filter_streams(
     scope: "_PlacementScope",
 ) -> set[str]:
     """Filter groups shown beside a host that read their rows beside it (a
-    set's filter shows none): the host feeds only their condition (`count(tree_id) by city` of `height ? ...`),
-    so the rows they show never passed the atom
+    set's filter shows none): the host filters their condition's rows
+    (`count(tree_id) by city` of `height ? ...`), but the rows they show
+    never passed the atom
     (`Filters.gate_on_a_condition_filters_no_row`). FINAL re-applies the atom
     on their rows, so their grain must determine its aggregates' keys."""
     if IN_SET_PLAN.get():

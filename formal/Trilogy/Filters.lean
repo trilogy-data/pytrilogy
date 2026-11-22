@@ -40,8 +40,9 @@ the pairing out (`carried_column_fans_out`), and a collapse past a key the
 pairing reads crosses every value of it (`collapse_drops_paired_key`). Its
 keys are columns of the rows it filters: moved to a scan of their own, they
 leave it nothing to pair on (`filter_keys_stay_on_its_rows`). And a WHERE
-hosted beneath an aggregate its condition reads has filtered that
-aggregate's rows, not the filter's (`gate_on_a_condition_filters_no_row`).
+hosted only beneath an aggregate its condition reads has filtered that
+aggregate's rows and not the filter's own; both must pass it
+(`gate_on_a_condition_filters_no_row`).
 A filter its keys decide is a property of them, shown once per value like
 any other (`decided_filter_repeats_per_key`); only one reading finer than its
 keys is a value per key.
