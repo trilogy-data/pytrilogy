@@ -264,6 +264,32 @@ SHAPES = [
         ),
         [(5,)],
     ),
+    # ...and what its condition reads (41909, reduced): `tree_form` moved to
+    # the species scan, the per-tree maximum met it on nothing (a keyless join)
+    (
+        (
+            "select tree_id, max(height) ? tree_form = 'linden' as v0,"
+            " min(height) by species as v1;"
+        ),
+        [
+            ("a1", None, 3),
+            ("a2", None, 3),
+            ("a3", None, 5),
+            ("a4", None, None),
+            ("b1", None, 3),
+            ("b2", 2, 2),
+        ],
+    ),
+    # a filter its keys decide is shown once per value, as a property is
+    # (46449): grouped by its hidden `species`, (A, b, NULL) showed twice
+    (
+        (
+            "select city, case when tree_form = 'broadleaf' then 'b' else 'o' end"
+            " as fc, tree_form ? species in (species ? coalesce(tree_form, 'none')"
+            " = 'none') as v0 where tag in (tag ? height between 3 and 7);"
+        ),
+        [("A", "b", None), ("A", "o", None), ("B", "b", None), ("B", "o", None)],
+    ),
 ]
 
 
