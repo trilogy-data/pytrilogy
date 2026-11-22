@@ -7115,11 +7115,6 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
-    # what each contributor's rows hold, as built
-    built_holds = {
-        gid: frozenset(o.address for o in node.output_concepts)
-        for gid, node in built.items()
-    }
     bridged = elect_bridges(
         group_graph,
         attrs,
@@ -7128,7 +7123,6 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
-        rendered=built_holds,
     )
     bridges = bridged.extras
     extras = _final_extra_sides(
@@ -7149,7 +7143,6 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         extras=bridges + extras.groups,
-        rendered=built_holds,
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}

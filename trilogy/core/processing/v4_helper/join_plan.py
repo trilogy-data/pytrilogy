@@ -974,42 +974,6 @@ def _filtered_row_keys(
     return contracted.get(gid, frozenset())
 
 
-def _rows_hold(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    carry_demands: dict[str, frozenset[str]],
-    environment: BuildEnvironment,
-    rendered: dict[str, frozenset[str]] | None,
-) -> frozenset[str]:
-    """What `gid`'s rows hold. A filter holds what it renders: a row parent
-    it never read (the select's rows beside the aggregate its condition
-    reads) adds no key to them (`Filters.unread_row_parent_pairs_nothing`)."""
-    held = _held(group_graph, attrs, gid, carry_demands, environment)
-    if not _reads_groups(group_graph, attrs, gid, rendered):
-        return held
-    assert rendered is not None
-    return held & rendered.get(gid, held)
-
-
-def _reads_groups(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    rendered: dict[str, frozenset[str]] | None,
-) -> bool:
-    """A filter beside a grouped parent: its row parents' columns are what
-    the build projects to its grain, held only if the node renders them."""
-    return (
-        rendered is not None
-        and attrs[gid].derivation == Derivation.FILTER
-        and any(
-            attrs[p].derivation in GROUPING_DERIVATIONS
-            for p in _group_parents(group_graph, attrs, gid)
-        )
-    )
-
-
 def _looked_up_keys(
     keys: frozenset[str],
     identity: frozenset[str],
@@ -1054,7 +1018,6 @@ def plan_final_join(
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
     extras: Sequence[str] = (),
-    rendered: dict[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The plan for merging `cover` (contributor -> the outputs it supplies).
     A `split` contributor is joined as several projections of its own rows,
@@ -1109,7 +1072,7 @@ def plan_final_join(
         gid: identity[gid]
         | (
             (attrs[gid].grain_components | _filtered_row_keys(attrs, gid, contracted))
-            & _rows_hold(group_graph, attrs, gid, carry_demands, environment, rendered)
+            & _held(group_graph, attrs, gid, carry_demands, environment)
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()
         )
@@ -1152,8 +1115,6 @@ def plan_final_join(
                 | identity[gid]
                 | carry_demands.get(gid, frozenset())
             )
-        elif rendered is not None and _reads_groups(group_graph, attrs, gid, rendered):
-            held &= rendered.get(gid, held) | identity[gid]
         carries[gid] = (
             held
             | _renderable(held, members, environment)
@@ -1254,7 +1215,6 @@ def elect_bridges(
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
     reader_grain: frozenset[str] = frozenset(),
-    rendered: dict[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The plan over `cover` with the groups outside it that join its islands
     as extras, in the order they join: each, planned beside the cover as a
@@ -1272,7 +1232,6 @@ def elect_bridges(
         authored,
         split,
         contracted,
-        rendered=rendered,
     )
     bridges: list[str] = []
     current = plan(extras=bridges)

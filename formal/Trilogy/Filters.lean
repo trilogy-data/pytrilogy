@@ -37,9 +37,7 @@ A value the condition reads is built before the filtered column:
 A filter's rows pair with the select's other streams on its grain, so they
 must be one per grain value there: a column it carries below its grain fans
 the pairing out (`carried_column_fans_out`), and a collapse past a key the
-pairing reads crosses every value of it (`collapse_drops_paired_key`), and
-a row parent the filter never read holds no key of its rows
-(`unread_row_parent_pairs_nothing`).
+pairing reads crosses every value of it (`collapse_drops_paired_key`).
 -/
 
 namespace Trilogy.Filters
@@ -210,19 +208,5 @@ theorem collapse_drops_paired_key :
       pairs.length = 4 := by
   decide
 
-/-- `select city, tree_form, city ? sum(height) by city - count(tree_id) by
-city = 2 as f where max(height) by tree_form is not null`: the filter was
-read off the aggregate by city alone, yet planned as holding `tree_form`
-through the rows beside it. Paired with the kept forms on that key it lacks,
-every city met every form; bridged by the kept rows, city A keeps only its
-broadleaf trees (`unread_row_parent_pairs_nothing`). -/
-theorem unread_row_parent_pairs_nothing :
-    -- (city, tree_form) of the trees the WHERE keeps
-    let kept : List (Nat × Nat) := [(0, 0), (0, 0), (0, 0), (1, 0), (1, 1)]
-    let cities := (kept.map (·.1)).eraseDups
-    let forms := (kept.map (·.2)).eraseDups
-    (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 ∧
-      kept.eraseDups.length = 3 := by
-  decide
 
 end Trilogy.Filters
