@@ -167,33 +167,46 @@ def _assign_groups(
         derivation = Derivation.ROWSET if a.rowset_name is not None else a.derivation
         by_derivation[derivation].append((node, a))
 
-    primary_group: dict[str, str] = {}
-    buckets: dict[str, GroupBucket] = {}
-    assigned: set[Derivation] = set()
-
-    def ensure_assigned(derivation: Derivation) -> None:
-        if derivation in assigned:
-            return
-        assigned.add(derivation)
-        rule = GROUPING_RULES.get(derivation, DEFAULT_RULE)
-        items = by_derivation.get(derivation, [])
-        for bucket in rule(
-            items,
-            concept_graph,
-            concept_edges,
-            concept_attrs,
-            primary_group,
-            ensure_assigned,
-            output_addresses,
-        ):
-            group_id = bucket.group_id
-            buckets[group_id] = bucket
-            for node_id_member in bucket.primary_node_ids:
-                primary_group[node_id_member] = group_id
-
+    assigner = _GroupAssigner(
+        concept_graph, concept_edges, concept_attrs, output_addresses, by_derivation
+    )
     for derivation in by_derivation:
-        ensure_assigned(derivation)
-    return primary_group, buckets
+        assigner.ensure_assigned(derivation)
+    return assigner.primary_group, assigner.buckets
+
+
+@dataclass
+class _GroupAssigner:
+    """`_assign_groups`' state. A class rather than a closure: a nested
+    function that passes itself on is a reference cycle, and one holding the
+    whole concept graph until the collector runs."""
+
+    concept_graph: nx.DiGraph
+    concept_edges: EdgeMap
+    concept_attrs: dict[str, ConceptAttrs]
+    output_addresses: frozenset[str]
+    by_derivation: dict[Derivation, list[tuple[str, ConceptAttrs]]]
+    primary_group: dict[str, str] = field(default_factory=dict)
+    buckets: dict[str, GroupBucket] = field(default_factory=dict)
+    assigned: set[Derivation] = field(default_factory=set)
+
+    def ensure_assigned(self, derivation: Derivation) -> None:
+        if derivation in self.assigned:
+            return
+        self.assigned.add(derivation)
+        rule = GROUPING_RULES.get(derivation, DEFAULT_RULE)
+        for bucket in rule(
+            self.by_derivation.get(derivation, []),
+            self.concept_graph,
+            self.concept_edges,
+            self.concept_attrs,
+            self.primary_group,
+            self.ensure_assigned,
+            self.output_addresses,
+        ):
+            self.buckets[bucket.group_id] = bucket
+            for member in bucket.primary_node_ids:
+                self.primary_group[member] = bucket.group_id
 
 
 def _lineage_leaf_addresses(

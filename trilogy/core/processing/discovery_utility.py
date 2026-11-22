@@ -1497,6 +1497,7 @@ def raise_if_where_population_split(
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
     g: "ReferenceGraph",
+    comp_of: dict[str, int],
     line_number: int | None = None,
 ) -> None:
     """Post-failure refiner: a top-level WHERE defines ONE row population, so every
@@ -1515,7 +1516,6 @@ def raise_if_where_population_split(
     filter_args = [c for c in conditions.row_arguments if not _crossjoinable(c)]
     if not filter_args:
         return
-    comp_of, _ = _component_map(environment, g)
     filter_components: set[int] = set()
     for arg in filter_args:
         filter_components |= _reachable_components(arg, environment, comp_of)

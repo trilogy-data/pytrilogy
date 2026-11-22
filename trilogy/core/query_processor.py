@@ -2,6 +2,7 @@ from collections import OrderedDict, defaultdict
 from collections.abc import Sequence
 from dataclasses import replace
 from math import ceil
+from threading import RLock
 from typing import Any
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
@@ -57,6 +58,7 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildWhereClause,
     Factory,
+    rebase_locals,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType, arg_to_datatype
@@ -73,6 +75,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
     UnnestJoin,
 )
+from trilogy.core.models.reference_index import dependents
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import elect_partials
@@ -775,6 +778,7 @@ def _raise_if_disconnected(
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
     carried: set[str],
+    comp_of: dict[str, int],
 ) -> None:
     """Raise the typed subgraph error when this select's required concepts (outputs
     + WHERE row args) span unconnected reference-graph components. Delegates to the
@@ -798,8 +802,6 @@ def _raise_if_disconnected(
         for group in (conditions.existence_arguments if conditions else None) or ()
         if group
     ]
-    # every gate below reads the same graph with nothing excluded
-    comp_of = connectivity_map(build_environment, graph) if existence else None
     raise_if_disconnected_for(
         [c for c in build_statement.output_components if c.address not in carried],
         conditions,
@@ -831,8 +833,10 @@ def _plan_query_node(
     # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
     # cross-joins (scalar aggregates, constants) still resolve below.
+    # every gate below reads the same graph with nothing excluded
+    comp_of = connectivity_map(build_environment, graph)
     _raise_if_disconnected(
-        build_statement, build_environment, graph, conditions, carried
+        build_statement, build_environment, graph, conditions, carried, comp_of
     )
     # Single-row outputs are skipped as crossjoinable by the connectivity
     # checks, so an output no join relates to the WHERE would otherwise plan as
@@ -843,6 +847,7 @@ def _plan_query_node(
             conditions,
             build_environment,
             graph,
+            comp_of,
             line_number=(
                 build_statement.meta.line_number
                 if isinstance(build_statement, BuildSelectLineage)
@@ -1011,13 +1016,7 @@ def _session_build_caches(
     from functools import partial
     from weakref import ref
 
-    stamp = (
-        environment.concepts.structure_version,
-        environment.datasources.content_version,
-        environment.concepts.mutations if environment.concepts.has_overlays else -1,
-        len(environment.alias_origin_lookup),
-        tuple(sorted((k, d.status.value) for k, d in environment.datasources.items())),
-    )
+    stamp = environment.build_stamp()
     store_key = id(environment)
     cached = _SESSION_CACHE_STORE.get(store_key)
     if cached is None or cached[0]() is not environment:
@@ -1039,9 +1038,92 @@ def _session_build_caches(
     key = environment.materialize_join_key(scoped_joins)
     caches = bundles.get(key)
     if caches is None:
-        caches = BuildCaches()
+        caches = _inherited_caches(environment, scoped_joins, key) or BuildCaches()
         bundles[key] = caches
     return caches
+
+
+# Priming a parent's bundle and forking it read and write the parent's caches,
+# which sibling duplicates on other threads share.
+_INHERIT_LOCK = RLock()
+
+
+def _inherited_caches(
+    environment: Environment,
+    scoped_joins: list[tuple[str, str, JoinType]] | None,
+    key: tuple,
+) -> BuildCaches | None:
+    """The bundle of the environment this one was duplicated from, rebased
+    onto this one. A duplicate builds, name for name, what its parent builds
+    wherever it still holds its parent's concepts, so the parent's baseline is
+    built once and each duplicate builds only what it added, rebound, or
+    reads those through, instead of materializing the whole model again."""
+    found = environment.origin_changes()
+    if found is None:
+        return None
+    parent, changed = found
+    # an alias origin names another concept's build; left to a full build
+    if changed and environment.alias_origin_lookup:
+        return None
+    with _INHERIT_LOCK:
+        held = _session_build_caches(parent, scoped_joins)
+        donor = held.env_baselines.get(key) or _shared_baseline(
+            parent, held, _baseline_factory(parent, held, scoped_joins)
+        )
+        dirty = dependents(parent, environment, changed, key) if changed else set()
+        if len(dirty) * 2 > len(donor.units):
+            return None
+        try:
+            caches = held.fork(dirty)
+        except RuntimeError:
+            # the parent is planning on another thread, writing these caches
+            return None
+        factory = _baseline_factory(environment, caches, scoped_joins)
+        caches.env_baselines[key] = environment._materialize_factory(
+            rebase_locals(donor, dirty),
+            factory.pseudonym_map,
+            factory.grain_build_cache,
+            caches.canonical_build_cache,
+            caches.datasource_build_cache,
+            caches.scoped_joins,
+            caches.multi_select_build_cache,
+        ).build_environment_rebased(environment, donor, dirty)
+        return caches
+
+
+def _baseline_factory(
+    environment: Environment,
+    caches: BuildCaches,
+    scoped_joins: list[tuple[str, str, JoinType]] | None,
+) -> Factory:
+    if scoped_joins:
+        caches.scoped_joins = scoped_joins
+    if environment.merges:
+        existing = set(caches.scoped_joins)
+        caches.scoped_joins = caches.scoped_joins + [
+            m for m in environment.merges if m not in existing
+        ]
+    caches.sync_pseudonym_map(environment)
+    return Factory(
+        environment=environment,
+        canonical_build_cache=caches.canonical_build_cache,
+        multi_select_build_cache=caches.multi_select_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+        scoped_joins=caches.scoped_joins,
+    )
+
+
+def _shared_baseline(environment: Environment, caches: BuildCaches, factory: Factory):
+    return environment.shared_baseline(
+        caches.env_baselines,
+        pseudonym_map=factory.pseudonym_map,
+        grain_build_cache=factory.grain_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        multi_select_build_cache=caches.multi_select_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
+    )
 
 
 def get_query_node(
@@ -1063,23 +1145,7 @@ def get_query_node(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
     caches = history.build_caches
-    if scoped_joins:
-        caches.scoped_joins = scoped_joins
-    if environment.merges:
-        existing = set(caches.scoped_joins)
-        caches.scoped_joins = caches.scoped_joins + [
-            m for m in environment.merges if m not in existing
-        ]
-    caches.sync_pseudonym_map(environment)
-
-    base_factory = Factory(
-        environment=environment,
-        canonical_build_cache=caches.canonical_build_cache,
-        multi_select_build_cache=caches.multi_select_build_cache,
-        grain_build_cache=caches.grain_build_cache,
-        pseudonym_map=caches.pseudonym_map,
-        scoped_joins=caches.scoped_joins,
-    )
+    base_factory = _baseline_factory(environment, caches, scoped_joins)
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
     )
@@ -1089,15 +1155,7 @@ def get_query_node(
     # Baseline + overlay delta (see nested_select.build_nested_select): the
     # statement's own materialization seeds the per-resolution baseline that
     # nested arms under the same scoped joins then reuse.
-    baseline = environment.shared_baseline(
-        caches.env_baselines,
-        pseudonym_map=base_factory.pseudonym_map,
-        grain_build_cache=base_factory.grain_build_cache,
-        canonical_build_cache=caches.canonical_build_cache,
-        multi_select_build_cache=caches.multi_select_build_cache,
-        datasource_build_cache=caches.datasource_build_cache,
-        scoped_joins=caches.scoped_joins,
-    )
+    baseline = _shared_baseline(environment, caches, base_factory)
     build_environment = environment.materialize_delta(
         baseline,
         build_statement.local_concepts,
@@ -1556,18 +1614,20 @@ def _collect_rowset_scoped_joins(
     return out
 
 
+def _source_identifiers(
+    source: BuildDatasource | QueryDatasource, out: set[str]
+) -> None:
+    if isinstance(source, QueryDatasource):
+        for child in source.datasources:
+            _source_identifiers(child, out)
+    else:
+        out.add(source.identifier)
+
+
 def _plan_datasource_identifiers(ctes: list[CTE | UnionCTE]) -> set[str]:
     """Identifiers of every datasource the finished plan reads from,
     including scans the optimizer folded into their consumer."""
     out: set[str] = set()
-
-    def walk(source: BuildDatasource | QueryDatasource) -> None:
-        if isinstance(source, QueryDatasource):
-            for child in source.datasources:
-                walk(child)
-        else:
-            out.add(source.identifier)
-
     stack: list[CTE | UnionCTE] = list(ctes)
     while stack:
         node = stack.pop()
@@ -1577,7 +1637,7 @@ def _plan_datasource_identifiers(ctes: list[CTE | UnionCTE]) -> set[str]:
         stack.extend(node.inlined_parents)
         if isinstance(node, DatasourceCTE):
             out.add(node.datasource.identifier)
-        walk(node.source)
+        _source_identifiers(node.source, out)
     return out
 
 

@@ -68,23 +68,22 @@ def _operand_to_boolean(operand: Any, context: RuleContext) -> Any:
     return _expr_to_boolean(operand, context)
 
 
+def _munch(args: list[Any], context: RuleContext) -> Any:
+    if len(args) == 1:
+        return args[0]
+    return Conditional(
+        left=_operand_to_boolean(args[0], context),
+        operator=args[1],
+        right=_operand_to_boolean(_munch(args[2:], context), context),
+    )
+
+
 def conditional(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    args = hydrated_children(node, hydrate)
-
-    def munch(args: list[Any]) -> Any:
-        if len(args) == 1:
-            return args[0]
-        return Conditional(
-            left=_operand_to_boolean(args[0], context),
-            operator=args[1],
-            right=_operand_to_boolean(munch(args[2:]), context),
-        )
-
-    return munch(args)
+    return _munch(hydrated_children(node, hydrate), context)
 
 
 def condition_parenthetical(

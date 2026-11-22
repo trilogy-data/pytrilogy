@@ -321,6 +321,58 @@ entries joined `tests/grids.txt`.
 
 The law shards were 3.0 (grids), 5.8 (rest) and 9.7 minutes (discovery-unnest).
 
+## Third pass: generation time (0.3.533)
+
+The passes above measured the workflow. This one measures what the planner
+costs per query, with `.scripts/generation_benchmark.py`: `generate_sql` for
+every TPC-DS and TPC-H query in a fresh environment, plus the dashboard
+suite's duplicate-then-compile path, minimum of three, SQL hashed. 202
+queries, about 80 s to run.
+
+| suite     | queries | before  | after   |
+|-----------|--------:|--------:|--------:|
+| dashboard |      73 |  8.00 s |  4.61 s |
+| all three |     202 | 23.36 s | 19.03 s |
+
+Every query's SQL is byte-identical across the change.
+
+### 12. Nothing guarded the time to make a plan
+
+`check_benchmark_growth.py` compares plan size with main. One TPC-DS query
+went from 0.2 s to 6.6 s of generation across about 25 releases with nothing
+flagging it. The PR job now runs the benchmark against main's `trilogy`
+(`--trilogy-root`, a worktree of the fetched base) and the branch's, on the
+same runner, and fails a query more than 2x and 0.15 s slower or a run 1.3x
+slower. A comparison that fails is taken a second time, each query keeping
+its faster time, so a runner that stalled once does not fail the build.
+
+### 13. Every duplicate materialized the whole model
+
+The dashboard harness, like pyserver, compiles each query in a fresh
+`Environment.duplicate()`, and each one built every concept of the model
+before planning: 28% of that path. A duplicate now rebases its parent's
+baseline. The parent's is built once; a duplicate takes the parent's result
+for each unit it still holds unchanged and builds only what it added,
+rebound or edited, and what the author model reads those through. The
+dashboard queries each rebind five constants to parameters, which dirties 7
+of 350 units. The copy itself went from 25 ms to 10 ms.
+
+### 14. A dropped environment waited for the cycle collector
+
+After a query the `Environment` and its session caches were unreachable but
+not freed: about 2,400 objects in cycles per simple query, pinning 15k more.
+Ten nested functions that called themselves were most of it (a function that
+closes over itself is a cycle, holding everything else it closes over). Time
+in the collector over the TPC run went from 2.05 s to 1.57 s. A test now
+plans a statement with the collector off and asserts the environment dies.
+
+### 15. Releasing a pooled DuckDB instance re-read every setting
+
+`duckdb_settings()` alone is 4.5 ms of a 12.8 ms executor lifetime. The
+release now reads settings, secrets, variables and attached databases only
+after a statement that could have moved them, and loaded extensions every
+time: about 7 ms per executor.
+
 ## Targets not taken (yet), in order of expected value
 
 - **The 13 s gap before the last test file, 23 s on Windows.** Between the

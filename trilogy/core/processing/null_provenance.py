@@ -12,6 +12,7 @@ of a source's joins or parents restamps it."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from weakref import ReferenceType, ref
 
 from trilogy.core.enums import AggregateGroupingMode
 from trilogy.core.functions import propagates_argument_nulls
@@ -44,15 +45,19 @@ def provenance(source: DataSource) -> NullProvenance:
         return NullProvenance(source)
     found = source.__dict__.get(_STAMP)
     if found is None:
-        found = source.__dict__[_STAMP] = NullProvenance(source)
+        found = source.__dict__[_STAMP] = NullProvenance(source, held=True)
     return found
 
 
 class NullProvenance:
     """One source's answers, each computed on first read from its parents'."""
 
-    def __init__(self, source: DataSource) -> None:
-        self.source = source
+    def __init__(self, source: DataSource, held: bool = False) -> None:
+        # A source that holds its provenance is referenced back weakly: the
+        # pair would otherwise keep a whole plan alive until the collector ran.
+        self._source: DataSource | ReferenceType[DataSource] = (
+            ref(source) if held else source
+        )
         self._extent: frozenset[str] | None = None
         self._guest: frozenset[str] | None = None
         self._rollup: frozenset[str] | None = None
@@ -60,6 +65,15 @@ class NullProvenance:
         self._values: dict[str, bool] = {}
         self._driven: dict[int, bool] = {}
         self._padders: dict[str, frozenset[str]] = {}
+
+    @property
+    def source(self) -> DataSource:
+        held = self._source
+        if isinstance(held, ReferenceType):
+            source = held()
+            assert source is not None
+            return source
+        return held
 
     @property
     def extent(self) -> frozenset[str]:

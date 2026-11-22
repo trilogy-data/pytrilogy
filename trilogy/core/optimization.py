@@ -199,39 +199,44 @@ def reorder_ctes(
     return ordered
 
 
+def _mark_relevant(
+    cte: CTE | UnionCTE,
+    relevant_ctes: set[str],
+    visited: set[str],
+    by_name: dict[str, CTE | UnionCTE],
+    emit: bool = True,
+) -> None:
+    if cte.name in visited:
+        # A CTE first visited as a union branch (emit=False) and later
+        # reached as a real parent needs its own WITH entry.
+        if emit:
+            relevant_ctes.add(cte.name)
+        return
+    visited.add(cte.name)
+    if emit:
+        relevant_ctes.add(cte.name)
+
+    for parent in cte.dependency_nodes():
+        _mark_relevant(parent, relevant_ctes, visited, by_name)
+    # Subquery feeders need WITH entries too.
+    for node in subquery_sources(cte, by_name):
+        _mark_relevant(node, relevant_ctes, visited, by_name)
+    if isinstance(cte, UnionCTE):
+        for binding in cte.source_bindings(include_branches=True):
+            if not binding.branch or binding.node is None:
+                continue
+            # Branches render inside the union; only their parents need
+            # standalone WITH entries.
+            _mark_relevant(binding.node, relevant_ctes, visited, by_name, emit=False)
+
+
 def filter_irrelevant_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
 ):
     relevant_ctes: set[str] = set()
-    visited: set[str] = set()
     by_name: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
-
-    def recurse(cte: CTE | UnionCTE, emit: bool = True):
-        if cte.name in visited:
-            # A CTE first visited as a union branch (emit=False) and later
-            # reached as a real parent needs its own WITH entry.
-            if emit:
-                relevant_ctes.add(cte.name)
-            return
-        visited.add(cte.name)
-        if emit:
-            relevant_ctes.add(cte.name)
-
-        for parent in cte.dependency_nodes():
-            recurse(parent)
-        # Subquery feeders need WITH entries too.
-        for node in subquery_sources(cte, by_name):
-            recurse(node)
-        if isinstance(cte, UnionCTE):
-            for binding in cte.source_bindings(include_branches=True):
-                if not binding.branch or binding.node is None:
-                    continue
-                # Branches render inside the union; only their parents need
-                # standalone WITH entries.
-                recurse(binding.node, emit=False)
-
-    recurse(root_cte)
+    _mark_relevant(root_cte, relevant_ctes, set(), by_name)
     final = [cte for cte in input if cte.name in relevant_ctes]
     filtered = [cte for cte in input if cte.name not in relevant_ctes]
     if filtered:

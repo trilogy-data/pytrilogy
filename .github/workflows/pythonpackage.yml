@@ -230,6 +230,27 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           python .scripts/check_benchmark_growth.py FETCH_HEAD
+      - name: SQL generation did not slow against main
+        # The step above guards the size of a plan, not the time to make it:
+        # one TPC-DS query went from 0.2s to 6.6s of generation across ~25
+        # releases with nothing flagging it. This times generate_sql for every
+        # TPC-DS, TPC-H and dashboard query on main's trilogy and on this
+        # branch's, same queries, same runner, and fails a query more than 2x
+        # (and 0.15s) slower or a run 1.3x slower. A comparison that fails is
+        # taken again and each query keeps its faster time, so a runner that
+        # stalled once does not fail the build.
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.duckdb == '2.x'
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" FETCH_HEAD
+          bench() {
+            python .scripts/generation_benchmark.py --repeat 2 --merge --out "$RUNNER_TEMP/base.json" --trilogy-root "$RUNNER_TEMP/base"
+            python .scripts/generation_benchmark.py --repeat 2 --merge --out "$RUNNER_TEMP/head.json"
+          }
+          check() {
+            python .scripts/generation_benchmark.py --compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
+          }
+          bench
+          check || { bench; check; }
       # *_laws.py and the grids named in tests/grids.txt run once, in the
       # `laws` job below. CRs dropped: Windows checks the list out with CRLF.
       - name: List the grids the laws job runs
