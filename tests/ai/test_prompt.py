@@ -169,3 +169,23 @@ def test_trilogy_syntax_reference_embeds_aggregate_functions():
     aggregates_block = ref.split("aggregate:", 1)[1].splitlines()[0]
     assert "sum" in aggregates_block and "(<arg1>)" in aggregates_block
     assert aggregates_block.strip() != "[]"
+
+
+def test_advertised_functions_have_call_syntax():
+    import re
+    from pathlib import Path
+
+    import trilogy
+    from trilogy.ai.constants import FUNCTIONS
+
+    grammar = (
+        Path(trilogy.__file__).parent
+        / "scripts"
+        / "dependency"
+        / "src"
+        / "trilogy.pest"
+    ).read_text(encoding="utf-8")
+    literals = {m.lower() for m in re.findall(r'\^?"([A-Za-z_]+)', grammar)}
+    advertised = re.findall(r"([a-z_]+)(?=[|(])", FUNCTIONS)
+    assert advertised
+    assert [n for n in advertised if n not in literals] == []

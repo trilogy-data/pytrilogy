@@ -157,7 +157,8 @@ SPEC = BenchmarkSpec(
     db_filename="warehouse.duckdb",
     eval_dir=EVAL_DIR,
     prompts_file=EVAL_DIR / "query_prompts.json",
-    enriched_skip_prefixes=("query", "adhoc"),
+    # `_`-prefixed files are regression fixtures, not part of the model
+    enriched_skip_prefixes=("query", "adhoc", "_"),
     # tests/modeling/tpc_ds_duckdb is the hand-curated semantic model the
     # enriched leg of `--both-modes` seeds from instead of `trilogy ingest --all`.
     # The same directory also holds query<NN>.sql reference SQL files; the

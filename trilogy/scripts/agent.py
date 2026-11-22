@@ -96,10 +96,11 @@ Available tools:
 - trilogy(args, stdin=None): invoke the `trilogy` CLI as a subprocess. `args` is a
   list of string arguments. Output is captured and returned; large outputs are
   truncated from the middle. Common uses:
-    * ["agent-info"] — prints the full CLI docs AND the Trilogy language
-      syntax reference. CALL THIS FIRST on every task before writing any
-      .preql file. Trilogy is not SQL; the language section names the rules
-      you cannot afford to guess. Do not skip it."""
+    * ["agent-info", "query"] — the Trilogy language reference for writing
+      queries. CALL THIS FIRST on any query task before writing a .preql
+      file. Trilogy is not SQL; it names the rules you cannot afford to
+      guess. Do not skip it. Bare ["agent-info"] lists the other references
+      (model authoring, datasources, config, CLI)."""
     if include_database:
         base += """
     * ["database", "list"] — list the tables in the configured database.
@@ -188,8 +189,8 @@ Available tools:
       list` and `file write` still work."""
     base += """
     * Only documented subcommands work — do NOT invent `raw`, `shell`,
-      `read_file`, etc. Start with `trilogy agent-info`, then immediately call
-      the listed drilldown matching the task before authoring syntax.
+      `read_file`, etc. Start with the `agent-info` reference matching the
+      task before authoring syntax.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
