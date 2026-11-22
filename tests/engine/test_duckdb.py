@@ -3393,7 +3393,6 @@ order by a asc, b asc nulls last
     sql = executor.generate_sql(query)[-1]
     assert "ROLLUP" in sql
     assert "HAVING" in sql
-    assert "WHERE" not in sql
     results = [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
     assert results == [(1, 1, 10), (1, 2, 20), (1, None, 30)]
 

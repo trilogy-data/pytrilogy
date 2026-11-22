@@ -1,5 +1,5 @@
 query_id = "67"
-gen_length = 3640
+gen_length = 4601
 preql_size = 875
 comp_size = 1224
 generated_sql = """
@@ -45,43 +45,43 @@ HAVING
 ),
 abundant as (
 SELECT
-    \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
-    \"questionable\".\"ss_item_category\" as \"ss_item_category\",
-    \"questionable\".\"ss_item_class\" as \"ss_item_class\",
-    \"questionable\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"questionable\".\"ss_sale_date_month_of_year\" as \"ss_sale_date_month_of_year\",
-    \"questionable\".\"ss_sale_date_quarter\" as \"ss_sale_date_quarter\",
-    \"questionable\".\"ss_sale_date_year\" as \"ss_sale_date_year\",
-    \"questionable\".\"ss_store_id\" as \"ss_store_id\",
-    \"questionable\".\"sumsales\" as \"sumsales\",
-    rank() over (partition by \"questionable\".\"ss_item_category\" order by \"questionable\".\"sumsales\" desc ) as \"rk\"
+    \"questionable\".\"ss_item_brand_name\" as \"_rollup_2899183624326027__pass_ss_item_brand_name\",
+    \"questionable\".\"ss_item_category\" as \"_rollup_2899183624326027__pass_ss_item_category\",
+    \"questionable\".\"ss_item_class\" as \"_rollup_2899183624326027__pass_ss_item_class\",
+    \"questionable\".\"ss_item_product_name\" as \"_rollup_2899183624326027__pass_ss_item_product_name\",
+    \"questionable\".\"ss_sale_date_month_of_year\" as \"_rollup_2899183624326027__pass_ss_sale_date_month_of_year\",
+    \"questionable\".\"ss_sale_date_quarter\" as \"_rollup_2899183624326027__pass_ss_sale_date_quarter\",
+    \"questionable\".\"ss_sale_date_year\" as \"_rollup_2899183624326027__pass_ss_sale_date_year\",
+    \"questionable\".\"ss_store_id\" as \"_rollup_2899183624326027__pass_ss_store_id\",
+    \"questionable\".\"sumsales\" as \"_rollup_2899183624326027__pass_sumsales\",
+    rank() over (partition by \"questionable\".\"ss_item_category\" order by \"questionable\".\"sumsales\" desc ) as \"__rollup_2899183624326027_lift_rk\"
 FROM
     \"questionable\")
 SELECT
-    \"abundant\".\"ss_item_category\" as \"ss_item_category\",
-    \"abundant\".\"ss_item_class\" as \"ss_item_class\",
-    \"abundant\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
-    \"abundant\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"abundant\".\"ss_sale_date_year\" as \"ss_sale_date_year\",
-    \"abundant\".\"ss_sale_date_quarter\" as \"ss_sale_date_quarter\",
-    \"abundant\".\"ss_sale_date_month_of_year\" as \"ss_sale_date_month_of_year\",
-    \"abundant\".\"ss_store_id\" as \"ss_store_id\",
-    \"abundant\".\"sumsales\" as \"sumsales\",
-    \"abundant\".\"rk\" as \"rk\"
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_category\" as \"ss_item_category\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_class\" as \"ss_item_class\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_brand_name\" as \"ss_item_brand_name\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_product_name\" as \"ss_item_product_name\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_year\" as \"ss_sale_date_year\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_quarter\" as \"ss_sale_date_quarter\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_month_of_year\" as \"ss_sale_date_month_of_year\",
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_store_id\" as \"ss_store_id\",
+    \"abundant\".\"_rollup_2899183624326027__pass_sumsales\" as \"sumsales\",
+    \"abundant\".\"__rollup_2899183624326027_lift_rk\" as \"rk\"
 FROM
     \"abundant\"
 WHERE
-    \"abundant\".\"rk\" <= 100
+    \"abundant\".\"__rollup_2899183624326027_lift_rk\" <= 100
 
 ORDER BY 
-    \"abundant\".\"ss_item_category\" asc nulls first,
-    \"abundant\".\"ss_item_class\" asc nulls first,
-    \"abundant\".\"ss_item_brand_name\" asc nulls first,
-    \"abundant\".\"ss_item_product_name\" asc nulls first,
-    \"abundant\".\"ss_sale_date_year\" asc nulls first,
-    \"abundant\".\"ss_sale_date_quarter\" asc nulls first,
-    \"abundant\".\"ss_sale_date_month_of_year\" asc nulls first,
-    \"abundant\".\"ss_store_id\" asc nulls first,
-    \"abundant\".\"sumsales\" asc nulls first,
-    \"abundant\".\"rk\" asc nulls first
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_category\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_class\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_brand_name\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_item_product_name\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_year\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_quarter\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_sale_date_month_of_year\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_ss_store_id\" asc nulls first,
+    \"abundant\".\"_rollup_2899183624326027__pass_sumsales\" asc nulls first,
+    \"abundant\".\"__rollup_2899183624326027_lift_rk\" asc nulls first
 LIMIT (100)"""
