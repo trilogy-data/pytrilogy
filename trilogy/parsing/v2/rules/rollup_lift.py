@@ -13,12 +13,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from typing import Any
 
-from trilogy.core.enums import Derivation, FunctionClass, Modifier, Purpose
+from trilogy.core.enums import Derivation, Modifier, Purpose
 from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
     ConceptRef,
-    Function,
     HavingClause,
     NumberingWindowItem,
     OrderBy,
@@ -33,7 +32,6 @@ from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 
 _POST = (Derivation.WINDOW, Derivation.BASIC)
-_AGGREGATES = set(FunctionClass.AGGREGATE_FUNCTIONS.value)
 
 
 @dataclass
@@ -59,9 +57,7 @@ def _substitute(node: Any, match: Callable[[Any], Any]) -> Any:
     if not is_dataclass(node) or isinstance(node, (type, ConceptRef, Concept)):
         return node
     changed = {}
-    for f in fields(node):
-        if not f.init:
-            continue
+    for f in (f for f in fields(node) if f.init):
         value = getattr(node, f.name)
         new_value = _substitute(value, match)
         if new_value is not value:
@@ -74,9 +70,7 @@ def _concept(select: SelectStatement, address: str, context: RuleContext) -> Con
 
 
 def _is_inline_aggregate(node: Any) -> bool:
-    return isinstance(node, AggregateWrapper) or (
-        isinstance(node, Function) and node.operator in _AGGREGATES
-    )
+    return isinstance(node, AggregateWrapper)
 
 
 def _leaves(node: Any) -> list[Any]:
@@ -141,8 +135,6 @@ class _Minter:
 
     def leaf(self, node: Any) -> ConceptRef | None:
         if _is_inline_aggregate(node):
-            if not isinstance(node, AggregateWrapper):
-                node = AggregateWrapper(function=node)
             concept = arbitrary_to_concept(node, self.context.environment)
             self.arm.local_concepts[concept.address] = concept
             self._add(

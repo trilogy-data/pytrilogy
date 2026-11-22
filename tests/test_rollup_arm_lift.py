@@ -19,6 +19,7 @@ union all select 4, null, null, 7 v, 4 w
 ''';
 auto total <- sum(v);
 auto wtotal <- sum(w);
+const scale <- 2;
 """
 
 SPREAD = """
@@ -98,7 +99,7 @@ def test_named_and_signed_calls_lift():
     executor = _executor()
     executor.parse_text(
         "with r as rollup((select g1, total, rank() over (order by total desc) as rk,"
-        " total * 2 as dbl), g1) -> (a, t, k, d);"
+        " total * scale as dbl), g1) -> (a, t, k, d);"
     )
     named = executor.execute_text("select r.a, r.t, r.k, r.d order by r.k;")[-1]
     expected = [(None, 42, 1, 84), ("a", 30, 2, 60), (None, 7, 3, 14), ("b", 5, 4, 10)]
