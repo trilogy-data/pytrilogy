@@ -1480,12 +1480,14 @@ def _partition_by_signature_and_grain(
             else set()
         )
         grains = [data.grain_components for _, data in sub_items]
-        terminal = [
+        unread = [
             merge_terminal_siblings
-            and data.grain_components <= output_addresses
             and not lineage_successors(concept_graph, concept_edges, node)
-            for node, data in sub_items
+            for node, _ in sub_items
         ]
+        terminal = [unread[i] and grains[i] <= output_addresses for i in range(n)]
+        # siblings over one scan read its rows: it already relates their keys
+        one_scan = [len(sig) == 1 and sig <= root_gids for sig in sigs]
         pins = [data.grain_pin_anchors for _, data in sub_items]
         merged: list[tuple[int, int]] = []
         for i in range(n):
@@ -1517,7 +1519,13 @@ def _partition_by_signature_and_grain(
                 if (
                     grains[i] <= grains[j]
                     or grains[j] <= grains[i]
-                    or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
+                    or (
+                        sigs[i] == sigs[j]
+                        and (
+                            (terminal[i] and terminal[j])
+                            or (unread[i] and unread[j] and one_scan[i])
+                        )
+                    )
                 ):
                     merged.append((i, j))
         merged = _drop_bypassed_nests(merged, nodes, sigs, concept_graph, concept_edges)
