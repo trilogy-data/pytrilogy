@@ -1224,9 +1224,7 @@ order by gid
 
 def _grouping_cases(seed: SeedData) -> list[FuzzCase]:
     rollup_body = """
-select group_id, sum(event_amount) as total
-by rollup (group_id)
-order by group_id asc nulls last;
+select *rollup((select group_id, sum(event_amount) as total order by group_id asc nulls last), group_id);
 """
     rollup_oracle = """
 select gid, sum(amount)
@@ -1235,9 +1233,7 @@ group by rollup (gid)
 order by gid asc nulls last
 """
     cube_body = """
-select group_id, active, count(event_id) as event_count
-by cube (group_id, active)
-order by group_id asc nulls last, active asc nulls last;
+select *cube((select group_id, active, count(event_id) as event_count order by group_id asc nulls last, active asc nulls last), group_id, active);
 """
     cube_oracle = """
 select gid, active, count(eid)
@@ -1246,10 +1242,10 @@ group by cube (gid, active)
 order by gid asc nulls last, active asc nulls last
 """
     rollup_having_body = """
-select group_id, sum(event_amount) as total
-by rollup (group_id)
+select *rollup((select group_id, sum(event_amount) as total
 having sum(event_amount) > 0
-order by group_id asc nulls last;
+order by group_id asc nulls last
+), group_id);
 """
     rollup_having_oracle = """
 select gid, sum(amount)
@@ -1259,7 +1255,7 @@ having sum(amount) > 0
 order by gid asc nulls last
 """
     rollup_window_body = """
-select
+select *rollup((select
     group_id,
     sum(event_amount) as total,
     grouping(group_id) as grouping_level,
@@ -1267,8 +1263,8 @@ select
         partition by grouping(group_id)
         order by sum(event_amount) desc
     ) as level_rank
-by rollup (group_id)
-order by grouping_level asc, level_rank asc, group_id asc nulls last;
+order by grouping_level asc, level_rank asc, group_id asc nulls last
+), group_id);
 """
     rollup_window_oracle = """
 select
@@ -1358,9 +1354,9 @@ def _grouping_placement_cases(seed: SeedData) -> list[FuzzCase]:
     )
     for name, mode, key, extra, sql_key, sql_extra in extra_dim_variants:
         body = f"""
-select {key}, {extra}, sum(event_amount) as total
-by {mode} ({key})
-order by {key} asc nulls last, {extra} asc nulls last;
+select *{mode}((select {key}, {extra}, sum(event_amount) as total
+order by {key} asc nulls last, {extra} asc nulls last
+), {key});
 """
         oracle = f"""
 select roll.k, leaf.x, roll.total
@@ -1393,9 +1389,7 @@ order by roll.k asc nulls last, leaf.x asc nulls last
         )
 
     grouping_sets_body = """
-select group_id, active, sum(event_amount) as total
-by grouping sets ((group_id), ())
-order by group_id asc nulls last, active asc nulls last;
+select *grouping_sets((select group_id, active, sum(event_amount) as total order by group_id asc nulls last, active asc nulls last), (group_id), ());
 """
     grouping_sets_oracle = """
 select roll.k, leaf.x, roll.total
@@ -1424,9 +1418,7 @@ order by roll.k asc nulls last, leaf.x asc nulls last
 rowset per_pair <-
 select group_id as g, active as a, sum(event_amount) as amt;
 
-select per_pair.g, sum(per_pair.amt) as total
-by rollup (per_pair.g)
-order by per_pair.g asc nulls last;
+select *rollup((select per_pair.g, sum(per_pair.amt) as total order by per_pair.g asc nulls last), per_pair.g);
 """
     rowset_oracle = """
 select gid, sum(amt)
@@ -1450,9 +1442,7 @@ order by gid asc nulls last
 rowset per_pair <-
 select group_id as g, active as a, sum(event_amount) as amt;
 
-select per_pair.g, per_pair.a, sum(per_pair.amt) as total
-by rollup (per_pair.g)
-order by per_pair.g asc nulls last, per_pair.a asc nulls last;
+select *rollup((select per_pair.g, per_pair.a, sum(per_pair.amt) as total order by per_pair.g asc nulls last, per_pair.a asc nulls last), per_pair.g);
 """
     rowset_extra_oracle = """
 select roll.g, leaf.a, roll.total
@@ -1501,13 +1491,13 @@ left join (select gid, sum(amount) as returns from returns group by gid) r
     on g.gid = r.gid
 """
     union_body = union_rowsets + """
-select
+select *rollup((select
     coalesce(sale_side.g, return_side.g) as g,
     sum(coalesce(sale_side.sales, 0)) as sales,
     sum(coalesce(return_side.returns, 0)) as returns
 union join sale_side.g = return_side.g
-by rollup (g)
-order by g asc nulls last;
+order by g asc nulls last
+), g);
 """
     union_oracle = f"""
 select g.gid, sum(coalesce(s.sales, 0)), sum(coalesce(r.returns, 0))
@@ -1536,14 +1526,14 @@ order by 1 asc nulls last
     )
 
     union_label_body = union_rowsets + """
-select
+select *rollup((select
     'g' || coalesce(sale_side.g, return_side.g)::string as label,
     coalesce(sale_side.g, return_side.g) as g,
     sum(coalesce(sale_side.sales, 0)) as sales,
     sum(coalesce(return_side.returns, 0)) as returns
 union join sale_side.g = return_side.g
-by rollup (label)
-order by label asc nulls last, g asc nulls last;
+order by label asc nulls last, g asc nulls last
+), label);
 """
     union_label_oracle = f"""
 select roll.label, leaf.g, roll.sales, roll.returns
@@ -1598,15 +1588,15 @@ full join (select k, id as e, value from union_facts where k is not null) u
     on l.k is not distinct from u.k and l.e is not distinct from u.e
 """
     two_key_body = two_key_rowsets + """
-select
+select *rollup((select
     coalesce(sale_side.k, return_side.k) as k,
     coalesce(sale_side.e, return_side.e) as e,
     sum(coalesce(sale_side.sv, 0)) as sv,
     sum(coalesce(return_side.rv, 0)) as rv
 union join sale_side.k = return_side.k
 union join sale_side.e = return_side.e
-by rollup (k)
-order by k asc nulls last, e asc nulls last;
+order by k asc nulls last, e asc nulls last
+), k);
 """
     two_key_oracle = f"""
 select roll.k, leaf.e, roll.sv, roll.rv
@@ -1650,9 +1640,7 @@ order by roll.k asc nulls last, leaf.e asc nulls last
     )
 
     indicator_body = """
-select group_id, active, grouping(group_id) as level, sum(event_amount) as total
-by rollup (group_id)
-order by group_id asc nulls last, active asc nulls last;
+select *rollup((select group_id, active, grouping(group_id) as level, sum(event_amount) as total order by group_id asc nulls last, active asc nulls last), group_id);
 """
     indicator_oracle = """
 select roll.k, leaf.x, roll.level, roll.total
@@ -1684,10 +1672,10 @@ order by roll.k asc nulls last, leaf.x asc nulls last
     )
 
     having_body = """
-select group_id, active, sum(event_amount) as total
-by rollup (group_id)
+select *rollup((select group_id, active, sum(event_amount) as total
 having sum(event_amount) > 5
-order by group_id asc nulls last, active asc nulls last;
+order by group_id asc nulls last, active asc nulls last
+), group_id);
 """
     having_oracle = """
 select roll.k, leaf.x, roll.total
@@ -1724,11 +1712,11 @@ select left_id as row_id, left_key as k, left_value as v;
 rowset kept <- where subset_value >= 20
 select subset_key as k;
 
-select left_rows.k, sum(left_rows.v) as total
+select *rollup((select left_rows.k, sum(left_rows.v) as total
 subset join left_rows.k = kept.k
 where kept.k is not null
-by rollup (left_rows.k)
-order by left_rows.k asc nulls last;
+order by left_rows.k asc nulls last
+), left_rows.k);
 """
     subset_oracle = """
 select l.k, sum(l.value)
@@ -2623,13 +2611,13 @@ auto named_rank <- rank(active) over (
     order by sum(event_amount) desc
 );
 {alias_definition}
-select
+select *{grouping_mode}((select
     group_name,
     active,
     sum(event_amount) as total,
     {selected_rank} as ranked
-by {grouping_mode} (group_name, active)
-order by group_name asc nulls last, active asc nulls last;
+order by group_name asc nulls last, active asc nulls last
+), group_name, active);
 """
         oracle = f"""
 select

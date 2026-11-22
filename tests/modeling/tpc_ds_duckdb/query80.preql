@@ -14,7 +14,7 @@ auto id_label <- case
 end;
 auto profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
 
-where
+select *rollup((where
     sales.sale_date.date >= '2000-08-23'::date
     and sales.sale_date.date <= '2000-09-22'::date
     and sales.item.current_price > 50
@@ -25,10 +25,9 @@ select
     id_label as sk,
     sum(sales.ext_sales_price) as sales_total,
     sum(coalesce(sales.return_amount, 0)) as returns_total,
-    sum(profit_minus_loss) as profit_total,
-by rollup (channel_label, id_label)
+    sum(profit_minus_loss) as profit_total
 order by
     channel asc nulls first,
     sk asc nulls first
 limit 100
-;
+), channel_label, id_label);

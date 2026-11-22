@@ -66,8 +66,7 @@ def executor():
 
 def test_passthrough_rollup_emits_rollup_and_subtotals(executor):
     sql = executor.generate_sql("""
-select agg.ch, agg.e, agg.ext as total
-by rollup (agg.ch, agg.e);
+select *rollup((select agg.ch, agg.e, agg.ext as total), agg.ch, agg.e);
 """)[-1]
     assert "ROLLUP" in sql.upper()
     rows = _norm(executor.execute_raw_sql(sql).fetchall())
@@ -76,20 +75,17 @@ by rollup (agg.ch, agg.e);
 
 def test_passthrough_rollup_matches_fresh_aggregate_form(executor):
     passthrough = _norm(executor.execute_text("""
-select agg.ch, agg.e, agg.ext as total
-by rollup (agg.ch, agg.e);
+select *rollup((select agg.ch, agg.e, agg.ext as total), agg.ch, agg.e);
 """)[0].fetchall())
     fresh = _norm(executor.execute_text("""
-select agg.ch, agg.e, sum(agg.ext) as total
-by rollup (agg.ch, agg.e);
+select *rollup((select agg.ch, agg.e, sum(agg.ext) as total), agg.ch, agg.e);
 """)[0].fetchall())
     assert passthrough == fresh == EXPECTED
 
 
 def test_mixed_passthrough_and_fresh_aggregate(executor):
     rows = _norm(executor.execute_text("""
-select agg.ch, agg.e, agg.ext as total, sum(agg.cnt) as total_cnt
-by rollup (agg.ch, agg.e);
+select *rollup((select agg.ch, agg.e, agg.ext as total, sum(agg.cnt) as total_cnt), agg.ch, agg.e);
 """)[0].fetchall())
     assert [r[:3] for r in rows] == EXPECTED
     assert rows[0] == (None, None, 42.0, 4)
@@ -97,8 +93,7 @@ by rollup (agg.ch, agg.e);
 
 def test_passthrough_cube_emits_subtotals(executor):
     rows = executor.execute_text("""
-select agg.ch, agg.e, agg.ext as total
-by cube (agg.ch, agg.e);
+select *cube((select agg.ch, agg.e, agg.ext as total), agg.ch, agg.e);
 """)[0].fetchall()
     assert (None, None, 42.0) in {
         tuple(round(float(v), 2) if isinstance(v, (int, float)) else v for v in r)
@@ -114,14 +109,12 @@ def test_non_additive_passthrough_rollup_raises(executor):
     )
     with pytest.raises(InvalidSyntaxException, match="cannot re-aggregate"):
         executor.execute_text("""
-select avg_agg.ch, avg_agg.e, avg_agg.aext as total
-by rollup (avg_agg.ch, avg_agg.e);
+select *rollup((select avg_agg.ch, avg_agg.e, avg_agg.aext as total), avg_agg.ch, avg_agg.e);
 """)
 
 
 def test_keys_only_rollup_raises(executor):
     with pytest.raises(InvalidSyntaxException, match="at least one aggregate"):
         executor.execute_text("""
-select agg.ch, agg.e
-by rollup (agg.ch, agg.e);
+select *rollup((select agg.ch, agg.e), agg.ch, agg.e);
 """)

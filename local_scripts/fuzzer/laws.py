@@ -183,9 +183,9 @@ select sum(per_group.c) as c;
             "ROLLUP's grand-total row equals the ungrouped aggregate.",
             ("aggregate", "grouping", "rowset"),
             """
-rowset rolled <- select group_id, grouping(group_id) as lvl,
+rowset rolled <- rollup((select group_id, grouping(group_id) as lvl,
     sum(event_amount) as t
-by rollup (group_id);
+), group_id);
 where rolled.lvl = 1
 select rolled.t;
 """,
@@ -471,9 +471,9 @@ order by group_id asc;
             "ROLLUP's leaf rows are the plain GROUP BY.",
             ("aggregate", "grouping", "rowset"),
             """
-rowset rolled <- select group_id, grouping(group_id) as lvl,
+rowset rolled <- rollup((select group_id, grouping(group_id) as lvl,
     sum(event_amount) as t
-by rollup (group_id);
+), group_id);
 where rolled.lvl = 0
 select rolled.group_id, rolled.t order by rolled.group_id asc;
 """,

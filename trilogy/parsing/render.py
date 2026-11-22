@@ -18,6 +18,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
+    ROLLUP_NAMESPACE_PREFIX,
     SUBQUERY_NAMESPACE_PREFIX,
     WORKING_PATH_CONCEPT,
     rowset_alias_prefix,
@@ -130,9 +131,7 @@ QUERY_TEMPLATE = Template(
 {{ where }}
 {% endfor %}{% for join in joins %}{{ join }}
 {% endfor %}select{%- for select in select_columns %}
-{{ select }},{% endfor %}{%- if grouping %}
-{{ grouping }}
-{% endif %}{% if having %}
+{{ select }},{% endfor %}{% if having %}
 having
 {{ having }}
 {% endif %}{%- if order_by %}
@@ -141,6 +140,16 @@ order by{% for order in order_by %}
 limit {{ limit }}{% endif %}
 ;"""
 )
+
+SPREAD_TEMPLATE = Template("""select *{{ call }}{% for where in wheres %}
+{{ 'where' if loop.first else 'then where' }}
+{{ where }}{% endfor %}{% if having %}
+having
+{{ having }}{% endif %}{%- if order_by %}
+order by{% for order in order_by %}
+{{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
+limit {{ limit }}{% endif %}
+;""")
 
 
 @dataclass
@@ -297,6 +306,19 @@ class Renderer:
             if name.startswith(prefix):
                 return name[len(prefix) :]
         return name
+
+    @staticmethod
+    def _is_injected_grouping_flag(item: SelectItem) -> bool:
+        """A hidden `grouping(key)` the parser adds to a grouped arm; it is
+        re-added on reparse."""
+        content = item.content
+        return (
+            Modifier.HIDDEN in item.modifiers
+            and isinstance(content, ConceptTransform)
+            and isinstance(content.function, AggregateWrapper)
+            and content.function.function.operator == FunctionType.GROUPING
+            and content.output.name.startswith(VIRTUAL_CONCEPT_PREFIX)
+        )
 
     @staticmethod
     def _is_hidden_subquery_output(item) -> bool:
@@ -832,8 +854,12 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: RowsetDerivationStatement):
+        body = arg.select
         with self._rowset_scope(arg.name):
-            select_str = self.to_string(arg.select)
+            if isinstance(body, SelectStatement) and body.grouping is not None:
+                select_str = self._render_grouping_call(body)
+            else:
+                select_str = self.to_string(body)
         return f"""rowset {arg.name} <- {select_str}"""
 
     @to_string.register
@@ -1240,11 +1266,14 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: SelectStatement):
+        if arg.grouping is not None:
+            return "select *" + self._render_grouping_call(arg)
         with self.indented():
             select_columns = [
                 self.indent_lines(self.to_string(c))
                 for c in arg.selection
                 if not self._is_hidden_subquery_output(c)
+                and not self._is_injected_grouping_flag(c)
             ]
             # Stage by stage: a flat where is the one-stage chain `[where_clause]`,
             # so this renders it unchanged and a `then where` chain round-trips.
@@ -1256,8 +1285,13 @@ class Renderer:
                 having_clause = self.indent_lines(self.to_string(arg.having_clause))
             order_by = None
             if arg.order_by:
+                # a call's handle reads back under the name its column shows as
+                labels = list(arg.labels.items())
                 order_by = [
-                    self.indent_lines(self.to_string(c)) for c in arg.order_by.items
+                    self.indent_lines(
+                        self.to_string(c.with_reference_replacement(labels))
+                    )
+                    for c in arg.order_by.items
                 ]
         join_keyword = {
             JoinType.LEFT_OUTER: "left",
@@ -1279,12 +1313,23 @@ class Renderer:
             )
             joins.append(f"{join_keyword[authored]} join {left} = {right}")
 
-        grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
-        return QUERY_TEMPLATE.render(
+        source = ""
+        if arg.source is not None:
+            with self._rowset_scope(arg.source.name):
+                call = self.to_string(arg.source.select).removesuffix(";")
+            if arg.spread:
+                return SPREAD_TEMPLATE.render(
+                    call=call,
+                    wheres=where_stages,
+                    having=having_clause,
+                    order_by=order_by,
+                    limit=arg.limit,
+                )
+            source = f"from {call}\n"
+        return source + QUERY_TEMPLATE.render(
             select_columns=select_columns,
             wheres=where_stages,
             having=having_clause,
-            grouping=grouping,
             order_by=order_by,
             joins=joins,
             limit=arg.limit,
@@ -1365,12 +1410,33 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: RollupSelectStatement):
-        # authored as the arm select's own `by rollup (...)` clause
-        return self.to_string(arg.selects[0])
+        return self._render_grouping_call(arg.selects[0])
+
+    def _render_grouping_call(self, arm: SelectStatement) -> str:
+        """`rollup|cube|grouping_sets((arm), keys) [-> (names)];`"""
+        spec = arm.grouping
+        assert spec is not None
+        body = self.to_string(replace(arm, grouping=None, signature=[]))
+        body = body.strip().removesuffix(";").rstrip().removesuffix(",")
+        with self.indented():
+            body = self.indent_lines(body, extra_levels=1)
+            parts = [f"{self.indent_lines('(')}\n{body}\n{self.indent_lines(')')}"]
+            parts += [self.indent_lines(key) for key in self._grouping_keys(spec)]
+        outputs = ", ".join(self.to_string(o) for o in arm.signature)
+        signature = f" -> ({outputs})" if outputs else ""
+        return f"{spec.mode.value}(\n" + ",\n".join(parts) + f"\n){signature};"
+
+    def _grouping_keys(self, grouping: AggregateGrouping) -> list[str]:
+        if grouping.mode.value == "grouping_sets":
+            return [
+                f"({', '.join(self.to_string(x) for x in gs)})"
+                for gs in grouping.grouping_sets
+            ]
+        return [self.to_string(x) for x in grouping.by]
 
     @to_string.register
     def _(self, arg: TVFOutputItem):
-        parts = [arg.name]
+        parts = [("--" if arg.hidden else "") + arg.name]
         if arg.datatype is not None:
             if arg.purpose is not None:
                 parts.append(arg.purpose.value)
@@ -1621,7 +1687,8 @@ class Renderer:
 
         ns, base = arg.address.rsplit(".", 1)
         base = self._unmangle_rowset_name(base)
-        if ns == DEFAULT_NAMESPACE:
+        # an inline `from rollup(...) -> (name)` output is read by its bare name
+        if ns == DEFAULT_NAMESPACE or ns.startswith(ROLLUP_NAMESPACE_PREFIX):
             return base
         return f"{ns}.{base}"
 
@@ -1771,10 +1838,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         func_str = self.to_string(arg.function)
-        # Multi-level grouping (rollup/cube/grouping-sets) is a SELECT-level
-        # clause now — the planner stamps it onto un-grouped aggregates, so a
-        # non-standard wrapper renders as the bare aggregate (the select renders
-        # `by rollup (…)`). Only an explicit `by <grain>` override renders here.
+        # Multi-level grouping (rollup/cube/grouping-sets) belongs to the whole
+        # select — the planner stamps it onto un-grouped aggregates, so a
+        # non-standard wrapper renders as the bare aggregate (the select renders as a
+        # `rollup(...)` call). Only an explicit `by <grain>` override renders here.
         if arg.grouping.value != "standard" or not arg.by:
             return func_str
         by = ", ".join([self.to_string(x) for x in arg.by])
@@ -1783,19 +1850,6 @@ class Renderer:
         return self._pretty(
             [func_str, Break(priority=10, indent=1, flat=" "), f"by {by}"]
         )
-
-    def _render_select_grouping(self, grouping: AggregateGrouping) -> str:
-        """Render a SELECT-level ``by rollup (…)`` / ``by cube (…)`` /
-        ``by grouping sets (…)`` clause."""
-        if grouping.mode.value == "grouping_sets":
-            sets = ", ".join(
-                f"({', '.join(self.to_string(x) for x in gs)})"
-                for gs in grouping.grouping_sets
-            )
-            return f"by grouping sets ({sets})"
-        kw = {"rollup": "rollup", "cube": "cube"}.get(grouping.mode.value, "rollup")
-        keys = ", ".join(self.to_string(x) for x in grouping.by)
-        return f"by {kw} ({keys})"
 
     @to_string.register
     def _(self, arg: MergeStatementV2):

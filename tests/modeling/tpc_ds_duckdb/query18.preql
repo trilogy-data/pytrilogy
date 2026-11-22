@@ -7,7 +7,7 @@ auto row_dep_count <- group(cs.pos_customer_demographic.dependent_count) by cs.o
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2));
 
-where
+select *rollup((where
     cs.pos_customer_demographic.gender = 'F'
     and cs.pos_customer_demographic.education_status = 'Unknown'
     and cs.billing_customer.current_demographics.sk is not null
@@ -28,8 +28,7 @@ select
     @rollup_avg(row_dep_count) as agg7,
     --grouping(cs.billing_customer.current_address.country) as g_country,
     --grouping(cs.billing_customer.current_address.state) as g_state,
-    --grouping(cs.billing_customer.current_address.county) as g_county,
-by rollup (cs.item.id, cs.billing_customer.current_address.country, cs.billing_customer.current_address.state, cs.billing_customer.current_address.county)
+    --grouping(cs.billing_customer.current_address.county) as g_county
 order by
     cs.billing_customer.current_address.country asc nulls first,
     cs.billing_customer.current_address.state asc nulls first,
@@ -39,4 +38,4 @@ order by
     g_state asc nulls first,
     g_county asc nulls first
 limit 100
-;
+), cs.item.id, cs.billing_customer.current_address.country, cs.billing_customer.current_address.state, cs.billing_customer.current_address.county);

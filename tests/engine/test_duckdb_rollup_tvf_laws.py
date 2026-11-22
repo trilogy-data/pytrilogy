@@ -56,6 +56,12 @@ WHERES = ["", "where credits > 2 "]
 CASES = list(itertools.product(MEASURES, SPECS, HAVINGS, WHERES))
 
 
+def call(select: str, spec: str) -> str:
+    """`select` grouped by the SQL `spec` (`rollup (a, b)`), as the call form."""
+    name, keys = spec.split(" (", 1)
+    return f"{name.replace(' ', '_')}(({select}), {keys}"
+
+
 def run(query: str) -> list[tuple]:
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(MODEL)
@@ -78,9 +84,9 @@ def test_rowset_reads_are_the_statement_rows(measure, spec, having, where):
     keys = ["department", "course"] if "course" in spec else ["department"]
     flags = [f"g_{k}" for k in keys]
     flag_items = ", ".join(f"grouping({k}) as g_{k}" for k in keys)
-    body = f"{where}select {', '.join(keys)}, {items}, {flag_items} by {spec}{having}"
+    body = call(f"{where}select {', '.join(keys)}, {items}, {flag_items}{having}", spec)
     columns = keys + names + flags
-    oracle = run(body + ";")
+    oracle = run("select *" + body + ";")
     rowset = f"with r as {body};\n"
     every = ", ".join(f"r.{c}" for c in columns)
     flag_at = columns.index("g_department")

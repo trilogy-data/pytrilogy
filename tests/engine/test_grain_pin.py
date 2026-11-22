@@ -119,7 +119,7 @@ def test_window_partition_is_not_a_select_key():
             [("delivered", 2), ("in-transit", 1), (None, 1)],
         ),
         (
-            "select status as s2, sum(amount) as a by rollup (status)",
+            "select *rollup((select status as s2, sum(amount) as a), status)",
             [("delivered", 40), ("in-transit", 20), (None, 60)],
         ),
     ],

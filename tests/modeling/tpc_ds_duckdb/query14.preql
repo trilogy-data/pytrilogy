@@ -58,18 +58,17 @@ having
 ;
 
 # Final ROLLUP(channel, brand_id, class_id, category_id) over the per-channel L0.
-select
+select *rollup((select
     l0_filtered.channel_l0 as channel,
     l0_filtered.brand_l0 as i_brand_id,
     l0_filtered.class_l0 as i_class_id,
     l0_filtered.category_l0 as i_category_id,
     sum(l0_filtered.bucket_sum_l0) as sum_sales,
-    sum(l0_filtered.bucket_count_l0) as sum_number_sales,
-by rollup ()
+    sum(l0_filtered.bucket_count_l0) as sum_number_sales
 order by
     channel asc nulls first,
     i_brand_id asc nulls first,
     i_class_id asc nulls first,
     i_category_id asc nulls first
 limit 100
-;
+));

@@ -15,6 +15,7 @@ from trilogy.parsing.v2.errors import (
     detect_definition_after_clause,
     detect_derivation_as_connector,
     detect_group_by,
+    detect_grouping_call_shape,
     detect_import_file_path,
     detect_join_after_trailing_where,
     detect_join_comma_group,
@@ -246,6 +247,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     target_pos = detect_unquoted_path_target(text, pos)
     if target_pos is not None:
         return create_syntax_error(232, target_pos, text)
+
+    # 235: a grouping call whose select lacks its own parentheses, or with a
+    # clause written after it.
+    call_pos = detect_grouping_call_shape(text, pos)
+    if call_pos is not None:
+        return create_syntax_error(235, call_pos, text)
 
     # 233: a select-level `by` after the select list (`... as total by *`).
     select_by_pos = detect_select_level_by(text, pos)

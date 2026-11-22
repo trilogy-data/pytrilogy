@@ -95,15 +95,18 @@ def test_order_by_raw_source_column_of_derived_output():
 def test_order_by_compound_aggregate_duplicating_output():
     # q80 case C: a compound of aggregates projected as an output must be
     # matchable from ORDER BY, not rejected as an unprojected inline aggregate
-    rows, _ = _run(r"""
-select
-    channel,
-    item_id,
-    sum(quantity) as total,
-    grouping(channel) + grouping(item_id) as lvl
-by rollup (channel, item_id)
-order by grouping(channel) + grouping(item_id) asc, channel asc nulls last, item_id asc nulls last
-limit 100;""")
+    rows, _ = _run(
+        "\n"
+        "select *rollup((select\n"
+        "    channel,\n"
+        "    item_id,\n"
+        "    sum(quantity) as total,\n"
+        "    grouping(channel) + grouping(item_id) as lvl\n"
+        "order by grouping(channel) + grouping(item_id) asc, channel asc nulls last, "
+        "item_id asc nulls last\n"
+        "limit 100\n"
+        "), channel, item_id);"
+    )
     assert [r[3] for r in rows] == sorted(r[3] for r in rows)
     assert rows[-1][3] == 2
 

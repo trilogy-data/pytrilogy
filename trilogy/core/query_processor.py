@@ -1614,12 +1614,6 @@ def _process_query(
     supports_full_join: bool,
 ) -> ProcessedQuery:
     hooks = hooks or []
-    # a top-level rollup is planned as the select over its TVF's handles and
-    # rendered under the authored names
-    authored = statement
-    if isinstance(statement, SelectStatement):
-        statement = statement.planned
-
     build_lineage_sink: list[BuildSelectLineage | BuildMultiSelectLineage] = []
     root_datasource = get_query_datasources(
         environment=environment,
@@ -1685,8 +1679,17 @@ def _process_query(
         environment, DomainGraph.from_scoped_joins(scoped_pairs)
     )
     scoped_merge_map = dict(domain_graph.canonical_map())
-    if isinstance(authored, SelectStatement):
-        scoped_merge_map.update(authored.relational_names)
+    output_columns = statement.output_components
+    hidden_columns = set(statement.hidden_components)
+    if isinstance(statement, SelectStatement):
+        labels = statement.labels
+        scoped_merge_map.update(
+            {shown.address: handle for handle, shown in labels.items()}
+        )
+        output_columns = [labels.get(c.address, c) for c in output_columns]
+        hidden_columns = {
+            labels[x].address if x in labels else x for x in hidden_columns
+        }
 
     final_ctes = optimize_ctes(
         deduped_ctes,
@@ -1725,13 +1728,13 @@ def _process_query(
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
-        output_columns=authored.output_components,
+        output_columns=output_columns,
         ctes=final_ctes,
         base=root_cte,
-        hidden_columns={x for x in authored.hidden_components},
-        local_concepts=authored.local_concepts,
-        locally_derived=authored.locally_derived,
-        parameters=_extract_params(environment.concepts, authored.local_concepts),
+        hidden_columns=hidden_columns,
+        local_concepts=statement.local_concepts,
+        locally_derived=statement.locally_derived,
+        parameters=_extract_params(environment.concepts, statement.local_concepts),
         scoped_merge_map=scoped_merge_map,
         derived_value_scopes=derived_value_scopes,
         plan_warnings=plan_warnings,

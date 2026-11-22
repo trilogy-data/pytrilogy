@@ -705,26 +705,26 @@ def test_parse_error_does_not_mention_pest() -> None:
 
 
 def test_aggregate_grouping_modes_parse_and_render() -> None:
-    # Multi-level grouping is a SELECT-level clause; each mode lives on its own
-    # select (one select cannot mix rollup with grouping sets).
+    # Each grouping call carries its mode on the select it wraps.
     rollup_query = """
 key a int;
 key b int;
 key x int;
-select a, b, sum(x) as sx by rollup (a, b);
+select *rollup((select a, b, sum(x) as sx), a, b);
 """
     sets_query = """
 key a int;
 key b int;
 key x int;
-select a, b, sum(x) as sx_sets by grouping sets ((a, b), (a), ());
+select *grouping_sets((select a, b, sum(x) as sx_sets), (a, b), (a), ());
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
             env, output = parse_text(rollup_query, Environment())
         # the spec lives on the select; shared lineage stays unstamped (build
         # applies it)
-        select = output[-1]
+        statement = output[-1]
+        select = statement.source.select.selects[0]
         assert select.grouping is not None
         assert select.grouping.mode == AggregateGroupingMode.ROLLUP
         assert [item.address for item in select.grouping.by] == [
@@ -734,11 +734,12 @@ select a, b, sum(x) as sx_sets by grouping sets ((a, b), (a), ());
         assert env.concepts["local.sx"].lineage.grouping == (
             AggregateGroupingMode.STANDARD
         )
-        assert "by rollup (a, b)" in str(select)
+        assert str(statement).startswith("select *rollup(")
 
         with _using_backend(backend):
             env, output = parse_text(sets_query, Environment())
-        select = output[-1]
+        statement = output[-1]
+        select = statement.source.select.selects[0]
         assert select.grouping is not None
         assert select.grouping.mode == AggregateGroupingMode.GROUPING_SETS
         assert [
@@ -748,7 +749,7 @@ select a, b, sum(x) as sx_sets by grouping sets ((a, b), (a), ());
         assert env.concepts["local.sx_sets"].lineage.grouping == (
             AggregateGroupingMode.STANDARD
         )
-        assert "by grouping sets ((a, b), (a), ())" in str(select)
+        assert str(statement).startswith("select *grouping_sets(")
 
 
 def test_empty_rollup_leaves_lineage_unstamped() -> None:
@@ -759,17 +760,18 @@ def test_empty_rollup_leaves_lineage_unstamped() -> None:
 key a int;
 key b int;
 key x int;
-select
+select *rollup((select
     a,
     b,
     sum(x) as sx,
     rank() over (partition by a order by sx desc) as rk
-by rollup ();
+));
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):
             _, output = parse_text(query, Environment())
-        select = output[-1]
+        statement = output[-1]
+        select = statement.source.select.selects[0]
         assert select.grouping is not None
         assert select.grouping.mode == AggregateGroupingMode.ROLLUP
         assert select.grouping.by == []
@@ -783,12 +785,12 @@ def test_empty_top_level_rollup_inherits_build_grain() -> None:
 const a <- unnest([1, 2, 3]);
 const b <- unnest([1, 1, 2]);
 auto sx <- sum(1);
-select
+select *rollup((select
     a,
     b,
     sx,
     rank() over (partition by a order by sx desc) as rk
-by rollup ();
+));
 """
     for backend in (ParserBackend.PEST, ParserBackend.LARK):
         with _using_backend(backend):

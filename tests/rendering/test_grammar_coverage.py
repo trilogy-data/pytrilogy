@@ -94,10 +94,10 @@ def test_render_aggregate_grouping_sets():
 key a int;
 key b int;
 key x int;
-select a, b, sum(x) as gx by grouping sets ((a, b), (a), ());
+select *grouping_sets((select a, b, sum(x) as gx), (a, b), (a), ());
 """)
     rendered = Renderer().to_string(parsed[-1])
-    assert "by grouping sets" in rendered, rendered
+    assert rendered.startswith("select *grouping_sets("), rendered
     assert "(a, b)" in rendered, rendered
     assert "(a)" in rendered, rendered
 
@@ -109,28 +109,10 @@ def test_render_aggregate_by_cube():
 key a int;
 key b int;
 key x int;
-select a, b, sum(x) as gx by cube (a, b);
+select *cube((select a, b, sum(x) as gx), a, b);
 """)
     rendered = Renderer().to_string(parsed[-1])
-    assert "by cube (a, b)" in rendered, rendered
-
-
-def test_render_select_grouping_sets_direct():
-    """Direct render of a SELECT-level grouping spec without parse."""
-    from trilogy.core.enums import AggregateGroupingMode
-    from trilogy.core.models.author import AggregateGrouping
-
-    a = Concept(name="a", purpose=Purpose.KEY, datatype=DataType.INTEGER)
-    b = Concept(name="b", purpose=Purpose.KEY, datatype=DataType.INTEGER)
-    grouping = AggregateGrouping(
-        mode=AggregateGroupingMode.GROUPING_SETS,
-        by=[a.reference, b.reference],
-        grouping_sets=[[a.reference], [b.reference]],
-    )
-    rendered = Renderer()._render_select_grouping(grouping)
-    assert "by grouping sets" in rendered, rendered
-    assert "(a)" in rendered, rendered
-    assert "(b)" in rendered, rendered
+    assert rendered.startswith("select *cube("), rendered
 
 
 # ---------------------------------------------------------------------------

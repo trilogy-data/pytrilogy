@@ -15,12 +15,17 @@ from trilogy.executor import Executor
 from trilogy.parser import parse_text
 
 
-def plan(model: str, query: str) -> tuple[BuildInfo, BuildEnvironment]:
-    """The v4 planner's build info for `query`'s SELECT, without its WHERE."""
+def plan(
+    model: str, query: str, arm: bool = False
+) -> tuple[BuildInfo, BuildEnvironment]:
+    """The v4 planner's build info for `query`'s SELECT, without its WHERE.
+    With `arm`, for the select a spread grouping call wraps instead."""
     env = Environment()
     env, _ = env.parse(model)
     _, parsed = parse_text(query, env)
     statement = parsed[-1]
+    if arm:
+        statement = statement.source.select.selects[0]
     history = V4History(base_environment=env)
     history.build_caches.pseudonym_map = get_canonical_pseudonyms(env)
     factory = Factory(

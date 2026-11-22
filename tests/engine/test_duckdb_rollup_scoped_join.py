@@ -57,7 +57,7 @@ select channel as ch, brand as b, class_id as c, category as g,
 """
 
 SUBSET_JOIN_ROLLUP = """
-select per_ch.ch,
+select *rollup((select per_ch.ch,
     case when grouping(per_ch.b) = 1 then null else per_ch.b end as out_b,
     case when grouping(per_ch.c) = 1 then null else per_ch.c end as out_c,
     case when grouping(per_ch.g) = 1 then null else per_ch.g end as out_g,
@@ -67,8 +67,8 @@ subset join per_ch.b = all_ch.b
     and per_ch.c = all_ch.c
     and per_ch.g = all_ch.g
 where all_ch.b is not null and all_ch.c is not null and all_ch.g is not null
-by rollup (per_ch.ch, per_ch.b, per_ch.c, per_ch.g)
-having sum(per_ch.ts) > stats.overall_avg;
+having sum(per_ch.ts) > stats.overall_avg
+), per_ch.ch, per_ch.b, per_ch.c, per_ch.g);
 """
 
 # same semantics via the canonical concat-tuple-key membership idiom
@@ -81,14 +81,14 @@ rowset per_ch2 <-
 where tuple_key in cross_tuples.ck
 select channel as ch, brand as b, class_id as c, category as g,
     sum(qty * price) as ts, count(sale_id) as cnt;
-select per_ch2.ch,
+select *rollup((select per_ch2.ch,
     case when grouping(per_ch2.b) = 1 then null else per_ch2.b end as out_b,
     case when grouping(per_ch2.c) = 1 then null else per_ch2.c end as out_c,
     case when grouping(per_ch2.g) = 1 then null else per_ch2.g end as out_g,
     sum(per_ch2.ts) as total_sales,
     sum(per_ch2.cnt) as total_count
-by rollup (per_ch2.ch, per_ch2.b, per_ch2.c, per_ch2.g)
-having sum(per_ch2.ts) > stats.overall_avg;
+having sum(per_ch2.ts) > stats.overall_avg
+), per_ch2.ch, per_ch2.b, per_ch2.c, per_ch2.g);
 """
 
 
@@ -138,10 +138,10 @@ order by per_ch.ch asc, per_ch.b asc;
 
 def test_two_key_subset_join_partial_rollup_builds(executor):
     rows = executor.execute_text("""
-select per_ch.ch, sum(per_ch.ts) as total_sales
+select *rollup((select per_ch.ch, sum(per_ch.ts) as total_sales
 subset join per_ch.b = all_ch.b and per_ch.c = all_ch.c
 where all_ch.b is not null and all_ch.c is not null
-by rollup (per_ch.ch);
+), per_ch.ch);
 """)[0].fetchall()
     channels = {row[0] for row in rows}
     assert None in channels, "rollup grand-total row missing"

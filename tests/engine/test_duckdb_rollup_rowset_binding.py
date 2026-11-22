@@ -75,10 +75,14 @@ union join s.channel = r.channel
 union join s.entity = r.entity
 """
 
-CHANNEL_ROLLUP = SELECTION + "by rollup (channel)\norder by channel asc nulls last;"
+CHANNEL_ROLLUP = (
+    "select *rollup((" + SELECTION + "order by channel asc nulls last\n), channel);"
+)
 LEAF_ROLLUP = (
-    SELECTION + "by rollup (channel, entity)\n"
-    "order by channel asc nulls last, entity asc nulls last;"
+    "select *rollup(("
+    + SELECTION
+    + "order by channel asc nulls last, entity asc nulls last\n"
+    "), channel, entity);"
 )
 
 GROUP_BY_ROLLUP = "\nGROUP BY\n    ROLLUP ("
@@ -135,8 +139,10 @@ NET_SELECTION = SELECTION.replace(
     "    sum(coalesce(s.sales, 0)) - sum(coalesce(r.returns, 0)) as net\n",
 )
 NET_CHANNEL_ROLLUP = (
-    NET_SELECTION + "by rollup (channel)\n"
-    "order by channel asc nulls last, entity asc nulls last;"
+    "select *rollup(("
+    + NET_SELECTION
+    + "order by channel asc nulls last, entity asc nulls last\n"
+    "), channel);"
 )
 
 

@@ -785,8 +785,8 @@ def _validate_grouping_args_are_concepts(
                     f"(column) reference as its argument, not an inline expression "
                     f"like '{arg}'. Assign the expression to a named concept and "
                     f"use that concept in both the grouping key and grouping() - "
-                    f"e.g. `auto channel <- coalesce(a, b); select ..., "
-                    f"grouping(channel) ... by rollup (channel)`."
+                    f"e.g. `auto channel <- coalesce(a, b); select *rollup((select "
+                    f"..., grouping(channel) ...), channel);`."
                 )
 
 
@@ -815,8 +815,9 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
             "grouping()/grouping_id() cannot be used in a WHERE clause: WHERE is "
             "evaluated before grouping, so there is no grouping set to anchor to. "
             "It is a post-aggregate level indicator - use it in SELECT / HAVING / "
-            "ORDER BY of a query carrying a `by rollup/cube/grouping sets` clause "
-            "(e.g. filter subtotal rows in HAVING: `having grouping(state) = 1`)."
+            "ORDER BY of the select a `rollup(...)`/`cube(...)`/`grouping_sets(...)` "
+            "call wraps (e.g. filter subtotal rows in its HAVING: "
+            "`having grouping(state) = 1`)."
         )
     spec = select.grouping
     if spec is None:
@@ -836,9 +837,11 @@ def _propagate_select_grouping(select: SelectStatement, context: RuleContext) ->
             if _lineage_reaches(lineage, context, _is_window_item, set()):
                 continue
             raise InvalidSyntaxException(
-                "grouping()/grouping_id() requires a `by rollup (…)`/"
-                "`by cube (…)`/`by grouping sets (…)` clause on the enclosing "
-                "select; it has no meaning without a grouping set."
+                "grouping()/grouping_id() has no meaning without a grouping set: "
+                "write it inside the select a `rollup((select ...), keys)` / "
+                "`cube(...)` / `grouping_sets(...)` call wraps, and read it from "
+                "there (`with r as rollup((select ..., grouping(k) as g), k);` "
+                "then `r.g`)."
             )
         return
     _validate_grouping_args_are_concepts(select, context)
