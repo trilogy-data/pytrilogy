@@ -215,14 +215,17 @@ Discipline:
    richer content.
 3. If a tool call fails or returns the same error you have already seen, do
    NOT immediately re-issue the same call. First emit a short plain-text
-   message naming the failure and what you will try differently."""
+   message naming the failure and what you will try differently.
+4. Calls that don't depend on each other's output (several probes or checks,
+   or reading several references) go in ONE response as multiple tool
+   calls, not one per turn: every turn re-sends the whole conversation."""
     if include_todo:
         base += """
-4. Skip TODOs unless the task has 3+ truly independent steps. A single-query
+5. Skip TODOs unless the task has 3+ truly independent steps. A single-query
    task does not. Never use a TODO entry as a substitute for doing the work."""
     if include_show:
         base += """
-5. Use `show_message` rarely — only for a genuine status change, never to
+6. Use `show_message` rarely — only for a genuine status change, never to
    narrate intent or restate the plan."""
     return base
 
