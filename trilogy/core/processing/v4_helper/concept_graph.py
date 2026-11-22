@@ -1716,19 +1716,41 @@ class _Walk:
         )
 
 
-def _feeds_only_sets(
+def _gates_only(
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    node: str,
+    succ: str,
+) -> bool:
+    """`succ` reads `node` in a condition alone: as a set, or as an argument
+    of a filtered column's `?` that is not the column filtered."""
+    if edge_kind(edges, node, succ) == EdgeKind.EXISTENCE:
+        return True
+    reader = environment.concepts.get(attrs[succ].address)
+    return (
+        reader is not None
+        and isinstance(reader.lineage, BuildFilterItem)
+        and attrs[node].address
+        not in {c.address for c in reader.lineage.content_concept_arguments}
+    )
+
+
+def _feeds_only_conditions(
     graph: nx.DiGraph,
     edges: EdgeMap,
     attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
     node: str,
     shown: Collection[str],
     seen: set[str],
 ) -> bool:
     """`node` is no output (`shown`) and reaches the statement's rows only as
-    part of a set's condition:
-    `count(id) by species` in `species ? species in (species ? count(id) by
-    species >= 3)`. A WHERE value such a barrier consumed has filtered the
-    set's rows, not the statement's (`Filters.gate_on_a_set_filters_no_row`)."""
+    part of a condition: `count(id) by species` in `species ? species in
+    (species ? count(id) by species >= 3)`, or `avg(x) by *` in `species ?
+    avg(x) by * < 10`. A WHERE value such a barrier consumed has filtered the
+    condition's rows, not the statement's
+    (`Filters.gate_on_a_set_filters_no_row`)."""
     if node in shown:
         return False
     if attrs[node].existence_only or node in seen:
@@ -1736,10 +1758,45 @@ def _feeds_only_sets(
     seen.add(node)
     successors = list(graph.successors(node))
     return bool(successors) and all(
-        edge_kind(edges, node, succ) == EdgeKind.EXISTENCE
-        or _feeds_only_sets(graph, edges, attrs, succ, shown, seen)
+        _gates_only(edges, attrs, environment, node, succ)
+        or _feeds_only_conditions(graph, edges, attrs, environment, succ, shown, seen)
         for succ in successors
     )
+
+
+def _filtered_aggregate_grain(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> frozenset[str]:
+    """`(count(id) by city, form) ? form = 'x'` claims the grain of the select
+    it is written in, but holds one value per `(city, form)`: an aggregate
+    `by` keys that decide the condition is filtered at those keys
+    (`Filters.filtered_value_on_its_keys`). Paired by the claim, it met the
+    select's rows on `city` alone."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildFilterItem):
+        return frozenset()
+    content = lineage.content
+    if (
+        not isinstance(content, BuildConcept)
+        or content.derivation != Derivation.AGGREGATE
+        or not content.grain
+        or content.grain.abstract
+    ):
+        return frozenset()
+    keys = frozenset(content.grain.components) - {ALL_ROWS_ADDRESS}
+    if (
+        not keys
+        or lineage.where.existence_arguments
+        and any(lineage.where.existence_arguments)
+    ):
+        return frozenset()
+    if all(
+        arg.address in keys or strict_fd_determines(environment, set(keys), arg.address)
+        for arg in lineage.where.row_arguments
+        if arg.derivation != Derivation.CONSTANT
+    ):
+        return keys
+    return frozenset()
 
 
 def _grain_off_its_readers(
@@ -1848,6 +1905,8 @@ def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     if concept.derivation == Derivation.FILTER and concept.address in walk.demanded:
         out_grain = _grain_off_its_readers(concept, out_grain, environment)
+    if concept.derivation == Derivation.FILTER:
+        out_grain = _filtered_aggregate_grain(concept, environment) or out_grain
     if not is_materialized_root and derived_key(concept):
         # A derived key's values are its own grain, but the stream deriving it
         # holds one per input row, and pairs with its siblings on those rows'
@@ -2995,7 +3054,9 @@ def build_concept_graph(
             # under a WHERE that reads a set itself, its atoms are placed with
             # the set and the barrier's host stands
             or not existence_arg_pairs
-            and _feeds_only_sets(graph, edges, attrs, succ, mandatory_blank_ids, set())
+            and _feeds_only_conditions(
+                graph, edges, attrs, environment, succ, mandatory_blank_ids, set()
+            )
             for succ in graph.successors(src)
         )
     ]

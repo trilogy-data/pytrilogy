@@ -524,6 +524,10 @@ def root_carry_demand(
     return demand
 
 
+# a filtered column's stream holds its parents' rows, one for one
+_ROW_STREAMS = (Derivation.ROOT, Derivation.FILTER)
+
+
 def _root_lookups(
     group: GroupAttrs,
     identities: list[frozenset[str]],
@@ -537,8 +541,14 @@ def _root_lookups(
     if group.extent_spans:
         return frozenset()
     own = frozenset(group.output_concepts)
+    # a filtered stream shares the select's keys with every supplier: it is
+    # widened to the rest of a supplier's grain too (`city` held, `tree_form`
+    # looked up, to pair a value by both)
+    shares_none = group.derivation != Derivation.FILTER
     keys = pairing_keys(
-        frozenset().union(*(i for i in identities if not pairing_keys(i) & own))
+        frozenset().union(
+            *(i for i in identities if not (shares_none and pairing_keys(i) & own))
+        )
     )
     return frozenset(
         key
@@ -655,7 +665,9 @@ def _over_groups_only(
     """A BASIC computed off grouped rows alone (`count(id) + 1`): it holds what
     they output, and no row of it reaches a key they determine but lack. A
     group at its input rows' own grain (`sum(x)` by `tree_id`) is those rows."""
-    if attrs[gid].derivation != Derivation.BASIC:
+    # a filtered aggregate (`(count(id) by city, form) ? form = 'x'`) is a
+    # value of its groups as a scalar of them is
+    if attrs[gid].derivation not in (Derivation.BASIC, Derivation.FILTER):
         return False
     parents = _group_parents(group_graph, attrs, gid)
     return bool(parents) and all(
@@ -1051,8 +1063,8 @@ def plan_final_join(
     for gid, keys in (contracted or {}).items():
         carry_demands[gid] = carry_demands.get(gid, frozenset()) | keys
     for gid in contributors:
-        if gid not in supplying and attrs[gid].derivation == Derivation.ROOT:
-            carry_demands[gid] |= _root_lookups(
+        if gid not in supplying and attrs[gid].derivation in _ROW_STREAMS:
+            carry_demands[gid] = carry_demands.get(gid, frozenset()) | _root_lookups(
                 attrs[gid], [identity[g] for g in supplying], environment
             )
     # A row stream is identified by the grain keys its rows turn out to hold
@@ -1100,7 +1112,11 @@ def plan_final_join(
         # an extra row stream is joined as built: its input rows' columns are
         # no column of it (a filter at `tree_id` over rows holding `city`)
         if gid not in supplying and attrs[gid].derivation == Derivation.FILTER:
-            held &= frozenset(attrs[gid].output_concepts) | identity[gid]
+            held &= (
+                frozenset(attrs[gid].output_concepts)
+                | identity[gid]
+                | carry_demands.get(gid, frozenset())
+            )
         carries[gid] = (
             held
             | _renderable(held, members, environment)

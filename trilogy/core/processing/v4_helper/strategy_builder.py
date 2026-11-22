@@ -2552,6 +2552,18 @@ def _keyed_finer(
     )
 
 
+def _at_or_above(
+    concept: BuildConcept, grain: set[str], environment: BuildEnvironment
+) -> bool:
+    """A value the window's grain determines rides through its group:
+    `max(height) by tree_form` beside a window over `species` is one value
+    per species, though `tree_form` is no component of that grain."""
+    components = concept.grain.components
+    return components <= grain or build_fd_determines_all(
+        environment, grain, components
+    )
+
+
 def _window_rows_at_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -2565,11 +2577,10 @@ def _window_rows_at_grain(
     needed = {c.address: c for c in outputs}
     supplied = _output_addresses(parents)
     for concept in outputs:
-        # a filtered value a parent hands over is read as itself: the column
-        # it was read off is no key of the window's rows
+        # a value a parent hands over is read as itself: the column a
+        # filtered or derived key was read off is no key of the window's rows
         # (`Filters.source_column_splits_null_group`)
-        handed = concept.derivation == Derivation.FILTER and concept.address in supplied
-        if concept.lineage is not None and not handed:
+        if concept.lineage is not None and concept.address not in supplied:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
     # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
     # (a property of `id`) sits at `id`
@@ -2592,7 +2603,7 @@ def _window_rows_at_grain(
             if concept.address in needed
             or concept.grain.abstract
             or (
-                concept.grain.components <= grain
+                _at_or_above(concept, grain, environment)
                 and not _keyed_finer(concept, grain, environment)
             )
         ],
@@ -6202,12 +6213,11 @@ def _groups_past_outputs(
     node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
 ) -> bool:
     """A grouping that kept a key the outputs do not determine (a derived
-    key's own grain, `species` of `fc`) holds a row per value of it."""
+    key's own grain, `species` of `fc`) holds a row per value of it, hidden
+    or not: a hidden key is still grouped by."""
     closure = strict_fd_closure(environment, {c.address for c in outputs})
     return any(
-        o.address not in closure and not o.is_aggregate
-        for o in node.output_concepts
-        if o.address not in (node.hidden_concepts or set())
+        o.address not in closure and not o.is_aggregate for o in node.output_concepts
     )
 
 

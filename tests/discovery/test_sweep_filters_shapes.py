@@ -81,6 +81,99 @@ SHAPES = [
         ),
         [("a1", "Acer"), ("a2", "Acer"), ("a3", None), ("a4", None)],
     ),
+    # ...and a filtered column alone whose condition reads a total (2922):
+    # the WHERE drops the unmeasured pairs and B's Tilia, whose average is 2
+    (
+        (
+            "select species ? avg(height) by * < 10 as f where avg(height) by city,"
+            " species != 2;"
+        ),
+        [("Acer",), ("Quercus",)],
+    ),
+    # ...or a set over an aggregate (6065): A's formless tree and B's linden
+    # fail the WHERE, and both cities stay in the set
+    (
+        (
+            "select height ? city in (city ? count(tree_id) by city, tree_form != 10)"
+            " as f where sum(height) by city, tree_form != count_distinct(tag) by"
+            " city;"
+        ),
+        [(3,), (5,), (7,), (None,)],
+    ),
+    # a derived key beside a filtered property is one row per pair shown,
+    # whatever key the rows were grouped by (12986): A holds two broadleaf
+    # species and the formless Ulmus
+    (
+        (
+            "select coalesce(tree_form, 'none') as form0, tree_form ?"
+            " coalesce(tree_form, 'none') = 'none' as f where city in (city ? city ="
+            " 'A');"
+        ),
+        [("broadleaf", None), ("none", None)],
+    ),
+    # a value by (city, tree_form) pairs with groups keyed by a filtered column
+    # through the filtered rows, on both keys (543): A's broadleaves reach 5,
+    # its Ulmus has no form's maximum
+    (
+        (
+            "select city, species, height ? species != 'Tilia' as f, min(height) as"
+            " v1, max(height) by city, tree_form as v2;"
+        ),
+        [
+            ("A", "Acer", 3, 3, 5),
+            ("A", "Acer", None, None, 5),
+            ("A", "Quercus", 5, 5, 5),
+            ("A", "Ulmus", None, None, None),
+            ("B", "Acer", 7, 7, 7),
+            ("B", "Tilia", None, 2, 2),
+        ],
+    ),
+    # a filtered aggregate is a value of its aggregate's keys (6987): only
+    # B's linden count is shown; the window runs A as 3, 5, then the two
+    # unmeasured groups, and B as 2, 7
+    (
+        (
+            "select city, species, (count(tree_id) by city, tree_form) ? tree_form ="
+            " 'linden' as f, tree_id ? tree_form in (tree_form ? height is not null)"
+            " as g, max(max(height) by city, species, g) over (partition by city"
+            " order by max(height) by city, species, g asc nulls last) as w;"
+        ),
+        [
+            ("A", "Acer", None, "a1", 3),
+            ("A", "Acer", None, "a2", 5),
+            ("A", "Quercus", None, "a3", 5),
+            ("A", "Ulmus", None, None, 5),
+            ("B", "Acer", None, "b1", 7),
+            ("B", "Tilia", 1, "b2", 2),
+        ],
+    ),
+    # a window's groups hold no column a derived or filtered key was read off
+    # (2680): the three tall trees are one group
+    (
+        (
+            "select height > 2 as big, tree_form ? tree_form = 'linden' as f, species"
+            " ? tree_form = 'x' as g, max(max(height)) over (partition by g order by"
+            " big desc nulls last, f desc nulls last) as w;"
+        ),
+        [(True, None, None, 7), (False, "linden", None, 7), (None, None, None, 7)],
+    ),
+    # ...but a value its grain determines rides through them (19498): each
+    # form's maximum beside a window over species and a filtered tree
+    (
+        (
+            "select species, tree_id ? avg(height) by tree_form >= 0 as f,"
+            " min(min(height) by species, f) over (order by species asc nulls last, f"
+            " asc nulls last) as w, max(height) by tree_form as v2;"
+        ),
+        [
+            ("Acer", "a1", 3, 7),
+            ("Acer", "a2", 3, 7),
+            ("Acer", "b1", 3, 7),
+            ("Quercus", "a3", 3, 7),
+            ("Tilia", "b2", 2, 2),
+            ("Ulmus", None, 2, None),
+        ],
+    ),
     # a window numbers the groups of a filtered key, its NULL group once
     # (4224): y's 7 and unmeasured tree are one group
     (
