@@ -1,5 +1,10 @@
+from types import SimpleNamespace
+
+import pytest
+
 from trilogy import Dialects
 from trilogy.core.enums import AggregateGroupingMode
+from trilogy.core.models.build import BuildAggregateWrapper, computed_grouping_sets
 from trilogy.core.models.execute import CTE
 
 MODEL = """
@@ -71,3 +76,21 @@ rowset per_pair <- select group_id as g, active as a, sum(amount) as amt;
         (2, True, 7),
         (None, None, 22),
     ]
+
+
+def _rollup_over(*keys: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        lineage=BuildAggregateWrapper(
+            function=None,  # type: ignore[arg-type]
+            by=[SimpleNamespace(address=k) for k in keys],  # type: ignore[misc]
+            grouping=AggregateGroupingMode.ROLLUP,
+        )
+    )
+
+
+def test_one_group_runs_one_pass():
+    spec = computed_grouping_sets([_rollup_over("a", "b"), _rollup_over("a", "b")])
+    assert spec is not None and spec.keys == {"a", "b"}
+    assert computed_grouping_sets([SimpleNamespace(lineage=None)]) is None
+    with pytest.raises(ValueError, match="one group"):
+        computed_grouping_sets([_rollup_over("a"), _rollup_over("a", "b")])
