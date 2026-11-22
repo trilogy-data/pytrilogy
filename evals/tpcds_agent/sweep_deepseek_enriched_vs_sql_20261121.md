@@ -43,6 +43,18 @@ probes come after a clean answer: the agent re-verifies, SQL agents do not.
 - `_q04_*`/`_q83_*` regression fixtures and a stray fuzzer `repro.preql` were
   copied into the agent's `raw/` and shown by every `file list`. `_` is now a
   skipped prefix; `repro.preql` deleted.
+- Named rollup + rank (q67): an alias/expression of `r.gid` beside a rank
+  raised a keyless join or silently cross-joined (426 rows vs 142); renamed
+  rollup columns beside `r.gid` raised "plan renders no column". Fixed in
+  `basic._expose_parent_grain` (a boundary exposes its hidden grouping flags)
+  and `_terminal_basic_grouping_provider` (no provider that drops a demanded
+  grain key). `tests/core/processing/test_rollup_rowset_window_grouping_key.py`.
+- Probe-time planner errors re-checked: 7 of 10 already compiled on main; q29
+  is a real disconnect. q05/q38 (renamed role columns over one scan pairing
+  keyless) fixed in `group_rules` terminal-sibling merge;
+  `tests/modeling/tpc_ds_duckdb/test_role_alias_returns_filter.py`.
+- q28: fact measures marked nullable in store/catalog/web models.
+- sql_bare sandbox: SQL agent file tools refuse paths outside the workspace.
 
 ## Enriched failures (7)
 
@@ -50,9 +62,9 @@ probes come after a clean answer: the agent re-verifies, SQL agents do not.
 |---|---|---|---|
 | 35 | planner, fixed | same .preql matches ref on main | rerun, don't splice |
 | 64 | planner, fixed | 600s timeout on 0.3.395; 6s on main | rerun |
-| 28 | model | `store_sales` measures (`list_price`, `coupon_amt`, `wholesale_cost`, `quantity`, `sales_price`) declared non-null; ~4.5% NULL. Agent counted grain, ~1% high | mark fact measures `?` across store/catalog/web |
+| 28 | model | `store_sales` measures (`list_price`, `coupon_amt`, `wholesale_cost`, `quantity`, `sales_price`) declared non-null; ~4.5% NULL. Agent counted grain, ~1% high | fixed (models) |
 | 04 | agent + doc | rows right, kept 6 HAVING helper columns (10 cols vs 4) | doc: hide helper columns with `--` |
-| 67 | planner + agent | first answer was correct; agent rewrote to two-stage rollup and hit bugs A-C | fix A-C below |
+| 67 | planner + agent | first answer was correct; agent rewrote to two-stage rollup and hit bugs A-C | A/B fixed; C is open item 1 |
 | 59 | agent / ref | kept NULL-store bucket; ref itself 4x-duplicates under DuckDB 1.5.3 | audit q59 reference |
 | 83 | agent | "corrected" the stated formula, 9x off | none for Trilogy |
 
@@ -60,41 +72,24 @@ sql_schema passes all seven.
 
 ## Open
 
-1. **Planner bugs on main**, named rollup + rank (from q67):
-   - A: `--r.gid` projected beside `rank(r.category, r.class) over (...)` raises
-     "keyless join between row-bearing sources".
-   - B: same plus `having rnk <= 100` raises "plan renders no column for ['r.gid']".
-   - C: silent wrong rows: a rank over a named rollup whose keys omit the level
-     dedups rollup rows before the window (rank 60 vs ref 72).
-   Repro shape:
-   ```
-   import raw.store_sales as ss;
-   with r as rollup((
-       select ss.item.category, ss.item.class, sum(ss.quantity) as qty,
-           grouping_id(ss.item.category, ss.item.class) as gid
-   ), ss.item.category, ss.item.class);
-   select r.category, r.class, r.qty,
-       rank(r.category, r.class) over (partition by r.category order by r.qty desc) as rnk,
-       --r.gid as g;
-   ```
-2. **Re-check probe-time planner errors from the 10-17 logs on main**: q05
-   keyless join, q14 "Could not find CTE", q29 DuckDB binder (`abundant` not
-   found), q38 "could not be planned", q44 "missing source reference", q25/q82
-   "could not resolve connections".
-3. **q28 model nullability** (table above).
-4. **Shrink `agent-info query`** (19.4k chars, 35% of tax). Split by topic or
+1. **Rank over a named rollup whose keys omit the grouping level** (q67's
+   remaining wrong answer): a window ranks the distinct tuples of its keys, so
+   a subtotal row and a data-NULL leaf with equal visible keys collapse
+   (rank 60 vs ref 72). Current semantics, not a planner bug; decide between an
+   error and a run warning like `window_filter_needs_having`.
+2. **Shrink `agent-info query`** (19.4k chars, 35% of tax). Split by topic or
    move set-ops/rowset/membership detail behind the existing `syntax example`s.
-5. **`explore` default output**: the full fact explore is 7.5k and usually
+3. **`explore` default output**: the full fact explore is 7.5k and usually
    followed by an `--ns` call; consider printing the root namespace only.
-6. **Post-answer re-verification** (3 turns vs 1). A/B a prompt line or result
+4. **Post-answer re-verification** (3 turns vs 1). A/B a prompt line or result
    shape before changing anything.
-7. **Grammar gaps from probes**: `select tot as tot` errors as a self-rename
+5. **Grammar gaps from probes**: `select tot as tot` errors as a self-rename
    (q30/q41/q47, could be a no-op); no null-safe compare spelling
    (`is_not_distinct(...)` / `IS NOT DISTINCT FROM`, q50/q74) - needs pest + rebuild.
-8. **sql_bare sandbox leak**: on q02 the agent listed `/tmp`, `/tmp/ptmain/evals`
-   and read a parameter-shifted reference file and trilogy source. `list_files` /
-   `read_file` need to be confined to the workspace before sql_bare scores are trusted.
-9. **Rerun all four legs unspliced** on main; q35/q64 should flip.
+6. **`trilogy file list ..` lists outside the workspace**: the Trilogy legs can
+   wander like sql_bare did; no sign of it in these logs.
+7. **q59 reference** 4x-duplicates rows under DuckDB 1.5.3.
+8. **Rerun all four legs unspliced** on this branch; q35/q64 should flip.
 
 Kept deliberately: every run spends a round trip on the bare `agent-info`
 directory before `agent-info query`. Finding the reference is part of what the
