@@ -43,3 +43,31 @@ def test_grouping_sets_render_off_the_cte_not_the_aggregates():
         if isinstance(cte, CTE):
             cte.grouping_sets = None
     assert "GROUPING SETS" not in executor.generator.compile_statement(processed)
+
+
+def test_a_folded_group_keeps_its_rollup():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+key group_id int;
+key event_id int;
+property event_id.active bool;
+property event_id.amount int;
+datasource events (eid: event_id, gid: group_id, active: active, amount: amount)
+grain (event_id)
+query '''
+select 1 eid, 1 gid, true active, 10 amount union all
+select 2, 1, false, 5 union all
+select 3, 2, true, 7
+''';
+rowset per_pair <- select group_id as g, active as a, sum(amount) as amt;
+""")
+    rows = executor.execute_text(
+        "select *rollup((select per_pair.g, per_pair.a, sum(per_pair.amt) as total), "
+        "per_pair.g);"
+    )[-1].fetchall()
+    assert sorted(map(tuple, rows), key=repr) == [
+        (1, False, 15),
+        (1, True, 15),
+        (2, True, 7),
+        (None, None, 22),
+    ]
