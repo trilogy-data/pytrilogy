@@ -1486,8 +1486,25 @@ def _partition_by_signature_and_grain(
             for node, _ in sub_items
         ]
         terminal = [unread[i] and grains[i] <= output_addresses for i in range(n)]
-        # siblings over one scan read its rows: it already relates their keys
-        one_scan = [len(sig) == 1 and sig <= root_gids for sig in sigs]
+        # Siblings over one scan read its rows, so it already relates their
+        # keys. Only when the statement outputs nothing else: another output
+        # (an aggregate by those keys) is what pairs them, more cheaply.
+        one_scan = [
+            len(sig) == 1
+            and sig <= root_gids
+            and output_addresses
+            <= {
+                concept_attrs[node].address
+                for node, gid in primary_group.items()
+                if gid in sig
+            }
+            | {
+                data.address
+                for k, (_, data) in enumerate(sub_items)
+                if unread[k] and sigs[k] == sig
+            }
+            for sig in sigs
+        ]
         pins = [data.grain_pin_anchors for _, data in sub_items]
         merged: list[tuple[int, int]] = []
         for i in range(n):
