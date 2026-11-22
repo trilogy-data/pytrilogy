@@ -1313,8 +1313,9 @@ def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutp
             continue
         # A FULL-join key must keep EVERY left source that provides it: the
         # row may exist on only one of them, so the ON clause has to coalesce
-        # across all (`coalesce(l1.k, l2.k) = r.k`). Non-FULL keys dedup.
-        if not keys & facts.full_join_keys and any(
+        # across all (`coalesce(l1.k, l2.k) = r.k`). Non-FULL keys dedup, and
+        # so does an EQUAL key both sides carry whole (`_full_keys`).
+        if not _full_keys(left, right, keys, facts) and any(
             v == keys
             and not (
                 keys & facts.side(left).partials and keys & facts.side(prior).partials
@@ -3127,7 +3128,9 @@ def _covered_keys(
     groups pair by declaration. The plan-time half of the optimizer's subset
     proof (`_pair_side_fully_matches`). Also returns the entries only a rowset
     boundary carries (`JoinFacts.boundary_covered`) and those a FULL-declared
-    key holds by a graph proof alone (`JoinFacts.proven_covered`)."""
+    key holds by a graph proof alone (`JoinFacts.proven_covered`), whether or
+    not the graph also relates the two spellings (a `union join` member read
+    off the column it joins is within it, and still vetoed)."""
     graph = environment.domain_graph
     carries = _Carries(ds_node_map, ds_concept_map, graph)
     vetoed = graph.full_relation_keys()
@@ -3153,16 +3156,12 @@ def _covered_keys(
                 within = (
                     graph.relation(sub_concept.address, sup_concept.address) in _WITHIN
                 )
-                rule_b = (
-                    not within
-                    and bool(
-                        (sub_concept.all_spellings | sup_concept.all_spellings) & vetoed
-                    )
-                    and graph.proven_within(
-                        sub_concept.address,
-                        sup_concept.address,
-                        sup_concept.all_spellings,
-                    )
+                rule_b = bool(
+                    (sub_concept.all_spellings | sup_concept.all_spellings) & vetoed
+                ) and graph.proven_within(
+                    sub_concept.address,
+                    sup_concept.address,
+                    sup_concept.all_spellings,
                 )
                 if (
                     (
