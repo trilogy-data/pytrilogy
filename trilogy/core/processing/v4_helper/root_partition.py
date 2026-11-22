@@ -631,6 +631,26 @@ def _grouping_keys(buckets: dict[str, GroupBucket]) -> set[str]:
     return keys
 
 
+def _filter_row_keys(
+    buckets: dict[str, GroupBucket], environment: BuildEnvironment
+) -> set[str]:
+    """The keys a filtered column is valued per, and the row columns a
+    derived one is computed from: its rows are the row stream's, so a key
+    peeled to a dimension scan leaves the filter nothing to pair on
+    (`Filters.filter_keys_stay_on_its_rows`)."""
+    keys = {
+        key
+        for bucket in buckets.values()
+        if bucket.derivation == Derivation.FILTER
+        for key in set(bucket.grain_components) - set(bucket.primary_members)
+    }
+    starts = [c for k in keys if (c := environment.concepts.get(k)) is not None]
+    return keys | {
+        c.address
+        for c in walk_lineage(starts, lambda c: c.derivation == Derivation.BASIC)
+    }
+
+
 def _padded_key_sets(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
@@ -1012,6 +1032,7 @@ def _split_root_dimension_clusters(
         and bucket.depth_label == DepthLabel.D0
     ]
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
+    filter_keys = _filter_row_keys(buckets, environment)
     for gid in list(buckets):
         bucket = buckets[gid]
         if bucket.reason is not RootReason.ROW_STREAM:
@@ -1101,7 +1122,7 @@ def _split_root_dimension_clusters(
             # passthrough. It must stay at fact grain for that GROUP BY; routing
             # it to a standalone dim scan joined on the entity id breaks the
             # regroup (cross-join fan-out).
-            if addr in grouping_keys:
+            if addr in grouping_keys or addr in filter_keys:
                 continue
             # Never peel a pre-aggregate filter column: its WHERE must stay on the
             # fact rows feeding the aggregate, but a peeled column carries its
