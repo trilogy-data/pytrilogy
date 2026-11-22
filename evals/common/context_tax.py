@@ -47,7 +47,9 @@ def error_kind(result: str) -> str:
     m = re.search(r"Syntax \[(\d+)\]", result)
     if m:
         return f"syntax[{m.group(1)}]"
-    m = re.search(r'"(?:error_type|message|error)":\s*"([^"]{0,70})', result)
+    m = re.search(
+        r'"(?:error_type|message|error)":\s*"([^"]{0,70})', result
+    ) or re.search(r"^(?:error_type|message|error): (?!\|$)(.{0,70})", result, re.MULTILINE)
     return m.group(1) if m else result[:70].replace("\n", " ")
 
 

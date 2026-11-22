@@ -344,12 +344,38 @@ def categorize_failure(result: str) -> str:
 _ERROR_ANCHORS = ("^---", "Location:", "-->")
 
 
-def _structured_error_message(text: str) -> str | None:
-    """The `message` of a `{"event": "error", ...}` JSON line, if one is present.
+def _text_error_message(text: str) -> str | None:
+    """The `message` of an `event: error` block in the agent's text rendering."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line != "event: error":
+            continue
+        j = i + 1
+        while j < len(lines) and lines[j] and not lines[j].startswith("message: "):
+            j += 1
+        if j >= len(lines) or not lines[j]:
+            return None
+        head = lines[j][len("message: ") :]
+        if head != "|":
+            return head
+        body = []
+        for follow in lines[j + 1 :]:
+            if not follow.startswith("  "):
+                break
+            body.append(follow[2:])
+        return "\n".join(body)
+    return None
 
-    `trilogy run` reports errors as a stream of concatenated (pretty-printed)
-    JSON events rather than plain text.
+
+def _structured_error_message(text: str) -> str | None:
+    """The `message` of an error event, if one is present.
+
+    `trilogy run` reports errors as a stream of events: JSON in older logs,
+    `key: value` text (``trilogy.scripts.agent_render``) since.
     """
+    text_message = _text_error_message(text)
+    if text_message is not None:
+        return text_message
     decoder = json.JSONDecoder()
     idx = text.find("{")
     while idx != -1:
