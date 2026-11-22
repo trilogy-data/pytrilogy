@@ -7,3 +7,13 @@ tests/test_complete_binding_lookup.py
 tests/core/test_null_function_conformance.py
 tests/discovery/test_merged_key_pseudonym_stored_column.py
 tests/discovery/test_sweep_*_shapes.py
+tests/test_then_where_execution.py
+tests/test_derived_dimension_group_rejoin.py
+tests/test_reaggregated_partial_under_stored_root.py
+tests/test_window_where_pushdown_matrix.py
+tests/test_fallback_fit_chain.py
+tests/core/processing/test_keyed_class_beside_trees.py
+tests/engine/test_duckdb_rowset_grain_oracle.py
+tests/engine/test_duckdb_set_op_identity_oracle.py
+tests/engine/test_duckdb_rowset_null_group_rejoin.py
+tests/engine/test_duckdb_subquery.py

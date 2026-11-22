@@ -299,9 +299,27 @@ before the editable install, which writes the release version into
 planner and row-oracle grids, nothing in them that an OS or a Python version
 changes), one path or glob per line: the tree-reporting dashboard queries, the
 join matrix, the window and derived-key-domain grids, the formalization sweep
-shapes. They were 347 s of the Windows 3.13 pytest step (116 s of it the
+shapes. They were over 400 s of the Windows 3.13 pytest step (116 s of it the
 dashboard queries). The matrix ignores them and a third `laws` shard runs
-them under xdist. The list is the only place to edit.
+them under xdist in 3 minutes. The list is the only place to edit.
+
+### Effect of 11-13
+
+Run 45040781603, this branch's first, against 44977499728. It built the
+conformance binaries one last time to seed their cache (the step's seconds are
+in brackets and come off every later run), and ran before the last ten
+entries joined `tests/grids.txt`.
+
+| cell | job before | job after | pytest before | pytest after |
+|---|---:|---:|---:|---:|
+| ubuntu 3.11   | 21.2 m | 15.3 m [118] | 958 s  | 640 s |
+| ubuntu 3.12   | 19.2 m | 17.0 m [151] | 858 s  | 671 s |
+| ubuntu 3.13   | 24.4 m | 13.8 m [96]  | 978 s  | 482 s |
+| windows 3.11  | 32.1 m | 24.9 m [273] | 1284 s | 870 s |
+| windows 3.12  | 31.8 m | 25.5 m [249] | 1262 s | 903 s |
+| windows 3.13  | 33.9 m | 29.7 m [289] | 1255 s | 972 s |
+
+The law shards were 3.0 (grids), 5.8 (rest) and 9.7 minutes (discovery-unnest).
 
 ## Targets not taken (yet), in order of expected value
 
