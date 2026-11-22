@@ -13,12 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.531.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.532.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 20,000; the PR of each
-round holds its sweep totals. `filters` has 144 `OPEN` seeds (area 4b),
+group key of aggregates and windows, in a HAVING) to 40,000; the PR of each
+round holds its sweep totals. `filters` has 137 `OPEN` seeds in 0-20,000 and
+325 failing queries in 20,000-40,000 not yet listed (area 4b),
 `windows` 18 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -594,9 +595,22 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it (`OPEN` in `test_oracle_filters_laws.py`, 144 seeds; 282 of
-40,000 queries against 3,844 on main, none of them right on main). By count:
-96 `cannot be related`, 77 wrong rows, 52 keyless joins.
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (137 seeds, 269
+queries of 0-20,000) and 325 queries of 20,000-40,000 (71 wrong, 243
+raising, 11 invalid), each failing on main too. The 20,000-40,000 raises
+re-run on 0.3.532 group as 33 keyless joins, about 60 `cannot be related`
+(the WHERE-gate host below), 14 recursions, 7 `Merge sources`, 7 `Could not
+resolve connections`, 4 `Missing source reference`.
+
+- **A filter read off its condition's aggregate alone** is planned as
+  holding the select's other keys through the rows beside it, which it never
+  read: `select city, tree_form, city ? sum(height) by city - count(tree_id)
+  by city = 2 as f where max(height) by tree_form is not null` crosses every
+  city with every kept form (20955). Reading the filter's columns off the
+  built node in `plan_final_join` and `elect_bridges` (so the kept rows
+  bridge it) fixed it and broke 33 queries right on main; narrowed to filters
+  beside a grouped parent it still broke them. The read must tell a column
+  the filter passes through from one only the plan assumed.
 
 - **Decide: a condition its keys do not decide.** For a filtered property
   beside its key or its content the reading is pinned
@@ -651,8 +665,9 @@ decide. Open in it (`OPEN` in `test_oracle_filters_laws.py`, 144 seeds; 282 of
 - Efficiency: a filtered key beside a derived key dedups through a second
   contributor joined back on the key's input (`select coalesce(tree_form,
   'none') as form0, tree_id ? species = 'Acer' as f` self-joins on
-  `species`), and an extra filtered stream bridges a `by` value: 297 joins
-  over 231 queries that were right on main, 475 fewer CTEs.
+  `species`): the filter's row stream renders `form0` but its group does not
+  output it, so the cover cannot take it from there. 0.3.532's dedup of a
+  filter stream to its grain costs 45 joins over 56 queries of 20,000-40,000.
 - The family writes no filtered column inside a window's own argument, no
   `?` over a derived key, and one condition per select when the filters are
   alone (two conditions alone, `select tree_id ? c1, species ? c2`, keep the

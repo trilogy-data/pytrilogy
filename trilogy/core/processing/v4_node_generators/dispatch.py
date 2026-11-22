@@ -61,6 +61,7 @@ def build_node(
     existence_source: bool = False,
     collapse_to_grain: bool = True,
     set_filter_pushdown: bool = False,
+    grain_keys: frozenset[str] = frozenset(),
     complete_partials: bool = True,
     history: V4History,
     g: ReferenceGraph,
@@ -141,6 +142,7 @@ def build_node(
             existence_source=existence_source,
             collapse_to_grain=collapse_to_grain,
             set_filter_pushdown=set_filter_pushdown,
+            grain_keys=grain_keys,
             g=g,
         )
     return fn(

@@ -67,6 +67,7 @@ def gen_filter(
     existence_source: bool = False,
     collapse_to_grain: bool = True,
     set_filter_pushdown: bool = False,
+    grain_keys: frozenset[str] = frozenset(),
     *,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
@@ -86,6 +87,7 @@ def gen_filter(
     entity grain groups to that grain (the renderer MAX-collapses it), else the
     CASE fans a property into {content, NULL} per input row; not under an
     aggregate consumer (`collapse_to_grain`), which counts the per-row CASE.
+    The group's own keys its parents hold (`grain_keys`) survive the collapse.
     """
     pass_through: list[BuildConcept] = []
     seen = {c.address for c in outputs}
@@ -140,11 +142,18 @@ def gen_filter(
             for r in lineage.where.row_arguments
         )
         if collapsible and finer:
+            # the rows keep the group's other keys their parents hold: paired
+            # on one, a row collapsed past it meets every value of it
+            # (`Filters.collapse_drops_paired_key`)
+            entity_grain |= grain_keys & {
+                c.address for p in parents for c in p.output_concepts
+            }
             grain = BuildGrain(components=entity_grain)
             full_outputs = list(outputs) + [
                 o
                 for o in pass_through
-                if o.grain is not None and set(o.grain.components) <= entity_grain
+                if o.address in entity_grain
+                or (o.grain is not None and set(o.grain.components) <= entity_grain)
             ]
     if (
         existence_source

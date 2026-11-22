@@ -18,6 +18,7 @@ from .concept_graph import _scope_and_phase
 from .condition_placement import args_holding_on_absent, feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .edges import EdgeKind, EdgeMap, edges_of_kind, only_a_set
+from .functional_dependency import build_fd_determines
 from .group_graph import read_row_parents
 from .models import ExtentOwnership, GroupAttrs
 from .projection import concept_satisfiable
@@ -187,6 +188,60 @@ def output_covers(output: BuildConcept, concept: BuildConcept) -> bool:
     )
 
 
+def _carried_below_grain(
+    group: GroupAttrs, address: str, environment: BuildEnvironment
+) -> bool:
+    """A filter group carrying a column its grain (the filtered value's keys)
+    does not determine holds it per row, not per grain: paired with another
+    row stream on that grain, it fans out
+    (`Filters.carried_column_fans_out`)."""
+    return (
+        group.derivation == Derivation.FILTER
+        and bool(group.grain_components)
+        and address not in group.primary_members
+        and not build_fd_determines(environment, group.grain_components, address)
+    )
+
+
+def _steered_off(
+    gid: str,
+    candidates: Sequence[str],
+    address: str,
+    attrs: dict[str, GroupAttrs],
+    row_graph: nx.DiGraph,
+    suppliers: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """`gid` carries `address` below its grain and a contributor the FINAL
+    joins anyway (`suppliers`) holds it on rows of its own. Not one `gid`
+    reads: it holds the same rows, and moving a column there splits one row
+    over two streams."""
+    if not _carried_below_grain(attrs[gid], address, environment):
+        return False
+    upstream = nx.ancestors(row_graph, gid)
+    return any(
+        other != gid
+        and other in suppliers
+        and other not in upstream
+        and not _carried_below_grain(attrs[other], address, environment)
+        for other in candidates
+    )
+
+
+def _sole_suppliers(
+    exposed: dict[str, frozenset[str]],
+    groups: Collection[str],
+    mandatory_list: Sequence[BuildConcept],
+) -> set[str]:
+    """The groups that alone expose some mandatory concept."""
+    out: set[str] = set()
+    for concept in mandatory_list:
+        holders = [gid for gid in groups if concept.address in exposed[gid]]
+        if len(holders) == 1:
+            out.add(holders[0])
+    return out
+
+
 def _selected_keys(
     concept: BuildConcept, mandatory_list: Sequence[BuildConcept]
 ) -> frozenset[str]:
@@ -290,6 +345,7 @@ def elect_cover(
     row_graph = group_graph.copy()
     row_graph.remove_edges_from(edges_of_kind(group_edges, EdgeKind.EXISTENCE))
     row_atoms = _row_atoms(attrs, groups)
+    suppliers = _sole_suppliers(exposed, groups, mandatory_list)
 
     where_atoms = _where_atoms(attrs, groups)
     # a FINAL re-applying an atom that holds on an absent group reads no output
@@ -368,6 +424,13 @@ def elect_cover(
         # WHERE kept: an output read off it skips the row atoms placed on the
         # select's rows (`SelectGrain.gate_group_skips_row_atoms`).
         keyed = _selected_keys(concept, mandatory_list)
+        steered = {
+            gid
+            for gid in candidates
+            if _steered_off(
+                gid, candidates, addr, attrs, row_graph, suppliers, environment
+            )
+        }
         candidates.sort(
             key=lambda gid: (
                 keyed <= exposed[gid],
@@ -378,6 +441,7 @@ def elect_cover(
                     and _single_valued(attrs[gid], environment)
                 ),
                 not feeds_absent_atom(gid),
+                gid not in steered,
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,
