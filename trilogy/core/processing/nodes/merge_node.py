@@ -14,7 +14,6 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildGrain,
     BuildOrderBy,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import (
@@ -799,7 +798,7 @@ class MergeNode(StrategyNode):
         # Rows passed through from a ROLLUP/CUBE/GROUPING SETS parent are already
         # final-shape: a regroup would re-aggregate the subtotal rows away.
         if force_group and any(
-            nonstandard_grouping_lineage(c) is not None for c in self.output_concepts
+            isinstance(d, QueryDatasource) and d.grouping_sets for d in final_datasets
         ):
             force_group = False
         return force_group, grain_forced

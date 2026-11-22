@@ -12,7 +12,6 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
     BuildRowsetItem,
     BuildWindowItem,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -160,7 +159,11 @@ def renders_grain_matched_aggregate(cte: CTE) -> bool:
     (`AGGREGATE_GRAIN_MATCH_MAP`, `sum(x) -> x`) unless `group_to_grain`.
     ROLLUP / GROUPING SETS are excluded: they render off the CTE's own
     grouping mode, which a fold relocates."""
-    if cte.group_to_grain or cte.source.source_type == SourceType.GROUP:
+    if (
+        cte.group_to_grain
+        or cte.source.source_type == SourceType.GROUP
+        or cte.grouping_sets is not None
+    ):
         return False
     aggregates = [
         concept
@@ -171,9 +174,7 @@ def renders_grain_matched_aggregate(cte: CTE) -> bool:
             or isinstance(concept.lineage, BuildAggregateWrapper)
         )
     ]
-    return bool(aggregates) and not any(
-        has_nonstandard_aggregate_grouping(concept) for concept in aggregates
-    )
+    return bool(aggregates)
 
 
 def produces_unbound_rowset(cte: CTE, domain_graph: "DomainGraph | None") -> bool:
@@ -275,12 +276,6 @@ def lineage_contains_aggregate(
     return False
 
 
-def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
-    if isinstance(concept.lineage, BuildRowsetItem):
-        return has_nonstandard_aggregate_grouping(concept.lineage.content)
-    return nonstandard_grouping_lineage(concept) is not None
-
-
 def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.PASSTHROUGH:
         # A passthrough adds no computation, WHERE, or regroup, so no parent
@@ -342,12 +337,8 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.WINDOW and cte.condition is not None:
         return True
-    if merge_mode == MergeMode.AGGREGATE:
-        return any(
-            has_nonstandard_aggregate_grouping(concept)
-            for concept in cte.output_columns
-        )
-    return False
+    # a fold would move the grouping sets onto the parent's rows
+    return merge_mode == MergeMode.AGGREGATE and cte.grouping_sets is not None
 
 
 def aggregate_inputs(cte: CTE) -> set[str]:

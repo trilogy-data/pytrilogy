@@ -38,7 +38,6 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildRowsetItem,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -767,7 +766,8 @@ def _emits_null(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
 
 
 def _emits_grouping_set_rows(cte: CTE | UnionCTE) -> bool:
-    """True when this CTE emits ROLLUP/CUBE/GROUPING SETS rows.
+    """True when this CTE emits ROLLUP/CUBE/GROUPING SETS rows: it runs the
+    pass, or carries a parent's rows without regrouping them.
 
     Its grouping-key columns then carry a NULL on every subtotal row that no
     ordinary source has, so the two sides of a join on those keys do NOT hold
@@ -776,9 +776,12 @@ def _emits_grouping_set_rows(cte: CTE | UnionCTE) -> bool:
     tests can see. Narrowing to INNER there deletes exactly the subtotal and
     grand-total rows the query asked for.
     """
-    return any(
-        nonstandard_grouping_lineage(column) is not None
-        for column in cte.output_columns
+    if not isinstance(cte, CTE):
+        return False
+    if cte.grouping_sets is not None:
+        return True
+    return not cte.group_to_grain and any(
+        _emits_grouping_set_rows(parent) for parent in cte.parent_ctes
     )
 
 

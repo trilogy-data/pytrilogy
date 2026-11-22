@@ -354,6 +354,29 @@ def nonstandard_grouping_lineage(concept: Any) -> BuildAggregateWrapper | None:
     return None
 
 
+def computed_grouping_sets(
+    concepts: Iterable[BuildConcept],
+) -> BuildGroupingSets | None:
+    """The one ROLLUP/CUBE/GROUPING SETS pass ``concepts`` (the aggregates a
+    group computes itself) share, or None for a standard group."""
+    specs = {
+        spec: wrapper
+        for c in concepts
+        if (wrapper := nonstandard_grouping_lineage(c)) is not None
+        and (spec := nonstandard_grouping_spec(wrapper)) is not None
+    }
+    if not specs:
+        return None
+    if len(specs) > 1:
+        raise ValueError("Cannot mix aggregate grouping passes in one group")
+    wrapper = next(iter(specs.values()))
+    return BuildGroupingSets(
+        mode=wrapper.grouping,
+        by=list(wrapper.by),
+        sets=[list(s) for s in wrapper.grouping_sets],
+    )
+
+
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
@@ -1812,6 +1835,31 @@ class BuildFunction(DataTyped, BuildConceptArgs):
         for arg in self.arguments:
             base += get_rendered_concept_arguments(arg)
         return base
+
+
+@dataclass(slots=True)
+class BuildGroupingSets:
+    """The ROLLUP/CUBE/GROUPING SETS a GroupNode groups by in place of its
+    plain GROUP BY: owned by the node (and its datasource and CTE), never by
+    the aggregates it computes, which stay standard to the planner."""
+
+    mode: AggregateGroupingMode
+    by: list[BuildConcept]
+    sets: list[list[BuildConcept]] = field(default_factory=list)
+
+    @property
+    def keys(self) -> set[str]:
+        return {c.address for c in self.by} | {c.address for s in self.sets for c in s}
+
+    @property
+    def has_empty_set(self) -> bool:
+        if self.mode in (AggregateGroupingMode.ROLLUP, AggregateGroupingMode.CUBE):
+            return True
+        return any(not s for s in self.sets)
+
+    def __str__(self) -> str:
+        sets = ";".join(",".join(c.address for c in s) for s in self.sets)
+        return f"{self.mode.value}({','.join(c.address for c in self.by)}|{sets})"
 
 
 @dataclass(slots=True)
