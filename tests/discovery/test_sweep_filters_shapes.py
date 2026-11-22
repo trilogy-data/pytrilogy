@@ -229,6 +229,41 @@ SHAPES = [
         ),
         [("broadleaf",), ("linden",), (None,)],
     ),
+    # a filter's keys stay on the rows it filters (48567, reduced): moved to
+    # a scan of the species table by the WHERE's set, they left it nothing to
+    # pair on, and every form met every value of it
+    (
+        (
+            "select tree_form, city ? city = 'A' as v0 where species in"
+            " (species ? count(tree_id) by species < 3);"
+        ),
+        [("broadleaf", "A"), (None, "A"), ("linden", None)],
+    ),
+    # ...a derived key's inputs too (46449)
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
+            " city ? city = 'A' as v0 where species in (species ? count(tree_id)"
+            " by species < 3);"
+        ),
+        [("b", "A"), ("o", "A"), ("o", None)],
+    ),
+    # a WHERE hosted on the aggregate a filter's condition reads filters the
+    # filter's rows too (59782, reduced): the Quercus's 5 is no kept height
+    (
+        (
+            "select height ? count(tree_id) by city < 10 as v0 where min(height)"
+            " by species < 4;"
+        ),
+        [(2,), (3,), (7,), (None,)],
+    ),
+    (
+        (
+            "select height ? count(tree_id) by city, tree_form < 10 as v0 where"
+            " min(height) by tree_form - min(height) by species < 0;"
+        ),
+        [(5,)],
+    ),
 ]
 
 

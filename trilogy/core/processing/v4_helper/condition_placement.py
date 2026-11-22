@@ -692,7 +692,7 @@ def _uncovered_exposing_output_contributor(
     covered: set[str] = set(chosen_groups)
     for gid in chosen_groups:
         covered |= nx.descendants(group_graph, gid)
-    covered -= _unfiltered_filter_streams(covered, chosen_groups, scope)
+    covered -= _unfiltered_filter_streams(covered, chosen_groups, atom, scope)
     # Inputs FINAL can read off its own contributors, condition-phase groups
     # included: a population twin merges into FINAL keyed by its grain.
     final_exposable: set[str] = set()
@@ -796,16 +796,27 @@ IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
 
 
 def _unfiltered_filter_streams(
-    covered: set[str], chosen: tuple[str, ...], scope: "_PlacementScope"
+    covered: set[str],
+    chosen: tuple[str, ...],
+    atom: BoolExpr,
+    scope: "_PlacementScope",
 ) -> set[str]:
     """Filter groups shown beside a host that read their rows beside it (a
     set's filter shows none): the host feeds only their condition (`count(tree_id) by city` of `height ? ...`),
     so the rows they show never passed the atom
-    (`Filters.gate_on_a_condition_filters_no_row`)."""
+    (`Filters.gate_on_a_condition_filters_no_row`). FINAL re-applies the atom
+    on their rows, so their grain must determine its aggregates' keys."""
     if IN_SET_PLAN.get():
         return set()
     memo: dict[str, bool] = {}
     shown = {c.address for c in scope.mandatory_list}
+    # FINAL re-applies the atom on the filter's rows: they hold its keys
+    keys = {
+        k
+        for c in atom.row_arguments
+        if c.is_aggregate
+        for k in pairing_keys(c.grain.components)
+    }
     return {
         gid
         for gid in covered
@@ -815,6 +826,7 @@ def _unfiltered_filter_streams(
         and b.depth_label not in NESTED_DEPTHS
         and shown & set(b.primary_members)
         and any(scope.group_graph.has_edge(host, gid) for host in chosen)
+        and build_fd_determines_all(scope.environment, b.grain_components, keys)
         and not _rows_filtered_by(gid, chosen, scope, memo)
     }
 

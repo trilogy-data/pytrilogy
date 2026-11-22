@@ -152,6 +152,7 @@ from .extent_ownership import takes_a_value_on_padding
 from .final_cover import elect_cover, output_covers, record_twin_reuse
 from .functional_dependency import (
     build_fd_closure,
+    build_fd_determines,
     build_fd_determines_all,
     strict_fd_closure,
     strict_fd_determines,
@@ -6223,19 +6224,29 @@ def _groups_past_outputs(
     it counts when it keys a property shown without it: `tree_form as f`
     grouped by `species` repeats a form per species
     (`SelectGrain.hidden_key_repeats_property`). A filtered value's keys are
-    the one exception: `select name, bulk_name` is a row per product."""
+    the one exception where its condition reads finer than them: `select
+    name, bulk_name` is a row per product."""
     closure = strict_fd_closure(environment, {c.address for c in outputs})
     hidden = node.hidden_concepts or set()
     keys_of = partial(_keys_of, outputs)
     property_keys = keys_of(
         lambda c: c.purpose == Purpose.PROPERTY
         and not isinstance(c.lineage, BuildFilterItem)
-    ) - keys_of(lambda c: isinstance(c.lineage, BuildFilterItem))
+    ) - keys_of(partial(_collapsed_filter, environment=environment))
     return any(
         o.address not in closure
         and not o.is_aggregate
         and (o.address not in hidden or o.address in property_keys)
         for o in node.output_concepts
+    )
+
+
+def _collapsed_filter(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """A filtered value whose condition reads finer than its keys: one value
+    per key where any row of it passes, so its rows are its keys'."""
+    return isinstance(concept.lineage, BuildFilterItem) and any(
+        not build_fd_determines(environment, set(concept.keys or ()), arg.address)
+        for arg in concept.lineage.where.row_arguments
     )
 
 

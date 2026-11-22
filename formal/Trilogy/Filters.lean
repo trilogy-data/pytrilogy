@@ -42,6 +42,9 @@ keys are columns of the rows it filters: moved to a scan of their own, they
 leave it nothing to pair on (`filter_keys_stay_on_its_rows`). And a WHERE
 hosted beneath an aggregate its condition reads has filtered that
 aggregate's rows, not the filter's (`gate_on_a_condition_filters_no_row`).
+A filter its keys decide is a property of them, shown once per value like
+any other (`decided_filter_repeats_per_key`); only one reading finer than its
+keys is a value per key.
 -/
 
 namespace Trilogy.Filters
@@ -237,6 +240,16 @@ theorem gate_on_a_condition_filters_no_row :
     let speciesMin (s : Nat) := ((trees.filter (·.1 == s)).map (·.2)).foldl min 100
     let kept := trees.filter fun r => speciesMin r.1 < 4
     (kept.map (·.2)) = [3, 7, 2] ∧ (trees.map (·.2)).contains 5 = true := by
+  decide
+
+/-- `select fc, tree_form ? species in (<set>) as f`: Acer and Quercus are
+both broadleaf, and neither is in the set. The select's rows are the distinct
+`(fc, f)`, one; grouped by the hidden `species` that `f` is keyed by, the row
+showed once per species (`decided_filter_repeats_per_key`). Rows are
+`(species, fc, f)`. -/
+theorem decided_filter_repeats_per_key :
+    let rows : List (Nat × Nat × Option Nat) := [(0, 0, none), (1, 0, none)]
+    (rows.map fun r => r.2).eraseDups.length = 1 ∧ rows.eraseDups.length = 2 := by
   decide
 
 end Trilogy.Filters

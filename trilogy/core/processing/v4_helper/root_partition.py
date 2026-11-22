@@ -33,6 +33,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildSubselectComparison,
     BuildWhereClause,
 )
@@ -50,7 +51,11 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, edge_kind, feeds_existence
-from .functional_dependency import build_fd_determines, strict_fd_determines
+from .functional_dependency import (
+    build_fd_determines,
+    build_fd_determines_all,
+    strict_fd_determines,
+)
 from .group_rules import overlap_components
 from .keyspace import null_rejected
 from .models import ConceptAttrs, GroupBucket, RootReason
@@ -632,18 +637,44 @@ def _grouping_keys(buckets: dict[str, GroupBucket]) -> set[str]:
 
 
 def _filter_row_keys(
-    buckets: dict[str, GroupBucket], environment: BuildEnvironment
+    buckets: dict[str, GroupBucket],
+    environment: BuildEnvironment,
+    gate_grains: Iterable[frozenset[str]],
 ) -> set[str]:
-    """The keys a filtered column is valued per, and the row columns a
-    derived one is computed from: its rows are the row stream's, so a key
-    peeled to a dimension scan leaves the filter nothing to pair on
-    (`Filters.filter_keys_stay_on_its_rows`)."""
-    keys = {
-        key
-        for bucket in buckets.values()
-        if bucket.derivation == Derivation.FILTER
-        for key in set(bucket.grain_components) - set(bucket.primary_members)
-    }
+    """The row columns a filtered value is computed on: the keys a filtered
+    column is valued per, what its condition reads, and the row columns a
+    derived one of them is computed from. The filter reads them off the row
+    stream, so moved to a dimension scan they leave it nothing to pair on
+    (`Filters.filter_keys_stay_on_its_rows`). A filtered aggregate's own group
+    keys are its aggregate's, which pairs on them as any aggregate does."""
+    keys: set[str] = set()
+    for bucket in buckets.values():
+        if bucket.derivation != Derivation.FILTER:
+            continue
+        grain = set(bucket.grain_components) - set(bucket.primary_members)
+        lineages = [
+            c.lineage
+            for m in bucket.primary_members
+            if (c := environment.concepts.get(m)) is not None
+            and isinstance(c.lineage, BuildFilterItem)
+        ]
+        read = {
+            arg.address
+            for lineage in lineages
+            for arg in lineage.where.row_arguments
+            if not arg.is_aggregate
+        }
+        over_aggregate = any(
+            isinstance(lineage.content, BuildConcept) and lineage.content.is_aggregate
+            for lineage in lineages
+        )
+        # a WHERE aggregate finer than those keys is re-applied on rows the
+        # filter's keys do not reach: the peel's key pairs it
+        finer_gate = any(
+            not build_fd_determines_all(environment, grain, gate - {ALL_ROWS_ADDRESS})
+            for gate in gate_grains
+        )
+        keys |= read - grain if over_aggregate or finer_gate else read | grain
     starts = [c for k in keys if (c := environment.concepts.get(k)) is not None]
     return keys | {
         c.address
@@ -1032,7 +1063,7 @@ def _split_root_dimension_clusters(
         and bucket.depth_label == DepthLabel.D0
     ]
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
-    filter_keys = _filter_row_keys(buckets, environment)
+    filter_keys = _filter_row_keys(buckets, environment, aggregate_grains.values())
     for gid in list(buckets):
         bucket = buckets[gid]
         if bucket.reason is not RootReason.ROW_STREAM:
