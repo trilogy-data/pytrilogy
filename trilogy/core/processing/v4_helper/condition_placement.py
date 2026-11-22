@@ -692,6 +692,7 @@ def _uncovered_exposing_output_contributor(
     covered: set[str] = set(chosen_groups)
     for gid in chosen_groups:
         covered |= nx.descendants(group_graph, gid)
+    covered -= _unfiltered_filter_streams(covered, chosen_groups, scope)
     # Inputs FINAL can read off its own contributors, condition-phase groups
     # included: a population twin merges into FINAL keyed by its grain.
     final_exposable: set[str] = set()
@@ -787,6 +788,35 @@ def _uncovered_exposing_output_contributor(
         ):
             return True
     return False
+
+
+from contextvars import ContextVar
+
+IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
+
+
+def _unfiltered_filter_streams(
+    covered: set[str], chosen: tuple[str, ...], scope: "_PlacementScope"
+) -> set[str]:
+    """Filter groups shown beside a host that read their rows beside it (a
+    set's filter shows none): the host feeds only their condition (`count(tree_id) by city` of `height ? ...`),
+    so the rows they show never passed the atom
+    (`Filters.gate_on_a_condition_filters_no_row`)."""
+    if IN_SET_PLAN.get():
+        return set()
+    memo: dict[str, bool] = {}
+    shown = {c.address for c in scope.mandatory_list}
+    return {
+        gid
+        for gid in covered
+        if gid not in chosen
+        and (b := scope.buckets.get(gid)) is not None
+        and b.derivation == Derivation.FILTER
+        and b.depth_label not in NESTED_DEPTHS
+        and shown & set(b.primary_members)
+        and any(scope.group_graph.has_edge(host, gid) for host in chosen)
+        and not _rows_filtered_by(gid, chosen, scope, memo)
+    }
 
 
 def _final_reads_at_host_grain(

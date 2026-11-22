@@ -37,7 +37,11 @@ A value the condition reads is built before the filtered column:
 A filter's rows pair with the select's other streams on its grain, so they
 must be one per grain value there: a column it carries below its grain fans
 the pairing out (`carried_column_fans_out`), and a collapse past a key the
-pairing reads crosses every value of it (`collapse_drops_paired_key`).
+pairing reads crosses every value of it (`collapse_drops_paired_key`). Its
+keys are columns of the rows it filters: moved to a scan of their own, they
+leave it nothing to pair on (`filter_keys_stay_on_its_rows`). And a WHERE
+hosted beneath an aggregate its condition reads has filtered that
+aggregate's rows, not the filter's (`gate_on_a_condition_filters_no_row`).
 -/
 
 namespace Trilogy.Filters
@@ -208,5 +212,31 @@ theorem collapse_drops_paired_key :
       pairs.length = 4 := by
   decide
 
+
+/-- `select tree_form, city ? city = 'A' as f where species in (<set>)`: the
+kept trees are `(form, city)` = (broadleaf, A), (none, A), (linden, B), three
+rows. The WHERE's set moved `tree_form` to a scan of the species table, so the
+filter's rows held `f` alone and met the forms on nothing: every form beside
+every `f`, six rows (`filter_keys_stay_on_its_rows`). -/
+theorem filter_keys_stay_on_its_rows :
+    let kept : List (Nat × Nat) := [(0, 0), (2, 0), (1, 1)]
+    let f : Nat × Nat → Option Nat := filt (·.2 == 0) (·.2)
+    let shown := (kept.map fun r => (r.1, f r)).eraseDups
+    let forms := (kept.map (·.1)).eraseDups
+    let values := (kept.map f).eraseDups
+    shown.length = 3 ∧ (forms.flatMap fun k => values.map fun v => (k, v)).length = 6 := by
+  decide
+
+/-- `select height ? count(tree_id) by city < 10 as f where min(height) by
+species < 4`: the WHERE keeps the species whose minimum is under 4. Hosted
+only on the count, it filtered the rows the count reads, while the heights
+shown were read beside it off every tree: Quercus's 5 came back
+(`gate_on_a_condition_filters_no_row`). Trees are `(species, height)`. -/
+theorem gate_on_a_condition_filters_no_row :
+    let trees : List (Nat × Nat) := [(0, 3), (0, 7), (1, 5), (3, 2)]
+    let speciesMin (s : Nat) := ((trees.filter (·.1 == s)).map (·.2)).foldl min 100
+    let kept := trees.filter fun r => speciesMin r.1 < 4
+    (kept.map (·.2)) = [3, 7, 2] ∧ (trees.map (·.2)).contains 5 = true := by
+  decide
 
 end Trilogy.Filters

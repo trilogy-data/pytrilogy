@@ -554,17 +554,23 @@ class _CleanFeederCache:
         ]
         if not search:
             return None
-        info = search_concepts(
-            mandatory_list=search,
-            history=V4History(
-                base_environment=v4_history.base_environment,
-                build_caches=v4_history.build_caches,
-            ),
-            environment=self._environment,
-            depth=1,
-            g=self._g,
-            conditions=self._conditions if kept else [],
-        )
+        from .condition_placement import IN_SET_PLAN
+
+        token = IN_SET_PLAN.set(True)
+        try:
+            info = search_concepts(
+                mandatory_list=search,
+                history=V4History(
+                    base_environment=v4_history.base_environment,
+                    build_caches=v4_history.build_caches,
+                ),
+                environment=self._environment,
+                depth=1,
+                g=self._g,
+                conditions=self._conditions if kept else [],
+            )
+        finally:
+            IN_SET_PLAN.reset(token)
         node = info.strategy_node
         if node is not None and kept:
             # planned under the WHERE, it carries the WHERE's columns too:
