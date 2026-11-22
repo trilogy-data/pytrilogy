@@ -21,6 +21,7 @@ from trilogy.scripts.agent_tools import (
     AgentState,
     handle_list_files,
     outside_workspace,
+    script_write_refused,
     truncate_json_events,
     truncate_middle,
 )
@@ -284,6 +285,8 @@ def handle_write_file(state: AgentState, args: dict) -> str:
         return "write_file error: 'path' must be a non-empty string."
     if outside_workspace(state, path):
         return f"write_file error: {path} is outside the workspace."
+    if script_write_refused(state, [path]):
+        return "write_file error: writing Python (.py) files is disabled for this task."
     if not isinstance(content, str):
         return "write_file error: 'content' must be a string."
     target = Path(path)

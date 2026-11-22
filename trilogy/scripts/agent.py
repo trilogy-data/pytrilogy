@@ -948,6 +948,9 @@ def agent(
         allow_db_introspection=cfg.allow_database_introspection,
         allow_file_read=cfg.allow_file_read,
         workspace=Path.cwd() if toolset == "sql" else None,
+        withheld_env=frozenset(PROVIDER_DEFAULT_ENV.values())
+        | ({cfg.api_key_env} if cfg.api_key_env else set()),
+        allow_script_write=cfg.allow_script_write,
     )
 
     session: AgentSession | None = None

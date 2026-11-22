@@ -1884,3 +1884,42 @@ def test_sql_file_tools_stay_in_workspace(tmp_path, monkeypatch):
     )
     assert "# schema" in handle_read_file(state, {"path": "schema.md"})
     assert "schema.md" in handle_list_files(state, {"path": "."})
+
+
+def test_script_writes_refused_when_disabled(tmp_path, monkeypatch):
+    from trilogy.scripts.agent_sql_tools import handle_write_file
+
+    monkeypatch.chdir(tmp_path)
+    state = AgentState(allow_script_write=False)
+    refused = "disabled for this task"
+    assert refused in handle_write_file(state, {"path": "x.PY", "content": "1"})
+    assert refused in handle_trilogy(
+        state, {"args": ["file", "write", "a.py", "--content", "1"]}
+    )
+    assert refused in handle_trilogy(state, {"args": ["file", "move", "a.sql", "b.py"]})
+    assert not (tmp_path / "x.PY").exists()
+    assert "wrote" in handle_write_file(state, {"path": "x.sql", "content": "1"})
+    assert "wrote" in handle_write_file(AgentState(), {"path": "ok.py", "content": "1"})
+
+
+def test_trilogy_subprocess_withholds_llm_keys(monkeypatch):
+    import subprocess
+
+    captured: dict = {}
+
+    class _Fake:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured.update(kwargs)
+        return _Fake()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    monkeypatch.setenv("KEEP_ME", "1")
+    state = AgentState(withheld_env=frozenset({"DEEPSEEK_API_KEY"}))
+    handle_trilogy(state, {"args": ["--version"]})
+    assert "DEEPSEEK_API_KEY" not in captured["env"]
+    assert captured["env"]["KEEP_ME"] == "1"

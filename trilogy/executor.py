@@ -336,6 +336,7 @@ class Executor:
             self._setup_duckdb_python_datasources()
             self._setup_duckdb_gcs()
             self._setup_duckdb_spatial()
+            self._setup_duckdb_sandbox()
 
     def connect(self) -> EngineConnection:
         self.connection = self.engine.connect()
@@ -530,6 +531,19 @@ class Executor:
             return
         self.execute_raw_sql("INSTALL spatial;")
         self.execute_raw_sql("LOAD spatial;")
+        self.commit()
+
+    def _setup_duckdb_sandbox(self) -> None:
+        """Last setup step: later statements cannot touch files outside the
+        root or undo these settings (lock_configuration)."""
+        from trilogy.dialect.config import DuckDBConfig
+
+        if not isinstance(self.config, DuckDBConfig) or not self.config.sandbox_root:
+            return
+        root = Path(self.config.sandbox_root).as_posix().rstrip("/").replace("'", "''")
+        self.execute_raw_sql(f"SET allowed_directories = ['{root}/'];")
+        self.execute_raw_sql("SET enable_external_access = false;")
+        self.execute_raw_sql("SET lock_configuration = true;")
         self.commit()
 
     def close(self) -> None:
