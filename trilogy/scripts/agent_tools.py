@@ -148,6 +148,9 @@ class AgentState:
     # AgentConfig.allow_file_read — query-gen evals push schema discovery
     # through `explore` rather than reading raw file contents.
     allow_file_read: bool = True
+    # When set, file tools refuse paths that resolve outside it: an eval agent
+    # must not read references or source off the host.
+    workspace: Path | None = None
     # One id per conversation: repeat `explore` payload entries collapse to
     # `already_shown` stubs within a session (see scripts/explore_seen.py).
     explore_session: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -343,6 +346,13 @@ def _file_entry(display_path: str, abs_path: Path) -> dict:
     return entry
 
 
+def outside_workspace(state: AgentState, path: str) -> bool:
+    if state.workspace is None:
+        return False
+    root = state.workspace.resolve()
+    return not (root / path).resolve().is_relative_to(root)
+
+
 def handle_list_files(state: AgentState, args: dict) -> str:
     path = args.get("path", ".")
     recursive = args.get("recursive", True)
@@ -350,6 +360,8 @@ def handle_list_files(state: AgentState, args: dict) -> str:
         return "list_files error: 'path' must be a non-empty string."
     if not isinstance(recursive, bool):
         return "list_files error: 'recursive' must be a boolean."
+    if outside_workspace(state, path):
+        return f"list_files error: {path} is outside the workspace."
     root = Path(path)
     if not root.exists():
         return f"list_files error: no such path: {path}"

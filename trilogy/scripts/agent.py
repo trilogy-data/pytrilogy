@@ -947,6 +947,7 @@ def agent(
         tool_output_limit=cfg.tool_output_limit,
         allow_db_introspection=cfg.allow_database_introspection,
         allow_file_read=cfg.allow_file_read,
+        workspace=Path.cwd() if toolset == "sql" else None,
     )
 
     session: AgentSession | None = None

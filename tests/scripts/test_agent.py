@@ -1860,3 +1860,27 @@ def test_refusals_point_at_scoped_joins():
     state = AgentState(allow_db_introspection=False, allow_file_read=False)
     assert "subset join" in handle_trilogy(state, {"args": ["database", "list"]})
     assert "subset join" in handle_trilogy(state, {"args": ["file", "read", "x"]})
+
+
+def test_sql_file_tools_stay_in_workspace(tmp_path, monkeypatch):
+    from trilogy.scripts.agent_sql_tools import (
+        handle_read_file,
+        handle_run_file,
+        handle_write_file,
+    )
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (tmp_path / "refs.sql").write_text("select 1", encoding="utf-8")
+    (workspace / "schema.md").write_text("# schema", encoding="utf-8")
+    monkeypatch.chdir(workspace)
+    state = AgentState(workspace=workspace)
+    outside = str(tmp_path / "refs.sql")
+    assert "outside the workspace" in handle_list_files(state, {"path": ".."})
+    assert "outside the workspace" in handle_read_file(state, {"path": outside})
+    assert "outside the workspace" in handle_run_file(state, {"path": "../refs.sql"})
+    assert "outside the workspace" in handle_write_file(
+        state, {"path": "../x.sql", "content": "select 1"}
+    )
+    assert "# schema" in handle_read_file(state, {"path": "schema.md"})
+    assert "schema.md" in handle_list_files(state, {"path": "."})

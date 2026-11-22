@@ -20,6 +20,7 @@ from trilogy.scripts.agent_tools import (
     LIST_FILES_TOOL,
     AgentState,
     handle_list_files,
+    outside_workspace,
     truncate_json_events,
     truncate_middle,
 )
@@ -281,6 +282,8 @@ def handle_write_file(state: AgentState, args: dict) -> str:
     content = args.get("content")
     if not isinstance(path, str) or not path:
         return "write_file error: 'path' must be a non-empty string."
+    if outside_workspace(state, path):
+        return f"write_file error: {path} is outside the workspace."
     if not isinstance(content, str):
         return "write_file error: 'content' must be a string."
     target = Path(path)
@@ -294,6 +297,8 @@ def handle_read_file(state: AgentState, args: dict) -> str:
     path = args.get("path")
     if not isinstance(path, str) or not path:
         return "read_file error: 'path' must be a non-empty string."
+    if outside_workspace(state, path):
+        return f"read_file error: {path} is outside the workspace."
     target = Path(path)
     if not target.exists():
         return f"read_file error: no such file: {path}"
@@ -307,6 +312,8 @@ def handle_run_file(state: AgentState, args: dict) -> str:
     path = args.get("path")
     if not isinstance(path, str) or not path:
         return "run_file error: 'path' must be a non-empty string."
+    if outside_workspace(state, path):
+        return f"run_file error: {path} is outside the workspace."
     target = Path(path)
     if not target.exists():
         return f"run_file error: no such file: {path}"
