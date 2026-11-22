@@ -2726,14 +2726,13 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   filtered value's keys (`Filters.filtered_value_on_its_keys`); what a
   condition off them shows is undecided and written up as a lead. On main
   seeds 0-20,000 (40,000 queries) hold 1,807 wrong answers, 1,880 raises and
-  157 invalid statements; 386 are left (123 wrong, 248 raising, 15 invalid).
-  One seed that planned on main raises (19498, a window over a filtered key
-  whose condition's column a later value read off the window's group), and
-  13 queries that raised on main return wrong rows; every other one left
-  fails on main the same way. The five older families, 20,000 queries each,
-  are unchanged: no status moves, +5 joins in `windows`. Among the 36,154
-  queries right on both sides the family costs 158 joins over 132 queries
-  and saves 804 CTEs.
+  157 invalid statements; 282 are left (77 wrong, 192 raising, 13 invalid),
+  and no query that was right on main fails. Seven queries (four seeds) that
+  raised on main return wrong rows; every other one left fails on main the
+  same way. The five older families, 20,000 queries
+  each, have no status change; `windows` pays 100 joins over 81 queries for
+  the filtered bridge and `spellings` 119 CTEs. Among the 36,156 queries right on both sides the family
+  costs 297 joins over 231 queries and saves 475 CTEs.
   - A filtered key (`select city, tree_id ? height > 2 as f`) is `tree_id`
     where it is anything, so the group check read the rows as unique on
     `tree_id` and skipped the dedup: a city came back once per tree the
@@ -2778,6 +2777,23 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   - `having f is not null` on a filtered column collapsed to its grain was
     rendered in the WHERE, over the `max(CASE ...)` it is computed by; it is
     a HAVING.
+  - A window's input was grouped by the source of every output handed to it
+    (`height` of `height > 2 as big`), so equal groups stayed apart, and it
+    dropped a value its grain determines (`max(height) by tree_form` beside a
+    window over species), which a later node then had no source for. It keeps
+    what the grain determines and reads a handed value as itself.
+  - A value `by city, tree_form` beside groups keyed by a filtered column was
+    joined on `city` alone (`SelectGrain.by_property_without_its_key_misjoins`):
+    the filtered rows could bridge them but, as an extra side, were never
+    widened to `tree_form`. An extra filtered stream is widened to the rest of
+    a supplier's grain its rows determine.
+  - A WHERE aggregate was barred from a filtered column's rows by an
+    aggregate inside the set that column reads by subselect: a set is no
+    row-shape barrier of its reader.
+  - Predicate pushdown read a column off a set feeder that is not in the
+    CTE's FROM (`Rewrite.moved_membership_reads_its_set`), or not, by
+    Python's hash seed: one seed planned right or rendered `Referenced table
+    not found` from run to run, on main too.
   - The sweep runner ends a plan at 30 seconds: one seed loops in planning
     and stalled the pool.
 
