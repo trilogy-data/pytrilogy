@@ -219,6 +219,16 @@ SHAPES = [
             ("B", "linden", None, 1),
         ],
     ),
+    # ...and a filter read off its condition's aggregate alone holds no
+    # other key: the WHERE-kept rows bridge it (20955; the formless Ulmus
+    # has no maximum)
+    (
+        (
+            "select city, tree_form, city ? sum(height) by city - count(tree_id)"
+            " by city = 2 as v0 where max(height) by tree_form is not null;"
+        ),
+        [("A", "broadleaf", None), ("B", "broadleaf", None), ("B", "linden", None)],
+    ),
 ]
 
 
