@@ -21,7 +21,6 @@ from __future__ import annotations
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import (
     BuildConcept,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -72,10 +71,7 @@ def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
     into any address in ``addrs``. Like ``_join_pads_null``, this stops the
     parent-walk from proving a rollup key non-null via an upstream source: the
     rollup itself is the source of the NULLs at subtotal rows."""
-    has_rollup = any(
-        nonstandard_grouping_lineage(c) is not None for c in cte.output_columns
-    )
-    if not has_rollup:
+    if cte.grouping_sets is None:
         return False
     return not addrs.isdisjoint(equivalent_addresses(list(cte.nullable_concepts)))
 

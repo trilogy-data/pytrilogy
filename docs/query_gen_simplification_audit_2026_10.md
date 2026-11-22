@@ -251,7 +251,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth and 46 after the ninth; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement) and the group-owned grouping sets below the planner; 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1204,6 +1204,71 @@ election, not the padded fallback.
       `SelectStatement.relational` / `planned` / `relational_names`, and the
       authored-versus-planned pair in `_process_query`. A grain-less arm (no
       keys, nothing to infer) stays the statement, as before.
+    - **Fourth slice: the group owns its grouping sets (step (b), ownership
+      half).** Below the planner, nothing reads an aggregate's mode any more.
+      `BuildGroupingSets` (mode, `by`, sets) is decided once, where a
+      `GroupNode` resolves to a real GROUP over the rollup aggregates it
+      computes itself (`computed_grouping_sets`), and rides
+      `QueryDatasource.grouping_sets` (identity: a ROLLUP of a group is more
+      rows) and `CTE.grouping_sets`. The renderer reads the CTE's spec, where
+      it re-derived the mode from every locally computed output on every CTE
+      (`_get_aggregate_grouping`, with its three mixed-mode raises, and
+      `_grouping_has_empty_set` are gone). The group's rolled keys are marked
+      nullable off the same spec. Five readers moved off aggregate lineage onto
+      it: `CollapseSingleParent` (an AGGREGATE fold is refused for a CTE that
+      runs the pass, and `renders_grain_matched_aggregate` excludes it;
+      `has_nonstandard_aggregate_grouping` deleted), `SimplifyNullSafeJoins`
+      (`_rollup_injects_null`), `UpgradeOuterFromKeySetEquivalence`
+      (`_emits_grouping_set_rows`: the pass, or a parent's rows carried without
+      a regroup), and `MergeNode`'s no-regroup-above-a-pass rule (reads its
+      parents' datasources). A fold that moves the child's aggregates onto
+      its parent moves the pass with them (`carry_child_state`): the fuzzer's
+      `rollup_over_rowset_extra_dim` lost its ROLLUP under
+      `MergeIrrelevantGroupBy` until it did, where the old mode rode along on
+      the aggregates. Instrumented at render over the rollup-touching suite,
+      `tests/optimization` and the fuzzer, the CTE's spec agrees with the old
+      aggregate scan on every rendered CTE; the one reader that disagreed (a
+      passthrough of the pass's rows, 8 tests) is the parent walk above.
+      `test_rollup_grouping_sets_owner.py` pins the owner, the render (red on
+      `main`: clearing the CTE's spec still rendered GROUPING SETS) and the
+      fold. Suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`, laws included,
+      53,500 tests), each moved test re-run serially on both sides: one plan
+      moved, in 10 `test_duckdb_rollup_tvf_laws` reads (a flagless read of a
+      body with a `grouping()` label). The AGGREGATE-fold refusal looked
+      through a rowset handle at its content's mode, so the dedup group above
+      the rename (no pass of its own) was refused the fold on `main`; read off
+      the CTE it folds, and the label renders in the outer select instead of
+      inside the ROLLUP CTE, same CTE count, rows held by the law oracle. The
+      rest is xdist CTE naming, column order and temp paths. Corpus 0 moved;
+      the suite fails the same 25 tests as `main`.
+    - **Measured, not landed: the arm planned standard.** The other half of
+      step (b) was prototyped: the arm's factory without the spec (its
+      aggregates and flags standard), and `gen_rollup_select` stamping the
+      spec on the first `GroupNode` of the arm's single-parent chain. Both law
+      suites pass (240/240), and so do 5,276 of the 5,419 tests that touch a
+      rollup. The 143 failures are the two things the planner's mode still
+      buys, and both are step (a)'s, not (b)'s:
+      - *Post-aggregate columns planned beside the pass* (windows, a scalar
+        over two measures, a label over `grouping()`;
+        `test_rollup_multi_window`, `test_duckdb_rollup_window_inline_aggregate`,
+        `test_duckdb_rollup_rename_backjoin`). Standard planning computes two
+        windows in sibling branches and joins them back on the visible keys,
+        which a rollup repeats. Written over the TVF's handles instead, with
+        the flags in the relation's identity, the same windows plan correctly
+        today: `rank() over (partition by r.gc + r.gl ...)` over
+        `with r as rollup((select category, cls, sum(amount) as total,
+        grouping(category) as gc, grouping(cls) as gl), category, cls)`
+        reproduces `test_rollup_multi_window`'s oracle row for row. So (a) is a
+        parse-level rewrite (lift each post-aggregate column out of the arm,
+        re-pointed at the handles, minting hidden arm columns for inline
+        aggregates), not planner work.
+      - *Several facts under one pass* (`test_derived_key_domain`'s
+        two-facts and region cases, `test_duckdb_rollup_region_domain`).
+        Standard planning groups each fact on its own and joins the groups;
+        a rollup needs them in one pass over the joined stream, which is what
+        `_partition_grouped_aggregates` does for a mode today. After (a) that
+        rule is all the planner needs from the arm: a select-level "one pass"
+        flag in place of the per-aggregate mode, which is what (c) deletes.
 
 ## Gate used
 

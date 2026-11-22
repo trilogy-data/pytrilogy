@@ -99,7 +99,10 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     it. DISTINCT counts: the child's aggregates now render over the parent's
     rows, the stream that repeats their counted keys. LIMIT is the last
     logical operation of a SELECT, so the child's limit and ORDER BY apply
-    unchanged to the merged CTE."""
+    unchanged to the merged CTE. Grouping sets: the child's aggregates now
+    render on the parent, so the pass they run in does too."""
+    if cte.grouping_sets is not None:
+        parent.grouping_sets = cte.grouping_sets
     parent.distinct_counts = parent.distinct_counts | cte.distinct_counts
     parent.partial_sources = {**parent.partial_sources, **cte.partial_sources}
     nullable_addresses = {c.address for c in parent.nullable_concepts}

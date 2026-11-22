@@ -43,6 +43,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildGroupingSets,
     BuildMultiSelectLineage,
     BuildOrderBy,
     BuildParamaterizedConceptReference,
@@ -195,6 +196,8 @@ class CTE:
     distinct_counts: frozenset[str] = frozenset()
     # See `QueryDatasource.partial_sources`.
     partial_sources: dict[str, BuildConcept] = field(default_factory=dict)
+    # See `QueryDatasource.grouping_sets`.
+    grouping_sets: BuildGroupingSets | None = None
     order_by: BuildOrderBy | None = None
     limit: int | None = None
     base_name_override: Address | str | None = None
@@ -1595,6 +1598,9 @@ class QueryDatasource:
     # no column NULL exactly there (`join_resolution._presence_marker`). Not
     # an output, so planning never sees it; not identity.
     presence_marker: BuildConcept | None = None
+    # The grouping sets this source groups by in place of its plain GROUP BY
+    # (`BuildGroupingSets`). Identity: a ROLLUP of a group is more rows.
+    grouping_sets: BuildGroupingSets | None = None
 
     def _fold_inferred_nullables(self) -> None:
         """A base datasource surfaces nullable columns via
@@ -1902,6 +1908,7 @@ class QueryDatasource:
             distinct_counts=self.distinct_counts | other.distinct_counts,
             partial_sources={**self.partial_sources, **other.partial_sources},
             region_spans=self.region_spans | other.region_spans,
+            grouping_sets=self.grouping_sets,
         )
         logger.debug(
             f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
@@ -2047,6 +2054,11 @@ class QueryDatasource:
             + unnested
             + extent_free
             + preserving
+            + (
+                f"_sets_{string_to_hash(str(self.grouping_sets))}"
+                if self.grouping_sets
+                else ""
+            )
         )
 
     def get_alias(self, concept: BuildConcept, source: str | None = None):

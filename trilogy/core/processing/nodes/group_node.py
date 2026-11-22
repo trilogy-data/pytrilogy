@@ -7,7 +7,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
-    nonstandard_grouping_lineage,
+    computed_grouping_sets,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
@@ -149,6 +149,17 @@ class GroupNode(StrategyNode):
                 if concept.address in input_addresses:
                     continue
                 source_map[concept.address] = set()
+        # the pass this group runs, owned here: the renderer and optimizer
+        # read it off the datasource, never off the aggregates
+        grouping_sets = (
+            computed_grouping_sets(
+                c
+                for c in self.output_concepts
+                if c.is_aggregate and c.address not in input_addresses
+            )
+            if source_type == SourceType.GROUP
+            else None
+        )
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )
@@ -189,10 +200,7 @@ class GroupNode(StrategyNode):
         # ROLLUP/CUBE/GROUPING SETS inject NULLs into grouping-key dims on the
         # subtotal rows. Mark those dims, and any dim derived from them,
         # nullable so downstream joins use null-safe semantics.
-        rollup_by_addresses: set[str] = set()
-        for c in self.output_concepts:
-            if (wrapper := nonstandard_grouping_lineage(c)) is not None:
-                rollup_by_addresses.update(b.address for b in wrapper.by)
+        rollup_by_addresses = grouping_sets.keys if grouping_sets else set()
         if rollup_by_addresses:
             from trilogy.core.processing.discovery_utility import (
                 get_upstream_concepts,
@@ -251,6 +259,7 @@ class GroupNode(StrategyNode):
             ordering=self.ordering,
             distinct_counts=self.distinct_counts,
             partial_sources=dict(self.partial_sources),
+            grouping_sets=grouping_sets,
         )
         return base
 

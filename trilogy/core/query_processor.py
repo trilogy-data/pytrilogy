@@ -510,6 +510,7 @@ def datasource_to_cte(
         zero_filled=query_datasource.zero_filled,
         distinct_counts=query_datasource.distinct_counts,
         partial_sources=query_datasource.partial_sources,
+        grouping_sets=query_datasource.grouping_sets,
         base_name_override=base_name,
         base_alias_override=base_alias,
         order_by=query_datasource.ordering,
