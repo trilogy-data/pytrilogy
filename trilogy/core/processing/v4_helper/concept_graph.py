@@ -13,7 +13,7 @@ optional metadata, they're what keeps row identity intact through the SUM.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -1702,6 +1702,8 @@ class _Walk:
     materialized_roots: frozenset[str] = frozenset()
     datasource_addresses: frozenset[str] = frozenset()
     pinned_probes: frozenset[str] = frozenset()
+    # the outputs this plan was asked for
+    demanded: frozenset[str] = frozenset()
 
     @cached_property
     def root_like(self) -> frozenset[str]:
@@ -1712,6 +1714,49 @@ class _Walk:
         return node_id(
             _effective_label(concept, label, self.root_like), concept.address
         )
+
+
+def _feeds_only_sets(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    node: str,
+    shown: Collection[str],
+    seen: set[str],
+) -> bool:
+    """`node` is no output (`shown`) and reaches the statement's rows only as
+    part of a set's condition:
+    `count(id) by species` in `species ? species in (species ? count(id) by
+    species >= 3)`. A WHERE value such a barrier consumed has filtered the
+    set's rows, not the statement's (`Filters.gate_on_a_set_filters_no_row`)."""
+    if node in shown:
+        return False
+    if attrs[node].existence_only or node in seen:
+        return True
+    seen.add(node)
+    successors = list(graph.successors(node))
+    return bool(successors) and all(
+        edge_kind(edges, node, succ) == EdgeKind.EXISTENCE
+        or _feeds_only_sets(graph, edges, attrs, succ, shown, seen)
+        for succ in successors
+    )
+
+
+def _grain_off_its_readers(
+    concept: BuildConcept, grain: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """A set written in a select target's `?` claims that select's grain, the
+    filtered column it gates among it (`select tree_id, city ? city in (<set>)
+    as f`: the set's grain names `f`). The column reads the set, so it is no
+    key of it: planned standalone at that grain, the set would ask for the
+    column that asks for it (`Filters.value_is_no_finer_than_its_reader`)."""
+    readers = {
+        address
+        for address in grain
+        if (reader := environment.concepts.get(address)) is not None
+        and concept.address in lineage_existence_parts(reader)[0]
+    }
+    return grain - readers if readers else grain
 
 
 def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
@@ -1801,6 +1846,8 @@ def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    if concept.derivation == Derivation.FILTER and concept.address in walk.demanded:
+        out_grain = _grain_off_its_readers(concept, out_grain, environment)
     if not is_materialized_root and derived_key(concept):
         # A derived key's values are its own grain, but the stream deriving it
         # holds one per input row, and pairs with its siblings on those rows'
@@ -2628,6 +2675,7 @@ def build_concept_graph(
         materialized_roots=materialized_roots,
         datasource_addresses=datasource_addresses,
         pinned_probes=pinned_probe_addresses(environment, datasources),
+        demanded=frozenset(c.address for c in mandatory_list),
     )
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
@@ -2942,7 +2990,14 @@ def build_concept_graph(
         for src in outer_condition_nodes
         if attrs[src].derivation != Derivation.ROOT
         and attrs[src].address in row_arg_addresses
-        and all(attrs[succ].existence_only for succ in graph.successors(src))
+        and all(
+            attrs[succ].existence_only
+            # under a WHERE that reads a set itself, its atoms are placed with
+            # the set and the barrier's host stands
+            or not existence_arg_pairs
+            and _feeds_only_sets(graph, edges, attrs, succ, mandatory_blank_ids, set())
+            for succ in graph.successors(src)
+        )
     ]
     # a constant is the same value on every row: the rowed outputs carry a
     # condition its grain has no key for, which it would join on no key (`4`

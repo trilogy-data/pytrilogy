@@ -42,6 +42,12 @@ def test_compare_names_what_moved():
     assert not runner.report(base, new)
 
 
+def test_deadline_ends_a_plan_that_loops():
+    with pytest.raises(TimeoutError, match="no plan in 1s"), runner._deadline(1):
+        while True:
+            pass
+
+
 def test_records_round_trip(tmp_path: Path):
     records = {(2, "base"): {"seed": 2, "model": "base", **OK}}
     runner.write_records(tmp_path / "r.jsonl", records.values())

@@ -46,6 +46,17 @@ def _rows_unique_at_set(
     return rows_unique_at_outputs(joined, emitted, nullable, environment)
 
 
+def _reads_one_row(lineages: list[BuildFilterItem]) -> bool:
+    """Every value the filters read is one row already: a total gated by a
+    total is a scalar of that row, with no rows to collapse
+    (`Filters.total_gated_by_total_is_scalar`)."""
+    return all(
+        arg.granularity == Granularity.SINGLE_ROW
+        for lineage in lineages
+        for arg in (*lineage.where.row_arguments, *lineage.content_concept_arguments)
+    )
+
+
 def gen_filter(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -55,6 +66,7 @@ def gen_filter(
     intrinsic_filter_pushdown: bool = True,
     existence_source: bool = False,
     collapse_to_grain: bool = True,
+    set_filter_pushdown: bool = False,
     *,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
@@ -65,7 +77,9 @@ def gen_filter(
     predicate moves into this node's WHERE only when the caller says the rows
     may narrow (`intrinsic_filter_pushdown`: the statement shows nothing but
     this predicate's filter values) or for a semijoin RHS (`existence_source`,
-    where a CASE's NULL member would make `not in` match nothing).
+    where a CASE's NULL member would make `not in` match nothing). A predicate
+    reading a set moves only for the statement's own values
+    (`set_filter_pushdown`).
 
     Parent outputs pass through so a consumer can reach back through the
     filter. A keyed filter whose predicate reads finer than its outputs'
@@ -90,6 +104,7 @@ def gen_filter(
         outputs,
         {c.address for p in parents for c in p.output_concepts},
         intrinsic_filter_pushdown or existence_source,
+        sets=set_filter_pushdown,
     )
 
     grain: BuildGrain | None = None
@@ -98,6 +113,7 @@ def gen_filter(
         and intrinsic is None
         and collapse_to_grain
         and all(o.granularity == Granularity.SINGLE_ROW for o in outputs)
+        and not _reads_one_row(filter_lineages)
     ):
         # one value gated on whether any in-scope row passes: a one-row group
         grain = BuildGrain()

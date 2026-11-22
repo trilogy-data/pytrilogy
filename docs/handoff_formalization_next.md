@@ -13,15 +13,14 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.529.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.531.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
-`expressions` family to 800,000, the `compositions` family (memberships,
-`/` by 0, derived `by` keys, nested aggregates, ranks, `order by` an
-expression) to 260,000 and the `windows` family (other windows over the
-select's groups, memberships in a select target's `?` and in a HAVING, `/` by
-a `by` aggregate) to 60,000; the PR of each round holds its sweep totals.
-`windows` has 19 `OPEN` seeds (area 4); `expressions` 8628 raises on the
-summary model on main (area 1).
+`expressions` family to 800,000, `compositions` to 260,000, `windows` to
+60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
+group key of aggregates and windows, in a HAVING) to 20,000; the PR of each
+round holds its sweep totals. `filters` has 144 `OPEN` seeds (area 4b),
+`windows` 18 (area 4); `expressions` 8628 raises on the summary model on main
+(area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
 main every night (`.github/workflows/oracle_sweep.yml`; the `expressions`
@@ -154,6 +153,14 @@ or fix their planning beyond keeping existing tests green.
 - Mine cached records for efficiency leads (queries holding only summable
   aggregates that still scan the base table), not only for wrong rows.
 - Re-test a handoff's prediction before building on it.
+- Read the generator's docstring before deciding an oracle: the rule for a
+  selected `?` was written in `gen_filter`, and the leads were the positions
+  that broke it. Where the code gives two readings, restrict the family to
+  the inputs every reading agrees on and write the split up as a decision.
+- A sweep that stops advancing is a planner loop: the runner now ends a plan
+  at 30 s. Pool workers survive a killed sweep and keep a core each.
+- `ab`'s `broken` lists every status that moved to a bad one, a raise that
+  became wrong rows included: count main-ok seeds apart.
 
 ### Oracles and data
 
@@ -228,7 +235,10 @@ or fix their planning beyond keeping existing tests green.
   what the fix took from main (five of this round's changes each broke seeds
   no committed case covered).
 - Rerun the whole family and the committed seeds after every planner change,
-  narrowing included, and the broad suite after the last one. Re-sweep the
+  narrowing included, and the broad suite after the last one. A spot check
+  of the seeds a fix targets is no A/B: 0.3.531's second batch passed every
+  targeted seed and regressed 14 windows seeds, 83 filters seeds and two
+  pinned plans, on both models where the checks ran one. Re-sweep the
   old range on the branch too: twice a round reported a range clean from
   records that predated a merge.
 - An ablation that writes artifacts can poison the next (a failing TPC-DS
@@ -316,7 +326,14 @@ or fix their planning beyond keeping existing tests green.
   `any(...)`. Three sites in `condition_placement.py` still test truthiness.
 - A filtered column (`x ? c`) and a set claim the grain of the select they
   were built in; their rows are the ones they filter. Read `keys`, the
-  contract's asks or the node, never that grain.
+  contract's asks or the node, never that grain. That grain names the
+  filtered column the set gates, and an aggregate grouped by a filtered
+  column is no partial of one its condition reads: both are cycles.
+- A filtered key is NULL on the rows it rejects, so it identifies no row
+  unless a parent applied its condition; nor is the column it was read off a
+  key of anything downstream.
+- "A barrier consumed the WHERE" holds only for a barrier the statement's
+  rows flow through: one feeding a set's condition alone leaves them whole.
 - A WHERE is applied once: a rewrite that restates it re-reads its sets and
   aggregates off the rows it kept. An optimizer rule that moves or folds a
   membership checks the CTE it lands in is wired to that set.
@@ -510,8 +527,8 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 
 Open in the `windows` family (`OPEN` in `test_oracle_windows_laws.py`, each
 failing on main too). 12,000-60,000 held 123 failing queries on main and
-holds 25, a fifth of the first 12,000's yield per seed: write the next
-generator (a `?` as a select target, below) before sweeping on.
+holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
+`filters` family (4b) in place of sweeping on.
 
 - A filtered key under a WHERE gate reads rows the gate never filtered:
   `select city ? species != 'Tilia' and min(height) by city <= 10 as f where
@@ -524,20 +541,14 @@ generator (a `?` as a select target, below) before sweeping on.
 - One set written in the WHERE and again in the HAVING or a select target,
   under a WHERE no scan carries: `Missing source CTE` (16181, 58098),
   `Ambiguous reference` (1210), or the select-phase copy's total is unbuilt.
-- `select tree_id ? species in (species ? tag = 'y') as f where
-  count(tree_id) by species <= 2` recurses (the set's kept feeder outputs
-  `f`, its claimed grain, and asks for itself); as a HAVING set it raises
-  `cannot be related` (10318), as does any HAVING set under a gate atom with
-  no set once the HAVING semijoin stops restating the WHERE (78 queries in
+- A HAVING set under a gate atom with no set raises `cannot be related`
+  (10318) once the HAVING semijoin stops restating the WHERE (78 queries in
   60,000 seeds). So the semijoin still restates such a WHERE, wrongly where
   the gate is not decided per whole group (51466, 54409; `where height > 2
   and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
-- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444, 58721
+- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444
   (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
   15366, 11457.
-- `select species ? city in (<set>) as f` returns a NULL row per rejected
-  species, twice, where `select species ? tag = 'x' as f` returns none:
-  decide what a selected `?` shows of the rows it rejects.
 - Two parents of one group with no pairing render as a cross join; the
   keyless-join guard does not fire (59727 before its fix).
 - Efficiency: a summary no longer answers `agg(x ? k in <set>)` (301 of
@@ -557,9 +568,8 @@ generator (a `?` as a select target, below) before sweeping on.
   count per tree on the summary model (`(A, Acer)` reads 4 for 2). The suite
   plans each case on a fresh copy of the model; `--carry-state` over 0-4,000
   shows no other pair.
-- The generator writes no frames (`rows between`), no window over a window,
-  no membership whose set is a derived key, and no `?` as a select target
-  outside an aggregate (the probes above found four failures in ten tries).
+- The generator writes no frames (`rows between`), no window over a window
+  and no membership whose set is a derived key.
 
 - Decide whether to warn: a select of only a window ordered by a bare
   aggregate repeats ranks per tuple, and with no keys every row ties
@@ -578,6 +588,75 @@ generator (a `?` as a select target, below) before sweeping on.
   literal arm fails another way (`tests/engine/test_duckdb_union_arm_filter_leak.py`).
 - `union` keeps the bag and is not in the Lean model; `coalesce`/`case` type
   merging is unchecked.
+
+### 4b. A `?` as a select target (`Filters.lean`)
+
+`gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
+elsewhere, and a statement showing only filter values over one predicate is
+filtered by it. The family writes only conditions the filtered value's keys
+decide. Open in it (`OPEN` in `test_oracle_filters_laws.py`, 144 seeds; 282 of
+40,000 queries against 3,844 on main, none of them right on main). By count:
+96 `cannot be related`, 77 wrong rows, 52 keyless joins.
+
+- **Decide: a condition its keys do not decide.** For a filtered property
+  beside its key or its content the reading is pinned
+  (`tests/engine/test_filter_concept_is_a_value.py`: `select name, bulk_name`
+  is the name if any of the product's orders passes, one row per product).
+  A filtered key beside an unrelated key is not: `select city, species ? tag
+  = 'x' as f` collapses per `(city, species)` (no `(A, NULL)`; `(B, NULL)` for
+  B's Acer), and adding `count(tree_id)` returns the per-row reading (`(A,
+  NULL, 1)`), so a count changes the keys' rows. The generator stays off
+  these (`Filters.filtered_value_off_its_keys_splits`).
+- **Four seeds that raised on main return wrong rows** (7 queries; each owes
+  its rows). 6987: a filtered aggregate (`(count(tree_id) by city, tree_form)
+  ? tree_form = 'linden'`) claims the select's grain and meets a window's
+  groups on `city` alone; giving it its aggregate's grain fixed it and broke
+  `(max(height) by city) ? city in ('B')` beside `tag` (11824, 16877, 19152).
+  9683, 12294: a WHERE aggregate reaches the set's inner aggregate and not
+  the statement's rows (below). 12986: `select coalesce(tree_form, 'none') as
+  form0, tree_form ? ... as f where city in (<set>)` repeats a row per
+  species, on main too without its HAVING; deduping past a hidden group key
+  fixed it and changed two pinned plans (`select name, bulk_name`,
+  `test_v4_existence_feeder_set_grain`).
+- **Where a WHERE aggregate is hosted beside a filtered column** is the lead
+  with the most behind it (9683, 12294, 2922, and 92 `cannot be related`
+  raises). 0.3.531 backfills the gate onto the outputs when its only
+  consumer is an aggregate inside a set (not an output, and only under a
+  WHERE that reads no set itself), and stops counting a set the host reads by
+  subselect as a row barrier. Three wider rules each fixed seeds and broke
+  more, and are not in: hosting the gate on any shown filtered column (14
+  windows seeds, 40 here: the column's group cannot render every gate);
+  reading a barrier that feeds only a filter's condition as unhosted; and
+  preferring a statement-row host over a side-channel host that carries the
+  gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
+  where avg(height) by city, species != 2` (2922) still returns every
+  species.
+- A filtered total beside rows is one value for the statement: `select
+  species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
+  (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's
+  keys at parse time (`filter_item_to_concept`) is the fix, but FINAL then
+  pairs the mask with the rows on nothing: it needs the row stream as bridge.
+  The generator writes no `by *` content beside a `?`.
+- Keyless joins raised: a filtered property beside a derived key under a
+  WHERE membership (`select height > 2 as big, tree_form ? tree_form =
+  'linden' as f where city in (city ? city = 'A')`, 2486), and a filtered
+  key beside a bare aggregate and a `by tree_form` value (5172).
+- Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main
+  too (predicate pushdown read a column off a set feeder outside the FROM;
+  fixed). It still renders two SQL texts by hash seed, both right: some
+  choice iterates a set. Run a law suite under two hash seeds before listing
+  a seed as a strict xfail.
+- A plan that loops: seed 2917 took more than 30 s on main (a window over
+  two filtered keys under a WHERE gate); the sweep now records a timeout.
+- Efficiency: a filtered key beside a derived key dedups through a second
+  contributor joined back on the key's input (`select coalesce(tree_form,
+  'none') as form0, tree_id ? species = 'Acer' as f` self-joins on
+  `species`), and an extra filtered stream bridges a `by` value: 297 joins
+  over 231 queries that were right on main, 475 fewer CTEs.
+- The family writes no filtered column inside a window's own argument, no
+  `?` over a derived key, and one condition per select when the filters are
+  alone (two conditions alone, `select tree_id ? c1, species ? c2`, keep the
+  rows both reject).
 
 ### 5. ClickHouse (`Padding.lean`)
 

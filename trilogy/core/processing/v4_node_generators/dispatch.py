@@ -60,6 +60,7 @@ def build_node(
     intrinsic_filter_pushdown: bool = True,
     existence_source: bool = False,
     collapse_to_grain: bool = True,
+    set_filter_pushdown: bool = False,
     complete_partials: bool = True,
     history: V4History,
     g: ReferenceGraph,
@@ -139,6 +140,7 @@ def build_node(
             intrinsic_filter_pushdown=intrinsic_filter_pushdown,
             existence_source=existence_source,
             collapse_to_grain=collapse_to_grain,
+            set_filter_pushdown=set_filter_pushdown,
             g=g,
         )
     return fn(
