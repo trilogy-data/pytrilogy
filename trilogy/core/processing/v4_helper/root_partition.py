@@ -640,18 +640,27 @@ def _filter_row_keys(
     buckets: dict[str, GroupBucket],
     environment: BuildEnvironment,
     gate_grains: Iterable[frozenset[str]],
-    shown: frozenset[str],
 ) -> set[str]:
-    """The row columns a shown filtered value is computed on: the keys a filtered
+    """The row columns a filtered value is computed on: the keys a filtered
     column is valued per, what its condition reads, and the row columns a
     derived one of them is computed from. The filter reads them off the row
     stream, so moved to a dimension scan they leave it nothing to pair on
     (`Filters.filter_keys_stay_on_its_rows`). A filtered aggregate's own group
     keys are its aggregate's, which pairs on them as any aggregate does."""
+    # a filter an aggregate reads is counted there, never paired
+    aggregated = {
+        arg.address
+        for bucket in buckets.values()
+        if bucket.derivation == Derivation.AGGREGATE
+        for m in bucket.primary_members
+        if (c := environment.concepts.get(m)) is not None and c.lineage is not None
+        for arg in c.lineage.concept_arguments
+    }
     keys: set[str] = set()
     for bucket in buckets.values():
-        if bucket.derivation != Derivation.FILTER or not shown & set(
-            bucket.primary_members
+        if (
+            bucket.derivation != Derivation.FILTER
+            or set(bucket.primary_members) <= aggregated
         ):
             continue
         grain = set(bucket.grain_components) - set(bucket.primary_members)
@@ -1066,9 +1075,7 @@ def _split_root_dimension_clusters(
         and bucket.depth_label == DepthLabel.D0
     ]
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
-    filter_keys = _filter_row_keys(
-        buckets, environment, aggregate_grains.values(), output_addresses
-    )
+    filter_keys = _filter_row_keys(buckets, environment, aggregate_grains.values())
     for gid in list(buckets):
         bucket = buckets[gid]
         if bucket.reason is not RootReason.ROW_STREAM:
