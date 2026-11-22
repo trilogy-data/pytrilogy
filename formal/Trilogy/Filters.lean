@@ -33,6 +33,11 @@ A value the condition reads is built before the filtered column:
 - a WHERE applied beneath an aggregate that only a set's condition reads has
   filtered the set's rows, not the statement's
   (`gate_on_a_set_filters_no_row`).
+
+A filter's rows pair with the select's other streams on its grain, so they
+must be one per grain value there: a column it carries below its grain fans
+the pairing out (`carried_column_fans_out`), and a collapse past a key the
+pairing reads crosses every value of it (`collapse_drops_paired_key`).
 -/
 
 namespace Trilogy.Filters
@@ -167,6 +172,40 @@ theorem gate_on_a_set_filters_no_row :
     let gate : Nat × Nat → Bool := fun r => r.1 == 0
     let setInput := trees.filter gate
     setInput.length = 2 ∧ trees.length = 3 ∧ (trees.filter gate).map (·.2) = [10, 11] := by
+  decide
+
+/-! ## Two streams of one select's rows -/
+
+/-- A filter's rows, as a pairing reads them: one per value of its grain.
+Rows of a stream are `(species, column)` here. -/
+def pairOn (left right : List (Nat × Nat)) : List (Nat × Nat × Nat) :=
+  left.flatMap fun l => (right.filter (·.1 == l.1)).map fun r => (l.1, l.2, r.2)
+
+/-- `select city, height > 2 as big, tree_form ? tree_form in (<set>) as f`:
+the filter by `species` carried `city` per tree, so its rows were trees, and
+the per-tree `big` paired with them on `species` alone. Two Acer trees, one
+tall, became four rows, and city B showed a short Acer it does not have
+(`carried_column_fans_out`). Deduplicated to its grain first, the filter is
+one row per species and the pairing a lookup. -/
+theorem carried_column_fans_out :
+    -- (species, tall) per tree; the filter's rows (species, city) per tree
+    let big : List (Nat × Nat) := [(0, 0), (0, 1)]
+    let filtered : List (Nat × Nat) := [(0, 0), (0, 1)]
+    (pairOn big filtered).length = 4 ∧
+      (pairOn big (filtered.map fun r => (r.1, 0)).eraseDups).length = 2 := by
+  decide
+
+/-- `select city, tree_form, city ? sum(height) by * is null as f`: the
+filter's rows were collapsed to `city`, the filtered value's keys, past the
+select's other key. Paired with a value by `tree_form` on that key it no
+longer holds, every city met every form (`collapse_drops_paired_key`): six
+rows for four `(city, tree_form)` pairs. -/
+theorem collapse_drops_paired_key :
+    let pairs : List (Nat × Nat) := [(0, 0), (0, 2), (1, 0), (1, 1)]
+    let cities := (pairs.map (·.1)).eraseDups
+    let forms := (pairs.map (·.2)).eraseDups
+    (cities.flatMap fun c => forms.map fun f => (c, f)).length = 6 ∧
+      pairs.length = 4 := by
   decide
 
 end Trilogy.Filters

@@ -6934,6 +6934,15 @@ class _FinalCover:
     passthroughs: dict[str, list[BuildConcept]]
     rendered: dict[str, frozenset[str]] = field(default_factory=dict)
 
+    def owed(self, gid: str) -> frozenset[str]:
+        """What the election hosts on contributor `gid`."""
+        return frozenset(
+            c.address
+            for c in self.per_group.get(gid, [])
+            + self.projections.get(gid, [])
+            + self.passthroughs.get(gid, [])
+        )
+
     def holds(self, gid: str) -> frozenset[str]:
         """The columns contributor `gid` reaches the FINAL with: what it
         renders, and what the election owes on it."""
@@ -7184,6 +7193,7 @@ def _assemble_final_node(
                 attrs[side],
                 plan.identity[side] | plan.keys_for(side),
                 environment,
+                cover.owed(side) | filter_only_addrs,
             )
             if (side := origin.get(id(parent))) is not None
             else parent
@@ -7569,13 +7579,16 @@ def _at_declared_identity(
     group: GroupAttrs,
     identity: frozenset[str],
     environment: BuildEnvironment,
+    read: frozenset[str] | None = None,
 ) -> StrategyNode:
     """A row stream built off rows finer than the identity its group declares
     (a filter of an item attribute sourced off the sale lines), deduplicated
     to that identity when an independent sibling's rows are at that finer row
     key too: paired on the planned keys alone, each of the stream's rows would
     meet each of the sibling's. Its outputs are functions of the identity, so
-    nothing is lost. `identity` holds the keys the plan pairs the stream on.
+    nothing is lost. `identity` holds the keys the plan pairs the stream on;
+    `read`, what the FINAL reads off it (a column it carries for no reader,
+    `city` on a filter by `species`, is no output).
 
     Both reads are of rows, not columns: the resolved grain follows the
     datasource each scan resolved to, which stage 2 does not choose."""
@@ -7601,7 +7614,10 @@ def _at_declared_identity(
             and not _derives_from(other, node)
         )
     )
-    if not finer & sibling_rows or not set(group.output_concepts) <= closure:
+    outputs = set(group.output_concepts)
+    if read is not None:
+        outputs &= read
+    if not finer & sibling_rows or not outputs <= closure:
         return node
     kept = [o for o in node.usable_outputs if o.address in closure]
     return _forced_dedup(node, kept, environment, closure)
@@ -8266,6 +8282,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 unfolded.attrs[succ].derivation != Derivation.AGGREGATE
                 for succ in unfolded.group_graph.successors(gid)
             ),
+            grain_keys=a.grain_components,
             complete_partials=complete_partials,
             history=history,
             g=g,

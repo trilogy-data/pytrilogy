@@ -161,6 +161,64 @@ SHAPES = [
             ("Ulmus", None, None),
         ],
     ),
+    # a filter carrying a row column below its grain pairs with another row
+    # stream on that grain only once deduplicated to it (35245): B's one
+    # Acer is tall
+    (
+        (
+            "select city, height > 2 as big, tree_form ? tree_form in"
+            " (tree_form ? height > 2) as v0;"
+        ),
+        [
+            ("A", None, "broadleaf"),
+            ("A", None, None),
+            ("A", True, "broadleaf"),
+            ("B", False, None),
+            ("B", True, "broadleaf"),
+        ],
+    ),
+    (
+        (
+            "select city, upper(tag) as big, tree_form ? tree_form in"
+            " (tree_form ? height > 2) as v0;"
+        ),
+        [
+            ("A", "X", "broadleaf"),
+            ("A", "X", None),
+            ("A", "Y", "broadleaf"),
+            ("B", "X", None),
+            ("B", "Y", "broadleaf"),
+        ],
+    ),
+    # ...and keeps the columns of its own rows when nothing else holds them
+    # all (31959, which a first version split over two streams)
+    (
+        (
+            "select city, tag, tree_form ? tree_form in (tree_form ? tag = 'x')"
+            " as v0, max(height) by city as v1;"
+        ),
+        [
+            ("A", "x", "broadleaf", 5),
+            ("A", "x", None, 5),
+            ("A", "y", "broadleaf", 5),
+            ("B", "x", "linden", 7),
+            ("B", "y", "broadleaf", 7),
+        ],
+    ),
+    # a filtered key collapsed to its keys keeps the select's other key
+    # (38603): no city holds every form
+    (
+        (
+            "select city, tree_form, city ? sum(height) by * is null as v0,"
+            " count(tree_id) by tree_form as v2;"
+        ),
+        [
+            ("A", "broadleaf", None, 4),
+            ("A", None, None, 1),
+            ("B", "broadleaf", None, 4),
+            ("B", "linden", None, 1),
+        ],
+    ),
 ]
 
 
