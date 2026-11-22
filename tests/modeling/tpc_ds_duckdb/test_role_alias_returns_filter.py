@@ -6,20 +6,21 @@ import pytest
 
 TEMPLATE = """import all_sales as s;
 where {where}
-select s.sale_date.{part}{a}, s.return_date.{part}{b};"""
+select s.sale_date.{part}{a}, s.return_date.{part}{b}{extra};"""
 
 
 @pytest.mark.parametrize(
-    "where,part",
+    "where,part,extra",
     [
-        ("s.is_returned is not null", "date"),
-        ("s.is_returned is not null", "year"),
-        ("s.return_amount is not null", "date"),
+        ("s.is_returned is not null", "date", ""),
+        ("s.is_returned is not null", "year", ""),
+        ("s.return_amount is not null", "date", ""),
+        ("s.is_returned is not null", "year", ", s.channel"),
     ],
 )
-def test_role_aliases_beside_return_filter(engine_sf001, where, part):
+def test_role_aliases_beside_return_filter(engine_sf001, where, part, extra):
     def run(a: str, b: str) -> list:
-        query = TEMPLATE.format(where=where, part=part, a=a, b=b)
+        query = TEMPLATE.format(where=where, part=part, a=a, b=b, extra=extra)
         rows = engine_sf001.execute_text(query)[-1].fetchall()
         return sorted(rows, key=lambda r: tuple((v is None, v) for v in r))
 
