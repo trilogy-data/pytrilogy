@@ -79,7 +79,6 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildSubselectItem,
     BuildWindowItem,
-    get_grouped_aggregate_wrapper,
     rollup_reaggregate,
 )
 from trilogy.core.models.core import (
@@ -2942,47 +2941,6 @@ class BaseDialect:
         else:
             raise TypeError(f"Unable to render type {type(e)} {e}")
 
-    def _get_aggregate_grouping(
-        self, cte: CTE | UnionCTE
-    ) -> tuple[AggregateGroupingMode, list[BuildConcept], list[list[BuildConcept]]]:
-        grouped = [
-            aggregate
-            for c in cte.output_columns
-            if (aggregate := get_grouped_aggregate_wrapper(c)) is not None
-            and aggregate.grouping != AggregateGroupingMode.STANDARD
-            # A passthrough rollup (already aggregated upstream, selected here as a
-            # plain column) must not drive this CTE's grouping mode: re-emitting
-            # its ROLLUP would double-aggregate. Only locally-computed grouped
-            # aggregates set the mode. A rowset handle renders its content.
-            and not cte.source_map.get(c.address)
-            and not (
-                isinstance(c.lineage, BuildRowsetItem)
-                and cte.source_map.get(c.lineage.content.address)
-            )
-        ]
-        if not grouped:
-            return AggregateGroupingMode.STANDARD, [], []
-
-        first = grouped[0]
-        mode = first.grouping
-        by = first.by
-        grouping_sets = first.grouping_sets
-        by_addresses = [c.address for c in by]
-        grouping_set_addresses = [
-            [c.address for c in grouping_set] for grouping_set in grouping_sets
-        ]
-        for aggregate in grouped[1:]:
-            if aggregate.grouping != mode:
-                raise ValueError("Cannot mix aggregate grouping modes in one CTE")
-            if [c.address for c in aggregate.by] != by_addresses:
-                raise ValueError("Aggregate grouping dimensions must match in one CTE")
-            if [
-                [c.address for c in grouping_set]
-                for grouping_set in aggregate.grouping_sets
-            ] != grouping_set_addresses:
-                raise ValueError("Aggregate grouping sets must match in one CTE")
-        return mode, by, grouping_sets
-
     def _render_grouping_concept(
         self,
         concept: BuildConcept,
@@ -3018,9 +2976,10 @@ class BaseDialect:
         cte: CTE | UnionCTE,
         select_index: dict[str, int],
     ) -> list[str] | None:
-        mode, by, grouping_sets = self._get_aggregate_grouping(cte)
-        if mode == AggregateGroupingMode.STANDARD:
+        spec = cte.grouping_sets if isinstance(cte, CTE) else None
+        if spec is None:
             return None
+        mode, by, grouping_sets = spec.mode, spec.by, spec.sets
         if not by and not grouping_sets:
             # `ROLLUP ()`/`CUBE ()`/`GROUPING SETS ()` are syntax errors; a
             # keyless grouping mode is one grand-total set, so defer to the
@@ -3049,14 +3008,6 @@ class BaseDialect:
                 rendered_sets.append(f"({render_concepts(grouping_set)})")
             return [f"GROUPING SETS ({', '.join(rendered_sets)})"]
         raise ValueError(f"Unsupported aggregate grouping mode {mode}")
-
-    def _grouping_has_empty_set(self, cte: CTE | UnionCTE) -> bool:
-        mode, _, grouping_sets = self._get_aggregate_grouping(cte)
-        if mode in (AggregateGroupingMode.ROLLUP, AggregateGroupingMode.CUBE):
-            return True
-        return mode == AggregateGroupingMode.GROUPING_SETS and any(
-            not grouping_set for grouping_set in grouping_sets
-        )
 
     @staticmethod
     def _constant_output_group_by_fallback(cte: CTE | UnionCTE) -> list[str]:
@@ -3294,10 +3245,11 @@ class BaseDialect:
             rendered_having = self.render_expr(having, cte) if having else None
 
         group_by = self.render_cte_group_by(cte, select_concept_index)
+        spec = cte.grouping_sets if isinstance(cte, CTE) else None
         # A group formed from no rows (a grand total, or the `()` set of a
         # rollup/cube) is no row, not one NULL (or 0) row.
         if _aggregates_rows(cte) and (
-            not group_by or self._grouping_has_empty_set(cte)
+            not group_by or (spec is not None and spec.has_empty_set)
         ):
             rendered_having = " and ".join(
                 ([f"({rendered_having})"] if rendered_having else []) + ["count(*) > 0"]
