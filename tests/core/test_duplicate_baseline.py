@@ -166,3 +166,67 @@ def test_a_planned_environment_is_freed_without_the_collector():
         assert dead() is None
     finally:
         gc.enable()
+
+
+class _Slotted:
+    __slots__ = ("held", "unset")
+
+    def __init__(self) -> None:
+        self.held = ["inside"]
+
+
+def test_strings_in_reads_slots():
+    assert strings_in(_Slotted()) == {"inside"}
+
+
+def test_a_mostly_dirty_duplicate_is_built_in_full(recorded, monkeypatch):
+    env = _env()
+    everything = set(env.concepts.data)
+    monkeypatch.setattr(query_processor, "dependents", lambda *args: everything)
+    duplicate = env.duplicate()
+    expected = _sql(_alone(env), REBINDING, active_zone=3)
+    recorded.clear()
+    assert _sql(duplicate, REBINDING, active_zone=3) == expected
+    assert recorded == [env, duplicate]
+
+
+def test_a_parent_planning_on_another_thread_is_not_read(recorded, monkeypatch):
+    def busy(self, dirty):
+        raise RuntimeError("dictionary changed size during iteration")
+
+    env = _env()
+    monkeypatch.setattr(query_processor.BuildCaches, "fork", busy)
+    duplicate = env.duplicate()
+    assert _sql(duplicate, QUERY) == _sql(_alone(env), QUERY)
+    assert duplicate in recorded
+
+
+MERGED = MODEL + """
+key other_id int;
+datasource others (other_id: other_id) grain (other_id) address others;
+merge other_id into id;
+"""
+
+
+def test_a_rebind_beside_a_merged_concept_answers_the_same(recorded):
+    env = Environment()
+    env.parse(MERGED)
+    expected = _sql(_alone(env), REBINDING, active_zone=3)
+    assert _sql(env.duplicate(), REBINDING, active_zone=3) == expected
+
+
+def test_a_duplicate_of_a_duplicate_inherits_through_both(recorded):
+    env = _env()
+    expected = _sql(_alone(env), REBINDING, active_zone=3)
+    recorded.clear()
+    assert _sql(env.duplicate().duplicate(), REBINDING, active_zone=3) == expected
+
+
+def test_a_rebind_beside_an_alias_origin_is_built_in_full(recorded):
+    env = _env()
+    env.alias_origin_lookup["local.name_length"] = env.concepts["name_length"]
+    duplicate = env.duplicate()
+    expected = _sql(_alone(env), REBINDING, active_zone=3)
+    recorded.clear()
+    assert _sql(duplicate, REBINDING, active_zone=3) == expected
+    assert recorded == [duplicate]

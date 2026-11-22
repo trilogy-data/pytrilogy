@@ -158,3 +158,16 @@ def test_an_unknown_python_api_rereads_state():
     assert callable(connection.table_function)
     assert connection._tainted[1]
     connection.close()
+
+
+def test_a_cursor_reads_through_to_its_connection():
+    connection = duckdb_pool.connect()
+    cursor = connection.cursor()
+    cursor.execute("CREATE TABLE t (x INTEGER)")
+    cursor.executemany("INSERT INTO t VALUES (?)", [(1,), (2,)])
+    cursor.execute("SELECT sum(x) FROM t")
+    assert cursor.fetchone() == (3,)
+    assert not connection._tainted[1]
+    connection.note(None)
+    assert connection._tainted[1]
+    connection.close()

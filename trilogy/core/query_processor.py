@@ -847,12 +847,12 @@ def _plan_query_node(
             conditions,
             build_environment,
             graph,
+            comp_of,
             line_number=(
                 build_statement.meta.line_number
                 if isinstance(build_statement, BuildSelectLineage)
                 else None
             ),
-            comp_of=comp_of,
         )
     except DisconnectedConceptsException:
         # a WHERE outside every partial's scope strands the outputs too
@@ -1062,8 +1062,6 @@ def _inherited_caches(
     if found is None:
         return None
     parent, changed = found
-    if parent.materialize_join_key(scoped_joins) != key:
-        return None
     # an alias origin names another concept's build; left to a full build
     if changed and environment.alias_origin_lookup:
         return None
