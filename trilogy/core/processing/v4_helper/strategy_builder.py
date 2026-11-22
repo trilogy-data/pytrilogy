@@ -555,10 +555,9 @@ class _CleanFeederCache:
         ]
         if not search:
             return None
-        from .condition_placement import IN_SET_PLAN
+        from .condition_placement import planning_a_set
 
-        token = IN_SET_PLAN.set(True)
-        try:
+        with planning_a_set():
             info = search_concepts(
                 mandatory_list=search,
                 history=V4History(
@@ -570,8 +569,6 @@ class _CleanFeederCache:
                 g=self._g,
                 conditions=self._conditions if kept else [],
             )
-        finally:
-            IN_SET_PLAN.reset(token)
         node = info.strategy_node
         if node is not None and kept:
             # planned under the WHERE, it carries the WHERE's columns too:

@@ -5,6 +5,9 @@ returns the groups that should receive each decomposed WHERE atom. The caller is
 responsible for mutating ``GroupAttrs.condition_atoms``.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 
@@ -790,9 +793,18 @@ def _uncovered_exposing_output_contributor(
     return False
 
 
-from contextvars import ContextVar
-
 IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
+
+
+@contextmanager
+def planning_a_set() -> Iterator[None]:
+    """A set planned under the WHERE re-applies no gate on its own rows
+    (`_unfiltered_filter_streams`)."""
+    token = IN_SET_PLAN.set(True)
+    try:
+        yield
+    finally:
+        IN_SET_PLAN.reset(token)
 
 
 def _unfiltered_filter_streams(
