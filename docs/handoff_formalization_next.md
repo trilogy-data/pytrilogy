@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 20,000; the PR of each
-round holds its sweep totals. `filters` has 197 `OPEN` seeds (area 4b),
+round holds its sweep totals. `filters` has 196 `OPEN` seeds (area 4b),
 `windows` 19 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -631,6 +631,10 @@ main too but seed 19498; 386 of 40,000 queries, 3,844 on main). By count:
   condition reads, and a later value read it from there. Seven seeds that
   raised on main return wrong rows (2680, 6065, 6987, 9683, 12294, 12986,
   19841): each owes its rows.
+- Seed 14276 renders a column of a CTE that is never joined (`Referenced
+  table ... not found`) on some runs and plans right on others, within one
+  process: an order the plan depends on is not fixed. It is held out of
+  `OPEN` (a strict xfail would flake); find what varies.
 - A plan that loops: seed 2917 took more than 30 s on main (a window over
   two filtered keys under a WHERE gate); the sweep now records a timeout.
 - Efficiency: a filtered key beside a derived key now dedups through a second
