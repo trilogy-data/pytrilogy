@@ -665,9 +665,7 @@ def _over_groups_only(
     """A BASIC computed off grouped rows alone (`count(id) + 1`): it holds what
     they output, and no row of it reaches a key they determine but lack. A
     group at its input rows' own grain (`sum(x)` by `tree_id`) is those rows."""
-    # a filtered aggregate (`(count(id) by city, form) ? form = 'x'`) is a
-    # value of its groups as a scalar of them is
-    if attrs[gid].derivation not in (Derivation.BASIC, Derivation.FILTER):
+    if attrs[gid].derivation != Derivation.BASIC:
         return False
     parents = _group_parents(group_graph, attrs, gid)
     return bool(parents) and all(

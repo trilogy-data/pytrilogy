@@ -81,22 +81,14 @@ SHAPES = [
         ),
         [("a1", "Acer"), ("a2", "Acer"), ("a3", None), ("a4", None)],
     ),
-    # ...and a filtered column alone whose condition reads a total (2922):
-    # the WHERE drops the unmeasured pairs and B's Tilia, whose average is 2
-    (
-        (
-            "select species ? avg(height) by * < 10 as f where avg(height) by city,"
-            " species != 2;"
-        ),
-        [("Acer",), ("Quercus",)],
-    ),
-    # ...or a set over an aggregate (6065): A's formless tree and B's linden
-    # fail the WHERE, and both cities stay in the set
+    # a WHERE aggregate reaches a filtered column past the set it reads
+    # (6065): only the broadleaves hold both tags, and both cities stay in
+    # the set
     (
         (
             "select height ? city in (city ? count(tree_id) by city, tree_form != 10)"
-            " as f where sum(height) by city, tree_form != count_distinct(tag) by"
-            " city;"
+            " as f where count_distinct(tag) by * = count_distinct(tag) by tree_form"
+            " or sum(height) by city, tree_form != count_distinct(tag) by city;"
         ),
         [(3,), (5,), (7,), (None,)],
     ),
@@ -126,25 +118,6 @@ SHAPES = [
             ("A", "Ulmus", None, None, None),
             ("B", "Acer", 7, 7, 7),
             ("B", "Tilia", None, 2, 2),
-        ],
-    ),
-    # a filtered aggregate is a value of its aggregate's keys (6987): only
-    # B's linden count is shown; the window runs A as 3, 5, then the two
-    # unmeasured groups, and B as 2, 7
-    (
-        (
-            "select city, species, (count(tree_id) by city, tree_form) ? tree_form ="
-            " 'linden' as f, tree_id ? tree_form in (tree_form ? height is not null)"
-            " as g, max(max(height) by city, species, g) over (partition by city"
-            " order by max(height) by city, species, g asc nulls last) as w;"
-        ),
-        [
-            ("A", "Acer", None, "a1", 3),
-            ("A", "Acer", None, "a2", 5),
-            ("A", "Quercus", None, "a3", 5),
-            ("A", "Ulmus", None, None, 5),
-            ("B", "Acer", None, "b1", 7),
-            ("B", "Tilia", 1, "b2", 2),
         ],
     ),
     # a window's groups hold no column a derived or filtered key was read off

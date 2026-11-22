@@ -27,7 +27,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
-    BuildFilterItem,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
@@ -603,33 +602,10 @@ def _rows_filtered_by(
     return result
 
 
-def _shows_unhosted_content(
-    gid: str, shown: set[str], hosted: set[str], scope: "_PlacementScope"
-) -> bool:
-    """A filter group showing a column whose content no hosted group
-    produces: `species ? avg(x) by * < 10` reads the host in its condition
-    and `species` off rows that passed no WHERE. `(max(x) by city) ? tag =
-    'x'` is the host's own value, filtered with it."""
-    produced = set().union(*(scope.group_members.get(h, set()) for h in hosted - {gid}))
-    for address in shown & set(scope.buckets[gid].primary_members):
-        concept = scope.environment.concepts.get(address)
-        if concept is None or not isinstance(concept.lineage, BuildFilterItem):
-            continue
-        content = {c.address for c in concept.lineage.content_concept_arguments}
-        if not content & produced:
-            return True
-    return False
-
-
 def _hosts_reading_unfiltered_rows(
-    chosen: tuple[str, ...],
-    candidates: list[str],
-    scope: "_PlacementScope",
-    filters: bool = False,
+    chosen: tuple[str, ...], candidates: list[str], scope: "_PlacementScope"
 ) -> tuple[str, ...]:
-    """Aggregates below a GROUP BY host that read rows the host never filtered,
-    and under `filters` (an atom reading no set, which is placed with it) the
-    filtered columns the statement shows.
+    """Aggregates below a GROUP BY host that read rows the host never filtered.
 
     A host's aggregate value joined beside another row stream (a filtered
     aggregate's condition `sum(x) by *` beside the root rows it is evaluated on)
@@ -640,21 +616,12 @@ def _hosts_reading_unfiltered_rows(
     if not any(_emits_group_by(gid, buckets) for gid in chosen):
         return ()
     below = set().union(*(nx.descendants(host_graph, gid) for gid in chosen))
-    shown = {c.address for c in scope.mandatory_list}
     pool = [
         gid
         for gid in candidates
         if gid in below
         and gid in scope.main_lineage
-        and (
-            buckets[gid].derivation in _EMITS_GROUP_BY
-            # a filtered column the statement shows holds the rows it was
-            # read off: below a host it reads only in its condition, those
-            # rows passed no WHERE (`Filters.gate_on_a_set_filters_no_row`)
-            or filters
-            and buckets[gid].derivation == Derivation.FILTER
-            and _shows_unhosted_content(gid, shown, below | set(chosen), scope)
-        )
+        and buckets[gid].derivation in _EMITS_GROUP_BY
     ]
     hosts = tuple(chosen)
     # an added host filters only what reads through it: re-check the rest
@@ -1900,15 +1867,9 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
                 - consumed_barriers
             )
         ]
-    carrying = _hosts_carrying_condition_grain(
+    restricted = _hosts_carrying_condition_grain(
         restricted, row_inputs, buckets, scope.group_own_keys
     )
-    # a host off the statement's rows (a set's own aggregate, at the gate's
-    # grain by coincidence) carries the grain and filters none of them
-    if any(g in main_lineage for g in carrying) or not any(
-        g in main_lineage for g in restricted
-    ):
-        restricted = carrying
     if not restricted:
         return [_at_final(atom, PlacementReason.FINAL_RECONVERGENCE)]
     chosen_groups = _choose_groups(restricted, host_graph, main_lineage)
@@ -1933,9 +1894,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
             chosen_groups = outer_chosen
         elif outer_hosts:
             chosen_groups = _choose_groups(outer_hosts, host_graph, main_lineage)
-    chosen_groups += _hosts_reading_unfiltered_rows(
-        chosen_groups, unbarred, scope, filters=not any(atom.existence_arguments)
-    )
+    chosen_groups += _hosts_reading_unfiltered_rows(chosen_groups, unbarred, scope)
     out = [
         ConditionPlacement(
             atom=atom,
