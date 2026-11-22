@@ -174,11 +174,16 @@ def _is_row_table(value: Any) -> bool:
     """A 2-D table: a non-empty list whose every element is a flat list of
     scalars (a result row). These are rendered one compact row per line rather
     than exploded cell-by-cell, so a 50-row result stays readable instead of
-    ballooning to hundreds of lines."""
+    ballooning to hundreds of lines. A bare string element is a gap marker
+    (``<redacted N rows>``) and keeps the table a table."""
     return (
         isinstance(value, list)
-        and len(value) > 0
-        and all(isinstance(e, list) and all(_is_scalar(c) for c in e) for e in value)
+        and any(isinstance(e, list) for e in value)
+        and all(
+            isinstance(e, str)
+            or (isinstance(e, list) and all(_is_scalar(c) for c in e))
+            for e in value
+        )
     )
 
 
