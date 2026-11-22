@@ -386,6 +386,8 @@ FOUND_SEEDS = [
     56554, 57430, 59727,
     # open until 0.3.531: a re-sum beside a window (summary model)
     58721,
+    # open until 0.3.533: a filter's keys kept on its rows
+    15366,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
 # what the planner raises or DuckDB rejects, or None for wrong rows
@@ -397,7 +399,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (10318, "base"): "cannot be related to the query outputs",
     (10318, "summary"): "cannot be related to the query outputs",
     (11457, "summary"): "does not have a column",
-    (15366, "base"): "The plan renders no column",
     (16181, "base"): "Missing source CTE",
     (16181, "summary"): "Missing source CTE",
     (18040, "base"): None,
