@@ -26,19 +26,19 @@ import reason as return_reason;
 key ticket_number int; # receipt number identifying a single in-store transaction
 
 properties <ticket_number, item.sk> (
-    quantity int,
-    sales_price numeric::usd, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
-    list_price numeric::usd, # Per-unit, before discounts.
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
-    ext_wholesale_cost numeric::usd,
-    ext_list_price numeric::usd,
-    ext_discount_amount numeric::usd,
-    coupon_amt numeric::usd, # Coupon/credit applied to the line.
-    net_profit numeric::usd, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
+    quantity int?,
+    sales_price numeric::usd?, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric::usd?, # Per-unit, before discounts.
+    ext_sales_price numeric(15,2)::usd?, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_wholesale_cost numeric::usd?,
+    ext_list_price numeric::usd?,
+    ext_discount_amount numeric::usd?,
+    coupon_amt numeric::usd?, # Coupon/credit applied to the line.
+    net_profit numeric::usd?, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
     _returned_ticket int?, # Internal; NULL when not returned. Use is_returned instead.
-    net_paid numeric::usd, # Excludes tax.
+    net_paid numeric::usd?, # Excludes tax.
     ext_tax numeric::usd?,
-    wholesale_cost numeric::usd, # Per-unit.
+    wholesale_cost numeric::usd?, # Per-unit.
     return_amount numeric::usd?, # Refund excluding tax.
     return_quantity int?,
     return_net_loss numeric::usd?,

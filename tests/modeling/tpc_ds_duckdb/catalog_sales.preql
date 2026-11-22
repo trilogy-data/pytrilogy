@@ -42,19 +42,19 @@ auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Positive 
 
 # metrics
 properties <order_number, item.sk> (
-    quantity int,
-    sales_price numeric::usd, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
-    list_price numeric::usd, # Per-unit, before discounts.
-    wholesale_cost numeric::usd, # Per-unit.
-    discount_amount numeric::usd, # Extended (line-level) discount, despite the name.
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
-    ext_list_price numeric::usd,
+    quantity int?,
+    sales_price numeric::usd?, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric::usd?, # Per-unit, before discounts.
+    wholesale_cost numeric::usd?, # Per-unit.
+    discount_amount numeric::usd?, # Extended (line-level) discount, despite the name.
+    ext_sales_price numeric(15,2)::usd?, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_list_price numeric::usd?,
     ext_ship_cost numeric::usd?,
-    ext_wholesale_cost numeric::usd,
+    ext_wholesale_cost numeric::usd?,
     net_profit numeric::usd, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
     --net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.
     --net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
-    coupon_amt numeric::usd, # Coupon/credit applied to the line.
+    coupon_amt numeric::usd?, # Coupon/credit applied to the line.
     return_amount numeric::usd?, # Refund excluding tax.
     return_net_loss numeric::usd?,
     return_quantity int?,

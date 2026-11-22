@@ -49,7 +49,20 @@ def _expose_parent_grain(
     but does not project (a merge over a rowset boundary at the boundary's
     identity): the keys are what a projection over it widens back to, and
     dedup is the repair of last resort. A root key a merge hides is left to
-    that dedup, as before."""
+    that dedup, as before. A boundary read directly exposes its own hidden
+    identity handles (a rollup's grouping flags)."""
+    if isinstance(parent, RowsetNode):
+        produced = {o.address for o in parent.parents[0].usable_outputs}
+        hidden = [
+            handle
+            for address in sorted(
+                parent_grain - {c.address for c in parent.output_concepts}
+            )
+            if renders_at(parent, handle := environment.concepts[address], produced)
+        ]
+        if hidden:
+            widen_projection(parent, hidden, available_addresses=produced)
+        return
     if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
         return
     exposed = {c.address for c in parent.output_concepts}

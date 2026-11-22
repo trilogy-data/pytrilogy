@@ -1860,3 +1860,66 @@ def test_refusals_point_at_scoped_joins():
     state = AgentState(allow_db_introspection=False, allow_file_read=False)
     assert "subset join" in handle_trilogy(state, {"args": ["database", "list"]})
     assert "subset join" in handle_trilogy(state, {"args": ["file", "read", "x"]})
+
+
+def test_sql_file_tools_stay_in_workspace(tmp_path, monkeypatch):
+    from trilogy.scripts.agent_sql_tools import (
+        handle_read_file,
+        handle_run_file,
+        handle_write_file,
+    )
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (tmp_path / "refs.sql").write_text("select 1", encoding="utf-8")
+    (workspace / "schema.md").write_text("# schema", encoding="utf-8")
+    monkeypatch.chdir(workspace)
+    state = AgentState(workspace=workspace)
+    outside = str(tmp_path / "refs.sql")
+    assert "outside the workspace" in handle_list_files(state, {"path": ".."})
+    assert "outside the workspace" in handle_read_file(state, {"path": outside})
+    assert "outside the workspace" in handle_run_file(state, {"path": "../refs.sql"})
+    assert "outside the workspace" in handle_write_file(
+        state, {"path": "../x.sql", "content": "select 1"}
+    )
+    assert "# schema" in handle_read_file(state, {"path": "schema.md"})
+    assert "schema.md" in handle_list_files(state, {"path": "."})
+
+
+def test_script_writes_refused_when_disabled(tmp_path, monkeypatch):
+    from trilogy.scripts.agent_sql_tools import handle_write_file
+
+    monkeypatch.chdir(tmp_path)
+    state = AgentState(allow_script_write=False)
+    refused = "disabled for this task"
+    assert refused in handle_write_file(state, {"path": "x.PY", "content": "1"})
+    assert refused in handle_trilogy(
+        state, {"args": ["file", "write", "a.py", "--content", "1"]}
+    )
+    assert refused in handle_trilogy(state, {"args": ["file", "move", "a.sql", "b.py"]})
+    assert not (tmp_path / "x.PY").exists()
+    assert "wrote" in handle_write_file(state, {"path": "x.sql", "content": "1"})
+    assert "wrote" in handle_write_file(AgentState(), {"path": "ok.py", "content": "1"})
+
+
+def test_trilogy_subprocess_withholds_llm_keys(monkeypatch):
+    import subprocess
+
+    captured: dict = {}
+
+    class _Fake:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured.update(kwargs)
+        return _Fake()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    monkeypatch.setenv("KEEP_ME", "1")
+    state = AgentState(withheld_env=frozenset({"DEEPSEEK_API_KEY"}))
+    handle_trilogy(state, {"args": ["--version"]})
+    assert "DEEPSEEK_API_KEY" not in captured["env"]
+    assert captured["env"]["KEEP_ME"] == "1"
