@@ -1,0 +1,9 @@
+tests/modeling/tree_reporting
+tests/join_matrix
+tests/windows
+tests/engine/test_derived_key_domain.py
+tests/test_cluster_key_lookup.py
+tests/test_complete_binding_lookup.py
+tests/core/test_null_function_conformance.py
+tests/discovery/test_merged_key_pseudonym_stored_column.py
+tests/discovery/test_sweep_*_shapes.py

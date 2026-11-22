@@ -246,6 +246,63 @@ runners, so the comparable number is the time spent outside it:
 
 The 3.13 cells also run the fuzzer corpus (20-38 s) outside pytest.
 
+## Second pass: Windows cells over 30 minutes (0.3.532)
+
+Run 44977499728 on main at `08cd7f13`, the last green run before this pass:
+windows 3.11/3.12/3.13 at 32.1 / 31.8 / 33.9 min, ubuntu 3.13 at 24.4. The
+three runs before it lost every Windows cell to the 45-minute limit, but that
+was one test spinning forever (a deadline that was a no-op without SIGALRM,
+fixed in #1085), not the suite getting slower. The slower suite is below.
+
+### 11. A multi-select was rebuilt once per output, per factory
+
+Each output concept of a `union(...)`, `rollup(...)` or merge select carries
+its own copy of the statement as its lineage, and `Factory` built the whole
+statement (every arm, and every multi-select nested in an arm) each time one
+of those concepts was built: once per output in the environment
+materialization, again in each sub-select's factory. TPC-DS query 77 (a rollup
+over a union of three two-arm selects) went from 0.2 s to 6.6 s to generate
+between 0.3.506 and 0.3.532 as the rollup and union forms moved onto this
+path, with 438 multi-select builds and 1,197 select builds for one statement.
+
+The build is a function of the statement, the environment and the join set,
+so it is now kept in `BuildCaches.multi_select_build_cache`, beside the other
+build caches and with their lifetime, keyed on the statement's outputs and the
+join set and confirmed by equality.
+
+| generation, 99 TPC-DS queries (same SQL, byte for byte) | seconds |
+|---|---|
+| 0.3.466 (Nov 7)   | 15.4 |
+| 0.3.506 (Nov 15)  | 16.3 |
+| 0.3.532 before    | 23.3 |
+| 0.3.532 after     | 17.2 |
+
+It was not only query 77: over 1,327 ordinary tests (join matrix, derived key
+domain, cluster lookup, binding lookup) the multi-select builds were 13% of
+all generation time and environment materialization fell from 38 s to 12 s
+under the profiler, 17% off generation as a whole.
+
+### 12. The conformance binaries are kept, not rebuilt
+
+`Build the conformance binary` compiled arrow and parquet in release mode on
+every cell: 103-153 s on Linux, 155-301 s on Windows, on an exact rust-cache
+hit (the restored target directory does not satisfy the release build of
+`crates/trilogy-io`; why was not chased). The two example binaries depend only
+on the crate, so `actions/cache` now keeps them, keyed on the crate's sources
+and lockfile, and the build step runs only on a miss. The key is computed
+before the editable install, which writes the release version into
+`Cargo.toml`.
+
+### 13. Grids that are not `*_laws.py` run once too
+
+`tests/grids.txt` names suites of the same kind as the law files (parametrized
+planner and row-oracle grids, nothing in them that an OS or a Python version
+changes), one path or glob per line: the tree-reporting dashboard queries, the
+join matrix, the window and derived-key-domain grids, the formalization sweep
+shapes. They were 347 s of the Windows 3.13 pytest step (116 s of it the
+dashboard queries). The matrix ignores them and a third `laws` shard runs
+them under xdist. The list is the only place to edit.
+
 ## Targets not taken (yet), in order of expected value
 
 - **The 13 s gap before the last test file, 23 s on Windows.** Between the
