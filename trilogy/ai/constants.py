@@ -52,10 +52,9 @@ where   <row condition>            # 1. filters INPUT rows, BEFORE aggregation
 select  <col>, <agg> as name,      # 2. projection — grouping is AUTOMATIC by the
                                    #    non-aggregated columns; never write GROUP BY
   subset|union|equal join a = b (= c)?   # 3. blend models; one clause per key, right after the select list
-by rollup|cube|grouping sets (...) # 4. optional multi-level grouping for the whole select
-having  <result condition>         # 5. filters aggregated/joined RESULTS
-order by <col> asc|desc            # 6. sort
-limit   <n>;                       # 7. cap rows
+having  <result condition>         # 4. filters aggregated/joined RESULTS
+order by <col> asc|desc            # 5. sort
+limit   <n>;                       # 6. cap rows
 ```
 
 A rowset (`with <name> as where ... select ...;`) is a standalone statement, evaluated in isolation — it does NOT respond to the consuming query's context. All its outputs are namespaced: output `abc.def` of rowset `foo` is referenced as `foo.abc.def`. Pairing an output with a concept outside the rowset REQUIRES a declared join on the rowset's key (`subset join foo.key = key`); without one the query is disconnected. Alternatively project the concept inside the rowset and filter or select it through the handle (`where foo.cat = 'a'`). Alias every reused expression with `as`.
@@ -96,7 +95,7 @@ A fact model contains ALL dimensional members, so `where students.id not in enro
 
 An aggregate without an explicit `by` is RESPONSIVE — its grain is set where it is consumed, not where it is declared (`auto avg_credits <- avg(enroll.credits);` becomes per-department when selected with `enroll.department`). Pin a grain inline: `sum(metric) by dim1, dim2 as name`; `by` accepts bare identifiers or parenthesized expressions: `avg(price) by (substring(phone, 1, 2))`.
 
-Multi-level grouping (`by rollup|cube|grouping sets (...)`) is a clause of the WHOLE select, placed before `having`: it computes every no-explicit-grain aggregate at every level in one pass (`by rollup (d1, d2)` → leaf, per-d1 subtotal, grand total). `grouping(<field>)` = 1 on rolled-up rows — use it to label levels rather than testing for NULL. Full detail: trilogy agent-info syntax example rollup.
+Multi-level grouping (subtotals, grand totals) is a CALL around a whole select, never a clause, and `*` spreads its columns into a query: `select *rollup((select d1, d2, sum(x) as total), d1, d2) having total > 0 order by d1 limit 100;` — the inner select in its OWN parentheses, then the keys; `having`, `order by` and `limit` follow the call and apply to the rolled-up rows, while a `where` on input rows goes INSIDE the inner select. It computes every no-explicit-grain aggregate at every level in one pass (leaf, per-d1 subtotal, grand total). `cube((select ...), d1, d2)` = every key combination; `grouping_sets((select ...), (d1, d2), (d1), ())` = exactly the listed sets, `()` being the grand total. `grouping(<field>)`, written inside the inner select, = 1 on rolled-up rows — use it to label levels rather than testing for NULL. To query the rolled rows further (join, re-aggregate), name the call instead: `with r as rollup((select ...), d1, d2);` then `select r.d1, r.total ...`. The same `*` runs a set operation directly: `select *union((armA), (armB)) -> (k, v) order by k;`. There is no `by rollup (...)` clause. Full detail: trilogy agent-info syntax example rollup.
 
 ## Window functions
 

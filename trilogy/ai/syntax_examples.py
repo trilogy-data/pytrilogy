@@ -559,7 +559,7 @@ limit 100;
 #    column order / count / type must line up across every arm.
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
 #    stack (e.g. a grand total across channels), wrap it in an outer aggregate:
-#        select sum(by_channel.enrollments) by rollup by_channel.channel as total;
+#        select sum(by_channel.enrollments) as total;
 #  - An arm may carry its OWN query-scoped join (`select ... subset join b = a`
 #    after its select list) - localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
@@ -866,36 +866,62 @@ order by unique_sc.course asc;
     ),
     SyntaxExample(
         name="rollup",
-        title="Subtotals + grand total in one pass with `by rollup (…)`",
+        title="Subtotals + grand total in one pass with `select *rollup((select …), keys)`",
         summary="subtotals and a grand total in one pass, and labeling the levels",
         body="""\
-# A `by rollup (d1, d2)` clause AFTER the select list (before having/order by)
-# computes the whole select at MULTIPLE grain levels in one pass - the grouping
-# sets (d1, d2), (d1), () - i.e. per-(d1,d2) leaf rows, a subtotal per d1, and a
-# grand total. (`by cube (d1, d2)` = every combination; `by rollup ()` over the
-# select's own grain.) It applies to EVERY aggregate in the select, so all
-# measures share one consistent grouping.
+# `rollup((select ...), d1, d2)` wraps a WHOLE select - in its own parentheses -
+# and lists the keys after it. `select *rollup(...)` runs it: the `*` spreads the
+# call's columns into the result. It computes the inner select at MULTIPLE grain
+# levels in one pass - the grouping sets (d1, d2), (d1), () - i.e. per-(d1,d2)
+# leaf rows, a subtotal per d1, and a grand total. It applies to EVERY aggregate
+# in the inner select, so all measures share one consistent grouping.
+#   select *cube((select ...), d1, d2);                       every key combination
+#   select *grouping_sets((select ...), (d1, d2), (d1), ());  exactly these sets; () = grand total
+# There is NO `by rollup (...)` clause - the call is the only form.
 import enrollments as enroll;
 
 # `grouping(d)` = 1 when d is ROLLED UP on a row (a subtotal/grand-total row), 0 on
 # a leaf - use it to LABEL those rows: the rolled-up dimension is otherwise NULL
 # and would collide with any genuine NULL in the data.
-select
-    case when grouping(enroll.department) = 1 then 'ALL DEPARTMENTS'
-         else enroll.department end as department,
-    case when grouping(enroll.course) = 1 then 'all courses'
-         else enroll.course end as course,
-    sum(enroll.credits) as total_credits
-by rollup (enroll.department, enroll.course)
+select *rollup((
+    select
+        case when grouping(enroll.department) = 1 then 'ALL DEPARTMENTS'
+             else enroll.department end as department,
+        case when grouping(enroll.course) = 1 then 'all courses'
+             else enroll.course end as course,
+        sum(enroll.credits) as total_credits
+), enroll.department, enroll.course)
 having total_credits > 0
 order by department asc nulls first, course asc nulls first
 limit 100;
 
+# To keep working with the rolled rows (filter a level, rank, join), NAME the call
+# and read its columns through the name, like any rowset:
+with rolled as rollup((
+    select
+        enroll.department,
+        sum(enroll.credits) as total_credits,
+        grouping(enroll.department) as is_total
+), enroll.department);
+
+select rolled.department, rolled.total_credits
+where rolled.is_total = 0
+order by rolled.total_credits desc
+limit 5;
+
 # ---------------------------------------------------------------------------
 # NOTES:
-#  - CLAUSE ORDER matches SQL: the `by rollup (…)` grouping clause comes BEFORE
-#    `having` (select list -> by rollup -> having -> order by -> limit). The
-#    HAVING filters EVERY grouping level - subtotal and grand-total rows too.
+#  - SHAPE: `select *rollup(` + `(select ...)` + `, key1, key2` + `)` + clauses + `;`.
+#    The inner select keeps its own parentheses; the keys are the fields to roll up,
+#    in hierarchy order, written as they are inside the inner select
+#    (`enroll.department`, or a select alias). Without the `*` it is not a query.
+#  - WHERE GOES INSIDE, THE REST FOLLOWS THE CALL: a `where` on input rows is written
+#    inside the inner select (BEFORE the rollup); `having`, `order by` and `limit`
+#    come after the closing `)` and apply to the rolled-up rows. The HAVING filters
+#    EVERY grouping level - subtotal and grand-total rows too. They refer to the
+#    inner select's column names.
+#  - A NAMED call (`with rolled as rollup(...);`) takes NO clauses after it and no
+#    `*`; filter and sort in the select that reads it.
 #  - SORT: use EXACTLY the sort the question asks for. Rollup rows are ordinary rows
 #    and sort with everything else (their rolled-up dimensions are NULL, hence
 #    `nulls first`/`nulls last` decides where they land). Sorting by LEVEL is OPTIONAL
@@ -907,14 +933,15 @@ limit 100;
 #    Do NOT add `_level` to a sort the question already specified - a leading sort key
 #    changes WHICH rows survive a `limit`, so it can silently drop the totals.
 #  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
-#    to the same levels because the `by rollup (…)` clause covers the whole select.
+#    to the same levels because the rollup covers the whole select.
 #    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.
-#  - FILTER-BEFORE-ROLLUP vs `having`: `by rollup (…) having x > t` filters EVERY level AFTER
-#    the rollup, so the subtotal/total rows still AGGREGATE the below-threshold leaves (they
-#    just aren't displayed). To keep only leaf groups meeting a threshold and roll up JUST
-#    those survivors, filter the leaves in a rowset FIRST (`rowset kept <- select … having x >
-#    t`), then `by rollup ()` over `kept`. `having` on the rollup itself is the wrong tool when
-#    subtotals must exclude the filtered-out leaves.
+#  - FILTER-BEFORE-ROLLUP vs `having`: a `having x > t` inside the rolled select filters
+#    EVERY level AFTER the rollup, so the subtotal/total rows still AGGREGATE the
+#    below-threshold leaves (they just aren't displayed). To keep only leaf groups meeting a
+#    threshold and roll up JUST those survivors, filter the leaves in a rowset FIRST
+#    (`with kept as select d1, d2, sum(x) as v having v > t;`), then roll up over it:
+#    `select *rollup((select kept.d1, kept.d2, sum(kept.v) as v), kept.d1, kept.d2);`. `having` on
+#    the rollup itself is the wrong tool when subtotals must exclude the filtered-out leaves.
 """,
     ),
     SyntaxExample(
@@ -930,8 +957,8 @@ limit 100;
 # window partitions by (level, parent) so leaves rank within their parent and
 # subtotals rank among themselves - all in one pass. Do NOT write separate rank
 # concepts per level (they mis-rank across the wrong row set). The aggregates and
-# grouping() level concepts are plain - the select's `by rollup (…)` clause stamps
-# the grouping onto all of them.
+# grouping() level concepts are plain - the `rollup(...)` call around the inner
+# select stamps the grouping onto all of them.
 import enrollments as enroll;
 
 auto total <- count(enroll.id);
@@ -942,22 +969,30 @@ auto parent <- case when g_year = 0 then enroll.course else null end;
 auto rnk <- rank(enroll.course, enroll.year)
     over (partition by level, parent order by total desc);
 
-select
-    enroll.course,
-    enroll.year,
-    total,
-    level,
-    --parent,
-    rnk,
-by rollup (enroll.course, enroll.year)
+select *rollup((
+    select
+        enroll.course,
+        enroll.year,
+        total,
+        level,
+        --parent,
+        rnk
+), enroll.course, enroll.year)
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
 # NOTE - a composite aggregate over a rollup (a difference/ratio of sums) needs
 # NO special handling: `sum(profit) - sum(loss) as net` rolls up both operands
-# to the same levels, because `by rollup (…)` is a property of the whole select,
+# to the same levels, because the rollup is a property of the whole select,
 # not of one aggregate.
+#
+# NOTE - keep the rank INSIDE the rolled select, as above. A rank written over a
+# NAMED rollup (`with r as rollup(...); select rank(r.a, r.b) over (...)`) ranks
+# the distinct (r.a, r.b) tuples, and a subtotal row can share its displayed
+# values with another row. If you must rank outside, project the level in the
+# rolled select (`grouping_id(a, b) as lvl`) and pass it as a rank key too:
+# `rank(r.a, r.b, r.lvl) over (...)`.
 """,
     ),
     SyntaxExample(

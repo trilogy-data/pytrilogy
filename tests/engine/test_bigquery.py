@@ -680,13 +680,13 @@ def test_aggregate_grouping_modes_bigquery():
         executor.parse_text(_GROUPING_SCHEMA)
 
         rollup_sql = executor.generate_sql(
-            "select gm_a, gm_b, sum(gm_x) as sx by rollup (gm_a, gm_b);"
+            "select *rollup((select gm_a, gm_b, sum(gm_x) as sx), gm_a, gm_b);"
         )[-1]
         cube_sql = executor.generate_sql(
-            "select gm_a, gm_b, sum(gm_x) as sx by cube (gm_a, gm_b);"
+            "select *cube((select gm_a, gm_b, sum(gm_x) as sx), gm_a, gm_b);"
         )[-1]
         grouping_sets_sql = executor.generate_sql(
-            "select gm_a, gm_b, sum(gm_x) as sx by grouping sets ((gm_a, gm_b), (gm_a), ());"
+            "select *grouping_sets((select gm_a, gm_b, sum(gm_x) as sx), (gm_a, gm_b), (gm_a), ());"
         )[-1]
 
     assert "ROLLUP" in rollup_sql.upper(), rollup_sql

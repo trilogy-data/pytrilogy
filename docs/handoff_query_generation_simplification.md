@@ -97,14 +97,16 @@ generator-agnostic and wired into `gen_aggregate` and the ROOT generator
 
 ## 4. Grouping sets as a relational TVF (every keyed read landed)
 
-A select whose body is `by rollup|cube|grouping sets` lowers to a one-arm TVF
-(`RollupSelectLineage`, `gen_rollup_select`): a rowset body, an inline
-`(select ...)`, and a top-level statement, which is planned as
-`SelectStatement.relational`, a select over an anonymous rowset's handles
-rendered under the authored names. Every read of a keyed rollup is of new key
-and property concepts, so nothing above the arm tracks grouping-set padding.
-The arm itself is still planned by the select mutator (as are a merge arm and a
-union arm that carry a spec). Design, gates and the remaining steps (move the
+Multi-level grouping is written as a call, `rollup((select ...), keys)`
+(`cube`, `grouping_sets`), and lowers to a one-arm TVF (`RollupSelectLineage`,
+`gen_rollup_select`): named (`with r as rollup(...)`), inline
+(`from rollup(...) -> (names) select ...`), or spread into a query
+(`select *rollup(...)`), which is planned as `SelectStatement.relational`, a
+select over an anonymous rowset's handles rendered under the authored names. The `by rollup|cube|grouping sets`
+select clause is gone: it still parses, to raise a migration error. Every read
+of a keyed rollup is of new key and property concepts, so nothing above the arm
+tracks grouping-set padding. The arm itself is still planned by the select
+mutator. Design, gates and the remaining steps (move the
 post-aggregate scalars and HAVING out of the arm, plan the arm standard with
 the generator owning the grouping sets, delete the mode) are seam 10 of
 `docs/query_gen_simplification_audit_2026_10.md`.

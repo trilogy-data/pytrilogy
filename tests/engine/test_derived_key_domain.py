@@ -275,25 +275,25 @@ QUERIES = [
     # to its subtotal rows
     *_labelled(
         "rollup over a carried key",
-        "select customer_id, count(status) as n by rollup (customer_id)",
-        "select name, count(status) as n by rollup (name)",
-        "select customer_id, name, count(status) as n by rollup (customer_id, name)",
-        "select customer_id, count(label) as n, sum(flag) as f by rollup (customer_id)",
-        "select customer_id, status, count(order_id) as n by rollup (customer_id, status)",
-        "select name, status, count(customer_id) as n by rollup (name, status)",
-        "select customer_id, sum(amount_or_zero) as t by rollup (customer_id)",
-        "select customer_id as cid, coalesce(count(status), 0) as n by rollup (customer_id)",
-        "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
-        "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
-        "select customer_id, count(status) as n where name != 'ann' by rollup (customer_id)",
-        "select name, count(order_id) as n where order_seq = 1 or order_seq is null by rollup (name)",
+        "select *rollup((select customer_id, count(status) as n), customer_id)",
+        "select *rollup((select name, count(status) as n), name)",
+        "select *rollup((select customer_id, name, count(status) as n), customer_id, name)",
+        "select *rollup((select customer_id, count(label) as n, sum(flag) as f), customer_id)",
+        "select *rollup((select customer_id, status, count(order_id) as n), customer_id, status)",
+        "select *rollup((select name, status, count(customer_id) as n), name, status)",
+        "select *rollup((select customer_id, sum(amount_or_zero) as t), customer_id)",
+        "select *rollup((select customer_id as cid, coalesce(count(status), 0) as n), customer_id)",
+        "select *rollup((select customer_id, count(order_id) as n where status is null), customer_id)",
+        "select *rollup((select customer_id, count(order_id) as n where status is null or status = 'delivered'), customer_id)",
+        "select *rollup((select customer_id, count(status) as n where name != 'ann'), customer_id)",
+        "select *rollup((select name, count(order_id) as n where order_seq = 1 or order_seq is null), name)",
     ),
     # a ROLLUP over a key absent on the region whose aggregate counts it
     *_labelled(
         "rollup over an absent counted key",
-        "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
-        "select status, count(customer_id) as c, sum(amount) as s by rollup (status)",
-        "select status, count(customer_id) as n where activity = 'dormant' by rollup (status)",
+        "select *rollup((select status, count(customer_id) as c, count(order_id) as o), status)",
+        "select *rollup((select status, count(customer_id) as c, sum(amount) as s), status)",
+        "select *rollup((select status, count(customer_id) as n where activity = 'dormant'), status)",
     ),
     # a statement-wide gate the region's rows feed
     *_labelled(
@@ -305,7 +305,7 @@ QUERIES = [
         "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
         "select customer_id, count(status) as n where count(customer_id) by * > 2",
         "select status, count(customer_id) as n where count(customer_id) by * > 2",
-        "select customer_id, count(status) as n where count(customer_id) by * > 2 by rollup (customer_id)",
+        "select *rollup((select customer_id, count(status) as n where count(customer_id) by * > 2), customer_id)",
         "where customer_id >= avg(customer_id) by * and status is null select name, count(customer_id) as n",
         "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
     ),
@@ -321,9 +321,9 @@ QUERIES = [
     # pass's input: FINAL would test the subtotal rows
     *_labelled(
         "per-member atom under a span rollup",
-        "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
-        "select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann' by rollup (customer_id)",
-        "select name, count(status) as n where sum(amount) by customer_id > 25 by rollup (name)",
+        "select *rollup((select customer_id, count(status) as n where count(order_id) by customer_id < 2), customer_id)",
+        "select *rollup((select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann'), customer_id)",
+        "select *rollup((select name, count(status) as n where sum(amount) by customer_id > 25), name)",
     ),
     # a `by *` aggregate as an OUTPUT is one value beside every row: its input
     # being a row of the statement too does not source the customer apart from
@@ -361,29 +361,29 @@ QUERIES = [
     # the region's rows enter below the pass, at any depth of its lineage
     *_labelled(
         "inline argument under rollup",
-        "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
-        "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
-        "select customer_id, sum(amount_or_zero + 1) as t by rollup (customer_id)",
-        "select customer_id, sum(case when undelivered then 1 else 0 end) as n by rollup (customer_id)",
-        "select name, count(coalesce(amount, 0)) as n by rollup (name)",
-        "select name, count(coalesce(name, 'x')) as n, sum(coalesce(amount, 0)) as t by rollup (name)",
-        "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n by cube (customer_id)",
-        "select customer_id as cid, sum(coalesce(amount, 0)) as t where name != 'ann' by rollup (customer_id)",
+        "select *rollup((select customer_id, sum(coalesce(amount, 0)) as t), customer_id)",
+        "select *rollup((select customer_id, sum(1 + coalesce(amount, 0)) as t), customer_id)",
+        "select *rollup((select customer_id, sum(amount_or_zero + 1) as t), customer_id)",
+        "select *rollup((select customer_id, sum(case when undelivered then 1 else 0 end) as n), customer_id)",
+        "select *rollup((select name, count(coalesce(amount, 0)) as n), name)",
+        "select *rollup((select name, count(coalesce(name, 'x')) as n, sum(coalesce(amount, 0)) as t), name)",
+        "select *cube((select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n), customer_id)",
+        "select *rollup((select customer_id as cid, sum(coalesce(amount, 0)) as t where name != 'ann'), customer_id)",
     ),
     # an argument left to render inline beside one projected below the padding
     # keeps its own row inputs
     *_labelled(
         "inline argument keeps its row inputs",
         "select customer_id, sum(double_amount) as t, count(status) as n",
-        "select customer_id, sum(double_amount) as t, count(status) as n by rollup (customer_id)",
-        "select customer_id, sum(amount * 2) as t, count(label) as n by rollup (customer_id)",
+        "select *rollup((select customer_id, sum(double_amount) as t, count(status) as n), customer_id)",
+        "select *rollup((select customer_id, sum(amount * 2) as t, count(label) as n), customer_id)",
     ),
     # a renamed ROLLUP key renders from the pass's key, not from the column of
     # the same name computed below the pass
     *_labelled(
         "renamed rollup key",
-        "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
-        "select status as s2, label as l2, sum(amount_or_zero) as t, sum(flag) as f by rollup (status, label)",
+        "select *rollup((select status as s2, sum(amount) as a, sum(amount_or_zero) as t), status)",
+        "select *rollup((select status as s2, label as l2, sum(amount_or_zero) as t, sum(flag) as f), status, label)",
     ),
     # an aggregate over the region grouped by a key absent on it, as an OUTPUT
     # beside the rows: the region's rows are its NULL group, and the padded
@@ -400,9 +400,9 @@ QUERIES = [
     # of the pass
     *_labelled(
         "key count under rollup",
-        "select name, status, count(customer_id) as n by rollup (name, status)",
-        "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
-        "select undelivered, count(customer_id) as n by rollup (undelivered)",
+        "select *rollup((select name, status, count(customer_id) as n), name, status)",
+        "select *rollup((select status, count(customer_id) as c, count(order_id) as o), status)",
+        "select *rollup((select undelivered, count(customer_id) as n), undelivered)",
     ),
 ]
 
@@ -631,7 +631,7 @@ ARRAY_AGG_CASES = [
     ),
     # under a ROLLUP it shares the pass with a derivation absent on the region
     (
-        "select customer_id, array_agg(amount) as a, count(status) as n by rollup (customer_id)",
+        "select *rollup((select customer_id, array_agg(amount) as a, count(status) as n), customer_id)",
         [(1, [10, 20], 2), (2, [30], 1), (3, None, 0), (None, [10, 20, 30], 3)],
     ),
 ]
@@ -894,9 +894,7 @@ def test_where_over_a_coalesce_of_a_partially_bound_property(query, expected):
 
 
 def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
-    query = (
-        "select customer_id, coalesce(sum(amount), 0) as total by rollup (customer_id)"
-    )
+    query = "select *rollup((select customer_id, coalesce(sum(amount), 0) as total), customer_id)"
     assert sorted_rows(derived, query) == [(1, 30), (2, 30), (3, 0), (None, 60)]
 
 
@@ -907,11 +905,11 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
     "query,expected",
     [
         (
-            "select customer_id, count(status) as n by rollup (customer_id)",
+            "select *rollup((select customer_id, count(status) as n), customer_id)",
             [(1, 2), (2, 1), (3, 0), (None, 3)],
         ),
         (
-            "select customer_id, name, count(status) as n by rollup (customer_id, name)",
+            "select *rollup((select customer_id, name, count(status) as n), customer_id, name)",
             [
                 (1, "ann", 2),
                 (1, None, 2),
@@ -923,11 +921,11 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             ],
         ),
         (
-            "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
+            "select *rollup((select customer_id, count(order_id) as n where status is null), customer_id)",
             [(3, 0), (None, 0)],
         ),
         (
-            "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
+            "select *rollup((select customer_id, count(status) as n where count(order_id) by customer_id < 2), customer_id)",
             [(2, 1), (3, 0), (None, 1)],
         ),
         (
@@ -982,11 +980,11 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             [("delivered", 1, 30), (None, 1, None)],
         ),
         (
-            "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(coalesce(amount, 0)) as t), customer_id)",
             [(1, 30), (2, 30), (3, None), (None, 60)],
         ),
         (
-            "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(1 + coalesce(amount, 0)) as t), customer_id)",
             [(1, 32), (2, 31), (3, None), (None, 63)],
         ),
         (
@@ -994,7 +992,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             [(1, 60, 2), (2, 60, 1), (3, None, 1)],
         ),
         (
-            "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
+            "select *rollup((select status as s2, sum(amount) as a, sum(amount_or_zero) as t), status)",
             [("delivered", 40, 40), ("in-transit", 20, 20), (None, 60, 60)],
         ),
         (
@@ -1007,7 +1005,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             ],
         ),
         (
-            "select name, status, count(customer_id) as n by rollup (name, status)",
+            "select *rollup((select name, status, count(customer_id) as n), name, status)",
             [
                 ("ann", "delivered", 1),
                 ("ann", "in-transit", 1),
@@ -1020,7 +1018,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             ],
         ),
         (
-            "select undelivered, count(customer_id) as n by rollup (undelivered)",
+            "select *rollup((select undelivered, count(customer_id) as n), undelivered)",
             [(False, 2), (True, 1), (None, 1), (None, 3)],
         ),
     ],
@@ -1054,7 +1052,7 @@ select 900 as return_id, 1 as customer_id
 @pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
 def test_counts_of_two_facts_under_one_rollup(model: str):
     executor = executor_for(model + _RETURNS + CUSTOMER_ACTIVITY)
-    query = "select customer_id, count(order_id) as n, count(return_id) as r by rollup (customer_id)"
+    query = "select *rollup((select customer_id, count(order_id) as n, count(return_id) as r), customer_id)"
     assert sorted_rows(executor, query) == [
         (1, 2, 1),
         (2, 1, 0),
@@ -1080,23 +1078,23 @@ select 900 as return_id, 1 as customer_id union all select 901, 1
     "query,expected",
     [
         (
-            "select customer_id, sum(amount) as a, count(return_id) as r by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(amount) as a, count(return_id) as r), customer_id)",
             [(1, 30, 2), (2, 30, 0), (3, None, 0), (None, 60, 2)],
         ),
         (
-            "select customer_id, avg(amount) as a, count(return_id) as r by rollup (customer_id)",
+            "select *rollup((select customer_id, avg(amount) as a, count(return_id) as r), customer_id)",
             [(1, 15.0, 2), (2, 30.0, 0), (3, None, 0), (None, 20.0, 2)],
         ),
         (
-            "select name, count(amount) as n, count(return_id) as r by rollup (name)",
+            "select *rollup((select name, count(amount) as n, count(return_id) as r), name)",
             [("ann", 2, 2), ("bob", 1, 0), ("cat", 0, 0), (None, 3, 2)],
         ),
         (
-            "select customer_id, max(amount) as m, sum(amount) as s, count(return_id) as r by rollup (customer_id)",
+            "select *rollup((select customer_id, max(amount) as m, sum(amount) as s, count(return_id) as r), customer_id)",
             [(1, 20, 30, 2), (2, 30, 30, 0), (3, None, None, 0), (None, 30, 60, 2)],
         ),
         (
-            "select customer_id, sum(amount) as a, count(return_id) as r where name != 'bob' by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(amount) as a, count(return_id) as r where name != 'bob'), customer_id)",
             [(1, 30, 2), (3, None, 0), (None, 30, 2)],
         ),
     ],
@@ -1126,15 +1124,15 @@ _original_rule_plan = optimization.build_optimization_rule_plan
     "query,expected",
     [
         (
-            "select customer_id, sum(amount) as a, count(return_id) as r, a * 2 as a2 by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(amount) as a, count(return_id) as r, a * 2 as a2), customer_id)",
             [(1, 30, 2, 60), (2, 30, 0, 60), (3, None, 0, None), (None, 60, 2, 120)],
         ),
         (
-            "select customer_id, sum(coalesce(amount, 0)) as t, t + 1 as t1 by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(coalesce(amount, 0)) as t, t + 1 as t1), customer_id)",
             [(1, 30, 31), (2, 30, 31), (3, None, None), (None, 60, 61)],
         ),
         (
-            "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n, t * 2 as t2 by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n, t * 2 as t2), customer_id)",
             [(1, 30, 2, 60), (2, 30, 1, 60), (3, None, 0, None), (None, 60, 3, 120)],
         ),
     ],
@@ -1195,9 +1193,7 @@ def test_second_fact_binding_the_span_keeps_the_rows_paired(
 def test_rollup_by_an_absent_key_counts_the_region(
     derived: Executor, materialized: Executor
 ):
-    query = (
-        "select status, count(customer_id) as c, sum(amount) as s by rollup (status)"
-    )
+    query = "select *rollup((select status, count(customer_id) as c, sum(amount) as s), status)"
     for executor in (derived, materialized):
         assert sorted_rows(executor, query)[:3] == [
             ("delivered", 2, 40),
@@ -1547,15 +1543,15 @@ def materialized_cities() -> Executor:
             [(2, "bob-delivered"), (3, "cat-in-transit")],
         ),
         (
-            "select customer_id, count(status) as n by rollup (customer_id)",
+            "select *rollup((select customer_id, count(status) as n), customer_id)",
             [(1, 2), (2, 1), (3, 0), (None, 3)],
         ),
         (
-            "select customer_id, sum(flag) as n by rollup (customer_id)",
+            "select *rollup((select customer_id, sum(flag) as n), customer_id)",
             [(1, 1), (2, 0), (3, None), (None, 1)],
         ),
         (
-            "select customer_id, max(label) as ml by rollup (customer_id)",
+            "select *rollup((select customer_id, max(label) as ml), customer_id)",
             [
                 (1, "ann-in-transit"),
                 (2, "bob-delivered"),
@@ -1564,11 +1560,11 @@ def materialized_cities() -> Executor:
             ],
         ),
         (
-            "select customer_id, max(order_seq) as m by rollup (customer_id)",
+            "select *rollup((select customer_id, max(order_seq) as m), customer_id)",
             [(1, 2), (2, 1), (3, None), (None, 2)],
         ),
         (
-            "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
+            "select *rollup((select customer_id, count(order_id) as n where status is null or status = 'delivered'), customer_id)",
             [(1, 1), (2, 1), (3, 0), (None, 2)],
         ),
     ],

@@ -710,9 +710,9 @@ with combined as union(
 ) -> (k, v, w);
 
 with rolled as
-select combined.k,
+rollup((select combined.k,
        sum(combined.v) as sv, sum(combined.w) as sw
-by rollup (combined.k);
+), combined.k);
 
 select
   case when rolled.k is null then 'all' else cast(rolled.k as string) end as klabel,

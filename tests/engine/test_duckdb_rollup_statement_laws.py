@@ -1,4 +1,4 @@
-"""A top-level `by rollup|cube|grouping sets` statement is its SQL's rows.
+"""A top-level `rollup|cube|grouping_sets` call statement is its SQL's rows.
 
 The statement is planned as a select over its own rollup TVF and rendered under
 the authored names, so its only independent oracle is DuckDB: each body runs as
@@ -59,6 +59,12 @@ WHERES = ["", "where credits > 2 "]
 CASES = list(itertools.product(MEASURES, SPECS, HAVINGS, WHERES))
 
 
+def call(select: str, spec: str) -> str:
+    """`select` grouped by the SQL `spec` (`rollup (a, b)`), as the call form."""
+    name, keys = spec.split(" (", 1)
+    return f"{name.replace(' ', '_')}(({select}), {keys}"
+
+
 def ordered(rows) -> list[tuple]:
     return sorted((tuple(r) for r in rows), key=repr)
 
@@ -75,12 +81,12 @@ def test_statement_rows_are_the_sql_rows(measure, spec, having, where):
     columns = keys + names + [f"g_{k}" for k in keys]
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(MODEL)
-    body = f"{where}select {', '.join(keys)}, {items}, {flags} by {spec}{having}"
+    select = f"{where}select {', '.join(keys)}, {items}, {flags}{having}"
     sql = (
         f"select {', '.join(keys)}, {sql_items}, {flags} from ({ROWS}) {where}"
         f"group by {spec}{having}"
     )
-    result = executor.execute_text(body + ";")[-1]
+    result = executor.execute_text("select *" + call(select, spec) + ";")[-1]
     assert list(result.keys()) == columns
     assert ordered(result.fetchall()) == ordered(
         executor.execute_raw_sql(sql).fetchall()
@@ -90,9 +96,9 @@ def test_statement_rows_are_the_sql_rows(measure, spec, having, where):
     order = ", ".join(f"{c} asc nulls first" for c in columns)
     assert [
         tuple(r)
-        for r in executor.execute_text(f"{body} order by {order} limit 3;")[
-            -1
-        ].fetchall()
+        for r in executor.execute_text(
+            "select *" + call(f"{select} order by {order} limit 3", spec) + ";"
+        )[-1].fetchall()
     ] == [
         tuple(r)
         for r in executor.execute_raw_sql(f"{sql} order by {order} limit 3").fetchall()

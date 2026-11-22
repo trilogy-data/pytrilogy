@@ -1,6 +1,6 @@
 import store_sales as store_sales;
 
-where
+select *rollup((where
     store_sales.pos_customer_demographic.gender = 'M'
     and store_sales.pos_customer_demographic.marital_status = 'S'
     and store_sales.pos_customer_demographic.education_status = 'College'
@@ -13,10 +13,9 @@ select
     avg(store_sales.quantity::numeric(12,2)) as agg1,
     avg(store_sales.list_price::numeric(12,2)) as agg2,
     avg(store_sales.coupon_amt::numeric(12,2)) as agg3,
-    avg(store_sales.sales_price::numeric(12,2)) as agg4,
-by rollup (store_sales.item.id, store_sales.store.state)
+    avg(store_sales.sales_price::numeric(12,2)) as agg4
 order by
     store_sales.item.id asc nulls first,
     store_sales.store.state asc nulls first
 limit 100
-;
+), store_sales.item.id, store_sales.store.state);

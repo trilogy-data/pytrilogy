@@ -6,6 +6,7 @@
     | type_declaration
     | multi_select_statement
     | tvf_select_statement
+    | tvf_statement
     | select_statement
     | persist_statement
     | rowset_derivation_statement
@@ -471,8 +472,21 @@
     tvf_union_invocation: _UNION (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
     tvf_except_invocation: _EXCEPT (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
     tvf_intersect_invocation: _INTERSECT (_tvf_arg ("," _tvf_arg)* ","?)? ")" tvf_output
-    _tvf_invocation: tvf_union_invocation | tvf_except_invocation | tvf_intersect_invocation
+    // multi-level grouping: one arm select, then its grouping keys. The output
+    // signature is optional on a named rowset (outputs keep the arm's names).
+    _ROLLUP_TVF.1: "ROLLUP("i
+    _CUBE_TVF.1: "CUBE("i
+    _GROUPING_SETS_TVF.1: "GROUPING_SETS("i
+    tvf_rollup_invocation: _ROLLUP_TVF tvf_rel_arg ("," expr_over_list)? ")" tvf_output?
+    tvf_cube_invocation: _CUBE_TVF tvf_rel_arg "," expr_over_list ")" tvf_output?
+    tvf_grouping_sets_invocation: _GROUPING_SETS_TVF tvf_rel_arg ("," grouping_set)+ ")" tvf_output?
+    _tvf_invocation: tvf_union_invocation | tvf_except_invocation | tvf_intersect_invocation | tvf_rollup_invocation | tvf_cube_invocation | tvf_grouping_sets_invocation
     tvf_select_statement: "from"i _tvf_invocation select_statement
+    // `select *<tvf call>`: `*` spreads the call's outputs into the select, so
+    // its rows are the result. One rule for every TVF: a new one needs no
+    // statement keyword, and `*union(...)` is never the `union(a, b)` expression.
+    tvf_spread: "*" _tvf_invocation
+    tvf_statement: "select"i tvf_spread ("," tvf_spread)* _where_series_opt _having_opt _order_by_opt _limit_opt
 
     //indexing into an expression is a function
     index_access: atom "[" int_lit "]"

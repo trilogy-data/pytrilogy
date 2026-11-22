@@ -1024,9 +1024,32 @@ election, not the padded fallback.
       the arm as a STANDARD select and have the generator set the grouping
       sets on its root `GroupNode`, with a per-grouping-set union as the
       fallback where the arm is not one group; (c) delete the mode from
-      `BuildAggregateWrapper` and the sites above with it. An explicit
-      `rollup(...)` call form, and with it retiring the `by rollup` clause,
-      waits on the lark and pest grammars moving together.
+      `BuildAggregateWrapper` and the sites above with it.
+    - **Third slice: the syntax.** `rollup((select ...), k1, k2)`,
+      `cube(...)` and `grouping_sets((select ...), (k1, k2), (k1), ())` are
+      the authoring forms, in both grammars. A call is read three ways:
+      spread into a query (`select *rollup(...) having ... order by ...
+      limit ...;`), named (`with r as rollup(...) [-> (names)]`), or inline
+      (`from rollup(...) -> (names) select ...`). Each hydrates to the arm
+      select carrying the spec and reaches `lower_grouping_select` /
+      `lower_statement_grouping` unchanged, so the generated SQL did not move.
+      An inline or signed call's handles live in a per-statement namespace;
+      its signature names are bound only while the reading select hydrates
+      (`SemanticState.name_bindings`) and shown through
+      `SelectStatement.labels`. The `by rollup` select clause still parses, to
+      raise a migration error naming the call; a merge and a persist can no
+      longer carry a spec directly and read a named call instead.
+      `local_scripts/migrate_by_rollup.py` rewrites the clause.
+    - **`select *<call>` is the one statement form for every TVF.** `*`
+      spreads a relation's outputs into the select, so a new TVF needs no
+      statement keyword and `*union(...)` is never the `union(a, b)`
+      expression. `-> (names)` is the positional signature only; `--name` in
+      it binds a column without showing it. Decided, not built: `*@name(args)`
+      for a user-defined TVF (beside the scalar `@name(args)`); more than one
+      spread, as `*f(...) as x, *g(...) as y` with a declared join on their
+      keys; a spread beside other select items; a call as another call's
+      argument (`*f(*g(...))`); `scalar(*f(...))` for a one-row, one-column
+      call.
 
 ## Gate used
 

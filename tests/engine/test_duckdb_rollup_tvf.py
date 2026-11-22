@@ -1,4 +1,4 @@
-"""A rowset whose body is `by rollup|cube|grouping sets` is a relational TVF.
+"""A `rollup|cube|grouping_sets` call read through a rowset is a relational TVF.
 
 Its handles read NEW concepts (one per body column), not the body's own: a
 rolled key is a nullable key of that relation, its grouping flags complete the
@@ -40,13 +40,13 @@ select 3, 'music', 70
 """
 
 CREDITS = (
-    "with a as select department, course, sum(credits) as total_credits,"
-    " grouping(department) as g_dept, grouping(course) as g_course"
-    " by rollup (department, course);\n"
+    "with a as rollup((select department, course, sum(credits) as total_credits, "
+    "grouping(department) as g_dept, grouping(course) as g_course), department, "
+    "course);\n"
 )
 PAYROLL = (
-    "with b as select dept, sum(salary) as payroll, grouping(dept) as g"
-    " by rollup (dept);\n"
+    "with b as rollup((select dept, sum(salary) as payroll, grouping(dept) as g), "
+    "dept);\n"
 )
 
 
@@ -87,7 +87,7 @@ def test_grouping_flags_complete_the_identity():
 def test_injected_flags_complete_the_identity_unasked():
     env = Environment()
     env.parse(
-        MODEL + "with a as select department, sum(credits) as t by rollup (department);"
+        MODEL + "with a as rollup((select department, sum(credits) as t), department);"
     )
     keys = env.concepts["a.t"].keys
     assert keys and "a.department" in keys and len(keys) == 2
@@ -95,7 +95,7 @@ def test_injected_flags_complete_the_identity_unasked():
 
 def test_spec_over_no_keys_stays_a_select():
     env = Environment()
-    env.parse(MODEL + "with a as select sum(credits) as t by rollup ();")
+    env.parse(MODEL + "with a as rollup((select sum(credits) as t));")
     assert isinstance(env.concepts["a.t"].lineage.rowset.select, SelectLineage)
 
 
@@ -108,14 +108,20 @@ def test_spec_over_no_keys_stays_a_select():
     ],
 )
 def test_rowset_matches_the_single_statement(executor, spec):
-    body = f"select department, course, sum(credits) as t by {spec}"
-    order = (
-        " order by {0}department asc nulls first, {0}course asc nulls first, {0}t asc;"
+    name, keys = spec.split(" (", 1)
+    call = (
+        name.replace(" ", "_") + "((select department, course, sum(credits) as t{0}), "
     )
-    direct = rows(executor, body + order.format(""))
+    call += keys
+    order = (
+        " order by {0}department asc nulls first, {0}course asc nulls first, {0}t asc"
+    )
+    direct = rows(executor, "select *" + call.format(order.format("")) + ";")
     through = rows(
         executor,
-        f"with a as {body};\nselect a.department, a.course, a.t" + order.format("a."),
+        f"with a as {call.format('')};\nselect a.department, a.course, a.t"
+        + order.format("a.")
+        + ";",
     )
     assert through == direct
 
@@ -140,17 +146,17 @@ def test_reaggregate_the_leaf_rows(executor):
 def test_rollup_of_a_rollup(executor):
     assert rows(
         executor,
-        CREDITS + "where a.g_course = 0 select a.department,"
-        " sum(a.total_credits) as t by rollup (a.department)"
-        " order by a.department asc nulls first;",
+        CREDITS
+        + "select *rollup((where a.g_course = 0 select a.department, sum(a.total_credits) as t "
+        "order by a.department asc nulls first), a.department);",
     ) == [(None, 9), ("art", 2), ("math", 7)]
 
 
 def test_rollup_rowset_over_a_rollup_rowset(executor):
     assert rows(
         executor,
-        CREDITS + "with c as where a.g_course = 0 select a.department,"
-        " max(a.total_credits) as biggest by rollup (a.department);\n"
+        CREDITS + "with c as rollup((where a.g_course = 0 select a.department, "
+        "max(a.total_credits) as biggest), a.department);\n"
         "select c.department, c.biggest order by c.department asc nulls first;",
     ) == [(None, 4), ("art", 2), ("math", 4)]
 
@@ -158,8 +164,8 @@ def test_rollup_rowset_over_a_rollup_rowset(executor):
 def test_two_rollups_pair_their_subtotals(executor):
     """A rolled key's NULL is a value: the two grand totals are one row."""
     one_key = (
-        "with a as select department, sum(credits) as total_credits,"
-        " grouping(department) as g_dept by rollup (department);\n"
+        "with a as rollup((select department, sum(credits) as total_credits, "
+        "grouping(department) as g_dept), department);\n"
     )
     assert rows(
         executor,
@@ -171,8 +177,8 @@ def test_two_rollups_pair_their_subtotals(executor):
 
 def test_two_rollups_pair_on_keys_and_flags(executor):
     one_key = (
-        "with a as select department, sum(credits) as total_credits,"
-        " grouping(department) as g_dept by rollup (department);\n"
+        "with a as rollup((select department, sum(credits) as total_credits, "
+        "grouping(department) as g_dept), department);\n"
     )
     assert rows(
         executor,
@@ -230,26 +236,26 @@ def test_each_rollup_is_one_pass(executor):
 def test_hidden_flag_filters_inside_the_body(executor):
     assert rows(
         executor,
-        "with h as select department, sum(credits) as t, --grouping(department) as g"
-        " by rollup (department) having g = 1;\nselect h.department, h.t;",
+        "with h as rollup((select department, sum(credits) as t, "
+        "--grouping(department) as g having g = 1), department);\n"
+        "select h.department, h.t;",
     ) == [(None, 9)]
 
 
 def test_rowset_renders_as_authored():
     env = Environment()
     _, statements = env.parse(
-        MODEL + "with a as select department, sum(credits) as t by rollup (department);"
+        MODEL + "with a as rollup((select department, sum(credits) as t), department);"
     )
     rendered = Renderer().to_string(statements[-1])
-    assert rendered.startswith("rowset a <- select")
-    assert "by rollup (department)" in rendered
+    assert rendered.startswith("rowset a <- rollup(")
     assert "union" not in rendered
 
 
 def test_imported_rollup_rowset(tmp_path):
     (tmp_path / "enroll.preql").write_text(
-        MODEL + "with rolled as select department, sum(credits) as total,"
-        " grouping(department) as g by rollup (department);"
+        MODEL + "with rolled as rollup((select department, sum(credits) as total, "
+        "grouping(department) as g), department);"
     )
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=tmp_path)
@@ -261,15 +267,16 @@ def test_imported_rollup_rowset(tmp_path):
     ) == [("art", 2, 0), ("math", 7, 0), (None, 9, 1)]
 
 
-STATEMENT = (
-    "select department, sum(credits) as total_credits, --grouping(department) as g"
-    " by rollup (department)"
-)
+def rolled(tail: str = "") -> str:
+    return (
+        "select *rollup((select department, sum(credits) as total_credits, "
+        f"--grouping(department) as g{tail}), department);"
+    )
 
 
 def test_statement_is_planned_over_its_own_tvf():
     env = Environment()
-    _, statements = env.parse(MODEL + STATEMENT + " order by g asc limit 2;")
+    _, statements = env.parse(MODEL + rolled(" order by g asc limit 2"))
     statement = statements[-1]
     outer = statement.relational
     assert outer is not None and outer.grouping is None
@@ -290,21 +297,21 @@ def test_statement_is_planned_over_its_own_tvf():
 
 def test_statement_over_no_keys_stays_a_select():
     env = Environment()
-    _, statements = env.parse(MODEL + "select sum(credits) as t by rollup ();")
+    _, statements = env.parse(MODEL + "select *rollup((select sum(credits) as t));")
     assert statements[-1].relational is None
 
 
 def test_statement_renders_under_authored_names(executor):
-    result = executor.execute_text(
-        STATEMENT + " order by g asc, department asc limit 2;"
-    )[-1]
+    result = executor.execute_text(rolled(" order by g asc, department asc limit 2"))[
+        -1
+    ]
     assert list(result.keys()) == ["department", "total_credits"]
     assert [tuple(r) for r in result.fetchall()] == [("art", 2), ("math", 7)]
 
 
 def test_statement_is_one_pass_ordered_by_its_columns(executor):
     sql = executor.generate_sql(
-        STATEMENT.replace("--", "") + " order by g asc, department asc;"
+        rolled(" order by g asc, department asc").replace("--", "")
     )[-1]
     assert sql.count("ROLLUP (") == 1
     assert sql.count("GROUP BY") == 1
@@ -315,19 +322,17 @@ def test_reparsed_statement_reuses_its_relation():
     env = Environment()
     env.parse(MODEL)
     before = len(env.concepts)
-    env.parse(STATEMENT + ";")
+    env.parse(rolled())
     once = len(env.concepts)
-    env.parse(STATEMENT + ";")
+    env.parse(rolled())
     assert once > before and len(env.concepts) == once
 
 
 def test_two_statements_keep_their_own_relations(executor):
-    _, first = executor.environment.parse(
-        STATEMENT + " order by g asc, department asc;"
-    )
+    _, first = executor.environment.parse(rolled(" order by g asc, department asc"))
     _, second = executor.environment.parse(
-        "select course, sum(credits) as by_course by rollup (course)"
-        " order by course asc nulls first;"
+        "select *rollup((select course, sum(credits) as by_course order by course asc nulls "
+        "first), course);"
     )
     assert [tuple(r) for r in executor.execute_query(first[-1]).fetchall()] == [
         ("art", 2),
@@ -345,29 +350,31 @@ def test_two_statements_keep_their_own_relations(executor):
 def test_statement_with_a_renamed_key(executor):
     assert rows(
         executor,
-        "select department as dept_name, sum(credits) as t by rollup (department)"
-        " order by dept_name asc nulls first;",
+        "select *rollup((select department as dept_name, sum(credits) as t order by dept_name "
+        "asc nulls first), department);",
     ) == [(None, 9), ("art", 2), ("math", 7)]
 
 
 def test_rowset_with_an_unprojected_key(executor):
     assert rows(
         executor,
-        "with a as select case when grouping(department) = 1 then 'all'"
-        " else department end as label, sum(credits) as t by rollup (department);\n"
+        "with a as rollup((select case when grouping(department) = 1 then 'all' else "
+        "department end as label, sum(credits) as t), department);\n"
         "select a.label, a.t order by a.label asc;",
     ) == [("all", 9), ("art", 2), ("math", 7)]
 
 
 def test_rollup_body_keeps_its_scoped_join(executor):
     body = (
-        "select department, sum(credits) as t, sum(salary) as paid"
-        " union join department = dept by rollup (department)"
+        "rollup((select department, sum(credits) as t, sum(salary) as paid union join "
+        "department = dept{0}), department)"
     )
-    direct = rows(executor, body + " order by department asc nulls first;")
+    direct = rows(
+        executor, "select *" + body.format(" order by department asc nulls first") + ";"
+    )
     assert direct == rows(
         executor,
-        f"with a as {body};\nselect a.department, a.t, a.paid"
+        f"with a as {body.format('')};\nselect a.department, a.t, a.paid"
         " order by a.department asc nulls first;",
     )
     assert (None, 9, 220) in direct
@@ -376,11 +383,9 @@ def test_rollup_body_keeps_its_scoped_join(executor):
 def test_rollup_body_with_a_scoped_join_reads_its_flag(executor):
     assert rows(
         executor,
-        "with a as select department, sum(credits) as t, sum(salary) as paid,"
-        " grouping(department) as g union join department = dept"
-        " by rollup (department);\n"
-        "select a.department, a.t, a.paid, a.g"
-        " order by a.g asc, a.department asc;",
+        "with a as rollup((select department, sum(credits) as t, sum(salary) as paid, "
+        "grouping(department) as g union join department = dept), department);\n"
+        "select a.department, a.t, a.paid, a.g order by a.g asc, a.department asc;",
     ) == [
         ("art", 2, None, 0),
         ("math", 7, 150, 0),
@@ -389,22 +394,14 @@ def test_rollup_body_with_a_scoped_join_reads_its_flag(executor):
     ]
 
 
-def test_persisted_statement_is_planned_over_its_tvf():
-    env = Environment()
-    _, statements = env.parse(
-        MODEL + "persist rolled into rolled_table from select department,"
-        " sum(credits) as total_credits by rollup (department);"
-    )
-    assert statements[-1].select.relational is not None
-
-
 def test_a_statement_join_stays_its_own():
     env = Environment()
     join = ("local.department", "local.dept", JoinType.FULL)
     _, statements = env.parse(
-        MODEL + "select department, sum(credits) as t union join department = dept"
-        " by rollup (department);\n"
-        "select course, sum(credits) as c by rollup (course);"
+        MODEL
+        + "select *rollup((select department, sum(credits) as t union join department = dept), "
+        "department);\n"
+        "select *rollup((select course, sum(credits) as c), course);"
     )
     joined, plain = statements[-2], statements[-1]
     assert join in _collect_rowset_scoped_joins(env, joined.planned)

@@ -337,29 +337,26 @@ def _materialize_grouping_keys(
     return refs
 
 
-def select_rollup(
-    node: SyntaxNode,
+def grouping_spec(
+    mode: AggregateGroupingMode,
+    key_lists: list[list[Any]],
     context: RuleContext,
-    hydrate: HydrateFunction,
-) -> AggregateGrouping:
-    args = hydrated_children(node, hydrate)
-    keys = args[0] if args else []
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.ROLLUP,
-        by=_materialize_grouping_keys(keys, context, node),
-    )
-
-
-def select_cube(
     node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    keys = hydrated_children(node, hydrate)[0]
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.CUBE,
-        by=_materialize_grouping_keys(keys, context, node),
-    )
+    """The spec of a rollup/cube (one key list) or of grouping sets (one list
+    per set)."""
+    sets = [_materialize_grouping_keys(keys, context, node) for keys in key_lists]
+    if mode != AggregateGroupingMode.GROUPING_SETS:
+        return AggregateGrouping(mode=mode, by=sets[0] if sets else [])
+    by: list[Any] = []
+    seen: set[str] = set()
+    for group in sets:
+        for item in group:
+            if item.address in seen:
+                continue
+            seen.add(item.address)
+            by.append(item)
+    return AggregateGrouping(mode=mode, by=by, grouping_sets=sets)
 
 
 def grouping_set(
@@ -373,28 +370,11 @@ def grouping_set(
     return args[0]
 
 
-def select_grouping_sets(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> AggregateGrouping:
-    raw_sets = hydrated_children(node, hydrate)
-    grouping_sets = [
-        _materialize_grouping_keys(group, context, node) for group in raw_sets
-    ]
-    by: list[Any] = []
-    seen: set[str] = set()
-    for group in grouping_sets:
-        for item in group:
-            if item.address in seen:
-                continue
-            seen.add(item.address)
-            by.append(item)
-    return AggregateGrouping(
-        mode=AggregateGroupingMode.GROUPING_SETS,
-        by=by,
-        grouping_sets=grouping_sets,
-    )
+_GROUPING_CALLS = {
+    SyntaxNodeKind.SELECT_ROLLUP: "rollup((select ...), k1, k2)",
+    SyntaxNodeKind.SELECT_CUBE: "cube((select ...), k1, k2)",
+    SyntaxNodeKind.SELECT_GROUPING_SETS: "grouping_sets((select ...), (k1, k2), (k1), ())",
+}
 
 
 def select_grouping(
@@ -402,7 +382,17 @@ def select_grouping(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
-    return hydrated_children(node, hydrate)[0]
+    """The removed `by rollup|cube|grouping sets (...)` select clause still
+    parses, to say what replaced it."""
+    call = _GROUPING_CALLS[node.child_nodes()[0].kind]  # type: ignore[index]
+    raise fail(
+        node,
+        "`by rollup|cube|grouping sets (...)` is no longer a select clause. "
+        f"Wrap the select in a call and move the keys after it: `select *{call} "
+        "having ... order by ... limit ...;` runs it (`*` spreads its columns "
+        f"into the result), and `with r as {call};` names it to read as "
+        "`r.<column>`.",
+    )
 
 
 def aggregate_all(
@@ -1203,9 +1193,6 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.AGGREGATE_BY: aggregate_by,
     SyntaxNodeKind.AGGREGATE_PAREN_BY: aggregate_paren_by,
     SyntaxNodeKind.SELECT_GROUPING: select_grouping,
-    SyntaxNodeKind.SELECT_ROLLUP: select_rollup,
-    SyntaxNodeKind.SELECT_CUBE: select_cube,
-    SyntaxNodeKind.SELECT_GROUPING_SETS: select_grouping_sets,
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.FDISTINCT: fdistinct,
     SyntaxNodeKind.OVER_LIST: over_list,

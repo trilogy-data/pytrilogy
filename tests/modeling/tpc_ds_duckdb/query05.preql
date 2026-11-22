@@ -40,15 +40,14 @@ auto entity_id <- case
     else null
 end;
 
-select
+select *rollup((select
     channel_label,
     entity_id,
     sum(entity_rows.u_sales) as sales,
     sum(entity_rows.u_returns) as returns,
     sum(entity_rows.u_profit) as profit
-by rollup (channel_label, entity_id)
 order by
     channel_label NULLS FIRST,
     entity_id NULLS FIRST
 limit 100
-;
+), channel_label, entity_id);

@@ -173,8 +173,18 @@ ERROR_CODES: dict[int, str] = {
         "automatic by the non-aggregated select columns, and a select of only "
         "aggregates already returns one row. To pin ONE aggregate's grain, put "
         "the `by` on that aggregate, before its alias: `sum(x) by * as total` "
-        "or `sum(x) by store.id as total`. (`by rollup/cube/grouping sets` is "
-        "the only select-level grouping clause.)"
+        "or `sum(x) by store.id as total`. (For subtotals wrap the select in a "
+        "call: `rollup((select ...), key1, key2);`.)"
+    ),
+    235: (
+        "A grouping call wraps a whole select in its OWN parentheses, then lists "
+        "the keys: `rollup((select ...), key1, key2)`. Run it by spreading it "
+        "into a select with `*`: `select *rollup((select store.state, sum(sales) "
+        "as total), store.state) having total > 0 order by total desc limit 10;` "
+        "- `having`, `order by` and `limit` follow the call. Or name it, "
+        "`with r as rollup((select ...), key1, key2);`, and read `r.<column>`; "
+        "nothing follows a named call. `cube((select ...), k1, k2)` and "
+        "`grouping_sets((select ...), (k1, k2), (k1), ())` take the same shape."
     ),
     234: (
         "Input is nested too deeply to parse - parentheses, brackets, calls, "
@@ -189,22 +199,69 @@ ERROR_CODES: dict[int, str] = {
 NESTING_LIMIT_MESSAGE = "nesting depth limit reached"
 
 
-# A `by rollup/cube/grouping sets` clause placed *after* HAVING is a parse
-# error — Trilogy orders the grouping clause *before* HAVING, matching SQL's
-# `GROUP BY ... HAVING` (this was the reverse until 2026-07; older queries hit
-# an opaque "expected order_by or limit"). Detect the legacy shape to add a
-# targeted hint: `having` followed by a grouping clause within the same
-# statement (no `;` between). A `by rollup/cube/grouping sets` lead can never
-# be an aggregate's own `by` grain (those keywords are reserved), so the match
-# is unambiguous. Advisory only — gated behind an actual syntax error.
-_GROUPING_AFTER_HAVING = re.compile(
-    r"\bhaving\b(?:(?!;).)*?\bby\s+(?:rollup|cube|grouping\s+sets)\b",
-    re.IGNORECASE | re.DOTALL,
+# The removed `by rollup/cube/grouping sets` select clause still parses where
+# it used to be legal (before HAVING), so the parser can say what replaced it;
+# written after HAVING it is an opaque parse error. This finds either, for
+# callers that only check syntax. SQL's `group by rollup (...)` (a raw query
+# body) is not the clause, and literals and comments are masked.
+_GROUPING_CLAUSE = re.compile(
+    r"(?<!group)\s\bby\s+(?:rollup|cube|grouping\s+sets)\s*\(", re.IGNORECASE
+)
+
+GROUPING_CLAUSE_HINT = (
+    "Trilogy has no `by rollup/cube/grouping sets` clause. Wrap the select in a "
+    "call, list the keys after it, and spread it into a select with `*`:\n"
+    "    select *rollup((select <cols>), <keys>) having <cond> order by <cols> "
+    "limit <n>;\n"
+    "`cube((select ...), <keys>)` and `grouping_sets((select ...), (<k1>, <k2>), "
+    "(<k1>), ())` take the same shape."
 )
 
 
-def detect_grouping_after_having(content: str) -> bool:
-    return bool(_GROUPING_AFTER_HAVING.search(content))
+_GROUPING_CALL_RE = re.compile(r"\b(?:rollup|cube|grouping_sets)\s*\(", re.IGNORECASE)
+_AFTER_CALL_RE = re.compile(r"\s*(?:where|having|order|limit|by)\b", re.IGNORECASE)
+
+
+def _matching_paren(text: str, open_at: int) -> int | None:
+    depth = 0
+    for i in range(open_at, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def detect_grouping_call_shape(text: str, pos: int) -> int | None:
+    """Locate a misshapen grouping call in the statement that failed at
+    ``pos``: its select not in its own parentheses (`rollup(select ...)`, or
+    SQL's `rollup(a, b)`), a call run without the `*` spread (`rollup(...);`,
+    `select rollup(...)`), or a clause written after a named call
+    (`with r as rollup(...) order by x`). Returns the call's position, or
+    None. Shared by both grammar backends."""
+    masked = _mask_literals(text)
+    start = masked.rfind(";", 0, pos) + 1
+    end = masked.find(";", pos)
+    end = len(masked) if end < 0 else end
+    for call in _GROUPING_CALL_RE.finditer(masked, start, end):
+        if masked[: call.start()].rstrip().lower().endswith(("group by", "@")):
+            continue
+        arm = _skip_space(masked, call.end())
+        if masked[arm : arm + 1] != "(":
+            return call.start()
+        lead = masked[start : call.start()].strip().lower()
+        if not lead or lead.endswith("select"):
+            return call.start()
+        close = _matching_paren(masked, call.end() - 1)
+        if close is not None and _AFTER_CALL_RE.match(masked, close + 1):
+            return call.start()
+    return None
+
+
+def detect_grouping_clause(content: str) -> bool:
+    return bool(_GROUPING_CLAUSE.search(_mask_literals(content)))
 
 
 _SUBSELECT_RE = re.compile(r"\(\s*(with)\b", re.IGNORECASE)

@@ -96,6 +96,18 @@ def rowset_output_namespace(
     return f"{rowset_name}.{source_namespace}"
 
 
+def _signature_name(
+    body: SelectStatement | MultiSelectStatement, address: str
+) -> str | None:
+    """The `-> (...)` name a rollup call gives this output, if it has one."""
+    if not isinstance(body, RollupSelectStatement) or not body.outputs:
+        return None
+    visible = [i.aligned_concept for i in body.align.items if not i.hidden]
+    if address not in visible:
+        return None
+    return body.outputs[visible.index(address)].name
+
+
 def _rowset_concept(
     orig_address: ConceptRef,
     rowset: RowsetDerivationStatement,
@@ -127,6 +139,10 @@ def _rowset_concept(
     base_namespace = rowset_output_namespace(
         rowset.name, rowset.namespace, surface.namespace
     )
+    signed = _signature_name(rowset.select, orig_address.address)
+    if signed is not None:
+        name = signed
+        base_namespace = rowset.name
     new_concept = Concept(
         name=name,
         datatype=orig_concept.datatype,

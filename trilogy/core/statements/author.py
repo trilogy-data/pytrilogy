@@ -194,6 +194,18 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     # the lineage and applied to un-pinned aggregates by the build factory, so
     # no shared authoring object is ever mutated with the spec.
     grouping: AggregateGrouping | None = None
+    # the `-> (...)` names a `rollup(...)` call gives this arm's columns
+    signature: "list[TVFOutputItem]" = field(default_factory=list, compare=False)
+    # the inline `from rollup(...) -> (...)` relation this select reads
+    source: "RowsetDerivationStatement | None" = field(
+        default=None, repr=False, compare=False
+    )
+    # that relation's handle address -> the signature name its column shows as
+    labels: dict[str, ConceptRef] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    # written `select *<call>`: the selection is that relation's outputs
+    spread: bool = field(default=False, repr=False, compare=False)
     # A top-level `by rollup|cube|grouping sets` select is planned as this
     # select over the rollup TVF's handles, one per output and in output
     # order; the statement itself is the TVF's arm and the authored surface.
@@ -687,6 +699,8 @@ class TVFOutputItem:
     datatype: DataType | TraitDataType | ValidatedType | None = None
     nullable: bool = False
     metadata: Metadata | None = None
+    # `--name`: bound, but left out of a `select *<call>`
+    hidden: bool = False
 
 
 @dataclass

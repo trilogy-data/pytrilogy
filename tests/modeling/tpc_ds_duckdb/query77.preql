@@ -94,16 +94,15 @@ with l0_union as union(
 
 # Final ROLLUP(channel, sk) over the unioned L0. The sales<-returns joins are
 # now declared inside each arm (arm-local query-scoped joins).
-select
+select *rollup((select
     l0_union.u_channel as channel,
     l0_union.u_id as sk,
     sum(l0_union.u_sales) as sales,
     sum(l0_union.u_returns) as returns_,
-    sum(l0_union.u_profit) as profit,
-by rollup (l0_union.u_channel, l0_union.u_id)
+    sum(l0_union.u_profit) as profit
 order by
     channel asc nulls first,
     sk asc nulls first,
     returns_ desc
 limit 100
-;
+), l0_union.u_channel, l0_union.u_id);
