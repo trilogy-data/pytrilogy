@@ -1,4 +1,5 @@
 import shutil
+import signal
 import sys
 from pathlib import Path
 
@@ -42,6 +43,9 @@ def test_compare_names_what_moved():
     assert not runner.report(base, new)
 
 
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGALRM"), reason="the deadline is a no-op without SIGALRM"
+)
 def test_deadline_ends_a_plan_that_loops():
     with pytest.raises(TimeoutError, match="no plan in 1s"), runner._deadline(1):
         while True:
