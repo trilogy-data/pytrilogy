@@ -442,14 +442,13 @@ def _null_groups_differ(
     """A side can NULL the key and the two do not read the same rows
     (`same_rows`): whether either holds a NULL group is data, so null-safe
     equality may find it no partner. NULL is no member of a complete domain.
-    A `declared` relation speaks for its keys' value NULLs, never for a guest
-    (a fact row whose key found no dimension row: an undated sale)."""
-    if declared:
-        if not (_guest_padded(left, left_cte) or _guest_padded(right, right_cte)):
-            return False
-        return not _same_filtered_rows(left_cte, right_cte)
+    A `declared` relation speaks for its keys' values, never for a NULL: a
+    nullable binding (`?`, a null-propagating derivation) or a guest (a fact
+    row whose key found no dimension row) keeps its rows."""
     if not (_key_nullable(left, left_cte) or _key_nullable(right, right_cte)):
         return False
+    if declared:
+        return not _same_filtered_rows(left_cte, right_cte)
     return not (
         isinstance(left_cte, CTE)
         and isinstance(right_cte, CTE)

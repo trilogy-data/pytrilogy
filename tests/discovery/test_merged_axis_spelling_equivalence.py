@@ -1,6 +1,6 @@
 """Lock: every spelling of a merged axis plans the same query.
 
-`merge first_org into org.code` makes the two names one axis. Which name a query
+`merge first_org into ~org.code` makes the two names one axis. Which name a query
 uses -- in the projection, in an aggregate's `by`, or both -- is a spelling
 choice, not a semantic one. All four combinations must return the same rows, and
 swapping only the `by` spelling must leave the SQL byte-identical.
@@ -37,7 +37,7 @@ key id string;
 property id.agency string;
 property id.first_org <- split(agency, '/')[1];
 
-merge first_org into org.code;
+merge first_org into ~org.code;
 
 datasource launches (id: id, agency: agency)
 grain (id)
