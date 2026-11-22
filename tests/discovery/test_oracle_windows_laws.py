@@ -386,7 +386,7 @@ FOUND_SEEDS = [
     56554, 57430, 59727,
     # open until 0.3.531: a re-sum beside a window (summary model)
     58721,
-    # open until 0.3.533: a filter's keys kept on its rows
+    # open until 0.3.534: a filter's keys kept on its rows
     15366,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):

@@ -283,7 +283,7 @@ FOUND_SEEDS = [
     # select's other key, a property grouped past by its hidden key
     6561, 8237, 8819, 8983, 12692, 14687, 16397, 22124, 23264, 25756, 26633,
     28080, 29139, 30277, 30681, 32425, 33862, 35245, 37814, 38603,
-    # 0.3.533: a filter's keys and condition columns kept on its rows, a gate
+    # 0.3.534: a filter's keys and condition columns kept on its rows, a gate
     # under its condition re-applied on them, a decided filter deduplicated
     # past its hidden key
     12986, 13488, 20181, 23888, 30937, 41909, 42287, 43265, 44631, 45444,

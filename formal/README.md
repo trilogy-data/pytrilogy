@@ -2831,7 +2831,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     by tree_form is not null` crosses cities and forms). It fixed that seed and
     broke 33 queries right on main, by keyless joins where the plan had read
     columns the filter passes through.
-- **`filters` to 60,000** (0.3.533). On main seeds 40,000-60,000 (40,000
+- **`filters` to 60,000** (0.3.534). On main seeds 40,000-60,000 (40,000
   queries) hold 67 wrong answers, 233 raises and 12 invalid statements. Over
   0-60,000 the round fixes 120 queries (42 wrong answers, 64 raises, 14
   invalid statements) and breaks none, with 296 fewer scans and 204 fewer

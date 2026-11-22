@@ -13,7 +13,7 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.533.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.534.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
@@ -596,7 +596,7 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
 decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (123 seeds of
-0-20,000) and, at 0.3.533, 545 failing queries of 20,000-60,000, each
+0-20,000) and, at 0.3.534, 545 failing queries of 20,000-60,000, each
 failing on main too. The 40,000-60,000 raises on main group as 114 `cannot
 be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
 `Could not resolve connections`, 10 `Merge sources`.
@@ -604,7 +604,7 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
 - **A set planned under the WHERE reads unfiltered rows** when its condition
   reads an aggregate the WHERE is hosted on: `select city ? city in (city ?
   max(height) by * > 0 and height = 5) as f where min(height) by species < 4`
-  returns A (the answer is empty). 0.3.533's re-application of such a gate
+  returns A (the answer is empty). 0.3.534's re-application of such a gate
   (`_unfiltered_filter_streams`) is switched off inside `_CleanFeederCache`
   and a HAVING membership's subselect (`planning_a_set`): there it cost about
   2,000 joins over 40,000 queries and broke six (a duplicate CTE alias, a
@@ -614,7 +614,7 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
 - **A filtered column beside a WHERE aggregate its keys do not determine**
   still crosses: `select tree_form, city ? avg(height) by * <= 8 as f where
   count(tree_id) by species = 1` returns six rows for three. Keeping
-  `tree_form` on the row stream (as 0.3.533 does without the WHERE aggregate)
+  `tree_form` on the row stream (as 0.3.534 does without the WHERE aggregate)
   raises a keyless join instead: the join plan does not count `species` as a
   column of the filter's rows although the filter passes it through
   (17162 shows it; main is right there only because one row survives).
@@ -644,7 +644,7 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
   `(max(height) by city) ? city in ('B')` beside `tag` (11824, 16877, 19152).
   9683, 12294: a WHERE aggregate reaches the set's inner aggregate and not
   the statement's rows (below).
-- Efficiency: 0.3.533 keeps more columns on the row stream, and 155 of
+- Efficiency: 0.3.534 keeps more columns on the row stream, and 155 of
   120,000 queries scan the trees twice where main scanned once: a grouped
   scan and a row scan of one table under one WHERE (`select tree_form, height
   ? tree_id in (tree_id ? max(height) by city, species is not null) as f
