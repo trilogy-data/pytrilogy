@@ -13,7 +13,7 @@ optional metadata, they're what keeps row identity intact through the SUM.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -1721,21 +1721,23 @@ def _feeds_only_sets(
     edges: EdgeMap,
     attrs: dict[str, ConceptAttrs],
     node: str,
+    shown: Collection[str],
     seen: set[str],
 ) -> bool:
-    """`node` reaches the statement's rows only as part of a set's condition:
+    """`node` is no output (`shown`) and reaches the statement's rows only as
+    part of a set's condition:
     `count(id) by species` in `species ? species in (species ? count(id) by
     species >= 3)`. A WHERE value such a barrier consumed has filtered the
     set's rows, not the statement's (`Filters.gate_on_a_set_filters_no_row`)."""
-    if attrs[node].existence_only:
-        return True
-    if node in seen:
+    if node in shown:
+        return False
+    if attrs[node].existence_only or node in seen:
         return True
     seen.add(node)
     successors = list(graph.successors(node))
     return bool(successors) and all(
         edge_kind(edges, node, succ) == EdgeKind.EXISTENCE
-        or _feeds_only_sets(graph, edges, attrs, succ, seen)
+        or _feeds_only_sets(graph, edges, attrs, succ, shown, seen)
         for succ in successors
     )
 
@@ -2989,7 +2991,11 @@ def build_concept_graph(
         if attrs[src].derivation != Derivation.ROOT
         and attrs[src].address in row_arg_addresses
         and all(
-            _feeds_only_sets(graph, edges, attrs, succ, set())
+            attrs[succ].existence_only
+            # under a WHERE that reads a set itself, its atoms are placed with
+            # the set and the barrier's host stands
+            or not existence_arg_pairs
+            and _feeds_only_sets(graph, edges, attrs, succ, mandatory_blank_ids, set())
             for succ in graph.successors(src)
         )
     ]

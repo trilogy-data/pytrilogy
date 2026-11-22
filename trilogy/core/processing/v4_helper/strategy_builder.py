@@ -760,6 +760,19 @@ def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
     return essential < set(leaves)
 
 
+def _filter_predicate_sets(node: StrategyNode) -> set[frozenset[str]]:
+    """The sets the conditions of `node`'s own filtered outputs read."""
+    if not isinstance(node, FilterNode):
+        return set()
+    return {
+        frozenset(c.address for c in group)
+        for output in node.output_concepts
+        if isinstance(output.lineage, BuildFilterItem)
+        for group in output.lineage.where.existence_arguments or ()
+        if group
+    }
+
+
 def _attach_existence_to_node(
     node: StrategyNode,
     arg_groups: list[tuple[BuildConcept, ...]],
@@ -799,10 +812,13 @@ def _attach_existence_to_node(
         if concept.address not in existing_concepts
     ]
     # a set a select-phase output's own lineage reads, not one a WHERE atom
-    # the node hosts does
+    # the node hosts does; a filter's own predicate moved into its node's
+    # WHERE is still the output's lineage
+    own = _filter_predicate_sets(node)
     hosted = {
-        frozenset(c.address for c in group)
+        key
         for group in _condition_existence_arg_groups(node.conditions)
+        if (key := frozenset(c.address for c in group)) not in own
     }
     kept = (
         {
@@ -2549,10 +2565,11 @@ def _window_rows_at_grain(
     needed = {c.address: c for c in outputs}
     supplied = _output_addresses(parents)
     for concept in outputs:
-        # a value a parent hands over is read as itself: the column a
-        # filtered key was read off is no key of the window's rows
-        # (`Filters.rejected_rows_share_one_null`)
-        if concept.lineage is not None and concept.address not in supplied:
+        # a filtered value a parent hands over is read as itself: the column
+        # it was read off is no key of the window's rows
+        # (`Filters.source_column_splits_null_group`)
+        handed = concept.derivation == Derivation.FILTER and concept.address in supplied
+        if concept.lineage is not None and not handed:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
     # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
     # (a property of `id`) sits at `id`
