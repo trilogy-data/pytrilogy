@@ -777,8 +777,8 @@ election, not the padded fallback.
    `union join` keys `ensure_content_preservation` keeps as axes after the
    cover drops them; that is where the next slice starts.
    `test_subset_join_plan_time_completeness.py` pins the walk, the per-key
-   subsets, the EQUAL cover and rule B with the optimizer rule stubbed (the
-   first three red on `main`).
+   subsets, the EQUAL cover and rule B with the optimizer rule stubbed (all
+   four red on `main`).
 
    Gates, against `08cd7f1`: suite SQL capture (`sqlcap`,
    `PYTHONHASHSEED=0`, laws included, 51,760 tests) moved 982 tests (FULL
