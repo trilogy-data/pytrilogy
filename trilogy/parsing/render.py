@@ -1285,8 +1285,13 @@ class Renderer:
                 having_clause = self.indent_lines(self.to_string(arg.having_clause))
             order_by = None
             if arg.order_by:
+                # a call's handle reads back under the name its column shows as
+                labels = list(arg.labels.items())
                 order_by = [
-                    self.indent_lines(self.to_string(c)) for c in arg.order_by.items
+                    self.indent_lines(
+                        self.to_string(c.with_reference_replacement(labels))
+                    )
+                    for c in arg.order_by.items
                 ]
         join_keyword = {
             JoinType.LEFT_OUTER: "left",

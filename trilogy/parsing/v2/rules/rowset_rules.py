@@ -39,10 +39,7 @@ from trilogy.parsing.v2.rules_context import (
     core_meta,
     fail,
 )
-from trilogy.parsing.v2.select_finalize import (
-    finalize_select_statement,
-    finalize_select_tree,
-)
+from trilogy.parsing.v2.select_finalize import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 from trilogy.utility import string_to_hash
 
@@ -164,66 +161,39 @@ def _register_rowset(
     return result.concepts
 
 
-def lower_statement_grouping(select: SelectStatement, context: RuleContext) -> None:
-    """Give a finalized top-level `select ... by rollup|cube|grouping sets` its
-    relational form: the select (less ORDER BY and LIMIT) is the arm of a
-    rollup TVF read through an anonymous rowset, and `select.relational` is
-    the select over that rowset's handles the planner runs. The handles render
-    under the authored names, so the statement's surface is unchanged."""
-    if select.relational is not None or select.grouping is None:
-        return
-    arm = replace(select, order_by=None, limit=None)
-    # named for its text and place in it: a re-parse reuses the relation's
-    # concepts, and two statements never share them
-    place = f"{context.source_text}:{select.meta.line_number}:{select.meta.column}"
-    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
-    body = lower_grouping_select(arm, context, name)
-    if not isinstance(body, RollupSelectStatement):
-        return
-    rowset = RowsetDerivationStatement(
-        name=name,
-        select=body,
-        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
-    )
-    handles = _register_rowset(rowset, context, None)
-    context.environment.add_rowset(name, body.as_lineage(context.environment))
-    replacements = [
-        (column.address, handle.reference)
-        for column, handle in zip(arm.output_components, handles)
-    ]
-    outer = SelectStatement(
-        selection=[
-            SelectItem(
-                content=handle.reference,
-                modifiers=(
-                    [Modifier.HIDDEN] if column.address in arm.hidden_components else []
-                ),
-            )
-            for column, handle in zip(arm.output_components, handles)
-        ],
-        order_by=(
-            OrderBy(
-                items=[
-                    item.with_reference_replacement(replacements)
-                    for item in select.order_by.items
-                ]
-            )
-            if select.order_by
-            else None
-        ),
-        limit=select.limit,
-        meta=select.meta,
-    )
-    finalize_select_statement(outer, context)
-    select.relational = outer
-
-
 def _is_call(node: SyntaxNode) -> bool:
     return node.kind in TVF_GROUPING_MODES or node.kind in TVF_INVOCATION_OPERATORS
 
 
 def _call_node(node: SyntaxNode) -> SyntaxNode:
     return next(c for c in node.child_nodes() if _is_call(c))
+
+
+def _call_rowset_name(call: SyntaxNode, context: RuleContext) -> str:
+    """Named for the call's text and place in it: a re-parse reuses the
+    relation's concepts, and two calls never share them."""
+    place = (
+        f"{context.source_text}:{getattr(call.meta, 'line', 0)}:"
+        f"{getattr(call.meta, 'column', 0)}"
+    )
+    return f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
+
+
+def _lower_call(
+    arm: SelectStatement, name: str, context: RuleContext, meta: Any
+) -> tuple[RowsetDerivationStatement, list[Concept]]:
+    """A finalized grouping arm as an anonymous rowset over its rollup TVF,
+    with that rowset's handles, one per arm column."""
+    body = lower_grouping_select(arm, context, name, meta)
+    assert isinstance(body, RollupSelectStatement)
+    rowset = RowsetDerivationStatement(
+        name=name,
+        select=body,
+        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+    )
+    handles = _register_rowset(rowset, context, meta)
+    context.environment.add_rowset(name, body.as_lineage(context.environment))
+    return rowset, handles
 
 
 def _bind_grouping_call(
@@ -236,23 +206,13 @@ def _bind_grouping_call(
     Returns it with each signature name's handle. The handles live in the
     rowset's own namespace, so a signature name may repeat a model concept's
     name or another statement's."""
-    place = (
-        f"{context.source_text}:{getattr(call.meta, 'line', 0)}:"
-        f"{getattr(call.meta, 'column', 0)}"
-    )
-    name = f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
+    name = _call_rowset_name(call, context)
     with context.semantic_state.rowset_alias_scope(name):
         arm: SelectStatement = hydrate(call)
     finalize_select_tree(arm, context)
-    body = lower_grouping_select(arm, context, name, meta)
+    rowset, handles = _lower_call(arm, name, context, meta)
+    body = rowset.select
     assert isinstance(body, RollupSelectStatement)
-    rowset = RowsetDerivationStatement(
-        name=name,
-        select=body,
-        namespace=context.environment.namespace or DEFAULT_NAMESPACE,
-    )
-    handles = _register_rowset(rowset, context, meta)
-    context.environment.add_rowset(name, body.as_lineage(context.environment))
     shown = [h for item, h in zip(body.align.items, handles) if not item.hidden]
     return rowset, {out.name: h for out, h in zip(arm.signature, shown)}
 
@@ -321,8 +281,8 @@ def _clause(node: SyntaxNode, kind: SyntaxNodeKind, hydrate: HydrateFunction) ->
 def _spread_arm(
     node: SyntaxNode, call: SyntaxNode, hydrate: HydrateFunction
 ) -> SelectStatement:
-    """An unsigned grouping call spread into a select: the wrapped select is
-    the statement, and the clauses after the call are its own."""
+    """The select an unsigned grouping call wraps, with the clauses written
+    after the call: they read its columns by the names it gives them."""
     arm: SelectStatement = hydrate(call)
     having = _clause(node, SyntaxNodeKind.HAVING, hydrate)
     order_by = _clause(node, SyntaxNodeKind.ORDER_BY, hydrate)
@@ -354,6 +314,60 @@ def _spread_arm(
     return arm
 
 
+def _spread_grouping(
+    node: SyntaxNode,
+    call: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+    meta: Any,
+) -> SelectStatement:
+    """`select *rollup((select ...), keys) ...` with no signature: the select
+    over the call's handles, each shown under its arm column's name. A HAVING
+    is the arm's; an ORDER BY is finalized there too, so an expression it
+    sorts on is an arm column, then read through its handle."""
+    arm = _spread_arm(node, call, hydrate)
+    finalize_select_tree(arm, context)
+    if not arm.grain.components:
+        # one standard group: the wrapped select is the statement (the
+        # statement plan finalizing it again is a no-op)
+        return arm
+    rowset, handles = _lower_call(
+        replace(arm, order_by=None, limit=None),
+        _call_rowset_name(call, context),
+        context,
+        meta,
+    )
+    columns = arm.output_components
+    order_by = arm.order_by
+    if order_by is not None:
+        replacements = [
+            (column.address, handle.reference)
+            for column, handle in zip(columns, handles)
+        ]
+        order_by = OrderBy(
+            items=[
+                item.with_reference_replacement(replacements) for item in order_by.items
+            ]
+        )
+    return SelectStatement(
+        selection=[
+            SelectItem(
+                content=handle.reference,
+                modifiers=(
+                    [Modifier.HIDDEN] if column.address in arm.hidden_components else []
+                ),
+            )
+            for column, handle in zip(columns, handles)
+        ],
+        order_by=order_by,
+        limit=arm.limit,
+        meta=arm.meta,
+        source=rowset,
+        labels={handle.address: column for column, handle in zip(columns, handles)},
+        spread=True,
+    )
+
+
 def tvf_statement(
     node: SyntaxNode,
     context: RuleContext,
@@ -382,7 +396,7 @@ def tvf_statement(
         outputs = list(named.values())
         signature = source.select.selects[0].signature  # type: ignore[union-attr]
     else:
-        return _spread_arm(node, call, hydrate)
+        return _spread_grouping(node, call, context, hydrate, meta)
     bindings = {name: handle.address for name, handle in named.items()}
     with context.semantic_state.name_bindings(bindings):
         where = _clause(node, SyntaxNodeKind.WHERE_SERIES, hydrate)

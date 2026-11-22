@@ -206,12 +206,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     )
     # written `select *<call>`: the selection is that relation's outputs
     spread: bool = field(default=False, repr=False, compare=False)
-    # A top-level `by rollup|cube|grouping sets` select is planned as this
-    # select over the rollup TVF's handles, one per output and in output
-    # order; the statement itself is the TVF's arm and the authored surface.
-    relational: "SelectStatement | None" = field(
-        default=None, repr=False, compare=False
-    )
     _folded_where: WhereClause | None = field(
         default=None, init=False, repr=False, compare=False
     )
@@ -243,22 +237,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             self._folded_where = combine_staged_wheres(self.where_clauses)
             self._folded_from = self.where_clauses
         return self._folded_where
-
-    @property
-    def planned(self) -> "SelectStatement":
-        return self.relational or self
-
-    @property
-    def relational_names(self) -> dict[str, str]:
-        """Authored output address -> the handle the plan renders it from."""
-        if self.relational is None:
-            return {}
-        return {
-            authored.address: handle.address
-            for authored, handle in zip(
-                self.output_components, self.relational.output_components
-            )
-        }
 
     @property
     def first_where_stage(self) -> WhereClause | None:
