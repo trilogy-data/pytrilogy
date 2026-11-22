@@ -760,6 +760,19 @@ def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
     return essential < set(leaves)
 
 
+def _filter_predicate_sets(node: StrategyNode) -> set[frozenset[str]]:
+    """The sets the conditions of `node`'s own filtered outputs read."""
+    if not isinstance(node, FilterNode):
+        return set()
+    return {
+        frozenset(c.address for c in group)
+        for output in node.output_concepts
+        if isinstance(output.lineage, BuildFilterItem)
+        for group in output.lineage.where.existence_arguments or ()
+        if group
+    }
+
+
 def _attach_existence_to_node(
     node: StrategyNode,
     arg_groups: list[tuple[BuildConcept, ...]],
@@ -799,10 +812,13 @@ def _attach_existence_to_node(
         if concept.address not in existing_concepts
     ]
     # a set a select-phase output's own lineage reads, not one a WHERE atom
-    # the node hosts does
+    # the node hosts does; a filter's own predicate moved into its node's
+    # WHERE is still the output's lineage
+    own = _filter_predicate_sets(node)
     hosted = {
-        frozenset(c.address for c in group)
+        key
         for group in _condition_existence_arg_groups(node.conditions)
+        if (key := frozenset(c.address for c in group)) not in own
     }
     kept = (
         {
@@ -1066,7 +1082,8 @@ def _projects_parent_rows(
         narrows = _filter_intrinsic_pushdown_safe(
             group_graph, plan.attrs, gid, outputs, reads.mandatory_list, environment
         )
-        return filter_row_predicate(outputs, available, narrows) is None
+        sets = _shown_by_statement(reads.mandatory_list, environment)
+        return filter_row_predicate(outputs, available, narrows, sets) is None
     return not reads.regroups(outputs, parents)
 
 
@@ -2535,6 +2552,18 @@ def _keyed_finer(
     )
 
 
+def _at_or_above(
+    concept: BuildConcept, grain: set[str], environment: BuildEnvironment
+) -> bool:
+    """A value the window's grain determines rides through its group:
+    `max(height) by tree_form` beside a window over `species` is one value
+    per species, though `tree_form` is no component of that grain."""
+    components = concept.grain.components
+    return components <= grain or build_fd_determines_all(
+        environment, grain, components
+    )
+
+
 def _window_rows_at_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -2546,8 +2575,12 @@ def _window_rows_at_grain(
     is grouped first. The group keeps every parent column at or above that
     grain, which a later pass may carry through the window."""
     needed = {c.address: c for c in outputs}
+    supplied = _output_addresses(parents)
     for concept in outputs:
-        if concept.lineage is not None:
+        # a value a parent hands over is read as itself: the column a
+        # filtered or derived key was read off is no key of the window's rows
+        # (`Filters.source_column_splits_null_group`)
+        if concept.lineage is not None and concept.address not in supplied:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
     # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
     # (a property of `id`) sits at `id`
@@ -2570,7 +2603,7 @@ def _window_rows_at_grain(
             if concept.address in needed
             or concept.grain.abstract
             or (
-                concept.grain.components <= grain
+                _at_or_above(concept, grain, environment)
                 and not _keyed_finer(concept, grain, environment)
             )
         ],
@@ -3786,6 +3819,18 @@ def _group_span_scope(
     )
 
 
+def _shown_by_statement(
+    mandatory_list: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """The plan's outputs are the statement's own, not a sub-plan's (a set's
+    feeder, a HAVING's semijoin): only there does a predicate reading a set
+    narrow the rows."""
+    shown = environment.statement_output_addresses
+    return shown is not None and all(
+        {c.address, *c.pseudonyms} & shown for c in mandatory_list
+    )
+
+
 def _filter_intrinsic_pushdown_safe(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -3801,7 +3846,9 @@ def _filter_intrinsic_pushdown_safe(
     CASE."""
     if (
         statement_filter_population(
-            mandatory_list, environment.statement_hidden_addresses
+            mandatory_list,
+            environment.statement_hidden_addresses,
+            _shown_by_statement(mandatory_list, environment),
         )
         is None
     ):
@@ -8211,6 +8258,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 mandatory_list,
                 environment,
             ),
+            set_filter_pushdown=_shown_by_statement(mandatory_list, environment),
             existence_source=feeds_existence(
                 unfolded.group_graph, unfolded.group_edges, gid
             ),

@@ -1584,6 +1584,19 @@ def _group_in_active_relation(
     )
 
 
+def _row_ancestors(gid: str, scope: _PlacementScope) -> set[str]:
+    """The groups `gid`'s rows come through: its ancestors, less those it
+    reaches only across a set it reads (`Filters.gate_on_a_set_filters_no_row`)."""
+    rows = nx.DiGraph()
+    rows.add_nodes_from(scope.group_graph.nodes)
+    rows.add_edges_from(
+        (u, v)
+        for u, v in scope.group_graph.edges
+        if scope.group_edges[(u, v)].kind != EdgeKind.EXISTENCE
+    )
+    return nx.ancestors(rows, gid)
+
+
 def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlacement]:
     """Where one decomposed condition atom is injected."""
     buckets = scope.buckets
@@ -1843,13 +1856,14 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         for producer in producer_groups:
             consumed_barriers |= nx.ancestors(group_graph, producer)
         # only a barrier the atom's rows flow through: a side input joined
-        # in beside them (a `subset join`ed rowset) reshapes nothing it reads
+        # in beside them (a `subset join`ed rowset) reshapes nothing it reads,
+        # nor does a set the host reads by subselect
         restricted = [
             gid
             for gid in restricted
             if not any(
                 nx.ancestors(group_graph, barrier) & consumed_barriers
-                for barrier in (scope.d0_group_ids & nx.ancestors(group_graph, gid))
+                for barrier in (scope.d0_group_ids & _row_ancestors(gid, scope))
                 - consumed_barriers
             )
         ]

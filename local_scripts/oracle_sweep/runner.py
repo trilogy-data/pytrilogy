@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import json
 import os
+import signal
 import subprocess
 import sys
 import tarfile
@@ -31,6 +32,7 @@ FAMILIES = {
     "expressions": ("tests.discovery.test_oracle_expressions_laws", "shape3"),
     "compositions": ("tests.discovery.test_oracle_compositions_laws", "shape4"),
     "windows": ("tests.discovery.test_oracle_windows_laws", "shape5"),
+    "filters": ("tests.discovery.test_oracle_filters_laws", "shape6"),
 }
 GENERATOR_FILES = [
     "tests/discovery/test_rollup_resolution_laws.py",
@@ -41,13 +43,16 @@ GENERATOR_FILES = [
 # others' cached records valid.
 EXPRESSIONS = "tests/discovery/test_oracle_expressions_laws.py"
 COMPOSITIONS = "tests/discovery/test_oracle_compositions_laws.py"
+WINDOWS = "tests/discovery/test_oracle_windows_laws.py"
 FAMILY_FILES = {
     "expressions": [EXPRESSIONS],
     "compositions": [EXPRESSIONS, COMPOSITIONS],
-    "windows": [
+    "windows": [EXPRESSIONS, COMPOSITIONS, WINDOWS],
+    "filters": [
         EXPRESSIONS,
         COMPOSITIONS,
-        "tests/discovery/test_oracle_windows_laws.py",
+        WINDOWS,
+        "tests/discovery/test_oracle_filters_laws.py",
     ],
 }
 # Bump when a record's fields or meaning change: cached records are keyed on it.
@@ -59,6 +64,8 @@ BAD = ("wrong", "raise", "invalid")
 # Working-tree result files kept: one per state of the source swept.
 TREE_STATES = 6
 NATIVE = "_preql_import_resolver"
+# Seconds a plan may take: a planner loop is a failing seed, not a stalled pool.
+PLAN_SECONDS = 30
 
 Record = dict[str, Any]
 Key = tuple[int, str]
@@ -123,7 +130,8 @@ def run_one(
         # of the parsed model plans as a fresh executor does, at 1ms.
         executor.environment = deepcopy(pristine)
     try:
-        sql = executor.generate_sql(query)[-1]
+        with _deadline(PLAN_SECONDS):
+            sql = executor.generate_sql(query)[-1]
     except Exception as e:
         status = "rejected" if REJECTED in str(e) else "raise"
         return {"status": status, "error": _error(e)}, None, None
@@ -136,6 +144,25 @@ def run_one(
         return {**record, "status": "invalid", "error": _error(e)}, sql, None
     ok = normalize(rows) == normalize(expected)
     return {**record, "status": "ok" if ok else "wrong"}, sql, rows
+
+
+@contextmanager
+def _deadline(seconds: int) -> Iterator[None]:
+    """Raise TimeoutError in the block after `seconds` (POSIX main thread)."""
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def expire(*_: Any) -> None:
+        raise TimeoutError(f"no plan in {seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def _error(e: Exception) -> str:

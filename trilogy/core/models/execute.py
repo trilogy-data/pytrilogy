@@ -750,6 +750,12 @@ class CTE:
             if self.group_to_grain
             else set()
         )
+        # A filtered column collapsed to the grain renders as MAX(CASE ...)
+        # (`filter_collapses_to_grain`): an atom on it is a HAVING
+        # (`having f is not null`).
+        aggregated |= {
+            c.address for c in self.output_columns if self.filter_collapses_to_grain(c)
+        }
         # so is an atom reading a value computed here off one
         # (`count(id) by city / count(id)` over a re-summed count)
         aggregated |= {

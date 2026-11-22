@@ -43,8 +43,8 @@ PRODUCT = "local.product_id"
 ITEM = "local.item_id"
 
 
-def _keyspace(model: str, query: str) -> Keyspace:
-    info, _ = plan(model, query)
+def _keyspace(model: str, query: str, arm: bool = False) -> Keyspace:
+    info, _ = plan(model, query, arm)
     return info.keyspace
 
 
@@ -175,6 +175,7 @@ def test_rollup_subtotal_is_not_a_region():
     rolled = _keyspace(
         CUSTOMERS_DERIVED,
         "select *rollup((select customer_id, sum(amount) as total), customer_id);",
+        arm=True,
     )
     assert _cells(rolled) == _cells(flat)
 
