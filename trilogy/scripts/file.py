@@ -119,6 +119,11 @@ def _fail(exc: Exception, code: int = 1) -> None:
     raise click.exceptions.Exit(code) from exc
 
 
+def _list_description(path: Path) -> str | None:
+    desc = preql_description.read_preql_description(path)
+    return preql_description.truncate_description(desc) if desc else None
+
+
 def _format_size(size: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size < 1024 or unit == "TB":
@@ -196,9 +201,7 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
                     "path": entry.path,
                     "size": entry.size,
                     "description": (
-                        None
-                        if entry.is_dir
-                        else preql_description.read_preql_description(Path(entry.path))
+                        None if entry.is_dir else _list_description(Path(entry.path))
                     ),
                 }
                 for entry in entries

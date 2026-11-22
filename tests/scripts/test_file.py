@@ -119,6 +119,20 @@ def test_list_json_surfaces_preql_description(runner, tmp_path: Path):
     assert entry["description"] == "Unified sales fact across all channels."
 
 
+def test_list_json_caps_description_like_the_text_view(runner, tmp_path: Path):
+    import json
+
+    from trilogy.scripts.file_helpers.preql_description import LIST_FILES_DESC_LIMIT
+
+    (tmp_path / "wide.preql").write_text(
+        "# " + "x" * (LIST_FILES_DESC_LIMIT + 50) + "\nkey id int;\n", encoding="utf-8"
+    )
+    result = runner.invoke(cli, ["--format", "json", "file", "list", str(tmp_path)])
+    entry = json.loads(result.output)["entries"][0]
+    assert len(entry["description"]) == LIST_FILES_DESC_LIMIT
+    assert entry["description"].endswith("…")
+
+
 def test_list_recursive(runner, tmp_path: Path):
     (tmp_path / "top.preql").write_text("x")
     nested = tmp_path / "nested"
