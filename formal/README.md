@@ -2800,7 +2800,10 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 - **`filters` to 40,000** (0.3.532). On main seeds 20,000-40,000 (40,000
   queries) hold 96 wrong answers, 243 raises and 11 invalid statements; the
   round fixes 25 of the wrong answers there and 13 queries left open in
-  0-20,000, with no query right on main failing in either range. OLDER_FAMILIES
+  0-20,000, with no query right on main failing in either range. The five older
+  families, seeds 0-10,000 (20,000 queries each), have no status change and
+  no change in joins or scans. In 20,000-40,000 the round costs 45 joins over
+  56 queries.
   - A filter carrying a row column its grain does not determine (`select
     city, height > 2 as big, tree_form ? tree_form in (<set>) as f`: the
     filter by `species` carried `city` per tree) was paired with the per-tree
