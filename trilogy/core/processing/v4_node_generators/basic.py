@@ -30,22 +30,15 @@ def _expose_boundary_handle(node: StrategyNode, handle: BuildConcept) -> bool:
     its content: a boundary carries the columns its reader demands, so a grain
     key nobody selected is materialized only when a reader needs the row
     identity."""
-    return any(
-        _expose_on_boundary(boundary, handle)
-        for boundary in node.parents
-        if isinstance(boundary, RowsetNode)
-    )
-
-
-def _expose_on_boundary(boundary: RowsetNode, handle: BuildConcept) -> bool:
-    if not boundary.parents:
-        return False
-    if handle.address in {o.address for o in boundary.output_concepts}:
-        return True
-    produced = {o.address for o in boundary.parents[0].usable_outputs}
-    if renders_at(boundary, handle, produced):
-        widen_projection(boundary, [handle], available_addresses=produced)
-        return True
+    for boundary in node.parents:
+        if not isinstance(boundary, RowsetNode) or not boundary.parents:
+            continue
+        if handle.address in {o.address for o in boundary.output_concepts}:
+            return True
+        produced = {o.address for o in boundary.parents[0].usable_outputs}
+        if renders_at(boundary, handle, produced):
+            widen_projection(boundary, [handle], available_addresses=produced)
+            return True
     return False
 
 
@@ -59,12 +52,16 @@ def _expose_parent_grain(
     that dedup, as before. A boundary read directly exposes its own hidden
     identity handles (a rollup's grouping flags)."""
     if isinstance(parent, RowsetNode):
-        for address in sorted(
-            parent_grain - {c.address for c in parent.output_concepts}
-        ):
-            key = environment.concepts.get(address)
-            if key is not None and key.derivation == Derivation.ROWSET:
-                _expose_on_boundary(parent, key)
+        produced = {o.address for o in parent.parents[0].usable_outputs}
+        hidden = [
+            handle
+            for address in sorted(
+                parent_grain - {c.address for c in parent.output_concepts}
+            )
+            if renders_at(parent, handle := environment.concepts[address], produced)
+        ]
+        if hidden:
+            widen_projection(parent, hidden, available_addresses=produced)
         return
     if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
         return
