@@ -36,9 +36,6 @@ probes come after a clean answer: the agent re-verifies, SQL agents do not.
 
 ## Fixed on this branch
 
-- System prompt said bare `agent-info` prints the language reference; it is a
-  1.4k directory, so all 99 runs paid an extra round trip. Prompt now points
-  query tasks at `agent-info query`.
 - Function list advertised names with no call syntax (`isnull`,
   `is_not_distinct`, `power`, `concat_strict`, `unix_to_timestamp`,
   `grain_pin`, `simple_case`) and a `now()` example that does not parse. Hidden;
@@ -97,5 +94,8 @@ sql_schema passes all seven.
 8. **sql_bare sandbox leak**: on q02 the agent listed `/tmp`, `/tmp/ptmain/evals`
    and read a parameter-shifted reference file and trilogy source. `list_files` /
    `read_file` need to be confined to the workspace before sql_bare scores are trusted.
-9. **Rerun all four legs unspliced** on main; q35/q64 should flip, and the
-   prompt fix above changes the enriched baseline.
+9. **Rerun all four legs unspliced** on main; q35/q64 should flip.
+
+Kept deliberately: every run spends a round trip on the bare `agent-info`
+directory before `agent-info query`. Finding the reference is part of what the
+eval tests, so the system prompt does not point at it directly.
