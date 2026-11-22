@@ -1231,7 +1231,16 @@ election, not the padded fallback.
       passthrough of the pass's rows, 8 tests) is the parent walk above.
       `test_rollup_grouping_sets_owner.py` pins the owner, the render (red on
       `main`: clearing the CTE's spec still rendered GROUPING SETS) and the
-      fold.
+      fold. Suite SQL capture (`sqlcap`, `PYTHONHASHSEED=0`, laws included,
+      53,500 tests), each moved test re-run serially on both sides: one plan
+      moved, in 10 `test_duckdb_rollup_tvf_laws` reads (a flagless read of a
+      body with a `grouping()` label). The AGGREGATE-fold refusal looked
+      through a rowset handle at its content's mode, so the dedup group above
+      the rename (no pass of its own) was refused the fold on `main`; read off
+      the CTE it folds, and the label renders in the outer select instead of
+      inside the ROLLUP CTE, same CTE count, rows held by the law oracle. The
+      rest is xdist CTE naming, column order and temp paths. Corpus 0 moved;
+      the suite fails the same 25 tests as `main`.
     - **Measured, not landed: the arm planned standard.** The other half of
       step (b) was prototyped: the arm's factory without the spec (its
       aggregates and flags standard), and `gen_rollup_select` stamping the
