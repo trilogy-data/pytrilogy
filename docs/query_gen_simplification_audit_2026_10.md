@@ -239,15 +239,17 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-seventh slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+eighth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
-`~`-subset, graph-subset, twin and unnested-element proofs, decided NULL
-membership and retired its first optimizer helper, `_unnested_parent` (the
+`~`-subset, graph-subset, twin, unnested-element, recursion-walk, per-key
+subset and rule-B proofs, decided NULL membership and retired its first
+optimizer helper, `_unnested_parent`, and the recursion-seed branch (the
 optimizer rule's firings over the non-law suite: 912 before the first slice,
 796 after it, 522 after the second, 407 after the third, 377 after the
 fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
-matrix joined the suite, and 101 after the seventh, from 255; over the whole suite, laws included, its CTE
+matrix joined the suite, 101 after the seventh, from 255, and 53 after the
+eighth; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done, 10 landed every keyed read (rowset, subquery, statement); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
@@ -722,6 +724,78 @@ election, not the padded fallback.
    varies with the fixture under xdist.) Corpus (207 statements, tpc-ds
    aggregates included): 0 moved. The suite fails the same 25 tests as
    `main`. Fuzzer 522/522.
+
+   **Eighth slice (landed): recursion walks, per-key subsets, EQUAL keys and
+   rule B.** The census on `08cd7f1` read 101 firings over the non-law suite
+   (graph subsets 31, `~` stamps 20, twins 20, rowset boundaries 12, EQUAL
+   keys both sides carry 11, recursion seeds 7). Five planner gaps held about
+   half of them:
+   - **A finished walk carries its seeds.** `complete_key_domain` refused
+     the recursion's gated read for its condition. The gate picks the one
+     row each seed row's walk ends on (`_recursion_seed`), so the walk carries
+     what its seed does, and a recursive value's domain is its image over the
+     seed's start column (`_walk_carries`). The walk's value was also stamped
+     nullable off its edge argument, so `merge root into app_id` paired
+     null-safely and the EQUAL cover refused it: `recurse_edge` is NULL only
+     where its start is (`_function_is_nullable`), and the join renders a
+     plain `=`.
+   - **A read of a wider spelling carries the key.** A scan reading
+     `launch_info.id as payload_launch_id` (`merge payload_launch_id into
+     ~id`) or `procs.pid` renamed into its merged `app.pid` carries every
+     value of what it reads. `complete_key_domain` matched by exact address;
+     its `aliases` are now the spellings the graph puts the key within
+     (`_wider_spellings`: SUBSET or EQUAL), at every lineage step of
+     `_carries_every_value`.
+   - **Per-key subsets on a composite join.** `_partners_every_right_row`
+     took one-key joins only. A right that binds every key of the ON `~`
+     beside lefts complete on each (`launches ~vehicle, ~variant` beside the
+     vehicles) keeps every row, the optimizer's own per-pair reading
+     (`_keeps_rows_of`), so the launch columns stay complete past the LEFT.
+   - **An EQUAL key is no veto.** `_covered_sides` refused every outer key,
+     EQUAL ones included unless both sides carried them whole. An EQUAL
+     relation between two distinct concepts is subset evidence like any other
+     (`merge st into store_id`: a filtered sales group beside the complete
+     stores), so only the optimizer's veto set (`full_relation_keys`) refuses,
+     carried as `JoinFacts.equal_keys`. Not off a rowset boundary
+     (`boundary_covered`): a handle is complete for itself, not for a domain
+     an EQUAL declaration merges it into (`yoy_independent_rowsets` keeps its
+     FULL).
+   - **Rule B at plan time.** A vetoed key still narrows where the graph
+     proves a directed subset path between the two concepts
+     (`proven_covered`): a filtered rowset `union join`ed to an unfiltered one
+     over the same column. `_proven_subset_of` moved to
+     `DomainGraph.proven_within`, which the planner and the optimizer now
+     share.
+
+   The optimizer's recursion-seed branch of `_complete_values` is deleted
+   (`_recursion_seed` stays for `_accumulate_filter`: a gate is no filter for
+   the twin test). Census over the non-law suite: 101 to 53 (twins 20, graph
+   subsets 16, of them q64's 12 lookups, `~` stamps 6, EQUAL keys 6, rowset
+   boundaries 4, the twin over hackernews adhoc05's pushed WHERE 1). The
+   rowset-boundary branch is still load-bearing: ablated, 4 multi-left plans
+   move and 3 of them lose rows. q64's 12 are lookups beside a rowset whose
+   `union join` keys `ensure_content_preservation` keeps as axes after the
+   cover drops them; that is where the next slice starts.
+   `test_subset_join_plan_time_completeness.py` pins the walk, the per-key
+   subsets, the EQUAL cover and rule B with the optimizer rule stubbed (the
+   first three red on `main`).
+
+   Gates, against `08cd7f1`: suite SQL capture (`sqlcap`,
+   `PYTHONHASHSEED=0`, laws included, 51,760 tests) moved 982 tests (FULL
+   -411, LEFT +402, INNER +18, RIGHT -9 across their statements, 501 fewer
+   coalesces, 120 fewer null-safe equalities), mostly
+   `test_oracle_spellings_laws` (414), `test_relation_rollup_laws` (142),
+   `test_oracle_expressions_laws` (108), `test_complete_binding_lookup` (82)
+   and `recurse_edge` (42), each under a row oracle that stayed green; no
+   test changed outcome. 132 plans lost a CTE or a join; 4 gained a CTE
+   (`test_merge_derived_bridge[aggregate]` 2, `test_spellings_60k_gates` 2):
+   every join now INNER at plan time, the walk keeps its stated order from
+   the ecoregions and the count regroups by `(tree_id, bucket)` above it, the
+   fourth slice's open shape. Rows are right. Corpus (205 statements, tpc-ds
+   aggregates included): 2 moved, hackernews adhoc03 and adhoc05 read
+   `root_parent.id` bare where they coalesced it with the walk's root across
+   an INNER equality. The suite fails the same 25 tests as `main`. Fuzzer
+   522/522.
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle
