@@ -1028,6 +1028,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ) -> BuildEnvironment:
         return self._materialize_factory(
             local_concepts,
@@ -1036,6 +1037,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         ).build(self)
 
     def materialize_join_key(
@@ -1060,6 +1062,7 @@ class Environment:
         canonical_build_cache: dict | None,
         datasource_build_cache: dict | None,
         scoped_joins: list[tuple[str, str, JoinType]] | None,
+        multi_select_build_cache: dict | None = None,
     ):
         """The exact factory `materialize_for_select` builds (env merges folded
         into the scoped joins) — one construction for the full, baseline and
@@ -1074,6 +1077,7 @@ class Environment:
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
             scoped_joins=list(self.materialize_join_key(scoped_joins)),
+            multi_select_build_cache=multi_select_build_cache,
         )
 
     def materialize_baseline(
@@ -1083,6 +1087,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """Materialize with NO select overlay, recording per-unit footprints:
         the reusable half of every nested-select materialization under this
@@ -1094,6 +1099,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_recorded(self)
 
@@ -1105,6 +1111,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """The baseline for `scoped_joins`, recorded into `store` on first ask
         and brought up to date on every later one. One spelling for the
@@ -1115,6 +1122,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         key = self.materialize_join_key(scoped_joins)
         baseline = store.get(key)
@@ -1131,6 +1139,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """Bring a cached baseline up to date with concepts registered since
         it was recorded (see `build_environment_extend`). Only concept
@@ -1145,6 +1154,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_extend(self, baseline)
 
@@ -1157,6 +1167,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ) -> BuildEnvironment:
         """`materialize_for_select`, computed as baseline + overlay delta.
         Byte-equivalent to the full build (see `build_environment_delta` for
@@ -1168,6 +1179,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_delta(self, baseline)
 

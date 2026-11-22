@@ -3163,6 +3163,12 @@ def _constant_value(value: Any) -> Any:
     return value
 
 
+MultiSelectBuildCache = dict[
+    tuple[type, tuple[str, ...], tuple[tuple[str, str, JoinType], ...]],
+    tuple[MultiSelectLineage, BuildMultiSelectLineage],
+]
+
+
 class Factory:
 
     def __init__(
@@ -3183,6 +3189,7 @@ class Factory:
         join_scope: JoinScope | None = None,
         select_anchors: dict[str, frozenset[str]] | None = None,
         select_where: WhereClause | None = None,
+        multi_select_build_cache: MultiSelectBuildCache | None = None,
     ):
         self.grain = grain or Grain()
         # Each output of the select this factory builds -> its row keys. A
@@ -3309,6 +3316,11 @@ class Factory:
         # every sub-select in a resolution.
         self.datasource_build_cache: dict[str, BuildDatasource] = (
             {} if datasource_build_cache is None else datasource_build_cache
+        )
+        # Cross-factory cache of built multi-select lineages; see
+        # `_build_multi_select_lineage`. Same lifecycle as the caches above.
+        self.multi_select_build_cache: MultiSelectBuildCache = (
+            {} if multi_select_build_cache is None else multi_select_build_cache
         )
         # Per-grain column-build scopes shared by the datasources this factory
         # builds (see `_datasource_local_scope`).
@@ -4607,6 +4619,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
         )
 
     @_build_dispatch.register
@@ -4675,6 +4688,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
         )._build_where_clause(where)
 
     def _normalize_grain_components(self, components) -> set[str]:
@@ -4799,6 +4813,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=self.scoped_joins,
             join_scope=self.join_scope,
             select_grouping=base.grouping,
@@ -4837,6 +4852,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=self.scoped_joins,
             join_scope=self.join_scope,
             # cross-row virtuals in the WHERE are population-scope gates and
@@ -4929,6 +4945,40 @@ class Factory:
         outputs_only: bool = False,
         extra_lineage_kwargs: dict[str, Any] | None = None,
     ) -> BuildMultiSelectLineage:
+        """Every output of a multi-select carries its own copy of the whole
+        statement as its lineage, so each output rebuilt every arm, and a
+        nested union once per output per enclosing output. Past its grain,
+        built here for the names it reads and writes in this factory, the
+        build is a function of the statement, the environment and the join
+        set alone: one serves every factory sharing the cache."""
+        final_grain = self.build(base.grain)
+        key = (
+            base.__class__,
+            tuple(sorted(base.derived_concepts)),
+            tuple(self.scoped_joins),
+        )
+        held = self.multi_select_build_cache.get(key)
+        if (
+            held is not None
+            and held[1].grain == final_grain
+            and (held[0] is base or held[0] == base)
+        ):
+            return held[1]
+        lineage = self._build_multi_select_lineage_once(
+            base, final_grain, build_cls, derivation, outputs_only, extra_lineage_kwargs
+        )
+        self.multi_select_build_cache[key] = (base, lineage)
+        return lineage
+
+    def _build_multi_select_lineage_once(
+        self,
+        base: MultiSelectLineage,
+        final_grain: BuildGrain,
+        build_cls: type[BuildMultiSelectLineage],
+        derivation: Derivation,
+        outputs_only: bool,
+        extra_lineage_kwargs: dict[str, Any] | None,
+    ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
         parents: list[BuildSelectLineage] = [self.build(x) for x in base.selects]
@@ -4938,8 +4988,6 @@ class Factory:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
 
-        # this requires custom handling to avoid circular dependencies
-        final_grain = self.build(base.grain)
         derived_base = []
         for k in base.derived_concepts:
             if k in local_build_cache:
@@ -4997,6 +5045,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=env_scoped_joins,
         )
         where_factory = Factory(
@@ -5004,6 +5053,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=env_scoped_joins,
         )
         lineage = build_cls(
@@ -5334,6 +5384,7 @@ class Factory:
                 else None
             ),
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             # collapse merged-away source keys (and mark partial bindings) when
             # building this datasource's columns/grain.
             scoped_joins=self.scoped_joins,
