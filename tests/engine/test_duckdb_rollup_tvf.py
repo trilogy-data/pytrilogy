@@ -278,17 +278,11 @@ def test_statement_is_planned_over_its_own_tvf():
     env = Environment()
     _, statements = env.parse(MODEL + rolled(" order by g asc limit 2"))
     statement = statements[-1]
-    outer = statement.relational
-    assert outer is not None and outer.grouping is None
-    assert outer.limit == 2 and statement.limit == 2
-    handles = [env.concepts[ref.address] for ref in outer.output_components]
+    assert statement.grouping is None and statement.limit == 2
+    handles = [env.concepts[ref.address] for ref in statement.output_components]
     assert all(isinstance(h.lineage, RowsetItem) for h in handles)
     assert isinstance(handles[0].lineage.rowset.select, RollupSelectLineage)
-    assert statement.relational_names == {
-        authored.address: handle.address
-        for authored, handle in zip(statement.output_components, handles)
-    }
-    assert [ref.address for ref in statement.output_components] == [
+    assert [statement.labels[h.address].address for h in handles] == [
         "local.department",
         "local.total_credits",
         "local.g",
@@ -298,7 +292,7 @@ def test_statement_is_planned_over_its_own_tvf():
 def test_statement_over_no_keys_stays_a_select():
     env = Environment()
     _, statements = env.parse(MODEL + "select *rollup((select sum(credits) as t));")
-    assert statements[-1].relational is None
+    assert statements[-1].source is None and not statements[-1].labels
 
 
 def test_statement_renders_under_authored_names(executor):
@@ -404,5 +398,5 @@ def test_a_statement_join_stays_its_own():
         "select *rollup((select course, sum(credits) as c), course);"
     )
     joined, plain = statements[-2], statements[-1]
-    assert join in _collect_rowset_scoped_joins(env, joined.planned)
-    assert _collect_rowset_scoped_joins(env, plain.planned) == []
+    assert join in _collect_rowset_scoped_joins(env, joined)
+    assert _collect_rowset_scoped_joins(env, plain) == []

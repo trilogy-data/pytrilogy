@@ -137,3 +137,15 @@ order
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
         assert "^" in str(e)
+
+
+def test_spread_rollup_arm_name_shadow():
+    x = """
+key k int;
+property k.v int;
+property k.total int;
+datasource d (k, v, total) grain (k) address d;
+select *rollup((select k, sum(v) + 1 -> total), k);
+"""
+    with raises(NameShadowError):
+        parse_text(x, parse_config=Parsing(strict_name_shadow_enforcement=True))

@@ -1050,6 +1050,18 @@ election, not the padded fallback.
       keys; a spread beside other select items; a call as another call's
       argument (`*f(*g(...))`); `scalar(*f(...))` for a one-row, one-column
       call.
+    - **The statement is the select over the TVF.** With the clause gone, a
+      spec reaches a statement only through `select *rollup(...)`, so the
+      unsigned spread lowers where it is hydrated (`_spread_grouping`,
+      `rowset_rules.py`) instead of at every statement plan's finalize: the
+      arm (with any HAVING and the ORDER BY it sorts on) is finalized, lowered
+      to the TVF, and the statement is the select over its handles, each
+      labelled with its arm column through `SelectStatement.labels`, the
+      contract a signed spread and `*union(...)` already use. Deleted:
+      `lower_statement_grouping` and its hook in `finalize_select_tree`,
+      `SelectStatement.relational` / `planned` / `relational_names`, and the
+      authored-versus-planned pair in `_process_query`. A grain-less arm (no
+      keys, nothing to infer) stays the statement, as before.
 
 ## Gate used
 

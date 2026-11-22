@@ -101,8 +101,9 @@ Multi-level grouping is written as a call, `rollup((select ...), keys)`
 (`cube`, `grouping_sets`), and lowers to a one-arm TVF (`RollupSelectLineage`,
 `gen_rollup_select`): named (`with r as rollup(...)`), inline
 (`from rollup(...) -> (names) select ...`), or spread into a query
-(`select *rollup(...)`), which is planned as `SelectStatement.relational`, a
-select over an anonymous rowset's handles rendered under the authored names. The `by rollup|cube|grouping sets`
+(`select *rollup(...)`), which hydrates to a select over an anonymous rowset's
+handles, shown under the arm's names through `SelectStatement.labels` exactly
+as a signed spread is (no authored/planned statement pair). The `by rollup|cube|grouping sets`
 select clause is gone: it still parses, to raise a migration error. Every read
 of a keyed rollup is of new key and property concepts, so nothing above the arm
 tracks grouping-set padding. The arm itself is still planned by the select
