@@ -2725,10 +2725,15 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   the rows the condition keeps. Every condition written is a function of the
   filtered value's keys (`Filters.filtered_value_on_its_keys`); what a
   condition off them shows is undecided and written up as a lead. On main
-  seeds 0-20,000 (40,000 queries) hold @@MAIN_WRONG@@ wrong answers,
-  @@MAIN_RAISE@@ raises and @@MAIN_INVALID@@ invalid statements; @@STILL_F@@
-  are left, each failing on main too, and no query that was right on main
-  fails. The five older families, 20,000 queries each, hold nothing new.
+  seeds 0-20,000 (40,000 queries) hold 1,807 wrong answers, 1,880 raises and
+  157 invalid statements; 386 are left (123 wrong, 248 raising, 15 invalid).
+  One seed that planned on main raises (19498, a window over a filtered key
+  whose condition's column a later value read off the window's group), and
+  13 queries that raised on main return wrong rows; every other one left
+  fails on main the same way. The five older families, 20,000 queries each,
+  are unchanged: no status moves, +5 joins in `windows`. Among the 36,154
+  queries right on both sides the family costs 158 joins over 132 queries
+  and saves 804 CTEs.
   - A filtered key (`select city, tree_id ? height > 2 as f`) is `tree_id`
     where it is anything, so the group check read the rows as unique on
     `tree_id` and skipped the dedup: a city came back once per tree the
@@ -2749,8 +2754,8 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     by tree_form >= 1` recursed: the set claims the select's grain, which
     names `f`, and planned standalone beneath the WHERE it asked for `f`,
     which asks for the set (`Filters.value_is_no_finer_than_its_reader`).
-    The 0.3.529 handoff's lead; 282 of the family's raises on main in the
-    first 6,000 seeds.
+    The 0.3.529 handoff's lead, and the family's largest group of raises on
+    main.
   - `select species, tree_id ? min(height) by tree_form < 10 as f,
     min(height)` raised a graph cycle: the select's minimum, grouped by `f`,
     was elected as the partial `min(height) by tree_form` re-aggregates, and
@@ -2763,7 +2768,9 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     as f where sum(height) by city >= 1`) counted as hosted, so the
     statement's rows were given no gate and the placement raised `cannot be
     related to the query outputs` (`Filters.gate_on_a_set_filters_no_row`).
-    Such a barrier no longer stands in for the rows.
+    Such a barrier no longer stands in for the rows, when it is no output of
+    the statement and the WHERE reads no set of its own (the two cases a
+    wider rule broke).
   - A total gated by a total (`(count(tree_id) by *) ? min(height) by * <=
     5`) was collapsed as a value some row of a group passes and rendered
     `max(CASE WHEN min(...) ...)`, which no engine accepts

@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 20,000; the PR of each
-round holds its sweep totals. `filters` has @@OPEN_F@@ `OPEN` seeds (area 4b),
+round holds its sweep totals. `filters` has 197 `OPEN` seeds (area 4b),
 `windows` 19 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -590,7 +590,8 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.530 wrote the
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
 decide. Open in it (`OPEN` in `test_oracle_filters_laws.py`, each failing on
-main too; @@STILL_F@@ of 40,000 queries, @@MAIN_F@@ on main):
+main too but seed 19498; 386 of 40,000 queries, 3,844 on main). By count:
+106 keyless joins, 96 `cannot be related`, 123 wrong rows:
 
 - **Decide: a condition its keys do not decide.** `select city, species ?
   tag = 'x' as f` has three readings and the engine gives each somewhere: per
@@ -618,12 +619,24 @@ main too; @@STILL_F@@ of 40,000 queries, @@MAIN_F@@ on main):
   WHERE membership (`select height > 2 as big, tree_form ? tree_form =
   'linden' as f where city in (city ? city = 'A')`, 2486), and a filtered
   key beside a bare aggregate and a `by tree_form` value (5172).
-- Seed 2917 plans for more than 30 s (a window over two filtered keys under
-  a WHERE gate): the sweep records it as a timeout.
+- A WHERE aggregate consumed only by an aggregate in a select-phase set
+  leaves the statement's rows ungated. 0.3.530 backfills the gate when the
+  WHERE reads no set of its own; with one, the atoms are placed with the set
+  and the backfill raised `Could not resolve connections` (11897, 17195), so
+  those still raise `cannot be related` as on main (92 queries).
+- **A regression**: 19498 (`select species, tree_id ? avg(height) by
+  tree_form >= 0 as f, min(min(height) by species, f) over (...), max(height)
+  by tree_form`) planned on main and raises `Missing source reference to
+  local.height`: the window's group no longer carries the column `f`'s
+  condition reads, and a later value read it from there. Seven seeds that
+  raised on main return wrong rows (2680, 6065, 6987, 9683, 12294, 12986,
+  19841): each owes its rows.
+- A plan that loops: seed 2917 took more than 30 s on main (a window over
+  two filtered keys under a WHERE gate); the sweep now records a timeout.
 - Efficiency: a filtered key beside a derived key now dedups through a second
   contributor joined back on the key's input (`select coalesce(tree_form,
   'none') as form0, tree_id ? species = 'Acer' as f` self-joins on
-  `species`): @@MORE_J@@ joins over @@MORE_Q@@ queries that were right on
+  `species`): 158 joins over 132 queries that were right on
   main. The group the padded filter now requires could sit on the one stream.
 - The family writes no filtered column inside a window's own argument, no
   `?` over a derived key, and one condition per select when the filters are
