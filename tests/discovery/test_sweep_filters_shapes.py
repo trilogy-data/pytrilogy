@@ -229,6 +229,67 @@ SHAPES = [
         ),
         [("broadleaf",), ("linden",), (None,)],
     ),
+    # a filter's keys stay on the rows it filters (48567, reduced): moved to
+    # a scan of the species table by the WHERE's set, they left it nothing to
+    # pair on, and every form met every value of it
+    (
+        (
+            "select tree_form, city ? city = 'A' as v0 where species in"
+            " (species ? count(tree_id) by species < 3);"
+        ),
+        [("broadleaf", "A"), (None, "A"), ("linden", None)],
+    ),
+    # ...a derived key's inputs too (46449)
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
+            " city ? city = 'A' as v0 where species in (species ? count(tree_id)"
+            " by species < 3);"
+        ),
+        [("b", "A"), ("o", "A"), ("o", None)],
+    ),
+    # a WHERE hosted on the aggregate a filter's condition reads filters the
+    # filter's rows too (59782, reduced): the Quercus's 5 is no kept height
+    (
+        (
+            "select height ? count(tree_id) by city < 10 as v0 where min(height)"
+            " by species < 4;"
+        ),
+        [(2,), (3,), (7,), (None,)],
+    ),
+    (
+        (
+            "select height ? count(tree_id) by city, tree_form < 10 as v0 where"
+            " min(height) by tree_form - min(height) by species < 0;"
+        ),
+        [(5,)],
+    ),
+    # ...and what its condition reads (41909, reduced): `tree_form` moved to
+    # the species scan, the per-tree maximum met it on nothing (a keyless join)
+    (
+        (
+            "select tree_id, max(height) ? tree_form = 'linden' as v0,"
+            " min(height) by species as v1;"
+        ),
+        [
+            ("a1", None, 3),
+            ("a2", None, 3),
+            ("a3", None, 5),
+            ("a4", None, None),
+            ("b1", None, 3),
+            ("b2", 2, 2),
+        ],
+    ),
+    # a filter its keys decide is shown once per value, as a property is
+    # (46449): grouped by its hidden `species`, (A, b, NULL) showed twice
+    (
+        (
+            "select city, case when tree_form = 'broadleaf' then 'b' else 'o' end"
+            " as fc, tree_form ? species in (species ? coalesce(tree_form, 'none')"
+            " = 'none') as v0 where tag in (tag ? height between 3 and 7);"
+        ),
+        [("A", "b", None), ("A", "o", None), ("B", "b", None), ("B", "o", None)],
+    ),
 ]
 
 
