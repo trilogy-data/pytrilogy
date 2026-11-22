@@ -267,3 +267,94 @@ def test_an_owner_with_an_empty_list_keeps_its_row():
         ("moss", [], None),
         ("oak", [1, 2], ["desert", "forest"]),
     ], joins
+
+
+PROCESSES = """
+key pid int;
+property pid.parent int?;
+property pid.name string;
+property pid.mem int;
+datasource procs (pid, parent, name, mem) grain (pid)
+query '''select 1 as pid, null as parent, 'code' as name, 10 as mem
+union all select 2, 1, 'node', 5 union all select 3, 2, 'py', 1
+union all select 4, null, 'fx', 7''';
+key app_id int;
+property app_id.app_name string;
+datasource apps (pid: app_id, name: app_name) grain (app_id)
+query '''select 1 as pid, 'code' as name union all select 2, 'node'
+union all select 3, 'py' union all select 4, 'fx' ''';
+auto root <- recurse_edge(pid, parent);
+merge root into app_id;
+"""
+
+
+def test_a_walk_carries_its_seeds_and_names_no_null_root():
+    joins, rows = _joins_and_rows(
+        PROCESSES, "select app_id, app_name, sum(mem) as total;"
+    )
+    assert not any(j.startswith(("FULL", "RIGHT")) for j in joins), joins
+    assert not any("is not distinct from" in j for j in joins[1:]), joins
+    assert rows == [(1, "code", 16), (4, "fx", 7)]
+
+
+LAUNCHES = """
+key vehicle string;
+key variant string;
+datasource vehicles (vehicle, variant) grain (vehicle, variant)
+query '''select 'atlas' vehicle, '-' variant union all select 'atlas', 'v'
+union all select 'soyuz', '-' ''';
+key id string;
+datasource launches (id, vehicle: ~vehicle, variant: ~variant) grain (id)
+query '''select 'l1' id, 'atlas' vehicle, '-' variant
+union all select 'l2', 'atlas', 'v' ''';
+key sat string;
+key sat_launch string;
+datasource satellites (sat, sat_launch: ~sat_launch) grain (sat)
+query '''select 's1' sat, 'l1' sat_launch union all select 's2', 'l1'
+union all select 's3', 'l2' ''';
+merge sat_launch into ~id;
+"""
+
+
+def test_per_key_subsets_keep_every_launch_beside_its_vehicles():
+    joins, rows = _joins_and_rows(
+        LAUNCHES, "select vehicle, variant, count(sat) as sats;"
+    )
+    assert not any(j.startswith("FULL") for j in joins), joins
+    assert rows == [("atlas", "-", 2), ("atlas", "v", 1), ("soyuz", "-", 0)]
+
+
+STORE_YEARS = """
+key store_id int;
+property store_id.store_name string;
+datasource stores (i: store_id, n: store_name) grain (store_id)
+query '''select 10 i, 'a' n union all select 20, 'b' union all select 30, 'c' ''';
+key sid int;
+property sid.yr int;
+property sid.st int;
+property sid.amt int;
+datasource sales (i: sid, y: yr, s: st, a: amt) grain (sid)
+query '''select 1 i, 2001 y, 10 s, 5 a union all select 2, 2002, 20, 7
+union all select 3, 2002, 30, 1''';
+merge st into store_id;
+with early as where yr = 2001 select st as store, store_name, sum(amt) as amt;
+with late as where yr = 2002 select st as store, sum(amt) as amt;
+"""
+
+
+def test_an_equal_key_within_a_complete_scan_is_covered():
+    joins, rows = _joins_and_rows(
+        STORE_YEARS,
+        "select late.store, late.amt, early.amt subset join early.store = late.store;",
+    )
+    assert [j.split(" JOIN ")[0] for j in joins] == ["INNER", "LEFT OUTER"], joins
+    assert rows == [(20, 7, None), (30, 1, None)]
+
+
+def test_a_union_join_narrows_where_the_graph_proves_a_subset():
+    joins, rows = _joins_and_rows(
+        STORE_YEARS + "with every as select st as store, sum(amt) as amt;",
+        "select every.store, every.amt, late.amt union join every.store = late.store;",
+    )
+    assert not any(j.startswith("FULL") for j in joins), joins
+    assert rows == [(10, 5, None), (20, 7, 7), (30, 1, 1)]

@@ -8,7 +8,12 @@ from itertools import permutations
 from operator import attrgetter
 from typing import Any
 
-from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_MARKER_PREFIX, logger
+from trilogy.constants import (
+    DEFAULT_NAMESPACE,
+    PRESENCE_MARKER_PREFIX,
+    RECURSIVE_GATING_CONCEPT,
+    logger,
+)
 from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import (
     Derivation,
@@ -22,6 +27,7 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildComparison,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -358,6 +364,9 @@ class JoinFacts:
     # keys of query-scoped FULL joins (`full`/`union join`, EQUAL/∦ declared
     # edges): neither side's domain contains the other's
     full_join_keys: frozenset[str] = frozenset()
+    # the EQUAL-declared ones among them: one value space, so a side whose
+    # key the graph puts within the other's has a partner for every row
+    equal_keys: frozenset[str] = frozenset()
     # keys an authored relation in the environment declares: scoped partial
     # derived keys and scoped join key groups
     scoped_keys: frozenset[str] = frozenset()
@@ -389,6 +398,12 @@ class JoinFacts:
     # (sub, sup, key): `sub` holds `key` within what `sup` carries every
     # value of, so every `sub` row has a `sup` partner on it
     covered: frozenset[tuple[str, str, str]] = frozenset()
+    # the ones only a rowset boundary carries: complete for its own handle,
+    # not for a domain an EQUAL declaration merges the handle into
+    boundary_covered: frozenset[tuple[str, str, str]] = frozenset()
+    # the ones on a FULL-declared key the graph proves anyway (rule B): a
+    # directed subset path between the two concepts overrides the declaration
+    proven_covered: frozenset[tuple[str, str, str]] = frozenset()
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -1194,13 +1209,25 @@ def _covered_sides(
     (`JoinFacts.covered`), and so is the whole ON, or the covering side's
     grain, made of covered keys, determines the rest. A FULL-declared key
     (`full_join_keys`) keeps both sides' rows whatever they bind, unless it is
-    an EQUAL key both carry every value of (`complete_equal`)."""
-    if _full_keys(left, right, keys, facts):
-        return []
+    an EQUAL key (`equal_keys`): one value space, so a side the graph puts
+    within the other's is covered as under any declared relation; or the
+    graph proves the side within the other's anyway (`proven_covered`). Off
+    their own rowset boundary only: a handle is complete for itself, not for
+    a domain the declaration merges it into."""
+    full = _full_keys(left, right, keys, facts)
+    vetoed = full - facts.equal_keys
     out = []
     for sub_is_left in (True, False):
         sub, sup = (left, right) if sub_is_left else (right, left)
-        covered = {k for k in keys if (sub, sup, k) in facts.covered}
+        covered = {
+            k
+            for k in keys
+            if (sub, sup, k) in facts.covered
+            and not (k in full and (sub, sup, k) in facts.boundary_covered)
+            and (k not in vetoed or (sub, sup, k) in facts.proven_covered)
+        }
+        if vetoed - covered:
+            continue
         if not covered or keys & facts.side(sub).partials - covered:
             continue
         sup_facts = facts.side(sup)
@@ -1550,18 +1577,24 @@ def preserved_sources(
 def _partners_every_right_row(
     join: Join, alive: set[str], declared_only: bool = False
 ) -> bool:
-    """A join on one key from a left whose every row survives and which holds
-    the key's whole domain: every right row with a key has a partner, so only
-    a NULL key on the right drops one (`trees LEFT JOIN ~species`)."""
+    """A join from lefts whose every row survives and which hold each key's
+    whole domain: every right row with a key has a partner, so only a NULL key
+    on the right drops one (`trees LEFT JOIN ~species`). On several keys the
+    right binds each `~`, the per-key subsets the author declared
+    (`launches ~vehicle_name, ~vehicle_variant` beside the vehicles)."""
     pairs = join.pairs or []
-    if len(pairs) != 1:
+    if not pairs:
         return False
-    pair = pairs[0]
-    return (
+    nullable = {c.address for c in join.right.nullable_concepts}
+    return all(
         pair.node.identifier in alive
         and complete_key_domain(pair.node, pair.left.address)
-        and all(c.address != pair.right.address for c in join.right.nullable_concepts)
-        and (not declared_only or _binds_partial(join.right, pair.right.address))
+        and pair.right.address not in nullable
+        and (
+            (len(pairs) == 1 and not declared_only)
+            or _binds_partial(join.right, pair.right.address)
+        )
+        for pair in pairs
     )
 
 
@@ -1672,6 +1705,7 @@ def complete_key_domain(
     rowset_boundaries: bool = False,
     relation_stamps: Collection[str] = frozenset(),
     declared_only: bool = False,
+    aliases: frozenset[str] = frozenset(),
 ) -> bool:
     """Whether this source carries every value of ``address``: an unfiltered
     scan binding it complete, or an unfiltered, unlimited read keeping every
@@ -1685,18 +1719,26 @@ def complete_key_domain(
     the subset ends of declared relations: a read stamps one `~` for the
     relation, not for the rows it holds, so only its leaves and joins say.
     `declared_only` keeps a joined source only where its join type or a
-    declared subset does (`preserved_sources`)."""
-    stamped = any(c.address == address for c in ds.partial_concepts)
+    declared subset does (`preserved_sources`). `aliases` are spellings the
+    domain graph puts ``address`` within: a read carrying every value of one
+    carries every value of ``address``."""
+    names = aliases | {address}
+    stamped = {c.address for c in ds.partial_concepts} & names
     if isinstance(ds, BuildDatasource):
         return (
             not stamped
             and ds.where is None
             and ds.non_partial_for is None
-            and any(c.address == address for c in ds.output_concepts)
+            and any(c.address in names for c in ds.output_concepts)
         )
-    if stamped and address not in relation_stamps:
+    if stamped - set(relation_stamps):
         return False
-    if ds.condition is not None or ds.limit is not None:
+    if ds.limit is not None:
+        return False
+    seed = _recursion_seed(ds)
+    if seed is not None:
+        return _walk_carries(ds, seed, names, rowset_boundaries, relation_stamps)
+    if ds.condition is not None:
         return False
     if rowset_boundaries and _rowset_boundary(ds, address):
         return address not in deep_extent_free_spans(ds)
@@ -1711,10 +1753,50 @@ def complete_key_domain(
     return any(
         sub.identifier in preserved
         and complete_key_domain(
-            sub, address, rowset_boundaries, relation_stamps, declared_only
+            sub, address, rowset_boundaries, relation_stamps, declared_only, aliases
         )
         for sub in ds.datasources
     )
+
+
+def _recursion_seed(ds: QueryDatasource) -> DataSource | None:
+    """The seed of the recursion whose finished walks `ds` keeps: the gate
+    picks the one row each seed row's walk ends on, so it restricts no seed
+    value."""
+    gate = ds.condition
+    if not (
+        isinstance(gate, BuildComparison)
+        and isinstance(gate.left, BuildConcept)
+        and gate.left.name == RECURSIVE_GATING_CONCEPT
+        and len(ds.datasources) == 1
+    ):
+        return None
+    recursion = ds.datasources[0]
+    if (
+        not isinstance(recursion, QueryDatasource)
+        or recursion.source_type != SourceType.RECURSIVE
+        or len(recursion.datasources) != 1
+    ):
+        return None
+    return recursion.datasources[0]
+
+
+def _walk_carries(
+    ds: QueryDatasource,
+    seed: DataSource,
+    names: frozenset[str],
+    rowset_boundaries: bool,
+    relation_stamps: Collection[str],
+) -> bool:
+    """A finished walk carries what its seed rows do, and a recursive value's
+    domain is its image over them: the walk reads its edge column off the
+    same rows, so only the seed's start column must be complete."""
+    concept = next((c for c in ds.output_concepts if c.address in names), None)
+    if concept is None:
+        return False
+    if concept.derivation == Derivation.RECURSIVE:
+        concept = concept.concept_arguments[0]
+    return _carries_every_value(seed, concept, rowset_boundaries, relation_stamps)
 
 
 def _unnested_list(unnests: list[UnnestJoin], address: str) -> BuildConcept | None:
@@ -2945,15 +3027,30 @@ def _side_facts(
 
 
 def _complete_equal(
-    datasource: DataSource, equal_nodes: set[str], canon_node: Callable[[str], str]
+    datasource: DataSource,
+    equal_nodes: set[str],
+    canon_node: Callable[[str], str],
+    graph: DomainGraph,
 ) -> frozenset[str]:
     """The EQUAL-declared keys `datasource` carries every value of: a join on
-    one between two such sides keeps every row of both."""
+    one between two such sides keeps every row of both, and a read of one
+    spelling renamed into another carries what it read."""
     return frozenset(
         node
         for c in datasource.output_concepts
         if (node := canon_node(c.address)) in equal_nodes
-        and _carries_every_value(datasource, c)
+        and _carries_every_value(datasource, c, graph=graph)
+    )
+
+
+def _wider_spellings(concept: BuildConcept, graph: DomainGraph) -> frozenset[str]:
+    """Spellings the domain graph puts `concept` within: a read carrying every
+    value of one carries every value of `concept` (`launch_info.id` read as
+    `payload_launch_id` under `merge payload_launch_id into ~id`)."""
+    return frozenset(
+        s
+        for s in concept.all_spellings
+        if graph.relation(concept.address, s) in _WITHIN
     )
 
 
@@ -2966,13 +3063,20 @@ def _carries_every_value(
     rowset_boundaries: bool = False,
     relation_stamps: Collection[str] = frozenset(),
     declared_only: bool = False,
+    graph: DomainGraph | None = None,
 ) -> bool:
     """`complete_key_domain`, through BASIC and ROWSET lineage: a derived
     key's domain is the image of its inputs', and a handle's the image of its
     content over the body's rows, so a body reading every row of a complete
-    binding carries it whole."""
+    binding carries it whole. With `graph`, a read of a spelling the graph
+    puts a key within counts for the key (`_wider_spellings`)."""
     if complete_key_domain(
-        datasource, concept.address, rowset_boundaries, relation_stamps, declared_only
+        datasource,
+        concept.address,
+        rowset_boundaries,
+        relation_stamps,
+        declared_only,
+        _wider_spellings(concept, graph) if graph else frozenset(),
     ):
         return True
     if concept.derivation not in _COMPLETENESS_TRANSFERRING:
@@ -2980,7 +3084,7 @@ def _carries_every_value(
     args = concept.concept_arguments
     return bool(args) and all(
         _carries_every_value(
-            datasource, arg, rowset_boundaries, relation_stamps, declared_only
+            datasource, arg, rowset_boundaries, relation_stamps, declared_only, graph
         )
         for arg in args
     )
@@ -3007,7 +3111,11 @@ def _covered_keys(
     ds_node_map: Mapping[str, DataSource],
     ds_concept_map: Mapping[tuple[str, str], BuildConcept],
     environment: BuildEnvironment,
-) -> frozenset[tuple[str, str, str]]:
+) -> tuple[
+    frozenset[tuple[str, str, str]],
+    frozenset[tuple[str, str, str]],
+    frozenset[tuple[str, str, str]],
+]:
     """`JoinFacts.covered`: a side whose key is never NULL beside one carrying
     every value of it, whose spelling the domain graph puts the first's
     within. The first needs subset evidence: a `~` binding, or a relation
@@ -3017,9 +3125,14 @@ def _covered_keys(
     (`test_dim_peel_composite_grain_axis`). NULL is no value of a domain, so
     a NULL-key row is covered only under a declared relation, whose NULL
     groups pair by declaration. The plan-time half of the optimizer's subset
-    proof (`_pair_side_fully_matches`)."""
+    proof (`_pair_side_fully_matches`). Also returns the entries only a rowset
+    boundary carries (`JoinFacts.boundary_covered`) and those a FULL-declared
+    key holds by a graph proof alone (`JoinFacts.proven_covered`)."""
     graph = environment.domain_graph
-    carries = _Carries(ds_node_map, ds_concept_map, graph.subset_sources())
+    carries = _Carries(ds_node_map, ds_concept_map, graph)
+    vetoed = graph.full_relation_keys()
+    boundary: set[tuple[str, str, str]] = set()
+    proven: set[tuple[str, str, str]] = set()
     declared = graph.declared_relation_keys()
     out: set[tuple[str, str, str]] = set()
     for sub, sub_facts in sides.items():
@@ -3037,18 +3150,35 @@ def _covered_keys(
                     if _twins(key, sub, sup, sides, carries, related):
                         out.add((sub, sup, key))
                     continue
+                within = (
+                    graph.relation(sub_concept.address, sup_concept.address) in _WITHIN
+                )
+                rule_b = (
+                    not within
+                    and bool(
+                        (sub_concept.all_spellings | sup_concept.all_spellings) & vetoed
+                    )
+                    and graph.proven_within(
+                        sub_concept.address,
+                        sup_concept.address,
+                        sup_concept.all_spellings,
+                    )
+                )
                 if (
                     (
                         key not in sub_facts.nullables
                         or related
                         and _null_alike(key, sub_facts, sup_facts)
                     )
-                    and graph.relation(sub_concept.address, sup_concept.address)
-                    in _WITHIN
+                    and (within or rule_b)
                     and carries(sup, key)
                 ):
                     out.add((sub, sup, key))
-    return frozenset(out)
+                    if not carries(sup, key, boundaries=False):
+                        boundary.add((sub, sup, key))
+                    if rule_b:
+                        proven.add((sub, sup, key))
+    return frozenset(out), frozenset(boundary), frozenset(proven)
 
 
 _WITHIN = (ResolvedRelation.SUBSET, ResolvedRelation.EQUAL)
@@ -3060,23 +3190,29 @@ class _Carries:
 
     nodes: Mapping[str, DataSource]
     concepts: Mapping[tuple[str, str], BuildConcept]
-    relation_stamps: Collection[str]
-    memo: dict[tuple[str, str], bool] = field(default_factory=dict)
+    graph: DomainGraph
+    memo: dict[tuple[str, str, bool], bool] = field(default_factory=dict)
+
+    @cached_property
+    def relation_stamps(self) -> frozenset[str]:
+        return frozenset(self.graph.subset_sources())
 
     def providers(self, side: str, key: str) -> frozenset[str]:
         return _concept_providers(
             self.nodes[side], self.concepts[(side, key)], self.relation_stamps
         )
 
-    def __call__(self, side: str, key: str) -> bool:
-        if (side, key) not in self.memo:
-            self.memo[(side, key)] = _carries_every_value(
+    def __call__(self, side: str, key: str, boundaries: bool = True) -> bool:
+        entry = (side, key, boundaries)
+        if entry not in self.memo:
+            self.memo[entry] = _carries_every_value(
                 self.nodes[side],
                 self.concepts[(side, key)],
-                True,
+                boundaries,
                 self.relation_stamps,
+                graph=self.graph,
             )
-        return self.memo[(side, key)]
+        return self.memo[entry]
 
 
 def _twins(
@@ -3422,13 +3558,18 @@ def get_node_joins(
             ds_node: replace(
                 side,
                 complete_equal=_complete_equal(
-                    ds_node_map[ds_node], equal_nodes, canon_node
+                    ds_node_map[ds_node],
+                    equal_nodes,
+                    canon_node,
+                    environment.domain_graph,
                 ),
             )
             for ds_node, side in sides.items()
         }
     declared = frozenset(canon_node(a) for a in _declared_subset_keys(environment))
-    covered = _covered_keys(sides, ds_node_map, ds_concept_map, environment)
+    covered, boundary_covered, proven_covered = _covered_keys(
+        sides, ds_node_map, ds_concept_map, environment
+    )
     span_families = {
         canon_node(key): canon_node(axis)
         for axis in environment.scoped_join_key_groups
@@ -3437,6 +3578,7 @@ def get_node_joins(
     facts = JoinFacts(
         sides=sides,
         full_join_keys=frozenset(full_join_keys),
+        equal_keys=frozenset(equal_nodes),
         scoped_keys=frozenset(canon_node(a) for a in environment.scoped_partial_derived)
         | frozenset(canon_node(a) for a in environment.all_scoped_join_group_members()),
         # the join tree bases on the complete source providing an anchor key so
@@ -3462,6 +3604,8 @@ def get_node_joins(
         seed=f"ds~{seed}" if seed else None,
         applied=tuple(applied),
         covered=covered,
+        boundary_covered=boundary_covered,
+        proven_covered=proven_covered,
     )
     facts = replace(
         facts,
