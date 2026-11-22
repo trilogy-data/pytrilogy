@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import _thread
 import argparse
 import hashlib
 import importlib
@@ -10,6 +11,7 @@ import signal
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 from collections import Counter
 from collections.abc import Iterable, Iterator
@@ -148,9 +150,11 @@ def run_one(
 
 @contextmanager
 def _deadline(seconds: int) -> Iterator[None]:
-    """Raise TimeoutError in the block after `seconds` (POSIX main thread)."""
+    """Raise TimeoutError in the block after `seconds` (main thread). Without
+    SIGALRM (Windows) a timer interrupts the main thread instead."""
     if not hasattr(signal, "SIGALRM"):
-        yield
+        with _interrupt_after(seconds):
+            yield
         return
 
     def expire(*_: Any) -> None:
@@ -163,6 +167,26 @@ def _deadline(seconds: int) -> Iterator[None]:
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous)
+
+
+@contextmanager
+def _interrupt_after(seconds: int) -> Iterator[None]:
+    fired = threading.Event()
+
+    def expire() -> None:
+        fired.set()
+        _thread.interrupt_main()
+
+    timer = threading.Timer(seconds, expire)
+    timer.start()
+    try:
+        yield
+    except KeyboardInterrupt:
+        if not fired.is_set():
+            raise
+        raise TimeoutError(f"no plan in {seconds}s") from None
+    finally:
+        timer.cancel()
 
 
 def _error(e: Exception) -> str:
