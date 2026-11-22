@@ -2877,6 +2877,26 @@ class EnvBaseline:
     concept_count: int = 0
 
 
+def rebase_locals(donor: EnvBaseline, dirty: set[str]) -> dict[str, BuildConcept]:
+    """The donor's builds a rebase onto `dirty` keeps: everything but the
+    dirty names and what only dirty units wrote. A minted name is spelled
+    from the addresses it reads, so one written under a rebound concept
+    keeps its name and loses its meaning; a unit that is kept and reads it
+    reads none of the dirty names, so its copy is still right."""
+    kept: set[str] = set()
+    written: set[str] = set()
+    for unit in donor.units:
+        if unit.key in dirty:
+            written.update(unit.written)
+        else:
+            kept.update(unit.footprint)
+            kept.add(unit.key)
+    purged = dirty | (written - kept)
+    return {
+        name: built for name, built in donor.end_locals.items() if name not in purged
+    }
+
+
 class JoinScope:
     """Everything a Factory derives from its scoped-join set: the declared
     domain graph, the substitution / identity registries and the pseudonym map
@@ -3765,26 +3785,27 @@ class Factory:
             return grain
         out: list[str] = []
         seen: set[str] = set()
-
-        def expand(addr: str) -> None:
-            if addr in seen:
-                return
-            seen.add(addr)
-            concept = self.environment.concepts.get(addr)
-            if (
-                addr in building
-                and concept is not None
-                and concept.purpose == Purpose.METRIC
-                and concept.grain.components
-            ):
-                for component in concept.grain.component_order:
-                    expand(component)
-            elif addr not in out:
-                out.append(addr)
-
         for component in grain.component_order:
-            expand(component)
+            self._expand_building_metric(component, building, out, seen)
         return Grain(components=set(out), component_order=out)
+
+    def _expand_building_metric(
+        self, addr: str, building: set[str], out: list[str], seen: set[str]
+    ) -> None:
+        if addr in seen:
+            return
+        seen.add(addr)
+        concept = self.environment.concepts.get(addr)
+        if (
+            addr in building
+            and concept is not None
+            and concept.purpose == Purpose.METRIC
+            and concept.grain.components
+        ):
+            for component in concept.grain.component_order:
+                self._expand_building_metric(component, building, out, seen)
+        elif addr not in out:
+            out.append(addr)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
         if self._env_footprint is not None:
@@ -5230,6 +5251,56 @@ class Factory:
             written=tuple(writes),
         )
 
+    def _env_copy_unit(self, new, held, unit: EnvUnit) -> None:
+        if unit.section == "concept":
+            v_build = held.concepts[unit.key]
+            new.concepts[unit.key] = v_build
+            new.canonical_concepts[v_build.canonical_address] = v_build
+        elif unit.section == "datasource":
+            new.datasources[unit.key] = held.datasources[unit.key]
+        else:  # alias / merge both land in alias_origin_lookup
+            a_build = held.alias_origin_lookup[unit.key]
+            new.alias_origin_lookup[unit.key] = a_build
+            new.canonical_concepts[a_build.canonical_address] = a_build
+
+    def build_environment_rebased(
+        self, base: Environment, donor: EnvBaseline, dirty: set[str]
+    ) -> EnvBaseline:
+        """`build_environment_recorded` for `base`, a duplicate of the
+        environment `donor` was recorded over: a unit whose author object is
+        still the duplicate of the donor's, and reads none of the `dirty`
+        names, takes the donor's result; every other unit is built here. This
+        factory's `local_concepts` must be `rebase_locals(donor, dirty)`.
+
+        Sound where `dirty` holds every name whose build can differ: the
+        concepts rebound or removed since duplication plus everything the
+        author model reads them through (`reference_index.dependents`). A
+        unit outside that set is built from equal author objects reading
+        equal author objects, and reads nothing else of the model that a
+        concept added later would not also leave alone."""
+        new = self._env_shell(base)
+        new.class_baseline = donor.environment
+        held = {(u.section, u.key): u for u in donor.units}
+        units: list[EnvUnit] = []
+        for section, key, author_ref, canonical_addr in self._env_units(base):
+            found = held.get((section, key))
+            if found is not None and key not in dirty:
+                self._env_copy_unit(new, donor.environment, found)
+                units.append(dc_replace(found, author_ref=author_ref))
+            else:
+                units.append(
+                    self._env_run_recorded_unit(
+                        new, base, section, key, author_ref, canonical_addr
+                    )
+                )
+        return EnvBaseline(
+            environment=self._env_finish(new),
+            end_locals=self.local_concepts,
+            units=units,
+            unit_keys={(u.section, u.key) for u in units},
+            concept_count=len(base.concepts.data),
+        )
+
     def build_environment_extend(self, base: Environment, baseline: EnvBaseline):
         """Append to `baseline` the units `base` gained since it was recorded
         (a `select ... as alias` registers a concept; a bundle stamped on
@@ -5313,16 +5384,8 @@ class Factory:
                 for name in writes:
                     if end.get(name) is not self.local_concepts.get(name):
                         changed.add(name)
-            elif unit.section == "concept":
-                v_build = b_env.concepts[unit.key]
-                new.concepts[unit.key] = v_build
-                new.canonical_concepts[v_build.canonical_address] = v_build
-            elif unit.section == "datasource":
-                new.datasources[unit.key] = b_env.datasources[unit.key]
-            else:  # alias / merge both land in alias_origin_lookup
-                a_build = b_env.alias_origin_lookup[unit.key]
-                new.alias_origin_lookup[unit.key] = a_build
-                new.canonical_concepts[a_build.canonical_address] = a_build
+            else:
+                self._env_copy_unit(new, b_env, unit)
         return self._env_finish(new)
 
     @_build_dispatch.register

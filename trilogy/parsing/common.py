@@ -1434,32 +1434,31 @@ _SUBEXPR_ATTRS = (
 )
 
 
+def _walk_nested_windows(node: Any, found: list, seen: set[int]) -> None:
+    if node is None or isinstance(node, (str, int, float, bool, ConceptRef)):
+        return
+    if id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, _WINDOW_ITEM_TYPES):
+        found.append(node)
+        return
+    for attr in _SUBEXPR_ATTRS:
+        child = getattr(node, attr, None)
+        if isinstance(child, (list, tuple)):
+            for item in child:
+                _walk_nested_windows(item, found, seen)
+        elif child is not None:
+            _walk_nested_windows(child, found, seen)
+
+
 def _gather_nested_windows(lineage: Any) -> list:
     """Every window item nested anywhere inside `lineage` (e.g. under a CASE,
     arithmetic, or comparison wrapper). Descent stops at each window — a window's
     own `over`/`order_by` are deliberately not searched, since those carry the
     aggregate we must *not* surface as a grain key."""
     found: list = []
-    seen: set[int] = set()
-
-    def walk(node: Any) -> None:
-        if node is None or isinstance(node, (str, int, float, bool, ConceptRef)):
-            return
-        if id(node) in seen:
-            return
-        seen.add(id(node))
-        if isinstance(node, _WINDOW_ITEM_TYPES):
-            found.append(node)
-            return
-        for attr in _SUBEXPR_ATTRS:
-            child = getattr(node, attr, None)
-            if isinstance(child, (list, tuple)):
-                for item in child:
-                    walk(item)
-            elif child is not None:
-                walk(child)
-
-    walk(lineage)
+    _walk_nested_windows(lineage, found, set())
     return found
 
 

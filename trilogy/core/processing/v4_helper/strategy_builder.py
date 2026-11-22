@@ -2639,6 +2639,48 @@ def _row_source_parents(node: StrategyNode) -> list[StrategyNode]:
     ]
 
 
+def _at_input_grain(
+    parent: StrategyNode,
+    keys: set[str],
+    environment: BuildEnvironment,
+    seen: set[int] | None = None,
+) -> bool:
+    seen = seen or set()
+    if id(parent) in seen:
+        return False
+    seen.add(id(parent))
+    if _pairs_repeated_elements(keys, parent):
+        return False
+    resolved_grain = parent.resolve().grain.components
+    unresolved = [
+        component
+        for component in resolved_grain
+        if component not in keys
+        and not strict_fd_determines(environment, keys, component)
+    ]
+    # A leftover component the stream pins to a single literal
+    # (`channel = 'STORE'` under an all-channel union) can't split any
+    # input-grain key group, so the rows are still unique at the input
+    # grain without it. An unnested element can: a list repeats a value
+    # (`[3, 3]`), so its rows are unique only on the element's ordinal.
+    if not unresolved or set(unresolved) <= (
+        _subtree_pinned_addresses(parent) - _unnested_addresses(parent)
+    ):
+        return True
+    rows = _row_source_parents(parent)
+    if isinstance(parent, SelectNode) and parent.force_group is False:
+        return len(rows) == 1 and _at_input_grain(rows[0], keys, environment, seen)
+    if isinstance(parent, MergeNode) and parent.force_group is not True:
+        grained = [
+            candidate
+            for candidate in parent.parents
+            if candidate.resolve().grain.components
+        ]
+        if len(grained) == 1:
+            return _at_input_grain(grained[0], keys, environment, seen)
+    return False
+
+
 def _parents_already_at_input_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -2666,46 +2708,7 @@ def _parents_already_at_input_grain(
         return False
     keys = set(input_grain)
 
-    def at_input_grain(parent: StrategyNode, seen: set[int] | None = None) -> bool:
-        seen = seen or set()
-        if id(parent) in seen:
-            return False
-        seen.add(id(parent))
-        if _pairs_repeated_elements(keys, parent):
-            return False
-        resolved_grain = parent.resolve().grain.components
-        unresolved = [
-            component
-            for component in resolved_grain
-            if component not in keys
-            and not strict_fd_determines(environment, keys, component)
-        ]
-        # A leftover component the stream pins to a single literal
-        # (`channel = 'STORE'` under an all-channel union) can't split any
-        # input-grain key group, so the rows are still unique at the input
-        # grain without it. An unnested element can: a list repeats a value
-        # (`[3, 3]`), so its rows are unique only on the element's ordinal.
-        if not unresolved or set(unresolved) <= (
-            _subtree_pinned_addresses(parent) - _unnested_addresses(parent)
-        ):
-            return True
-        rows = _row_source_parents(parent)
-        if isinstance(parent, SelectNode) and parent.force_group is False:
-            return len(rows) == 1 and at_input_grain(rows[0], seen)
-        if isinstance(parent, MergeNode) and parent.force_group is not True:
-            grained = [
-                candidate
-                for candidate in parent.parents
-                if candidate.resolve().grain.components
-            ]
-            if len(grained) == 1:
-                return at_input_grain(grained[0], seen)
-        return False
-
-    for parent in parents:
-        if not at_input_grain(parent):
-            return False
-    return True
+    return all(_at_input_grain(parent, keys, environment) for parent in parents)
 
 
 # A declared join key is normally one hop from the scan that binds it; the cap

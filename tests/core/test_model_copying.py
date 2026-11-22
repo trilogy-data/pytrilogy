@@ -3,7 +3,11 @@ from dataclasses import dataclass
 
 from trilogy import Environment
 from trilogy.core.models.author import Concept
-from trilogy.core.models.copying import _copies_itself, dataclass_deepcopy
+from trilogy.core.models.copying import (
+    _copies_itself,
+    _copy_value,
+    dataclass_deepcopy,
+)
 
 MODEL = """
 key id int;
@@ -69,3 +73,26 @@ class _Slotted:
 
 def test_slotted_dataclasses_keep_the_generic_copy():
     assert _copies_itself(_Slotted)
+
+
+def test_enums_and_tuples_of_atoms_are_shared_not_copied():
+    concept = _env().concepts["name"]
+    copied = copy.deepcopy(concept)
+    assert copied.purpose is concept.purpose
+    atoms = ("a", 1, None, concept.purpose)
+    assert _copy_value(atoms, {}) is atoms
+
+
+def test_a_tuple_holding_a_model_object_is_copied():
+    concept = _env().concepts["name"]
+    held = (concept, "a")
+    copied = _copy_value(held, {})
+    assert copied is not held
+    assert copied[0] is not concept
+    assert copied[0] == concept
+
+
+def test_one_object_reached_twice_is_copied_once():
+    concept = _env().concepts["name"]
+    memo: dict = {}
+    assert _copy_value(concept, memo) is _copy_value(concept, memo)

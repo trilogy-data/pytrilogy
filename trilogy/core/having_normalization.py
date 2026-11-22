@@ -955,6 +955,28 @@ class _HavingNormalization:
             left=left, right=right, operator=ComparisonOperator.IN
         )
 
+    def _wrap_memberships(
+        self, node: Any, needs_membership: Callable[[Any], bool], grain_keys: list[str]
+    ) -> Any:
+        """`node` with each leaf that needs it wrapped; `node` itself when
+        none does."""
+        if isinstance(node, Conditional):
+            new_left = self._wrap_memberships(node.left, needs_membership, grain_keys)
+            new_right = self._wrap_memberships(node.right, needs_membership, grain_keys)
+            if new_left is node.left and new_right is node.right:
+                return node
+            return Conditional(left=new_left, right=new_right, operator=node.operator)
+        if isinstance(node, Parenthetical):
+            new_content = self._wrap_memberships(
+                node.content, needs_membership, grain_keys
+            )
+            if new_content is node.content:
+                return node
+            return Parenthetical(content=new_content)
+        if needs_membership(node):
+            return self.build_grain_key_membership(node, grain_keys)
+        return node
+
     def rewrite_finer_dims_to_membership(self, allowed_addresses: set[str]) -> None:
         """Rewrite each HAVING predicate on a dimension outside the select grain
         into a post-aggregation semijoin ``key in (filter key where <predicate>)``.
@@ -985,7 +1007,6 @@ class _HavingNormalization:
         """
         grain_keys = self.stable_grain_keys()
         row_grain_allowed = self.row_grain_allowed_addresses()
-        built_membership = False
 
         def needs_membership(leaf: Any) -> bool:
             # SubselectComparison subclasses Comparison: an existing `x in <set>`
@@ -1006,27 +1027,10 @@ class _HavingNormalization:
             # check; don't wrap it.
             return not any(self.is_unresolved(r.address) for r in extra)
 
-        def transform(node: Any) -> Any:
-            nonlocal built_membership
-            if isinstance(node, Conditional):
-                new_left = transform(node.left)
-                new_right = transform(node.right)
-                if new_left is node.left and new_right is node.right:
-                    return node
-                return Conditional(
-                    left=new_left, right=new_right, operator=node.operator
-                )
-            if isinstance(node, Parenthetical):
-                new_content = transform(node.content)
-                if new_content is node.content:
-                    return node
-                return Parenthetical(content=new_content)
-            if needs_membership(node):
-                built_membership = True
-                return self.build_grain_key_membership(node, grain_keys)
-            return node
-
-        new_conditional = transform(self.conditional)
+        new_conditional = self._wrap_memberships(
+            self.conditional, needs_membership, grain_keys
+        )
+        built_membership = new_conditional is not self.conditional
         if new_conditional is not self.conditional:
             self.conditional = new_conditional
             self.changed = True
