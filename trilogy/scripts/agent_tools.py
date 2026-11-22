@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trilogy.ai.models import LLMToolDefinition
-from trilogy.scripts.agent_render import render_events
+from trilogy.scripts.agent_render import render_event, render_events
 from trilogy.scripts.display_core import _pretty, print_info
 from trilogy.scripts.file_helpers import preql_description
 
@@ -212,7 +212,7 @@ LIST_FILES_TOOL = LLMToolDefinition(
     description=(
         "List files in the workspace (default: current directory, recursive). "
         "Use this to understand available files before running explore. "
-        "Returns a JSON `files` event with an `entries` array; each .preql "
+        "Returns an `event: files` block with an `entries` list; each .preql "
         "entry carries a `description` from its leading `#` comment block."
     ),
     input_schema={
@@ -367,6 +367,12 @@ def script_write_refused(state: AgentState, paths: list[str]) -> bool:
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:
+    payload = list_files_payload(state, args)
+    return payload if isinstance(payload, str) else render_event(payload)
+
+
+def list_files_payload(state: AgentState, args: dict) -> dict[str, object] | str:
+    """The listing as a ``files`` event, or an error message."""
     path = args.get("path", ".")
     recursive = args.get("recursive", True)
     if not isinstance(path, str) or not path:
@@ -414,7 +420,7 @@ def handle_list_files(state: AgentState, args: dict) -> str:
     if truncated:
         payload["truncated"] = True
     payload["entries"] = entries
-    return _pretty(payload)
+    return payload
 
 
 def _first_non_flag_arg(raw_args: list[str]) -> str | None:

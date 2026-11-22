@@ -86,9 +86,13 @@ def _decode_events(text: str) -> list[Any] | None:
     return events
 
 
+def render_event(event: Any) -> str:
+    return "\n".join(_lines(event))
+
+
 def render_events(text: str) -> str:
     """Plain-text form of a JSON event stream; non-JSON text passes through."""
     events = _decode_events(text)
     if not events:
         return text
-    return "\n\n".join("\n".join(_lines(e)) for e in events)
+    return "\n\n".join(render_event(e) for e in events)

@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from trilogy.ai.models import LLMToolDefinition
+from trilogy.scripts.agent_render import render_events
 from trilogy.scripts.agent_tools import (
     LIST_FILES_TOOL,
     AgentState,
@@ -146,9 +147,10 @@ def _format_result(keys: list[str], rows: list, statement: int | None = None) ->
 
 
 def _envelope(exit_code: int, stdout: str, stderr: str) -> str:
+    # Same plain-text rendering the trilogy tool gives the model.
     return (
         f"exit_code: {exit_code}\n"
-        f"--- stdout ---\n{stdout}\n"
+        f"--- stdout ---\n{render_events(stdout)}\n"
         f"--- stderr ---\n{stderr}"
     )
 
