@@ -30,15 +30,22 @@ def _expose_boundary_handle(node: StrategyNode, handle: BuildConcept) -> bool:
     its content: a boundary carries the columns its reader demands, so a grain
     key nobody selected is materialized only when a reader needs the row
     identity."""
-    for boundary in node.parents:
-        if not isinstance(boundary, RowsetNode) or not boundary.parents:
-            continue
-        if handle.address in {o.address for o in boundary.output_concepts}:
-            return True
-        produced = {o.address for o in boundary.parents[0].usable_outputs}
-        if renders_at(boundary, handle, produced):
-            widen_projection(boundary, [handle], available_addresses=produced)
-            return True
+    return any(
+        _expose_on_boundary(boundary, handle)
+        for boundary in node.parents
+        if isinstance(boundary, RowsetNode)
+    )
+
+
+def _expose_on_boundary(boundary: RowsetNode, handle: BuildConcept) -> bool:
+    if not boundary.parents:
+        return False
+    if handle.address in {o.address for o in boundary.output_concepts}:
+        return True
+    produced = {o.address for o in boundary.parents[0].usable_outputs}
+    if renders_at(boundary, handle, produced):
+        widen_projection(boundary, [handle], available_addresses=produced)
+        return True
     return False
 
 
@@ -49,7 +56,16 @@ def _expose_parent_grain(
     but does not project (a merge over a rowset boundary at the boundary's
     identity): the keys are what a projection over it widens back to, and
     dedup is the repair of last resort. A root key a merge hides is left to
-    that dedup, as before."""
+    that dedup, as before. A boundary read directly exposes its own hidden
+    identity handles (a rollup's grouping flags)."""
+    if isinstance(parent, RowsetNode):
+        for address in sorted(
+            parent_grain - {c.address for c in parent.output_concepts}
+        ):
+            key = environment.concepts.get(address)
+            if key is not None and key.derivation == Derivation.ROWSET:
+                _expose_on_boundary(parent, key)
+        return
     if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
         return
     exposed = {c.address for c in parent.output_concepts}

@@ -2878,6 +2878,14 @@ def _terminal_basic_grouping_provider(
     )
     if not expression_inputs:
         return None
+    # a grain key the statement outputs is no passenger: a provider that drops
+    # it (a window over a rollup, ranking without its grouping id) strands it
+    contract = attrs[FINAL_NODE_ID].final_contract
+    demanded = (
+        pairing_keys(current.grain_components) & contract.output_addresses
+        if contract is not None
+        else frozenset()
+    )
     my_ancestors = nx.ancestors(group_graph, gid)
     best_gid: str | None = None
     best_score: tuple[int, int] | None = None
@@ -2895,7 +2903,7 @@ def _terminal_basic_grouping_provider(
         if gid in candidate_ancestors:
             continue
         candidate_outputs = sets.outputs_of(candidate)
-        if not expression_inputs <= candidate_outputs:
+        if not (expression_inputs | demanded) <= candidate_outputs:
             continue
         if not candidate_attrs.grain_components <= expression_inputs:
             continue
