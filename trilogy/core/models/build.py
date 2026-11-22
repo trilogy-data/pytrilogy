@@ -2877,6 +2877,26 @@ class EnvBaseline:
     concept_count: int = 0
 
 
+def rebase_locals(donor: EnvBaseline, dirty: set[str]) -> dict[str, BuildConcept]:
+    """The donor's builds a rebase onto `dirty` keeps: everything but the
+    dirty names and what only dirty units wrote. A minted name is spelled
+    from the addresses it reads, so one written under a rebound concept
+    keeps its name and loses its meaning; a unit that is kept and reads it
+    reads none of the dirty names, so its copy is still right."""
+    kept: set[str] = set()
+    written: set[str] = set()
+    for unit in donor.units:
+        if unit.key in dirty:
+            written.update(unit.written)
+        else:
+            kept.update(unit.footprint)
+            kept.add(unit.key)
+    purged = dirty | (written - kept)
+    return {
+        name: built for name, built in donor.end_locals.items() if name not in purged
+    }
+
+
 class JoinScope:
     """Everything a Factory derives from its scoped-join set: the declared
     domain graph, the substitution / identity registries and the pseudonym map
@@ -3163,6 +3183,12 @@ def _constant_value(value: Any) -> Any:
     return value
 
 
+MultiSelectBuildCache = dict[
+    tuple[type, tuple[str, ...], tuple[tuple[str, str, JoinType], ...]],
+    tuple[MultiSelectLineage, BuildMultiSelectLineage],
+]
+
+
 class Factory:
 
     def __init__(
@@ -3183,6 +3209,7 @@ class Factory:
         join_scope: JoinScope | None = None,
         select_anchors: dict[str, frozenset[str]] | None = None,
         select_where: WhereClause | None = None,
+        multi_select_build_cache: MultiSelectBuildCache | None = None,
     ):
         self.grain = grain or Grain()
         # Each output of the select this factory builds -> its row keys. A
@@ -3309,6 +3336,11 @@ class Factory:
         # every sub-select in a resolution.
         self.datasource_build_cache: dict[str, BuildDatasource] = (
             {} if datasource_build_cache is None else datasource_build_cache
+        )
+        # Cross-factory cache of built multi-select lineages; see
+        # `_build_multi_select_lineage`. Same lifecycle as the caches above.
+        self.multi_select_build_cache: MultiSelectBuildCache = (
+            {} if multi_select_build_cache is None else multi_select_build_cache
         )
         # Per-grain column-build scopes shared by the datasources this factory
         # builds (see `_datasource_local_scope`).
@@ -3753,26 +3785,27 @@ class Factory:
             return grain
         out: list[str] = []
         seen: set[str] = set()
-
-        def expand(addr: str) -> None:
-            if addr in seen:
-                return
-            seen.add(addr)
-            concept = self.environment.concepts.get(addr)
-            if (
-                addr in building
-                and concept is not None
-                and concept.purpose == Purpose.METRIC
-                and concept.grain.components
-            ):
-                for component in concept.grain.component_order:
-                    expand(component)
-            elif addr not in out:
-                out.append(addr)
-
         for component in grain.component_order:
-            expand(component)
+            self._expand_building_metric(component, building, out, seen)
         return Grain(components=set(out), component_order=out)
+
+    def _expand_building_metric(
+        self, addr: str, building: set[str], out: list[str], seen: set[str]
+    ) -> None:
+        if addr in seen:
+            return
+        seen.add(addr)
+        concept = self.environment.concepts.get(addr)
+        if (
+            addr in building
+            and concept is not None
+            and concept.purpose == Purpose.METRIC
+            and concept.grain.components
+        ):
+            for component in concept.grain.component_order:
+                self._expand_building_metric(component, building, out, seen)
+        elif addr not in out:
+            out.append(addr)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
         if self._env_footprint is not None:
@@ -4607,6 +4640,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
         )
 
     @_build_dispatch.register
@@ -4675,6 +4709,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
         )._build_where_clause(where)
 
     def _normalize_grain_components(self, components) -> set[str]:
@@ -4799,6 +4834,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=self.scoped_joins,
             join_scope=self.join_scope,
             select_grouping=base.grouping,
@@ -4837,6 +4873,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=self.scoped_joins,
             join_scope=self.join_scope,
             # cross-row virtuals in the WHERE are population-scope gates and
@@ -4929,6 +4966,40 @@ class Factory:
         outputs_only: bool = False,
         extra_lineage_kwargs: dict[str, Any] | None = None,
     ) -> BuildMultiSelectLineage:
+        """Every output of a multi-select carries its own copy of the whole
+        statement as its lineage, so each output rebuilt every arm, and a
+        nested union once per output per enclosing output. Past its grain,
+        built here for the names it reads and writes in this factory, the
+        build is a function of the statement, the environment and the join
+        set alone: one serves every factory sharing the cache."""
+        final_grain = self.build(base.grain)
+        key = (
+            base.__class__,
+            tuple(sorted(base.derived_concepts)),
+            tuple(self.scoped_joins),
+        )
+        held = self.multi_select_build_cache.get(key)
+        if (
+            held is not None
+            and held[1].grain == final_grain
+            and (held[0] is base or held[0] == base)
+        ):
+            return held[1]
+        lineage = self._build_multi_select_lineage_once(
+            base, final_grain, build_cls, derivation, outputs_only, extra_lineage_kwargs
+        )
+        self.multi_select_build_cache[key] = (base, lineage)
+        return lineage
+
+    def _build_multi_select_lineage_once(
+        self,
+        base: MultiSelectLineage,
+        final_grain: BuildGrain,
+        build_cls: type[BuildMultiSelectLineage],
+        derivation: Derivation,
+        outputs_only: bool,
+        extra_lineage_kwargs: dict[str, Any] | None,
+    ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
         parents: list[BuildSelectLineage] = [self.build(x) for x in base.selects]
@@ -4938,8 +5009,6 @@ class Factory:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
 
-        # this requires custom handling to avoid circular dependencies
-        final_grain = self.build(base.grain)
         derived_base = []
         for k in base.derived_concepts:
             if k in local_build_cache:
@@ -4997,6 +5066,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=env_scoped_joins,
         )
         where_factory = Factory(
@@ -5004,6 +5074,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             scoped_joins=env_scoped_joins,
         )
         lineage = build_cls(
@@ -5180,6 +5251,56 @@ class Factory:
             written=tuple(writes),
         )
 
+    def _env_copy_unit(self, new, held, unit: EnvUnit) -> None:
+        if unit.section == "concept":
+            v_build = held.concepts[unit.key]
+            new.concepts[unit.key] = v_build
+            new.canonical_concepts[v_build.canonical_address] = v_build
+        elif unit.section == "datasource":
+            new.datasources[unit.key] = held.datasources[unit.key]
+        else:  # alias / merge both land in alias_origin_lookup
+            a_build = held.alias_origin_lookup[unit.key]
+            new.alias_origin_lookup[unit.key] = a_build
+            new.canonical_concepts[a_build.canonical_address] = a_build
+
+    def build_environment_rebased(
+        self, base: Environment, donor: EnvBaseline, dirty: set[str]
+    ) -> EnvBaseline:
+        """`build_environment_recorded` for `base`, a duplicate of the
+        environment `donor` was recorded over: a unit whose author object is
+        still the duplicate of the donor's, and reads none of the `dirty`
+        names, takes the donor's result; every other unit is built here. This
+        factory's `local_concepts` must be `rebase_locals(donor, dirty)`.
+
+        Sound where `dirty` holds every name whose build can differ: the
+        concepts rebound or removed since duplication plus everything the
+        author model reads them through (`reference_index.dependents`). A
+        unit outside that set is built from equal author objects reading
+        equal author objects, and reads nothing else of the model that a
+        concept added later would not also leave alone."""
+        new = self._env_shell(base)
+        new.class_baseline = donor.environment
+        held = {(u.section, u.key): u for u in donor.units}
+        units: list[EnvUnit] = []
+        for section, key, author_ref, canonical_addr in self._env_units(base):
+            found = held.get((section, key))
+            if found is not None and key not in dirty:
+                self._env_copy_unit(new, donor.environment, found)
+                units.append(dc_replace(found, author_ref=author_ref))
+            else:
+                units.append(
+                    self._env_run_recorded_unit(
+                        new, base, section, key, author_ref, canonical_addr
+                    )
+                )
+        return EnvBaseline(
+            environment=self._env_finish(new),
+            end_locals=self.local_concepts,
+            units=units,
+            unit_keys={(u.section, u.key) for u in units},
+            concept_count=len(base.concepts.data),
+        )
+
     def build_environment_extend(self, base: Environment, baseline: EnvBaseline):
         """Append to `baseline` the units `base` gained since it was recorded
         (a `select ... as alias` registers a concept; a bundle stamped on
@@ -5263,16 +5384,8 @@ class Factory:
                 for name in writes:
                     if end.get(name) is not self.local_concepts.get(name):
                         changed.add(name)
-            elif unit.section == "concept":
-                v_build = b_env.concepts[unit.key]
-                new.concepts[unit.key] = v_build
-                new.canonical_concepts[v_build.canonical_address] = v_build
-            elif unit.section == "datasource":
-                new.datasources[unit.key] = b_env.datasources[unit.key]
-            else:  # alias / merge both land in alias_origin_lookup
-                a_build = b_env.alias_origin_lookup[unit.key]
-                new.alias_origin_lookup[unit.key] = a_build
-                new.canonical_concepts[a_build.canonical_address] = a_build
+            else:
+                self._env_copy_unit(new, b_env, unit)
         return self._env_finish(new)
 
     @_build_dispatch.register
@@ -5334,6 +5447,7 @@ class Factory:
                 else None
             ),
             canonical_build_cache=self.canonical_build_cache,
+            multi_select_build_cache=self.multi_select_build_cache,
             # collapse merged-away source keys (and mark partial bindings) when
             # building this datasource's columns/grain.
             scoped_joins=self.scoped_joins,

@@ -115,3 +115,59 @@ def test_a_forked_child_abandons_idle_instances():
     duckdb_pool._abandon_idle()
     assert duckdb_pool._idle == []
     assert all(instance in duckdb_pool._abandoned for instance in idle)
+
+
+def _state_reread(*statements: str) -> bool:
+    connection = duckdb_pool.connect()
+    for statement in statements:
+        connection.cursor().execute(statement)
+    reread = connection._tainted[1]
+    connection.close()
+    return reread
+
+
+def test_state_is_reread_only_after_a_statement_that_could_move_it():
+    assert not _state_reread(
+        "CREATE TABLE t AS SELECT 1 AS x",
+        "SELECT 'Set this in your trilogy.conf' AS message",
+        "SELECT x AS offset_x FROM t",
+    )
+    assert _state_reread("SET threads = 1")
+    assert _state_reread("PRAGMA enable_progress_bar")
+    assert _state_reread("ATTACH ':memory:' AS other")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "SET threads = 1",
+        "ATTACH ':memory:' AS other",
+        "CREATE SECRET leaked (TYPE s3, KEY_ID 'k', SECRET 's')",
+    ],
+)
+def test_state_moved_through_a_cursor_retires_the_instance(statement: str):
+    connection = duckdb_pool.connect()
+    instance = _instance(connection)
+    connection.cursor().execute(statement)
+    connection.close()
+    assert instance not in duckdb_pool._idle
+
+
+def test_an_unknown_python_api_rereads_state():
+    connection = duckdb_pool.connect()
+    assert callable(connection.table_function)
+    assert connection._tainted[1]
+    connection.close()
+
+
+def test_a_cursor_reads_through_to_its_connection():
+    connection = duckdb_pool.connect()
+    cursor = connection.cursor()
+    cursor.execute("CREATE TABLE t (x INTEGER)")
+    cursor.executemany("INSERT INTO t VALUES (?)", [(1,), (2,)])
+    cursor.execute("SELECT sum(x) FROM t")
+    assert cursor.fetchone() == (3,)
+    assert not connection._tainted[1]
+    connection.note(None)
+    assert connection._tainted[1]
+    connection.close()

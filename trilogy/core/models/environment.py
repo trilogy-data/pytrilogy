@@ -15,6 +15,7 @@ from typing import (
     Never,
     Self,
 )
+from weakref import ReferenceType, ref
 
 from pydantic import TypeAdapter as _TypeAdapter
 
@@ -321,6 +322,82 @@ def _subsequence_gaps(needle: list[str], haystack: list[str]) -> int:
         positions.append(i)
         i += 1
     return positions[-1] - positions[0] - (len(positions) - 1)
+
+
+def _concept_state(concept: Concept) -> tuple:
+    """What an in-place edit of a concept moves: each part by identity (held,
+    so a replacement cannot reuse its id) and each set's size."""
+    return (
+        concept.lineage,
+        concept.grain,
+        concept.keys,
+        concept.pseudonyms,
+        concept.datatype,
+        concept.modifiers,
+        concept.purpose,
+        concept.derivation,
+        concept.granularity,
+        len(concept.pseudonyms),
+        len(concept.keys or ()),
+        len(concept.modifiers),
+    )
+
+
+def _source_state(datasource: Datasource) -> tuple:
+    """`_concept_state` for a datasource and each of its columns."""
+    return (
+        datasource.columns,
+        datasource.address,
+        datasource.grain,
+        datasource.where,
+        datasource.non_partial_for,
+        datasource.status,
+        datasource.column_level_partial_addresses,
+        *(
+            part
+            for column in datasource.columns
+            for part in (column, column.alias, column.concept, column.modifiers)
+        ),
+        len(datasource.column_level_partial_addresses),
+        *(len(column.modifiers) for column in datasource.columns),
+    )
+
+
+def _same_state(left: tuple, right: tuple) -> bool:
+    return len(left) == len(right) and all(
+        now is then or (type(now) is int and now == then)
+        for now, then in zip(left, right)
+    )
+
+
+def _model_state(environment: Environment) -> tuple[tuple, ...]:
+    return (
+        *(_concept_state(c) for c in environment.concepts.data.values()),
+        *(_source_state(d) for d in environment.datasources.values()),
+    )
+
+
+def _same_model(left: tuple[tuple, ...], right: tuple[tuple, ...]) -> bool:
+    return len(left) == len(right) and all(map(_same_state, left, right))
+
+
+@dataclass(frozen=True)
+class DuplicateOrigin:
+    """Where a duplicated environment came from and what both held then:
+    enough to say later which of its concepts are still its parent's, so the
+    parent's built baseline serves them (`query_processor._inherited_caches`).
+    Every object named here is held, so an identity check cannot false-hit on
+    a recycled id."""
+
+    parent: ReferenceType[Environment]
+    parent_stamp: tuple
+    parent_state: tuple[tuple, ...]
+    # this environment's own concepts at duplication, in the parent's order
+    concepts: tuple[Concept, ...]
+    concept_states: tuple[tuple, ...]
+    source_states: tuple[tuple, ...]
+    stamp_tail: tuple
+    merges: tuple[tuple[str, str, JoinType], ...]
 
 
 class EnvironmentConceptDict(UserDict[str, Concept]):
@@ -936,6 +1013,7 @@ class Environment:
     # (len(merges) it covers, declared-edge graph over them): the merge lint's
     # base graph, extended per accepted merge instead of rebuilt per check.
     _merge_lint_graph: tuple[int, DomainGraph] | None = None
+    _origin: DuplicateOrigin | None = field(default=None, repr=False, compare=False)
 
     def freeze(self):
         self.frozen = True
@@ -1028,6 +1106,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ) -> BuildEnvironment:
         return self._materialize_factory(
             local_concepts,
@@ -1036,6 +1115,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         ).build(self)
 
     def materialize_join_key(
@@ -1060,6 +1140,7 @@ class Environment:
         canonical_build_cache: dict | None,
         datasource_build_cache: dict | None,
         scoped_joins: list[tuple[str, str, JoinType]] | None,
+        multi_select_build_cache: dict | None = None,
     ):
         """The exact factory `materialize_for_select` builds (env merges folded
         into the scoped joins) — one construction for the full, baseline and
@@ -1074,6 +1155,7 @@ class Environment:
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
             scoped_joins=list(self.materialize_join_key(scoped_joins)),
+            multi_select_build_cache=multi_select_build_cache,
         )
 
     def materialize_baseline(
@@ -1083,6 +1165,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """Materialize with NO select overlay, recording per-unit footprints:
         the reusable half of every nested-select materialization under this
@@ -1094,6 +1177,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_recorded(self)
 
@@ -1105,6 +1189,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """The baseline for `scoped_joins`, recorded into `store` on first ask
         and brought up to date on every later one. One spelling for the
@@ -1115,6 +1200,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         key = self.materialize_join_key(scoped_joins)
         baseline = store.get(key)
@@ -1131,6 +1217,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ):
         """Bring a cached baseline up to date with concepts registered since
         it was recorded (see `build_environment_extend`). Only concept
@@ -1145,6 +1232,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_extend(self, baseline)
 
@@ -1157,6 +1245,7 @@ class Environment:
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        multi_select_build_cache: dict | None = None,
     ) -> BuildEnvironment:
         """`materialize_for_select`, computed as baseline + overlay delta.
         Byte-equivalent to the full build (see `build_environment_delta` for
@@ -1168,6 +1257,7 @@ class Environment:
             canonical_build_cache,
             datasource_build_cache,
             scoped_joins,
+            multi_select_build_cache,
         )
         return factory.build_environment_delta(self, baseline)
 
@@ -1281,7 +1371,63 @@ class Environment:
         graph.add_edge(edge)
         self._merge_lint_graph = (len(self.merges) + 1, graph)
 
+    def build_stamp(self) -> tuple:
+        """Identifies one content state for everything a build reads; see
+        `query_processor._session_build_caches` for what each part covers."""
+        return (
+            self.concepts.structure_version,
+            self.datasources.content_version,
+            self.concepts.mutations if self.concepts.has_overlays else -1,
+            len(self.alias_origin_lookup),
+            tuple(sorted((k, d.status.value) for k, d in self.datasources.items())),
+        )
+
+    def origin_changes(self) -> tuple[Environment, set[str]] | None:
+        """The environment this was duplicated from and the concept addresses
+        rebound, removed or edited here since, while the parent holds what it
+        held then and nothing but concepts moved here."""
+        origin = self._origin
+        if origin is None:
+            return None
+        parent = origin.parent()
+        if (
+            parent is None
+            or parent.build_stamp() != origin.parent_stamp
+            or self.build_stamp()[1:] != origin.stamp_tail
+            or tuple(self.merges) != origin.merges
+            or tuple(parent.merges) != origin.merges
+            or not _same_model(_model_state(parent), origin.parent_state)
+            or not _same_model(
+                tuple(_source_state(d) for d in self.datasources.values()),
+                origin.source_states,
+            )
+        ):
+            return None
+        held = self.concepts.data
+        return parent, {
+            key
+            for key, then, state in zip(
+                parent.concepts.data, origin.concepts, origin.concept_states
+            )
+            if held.get(key) is not then or not _same_state(_concept_state(then), state)
+        }
+
     def duplicate(self):
+        new = self._duplicate()
+        concepts = tuple(new.concepts.data.values())
+        new._origin = DuplicateOrigin(
+            parent=ref(self),
+            parent_stamp=self.build_stamp(),
+            parent_state=_model_state(self),
+            concepts=concepts,
+            concept_states=tuple(_concept_state(c) for c in concepts),
+            source_states=tuple(_source_state(d) for d in new.datasources.values()),
+            stamp_tail=new.build_stamp()[1:],
+            merges=tuple(new.merges),
+        )
+        return new
+
+    def _duplicate(self):
         memo: dict[int, Any] = {}
         return Environment(
             datasources=self.datasources.duplicate(memo),

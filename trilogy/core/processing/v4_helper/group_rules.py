@@ -1480,12 +1480,37 @@ def _partition_by_signature_and_grain(
             else set()
         )
         grains = [data.grain_components for _, data in sub_items]
-        terminal = [
+        unread = [
             merge_terminal_siblings
-            and data.grain_components <= output_addresses
             and not lineage_successors(concept_graph, concept_edges, node)
-            for node, data in sub_items
+            for node, _ in sub_items
         ]
+        terminal = [unread[i] and grains[i] <= output_addresses for i in range(n)]
+        # Siblings over one scan read its rows, so it already relates their
+        # keys. Merged only when FINAL has nothing else to pair them through:
+        # every output is a sibling or a column of that scan (an aggregate pairs
+        # them on its keys), and no such column is a sibling's grain key (the
+        # scan is then a contributor carrying the rest). WHERE-only columns are
+        # no outputs.
+        where_only = {
+            data.address for data in concept_attrs.values() if data.where_row_arg
+        }
+        one_scan = []
+        for sig in sigs:
+            members = [k for k in range(n) if unread[k] and sigs[k] == sig]
+            siblings = {sub_items[k][1].address for k in members}
+            scan = {
+                concept_attrs[node].address
+                for node, gid in primary_group.items()
+                if gid in sig
+            }
+            rest = output_addresses - where_only - siblings
+            one_scan.append(
+                len(sig) == 1
+                and sig <= root_gids
+                and rest <= scan
+                and not rest & frozenset().union(*(grains[k] for k in members))
+            )
         pins = [data.grain_pin_anchors for _, data in sub_items]
         merged: list[tuple[int, int]] = []
         for i in range(n):
@@ -1517,7 +1542,13 @@ def _partition_by_signature_and_grain(
                 if (
                     grains[i] <= grains[j]
                     or grains[j] <= grains[i]
-                    or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
+                    or (
+                        sigs[i] == sigs[j]
+                        and (
+                            (terminal[i] and terminal[j])
+                            or (unread[i] and unread[j] and one_scan[i])
+                        )
+                    )
                 ):
                     merged.append((i, j))
         merged = _drop_bypassed_nests(merged, nodes, sigs, concept_graph, concept_edges)

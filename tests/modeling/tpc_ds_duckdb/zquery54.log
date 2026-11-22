@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 3624
+gen_length = 3643
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
@@ -68,7 +68,7 @@ SELECT
     \"abhorrent\".\"segment_base\" as \"segment_base\"
 FROM
     \"abhorrent\"
-    INNER JOIN \"scrawny\" on \"abhorrent\".\"segment\" = \"scrawny\".\"segment\"
+    INNER JOIN \"scrawny\" on \"abhorrent\".\"segment\" is not distinct from \"scrawny\".\"segment\"
 GROUP BY
     1,
     2,

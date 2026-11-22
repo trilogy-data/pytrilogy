@@ -358,3 +358,52 @@ def test_a_union_join_narrows_where_the_graph_proves_a_subset():
     )
     assert not any(j.startswith("FULL") for j in joins), joins
     assert rows == [(10, 5, None), (20, 7, 7), (30, 1, 1)]
+
+
+EQUAL_CHAIN = """
+key a_id int;
+property a_id.ak int;
+property a_id.av int;
+datasource a (i: a_id, k: ak, v: av) grain (a_id)
+query '''select 1 i, 1 k, 10 v union all select 2, 2, 20''';
+key b_id int;
+property b_id.bk int;
+property b_id.bv int;
+datasource b (i: b_id, k: bk, v: bv) grain (b_id)
+query '''select 1 i, 1 k, 100 v union all select 2, 2, 200''';
+key c_id int;
+property c_id.ck int;
+property c_id.cv int;
+datasource c (i: c_id, k: ck, v: cv) grain (c_id)
+query '''select 1 i, 1 k, 7 v union all select 2, 2, 77''';
+auto ka <- ak + 1;
+auto kb <- bk + 1;
+auto kc <- ck + 1;
+merge ka into kb;
+merge kb into kc;
+"""
+
+
+def test_an_equal_chain_both_sides_carry_whole_joins_inner():
+    joins, rows = _joins_and_rows(
+        EQUAL_CHAIN, "select ka, sum(av) as a, sum(bv) as b, sum(cv) as c;"
+    )
+    assert all(j.startswith("INNER") for j in joins), joins
+    assert rows == [(2, 10, 100, 7), (3, 20, 200, 77)]
+
+
+def test_a_union_join_member_read_off_its_lookup_is_covered():
+    """q64's `union join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.sk`:
+    the graph puts the member within the lookup's key, and the veto still
+    yields to the proof."""
+    path = Path(__file__).parent / "modeling" / "tpc_ds_duckdb" / "query64.preql"
+    env, statements = Environment(working_path=path.parent).parse(path.read_text())
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
+        statements[-1]
+    )[-1]
+    item = next(
+        line
+        for line in sql.splitlines()
+        if '"memory"."item"' in line and "item_sk_99" in line
+    )
+    assert item.strip().startswith("INNER JOIN"), item

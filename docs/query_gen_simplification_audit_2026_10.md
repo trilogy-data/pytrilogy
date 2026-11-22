@@ -239,7 +239,7 @@ Rowset assembly:
 ## Design seams (not built unless marked landed)
 
 Ranked by lines a seam would free, across the axes. Status as of seam 2's
-eighth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
+ninth slice: 3, 4, 6 and 7 landed (6 smaller than estimated, its planner half
 folded into 2), 5 landed its ownership half, 2 landed its plan-time EQUAL,
 `~`-subset, graph-subset, twin, unnested-element, recursion-walk, per-key
 subset and rule-B proofs, decided NULL membership and retired its first
@@ -248,8 +248,8 @@ optimizer rule's firings over the non-law suite: 912 before the first slice,
 796 after it, 522 after the second, 407 after the third, 377 after the
 fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
-matrix joined the suite, 101 after the seventh, from 255, and 53 after the
-eighth; over the whole suite, laws included, its CTE
+matrix joined the suite, 101 after the seventh, from 255, 53 after the
+eighth and 46 after the ninth; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done, 10 landed every keyed read (rowset, subquery, statement); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
@@ -796,6 +796,74 @@ election, not the padded fallback.
    `root_parent.id` bare where they coalesced it with the walk's root across
    an INNER equality. The suite fails the same 25 tests as `main`. Fuzzer
    522/522.
+
+   **Ninth slice (landed): rule B over a related member, and an EQUAL key
+   both sides carry whole dedups.** The census on `5336262` read the eighth
+   slice's 53 firings over the non-law suite. Two planner gaps held 7 of
+   them:
+   - **Rule B asked only where the graph relates nothing.** `_covered_keys`
+     computed the rule-B proof (`proven_within`) only when the graph did not
+     already put the two spellings within each other (`not within`). A
+     `union join` member read off the column it joins is within it (q64's
+     `agg_99.item_sk_99` over `ss.item.sk`), so the cover held, the veto
+     refused it, and no proof was asked for. The proof is now asked for
+     whenever the key is vetoed. q64's item lookup types RIGHT at plan time
+     (the rowset covered) and the consumer's pushed WHERE makes it INNER; it
+     was FULL, then LEFT under the guard rule, then INNER under this one.
+   - **An EQUAL key both sides carry whole dedups its lefts.** `_join_onto`
+     kept every left providing a `full_join_keys` key, EQUAL ones included,
+     though `_full_keys` releases an EQUAL key both sides carry whole. The
+     chain `merge ka into kb; merge kb into kc` joined `c` onto `a` and `b`,
+     a two-left join `_narrow_covered` skips, so the joined sides lost their
+     completeness and the aggregates above them re-joined FULL. Now `c` joins
+     onto `a` alone, covered, and the chain types INNER end to end
+     (`test_multiway_matrix` equal cells: 4 firings to 0).
+
+   Census over the non-law suite: 53 to 46 (q64 and its join-form twin 12 to
+   9, multiway equal 4 to 0). Over the whole suite, laws included, 90.
+   `test_subset_join_plan_time_completeness.py` pins both with the optimizer
+   rule stubbed (both red on `main`).
+
+   Measured and not landed:
+   - **An EQUAL key one side NULLs alone (6 firings).** `select id, label`
+     under `merge first_org into code` keeps a launch with no agency at plan
+     time; the optimizer's EQUAL arm drops it (`_upgrade_to_inner` makes the
+     pair null-safe and narrows). Taught to the planner (both sides
+     `complete_equal`, value NULLs on either), the rule also moved hackernews
+     adhoc06/07 (every post with no GitHub URL dropped under `merge
+     github.repo_url into any_github_url`) and q04-agent's fact-to-customer
+     lookups (a sale with no customer dropped under the cross-channel
+     customer merges), which no plan dropped before: the optimizer's arm is
+     stopped there by the WHERE it pushed down first. The join matrix's
+     `equal` oracle drops a one-sided NULL group, but a value NULL is no
+     value the declaration speaks for, so this is a semantic decision, not an
+     ownership move, and is left open.
+   - **q64's other three lookups (9 firings).** After the cover the planner
+     types them RIGHT, and `ensure_content_preservation` widens them to FULL
+     for the item lookup's padding. Only the consumer's WHERE (`cnt_00 <=
+     cnt_99`, pushed down by the optimizer) proves the rowset present. Letting
+     `narrow_join_types` read a forced covered side as forcing its partner
+     (`matched_left`) is sound but never fires, because the merge holds no
+     proof. `UpgradeJoinOnGuards` could read the planner's record, but only if
+     no rule had filtered the covering side since, so it stays.
+   - **Twins over a gate (8, `test_split_key_gates`-style).** The gate group
+     the final merge reads is unfiltered at plan time, and the merge's own
+     WHERE filters it, so the cover is a fact about where the filter sits. A
+     multi-key "every right row is a left row" proof for a gate grouped back
+     off its rows moved nothing.
+   - **Multi-left `~` stamps (5, `test_bigquery_full_join_keys`).** The ON has
+     two lefts until `PrunePreservedJoinKeys` drops one. INNER at plan time
+     would AND both pairs and drop the rows the second left's padding NULLs.
+
+   Gates, against `5336262`: suite SQL capture (`sqlcap`,
+   `PYTHONHASHSEED=0`, laws included, 53,499 tests) moved no plan: of 941
+   textual moves, 937 are worktree paths and tests that compile a varying
+   number of statements, `test_cli_consistency` is known noise, and the
+   other two compile byte-identical SQL when run alone (xdist CTE naming). The
+   optimizer reached the same SQL on every shape; the slice moves who decides
+   it. No test changed outcome. Corpus (205 statements, tpc-ds aggregates
+   included): 0 moved. The suite, laws included, fails the same
+   25 tests as `main`. Fuzzer 522/522.
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle

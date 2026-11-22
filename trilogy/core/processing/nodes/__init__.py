@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from itertools import islice
 
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.build import (
     get_canonical_pseudonyms,
 )
@@ -17,6 +18,8 @@ from .union_node import UnionNode
 from .unnest_node import UnnestNode
 from .window_node import WindowNode
 
+_LOCAL = f"{DEFAULT_NAMESPACE}."
+
 
 @dataclass
 class BuildCaches:
@@ -27,6 +30,7 @@ class BuildCaches:
     canonical_build_cache: dict = field(default_factory=dict)
     grain_build_cache: dict = field(default_factory=dict)
     datasource_build_cache: dict = field(default_factory=dict)
+    multi_select_build_cache: dict = field(default_factory=dict)
     # Context-free environment materializations (EnvBaseline), keyed by the
     # scoped-join tuple they were built under; nested arms replay only their
     # overlay's delta against these. Scoped to this resolution like every
@@ -40,6 +44,36 @@ class BuildCaches:
     # (source_address, target_address, JoinType). Applied during the build and
     # shared so every sub-select (rowsets, multiselect arms) inherits them.
     scoped_joins: list = field(default_factory=list)
+
+    def fork(self, dirty: set[str]) -> "BuildCaches":
+        """This bundle for a duplicate of the environment it was built over,
+        less what was built from the `dirty` names: the built values are
+        shared, every container a later statement writes is its own. The
+        baselines are left for the caller to rebase, and the grain cache is
+        keyed on this environment's own objects, which a duplicate never
+        holds."""
+        return BuildCaches(
+            canonical_build_cache={
+                key: built
+                for key, built in self.canonical_build_cache.items()
+                if key[0] not in dirty
+            },
+            datasource_build_cache={
+                name: built
+                for name, built in self.datasource_build_cache.items()
+                if name not in dirty and name.removeprefix(_LOCAL) not in dirty
+            },
+            multi_select_build_cache=(
+                {} if dirty else dict(self.multi_select_build_cache)
+            ),
+            pseudonym_map=(
+                None
+                if dirty or self.pseudonym_map is None
+                else {key: set(names) for key, names in self.pseudonym_map.items()}
+            ),
+            pseudonym_concept_count=0 if dirty else self.pseudonym_concept_count,
+            scoped_joins=list(self.scoped_joins),
+        )
 
     def sync_pseudonym_map(self, environment: Environment) -> dict:
         """The canonical pseudonym map for `environment`, kept current across

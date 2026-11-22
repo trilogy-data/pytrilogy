@@ -20,6 +20,52 @@ from pathlib import Path
 from . import monitor
 from .spec import BenchmarkSpec
 
+PROVIDER_KEY_ENV = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+}
+
+# Everything an agent subprocess inherits: OS plumbing plus non-secret knobs.
+# Credentials loaded for other evals (warehouses, other providers) stay out.
+_AGENT_ENV_ALLOW = frozenset(
+    {
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "SYSTEMDRIVE",
+        "WINDIR",
+        "COMSPEC",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "NUMBER_OF_PROCESSORS",
+        "PROCESSOR_ARCHITECTURE",
+        "LANG",
+        "LC_ALL",
+        "VIRTUAL_ENV",
+        "PYTHONPATH",
+        "PYTHONIOENCODING",
+        "PYTHONUTF8",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "OPENROUTER_PROVIDER",
+        "OPENROUTER_SANITIZE_HTML_ESCAPES",
+    }
+)
+
+
+def agent_env(provider: str) -> dict[str, str]:
+    allowed = _AGENT_ENV_ALLOW | {PROVIDER_KEY_ENV[provider]}
+    return {k: v for k, v in os.environ.items() if k.upper() in allowed}
+
 
 def add_scope_flags(parser: argparse.ArgumentParser) -> None:
     """Register the shared agent scope-surfacing flags on an eval argparser.
@@ -132,7 +178,7 @@ def run_agent(
         cmd,
         cwd=workspace,
         env={
-            **os.environ,
+            **agent_env(provider),
             "TRILOGY_AGENT_SCOPE_DIAGNOSTICS": "1" if scope_diagnostics else "0",
             "TRILOGY_AGENT_SCOPE_WARNINGS": "1" if scope_warnings else "0",
         },
@@ -331,20 +377,13 @@ def write_trilogy_toml(
     # No silent fallback — an unknown provider here would inherit a wrong env
     # var and 401 against the actual API. Fail loud so the misconfiguration
     # surfaces at workspace-setup time, not 50 turns into a hung eval.
-    api_key_env_map = {
-        "openrouter": "OPENROUTER_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "google": "GOOGLE_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-    }
-    if provider not in api_key_env_map:
+    if provider not in PROVIDER_KEY_ENV:
         raise ValueError(
             f"Unknown provider {provider!r} in eval harness — known: "
-            f"{sorted(api_key_env_map)}. Add the api_key_env mapping in "
-            "evals/common/agent_runner.py:write_trilogy_toml."
+            f"{sorted(PROVIDER_KEY_ENV)}. Add it to "
+            "evals/common/agent_runner.py:PROVIDER_KEY_ENV."
         )
-    api_key_env = api_key_env_map[provider]
+    api_key_env = PROVIDER_KEY_ENV[provider]
     reasoning_effort_line = (
         f'reasoning_effort = "{reasoning_effort}"\n' if reasoning_effort else ""
     )
@@ -356,6 +395,7 @@ dialect = "duck_db"
 [engine.config]
 db_location = "{spec.db_filename}"
 enable_python_datasources = {str(spec.enable_python_datasources).lower()}
+sandbox = {str(not spec.enable_python_datasources).lower()}
 
 [agent]
 provider = "{provider}"
@@ -368,6 +408,7 @@ disable_todo = {str(disable_todo).lower()}
 force_tool_choice = {str(force_tool_choice).lower()}
 allow_database_introspection = {str(allow_database_introspection).lower()}
 allow_file_read = {str(allow_file_read).lower()}
+allow_script_write = {str(spec.enable_python_datasources).lower()}
 disable_reviewer = true
 """,
         encoding="utf-8",

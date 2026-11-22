@@ -581,6 +581,8 @@ instead; when set here, always reference the environment (see below).
 - `enable_gcs` / `enable_spatial` — load the matching DuckDB extension
 - `gcs_cache_bust` — append a cache-busting query param to
   `https://storage.googleapis.com/` reads; `gs://` paths are left alone
+- `sandbox` — confine file reads/writes to the `trilogy.toml` directory; SQL
+  cannot lift it
 
 **bigquery**
 - `project` — GCP project; defaults to the application-default-credentials one

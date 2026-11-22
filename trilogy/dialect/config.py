@@ -177,9 +177,13 @@ class DuckDBConfig(DialectConfig):
         retry_config: RetryConfig | None = None,
         read_only: bool | None = None,
         python_datasource_transport: str | None = None,
+        sandbox_root: str | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.path = path
+        # Confine every file read/write to this directory and lock the session
+        # config so SQL cannot lift it (agent workspaces).
+        self.sandbox_root = sandbox_root
         self._enable_python_datasources = enable_python_datasources
         self._python_datasource_transport = (
             PythonDatasourceTransport(python_datasource_transport)
@@ -227,6 +231,7 @@ class DuckDBConfig(DialectConfig):
         # state a recycled instance must not carry, so it would never be kept.
         if (
             self.path
+            or self.sandbox_root
             or not CONFIG.reuse_duckdb_instances
             or self.enable_python_datasources
             or self.enable_gcs

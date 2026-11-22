@@ -141,7 +141,6 @@ FUNCTION_EXAMPLES = {
     FunctionType.DATE_PART: "date_part('2020-01-01'::date, year)",
     FunctionType.DATE_SUB: "date_sub('2020-01-01'::date, day, 1)",
     FunctionType.DATE_TRUNCATE: "date_trunc('2020-01-01'::date, month)",
-    FunctionType.CURRENT_TIMESTAMP: "now()",
 }
 
 # AST-internal / operator-duplicate function types that the agent should never
@@ -168,6 +167,15 @@ _AGENT_HIDDEN_FUNCTIONS = {
     FunctionType.SUBTRACT,
     FunctionType.MULTIPLY,
     FunctionType.DIVIDE,
+    # no call syntax in the grammar: reached through an operator (`||`, `**`,
+    # `is null`) or not at all, so advertising the name invites a parse error
+    FunctionType.CONCAT_STRICT,
+    FunctionType.SIMPLE_CASE,
+    FunctionType.POWER,
+    FunctionType.IS_NULL,
+    FunctionType.IS_NOT_DISTINCT,
+    FunctionType.UNIX_TO_TIMESTAMP,
+    FunctionType.GRAIN_PIN,
 }
 
 

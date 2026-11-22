@@ -246,6 +246,133 @@ runners, so the comparable number is the time spent outside it:
 
 The 3.13 cells also run the fuzzer corpus (20-38 s) outside pytest.
 
+## Second pass: Windows cells over 30 minutes (0.3.532)
+
+Run 44977499728 on main at `08cd7f13`, the last green run before this pass:
+windows 3.11/3.12/3.13 at 32.1 / 31.8 / 33.9 min, ubuntu 3.13 at 24.4. The
+three runs before it lost every Windows cell to the 45-minute limit, but that
+was one test spinning forever (a deadline that was a no-op without SIGALRM,
+fixed in #1085), not the suite getting slower. The slower suite is below.
+
+### 11. A multi-select was rebuilt once per output, per factory
+
+Each output concept of a `union(...)`, `rollup(...)` or merge select carries
+its own copy of the statement as its lineage, and `Factory` built the whole
+statement (every arm, and every multi-select nested in an arm) each time one
+of those concepts was built: once per output in the environment
+materialization, again in each sub-select's factory. TPC-DS query 77 (a rollup
+over a union of three two-arm selects) went from 0.2 s to 6.6 s to generate
+between 0.3.506 and 0.3.532 as the rollup and union forms moved onto this
+path, with 438 multi-select builds and 1,197 select builds for one statement.
+
+The build is a function of the statement, the environment and the join set,
+so it is now kept in `BuildCaches.multi_select_build_cache`, beside the other
+build caches and with their lifetime, keyed on the statement's outputs and the
+join set and confirmed by equality.
+
+| generation, 99 TPC-DS queries (same SQL, byte for byte) | seconds |
+|---|---|
+| 0.3.466 (Nov 7)   | 15.4 |
+| 0.3.506 (Nov 15)  | 16.3 |
+| 0.3.532 before    | 23.3 |
+| 0.3.532 after     | 17.2 |
+
+It was not only query 77: over 1,327 ordinary tests (join matrix, derived key
+domain, cluster lookup, binding lookup) the multi-select builds were 13% of
+all generation time and environment materialization fell from 38 s to 12 s
+under the profiler, 17% off generation as a whole.
+
+### 12. The conformance binaries are kept, not rebuilt
+
+`Build the conformance binary` compiled arrow and parquet in release mode on
+every cell: 103-153 s on Linux, 155-301 s on Windows, on an exact rust-cache
+hit (the restored target directory does not satisfy the release build of
+`crates/trilogy-io`; why was not chased). The two example binaries depend only
+on the crate, so `actions/cache` now keeps them, keyed on the crate's sources
+and lockfile, and the build step runs only on a miss. The key is computed
+before the editable install, which writes the release version into
+`Cargo.toml`.
+
+### 13. Grids that are not `*_laws.py` run once too
+
+`tests/grids.txt` names suites of the same kind as the law files (parametrized
+planner and row-oracle grids, nothing in them that an OS or a Python version
+changes), one path or glob per line: the tree-reporting dashboard queries, the
+join matrix, the window and derived-key-domain grids, the formalization sweep
+shapes. They were over 400 s of the Windows 3.13 pytest step (116 s of it the
+dashboard queries). The matrix ignores them and a third `laws` shard runs
+them under xdist in 3 minutes. The list is the only place to edit.
+
+### Effect of 11-13
+
+Run 45040781603, this branch's first, against 44977499728. It built the
+conformance binaries one last time to seed their cache (the step's seconds are
+in brackets and come off every later run), and ran before the last ten
+entries joined `tests/grids.txt`.
+
+| cell | job before | job after | pytest before | pytest after |
+|---|---:|---:|---:|---:|
+| ubuntu 3.11   | 21.2 m | 15.3 m [118] | 958 s  | 640 s |
+| ubuntu 3.12   | 19.2 m | 17.0 m [151] | 858 s  | 671 s |
+| ubuntu 3.13   | 24.4 m | 13.8 m [96]  | 978 s  | 482 s |
+| windows 3.11  | 32.1 m | 24.9 m [273] | 1284 s | 870 s |
+| windows 3.12  | 31.8 m | 25.5 m [249] | 1262 s | 903 s |
+| windows 3.13  | 33.9 m | 29.7 m [289] | 1255 s | 972 s |
+
+The law shards were 3.0 (grids), 5.8 (rest) and 9.7 minutes (discovery-unnest).
+
+## Third pass: generation time (0.3.533)
+
+The passes above measured the workflow. This one measures what the planner
+costs per query, with `.scripts/generation_benchmark.py`: `generate_sql` for
+every TPC-DS and TPC-H query in a fresh environment, plus the dashboard
+suite's duplicate-then-compile path, minimum of three, SQL hashed. 202
+queries, about 80 s to run.
+
+| suite     | queries | before  | after   |
+|-----------|--------:|--------:|--------:|
+| dashboard |      73 |  8.00 s |  4.61 s |
+| all three |     202 | 23.36 s | 19.03 s |
+
+Every query's SQL is byte-identical across the change.
+
+### 12. Nothing guarded the time to make a plan
+
+`check_benchmark_growth.py` compares plan size with main. One TPC-DS query
+went from 0.2 s to 6.6 s of generation across about 25 releases with nothing
+flagging it. The PR job now runs the benchmark against main's `trilogy`
+(`--trilogy-root`, a worktree of the fetched base) and the branch's, on the
+same runner, and fails a query more than 2x and 0.15 s slower or a run 1.3x
+slower. A comparison that fails is taken a second time, each query keeping
+its faster time, so a runner that stalled once does not fail the build.
+
+### 13. Every duplicate materialized the whole model
+
+The dashboard harness, like pyserver, compiles each query in a fresh
+`Environment.duplicate()`, and each one built every concept of the model
+before planning: 28% of that path. A duplicate now rebases its parent's
+baseline. The parent's is built once; a duplicate takes the parent's result
+for each unit it still holds unchanged and builds only what it added,
+rebound or edited, and what the author model reads those through. The
+dashboard queries each rebind five constants to parameters, which dirties 7
+of 350 units. The copy itself went from 25 ms to 10 ms.
+
+### 14. A dropped environment waited for the cycle collector
+
+After a query the `Environment` and its session caches were unreachable but
+not freed: about 2,400 objects in cycles per simple query, pinning 15k more.
+Ten nested functions that called themselves were most of it (a function that
+closes over itself is a cycle, holding everything else it closes over). Time
+in the collector over the TPC run went from 2.05 s to 1.57 s. A test now
+plans a statement with the collector off and asserts the environment dies.
+
+### 15. Releasing a pooled DuckDB instance re-read every setting
+
+`duckdb_settings()` alone is 4.5 ms of a 12.8 ms executor lifetime. The
+release now reads settings, secrets, variables and attached databases only
+after a statement that could have moved them, and loaded extensions every
+time: about 7 ms per executor.
+
 ## Targets not taken (yet), in order of expected value
 
 - **The 13 s gap before the last test file, 23 s on Windows.** Between the

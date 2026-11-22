@@ -17,12 +17,13 @@ live one.
 """
 
 import os
+import re
 import threading
 import weakref
 from typing import Any
 
 import duckdb
-from duckdb_engine import ConnectionWrapper
+from duckdb_engine import ConnectionWrapper, CursorWrapper
 
 _HOST = "trilogy_host"
 # ~3.6MB each. Executors dropped without close() come back in batches when the
@@ -30,17 +31,29 @@ _HOST = "trilogy_host"
 _MAX_IDLE = 8
 
 # Instance-level state an executor could leave behind. LOCAL settings belong
-# to the connection and close with it.
-_STATE_SQL = """
+# to the connection and close with it. Any statement can load an extension
+# (a function or a path autoloads one), so those are read on every release.
+_EXTENSIONS_SQL = """
+SELECT hash(list(extension_name ORDER BY extension_name))
+FROM duckdb_extensions() WHERE loaded
+"""
+# The rest is most of the check's cost and only moves when a statement moves
+# it, so it is read only for a connection that ran one that could. A loaded
+# extension can add settings too; the extension list above sees that.
+_MOVED_SQL = """
 SELECT
     (SELECT hash(list((name, value) ORDER BY name))
      FROM duckdb_settings() WHERE scope = 'GLOBAL'),
-    (SELECT hash(list(extension_name ORDER BY extension_name))
-     FROM duckdb_extensions() WHERE loaded),
     (SELECT hash(list(name ORDER BY name)) FROM duckdb_secrets()),
     (SELECT hash(list((name, value::VARCHAR) ORDER BY name)) FROM duckdb_variables()),
     (SELECT hash(list(database_name ORDER BY database_name)) FROM duckdb_databases())
 """
+_MOVES_STATE = re.compile(
+    r"\b(set|reset|pragma|call|install|load|import|force|attach|detach|use|secret)\b",
+    re.IGNORECASE,
+)
+# The words above inside a string literal (an error message) move nothing.
+_LITERAL = re.compile(r"'(?:[^']|'')*'")
 # `USE` sets the instance's default database, so the host is selected again
 # before the executor's database can be detached. The file cache is flushed
 # because a fresh instance would not have one.
@@ -62,6 +75,32 @@ _INSTANCE_APIS = frozenset(
         "unregister_filesystem",
         "install_extension",
         "load_extension",
+    }
+)
+
+# Python APIs that run a statement, which is then read for what it could move.
+_STATEMENT_APIS = frozenset({"execute", "executemany", "sql", "query"})
+# Python APIs that run nothing. Any other is taken to have moved state.
+_READ_APIS = frozenset(
+    {
+        "fetchone",
+        "fetchall",
+        "fetchmany",
+        "fetchdf",
+        "fetchnumpy",
+        "fetch_arrow_table",
+        "fetch_df",
+        "df",
+        "pl",
+        "arrow",
+        "description",
+        "rowcount",
+        "commit",
+        "rollback",
+        "begin",
+        "register",
+        "unregister",
+        "interrupt",
     }
 )
 
@@ -92,14 +131,15 @@ class _Instance:
         if _baseline is None:
             _baseline = self._state()
 
-    def _state(self) -> tuple:
+    def _state(self, moved: bool = True) -> tuple:
         cursor = self.db.cursor()
         try:
             cursor.execute(f"USE {_HOST}")
-            values = cursor.execute(_STATE_SQL).fetchone()
+            loaded = cursor.execute(_EXTENSIONS_SQL).fetchone()
+            rest = cursor.execute(_MOVED_SQL).fetchone() if moved else None
         finally:
             cursor.close()
-        return (values, tuple(sorted(self.db.list_filesystems())))
+        return (rest, loaded, tuple(sorted(self.db.list_filesystems())))
 
     def open(self) -> duckdb.DuckDBPyConnection:
         cursor = self.db.cursor()
@@ -110,8 +150,10 @@ class _Instance:
             raise
         return cursor
 
-    def reset(self) -> bool:
-        """Detach the executor's database; whether the instance is pristine."""
+    def reset(self, moved: bool = True) -> bool:
+        """Detach the executor's database; whether the instance is pristine.
+        `moved` is whether the connection ran anything that could have moved
+        a setting, secret, variable or attached database."""
         cursor = self.db.cursor()
         try:
             cursor.execute(_RESET_SQL)
@@ -119,7 +161,34 @@ class _Instance:
             return False
         finally:
             cursor.close()
-        return self._state() == _baseline
+        assert _baseline is not None
+        state = self._state(moved)
+        return state[1:] == _baseline[1:] and (not moved or state == _baseline)
+
+
+class _PooledCursor(CursorWrapper):
+    """duckdb_engine's cursor, reporting what it runs to its connection."""
+
+    def __init__(
+        self, cursor: duckdb.DuckDBPyConnection, wrapper: "PooledConnection"
+    ) -> None:
+        super().__init__(cursor, wrapper)
+        self._pooled = wrapper
+
+    def execute(
+        self, statement: str, parameters: Any = None, context: Any = None
+    ) -> None:
+        self._pooled.note(statement)
+        super().execute(statement, parameters, context)
+
+    def executemany(
+        self, statement: str, parameters: Any = None, context: Any = None
+    ) -> None:
+        self._pooled.note(statement)
+        super().executemany(statement, parameters, context)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._pooled, name)
 
 
 class PooledConnection(ConnectionWrapper):
@@ -129,18 +198,41 @@ class PooledConnection(ConnectionWrapper):
     the wrapper is collected."""
 
     def __init__(self, instance: _Instance) -> None:
-        self._tainted = [False]
+        # [instance API touched, a statement could have moved instance state]
+        self._tainted = [False, False]
         cursor = instance.open()
+        self._cursor = cursor
         super().__init__(cursor)
         self._release = weakref.finalize(
             self, _release, instance, cursor, self._tainted
         )
         self._release.atexit = False
 
+    def note(self, statement: object) -> None:
+        if not isinstance(statement, str) or _MOVES_STATE.search(
+            _LITERAL.sub("''", statement)
+        ):
+            self._tainted[1] = True
+
+    def cursor(self) -> _PooledCursor:
+        return _PooledCursor(self._cursor, self)
+
+    def _noting(self, method: Any) -> Any:
+        def run(statement: object, *args: Any, **kwargs: Any) -> Any:
+            self.note(statement)
+            return method(statement, *args, **kwargs)
+
+        return run
+
     def __getattr__(self, name: str) -> Any:
         if name in _INSTANCE_APIS:
             self._tainted[0] = True
-        return super().__getattr__(name)
+        found = super().__getattr__(name)
+        if name in _STATEMENT_APIS:
+            return self._noting(found)
+        if name not in _READ_APIS:
+            self._tainted[1] = True
+        return found
 
     def close(self) -> None:
         super().close()
@@ -153,7 +245,11 @@ def _release(
     try:
         cursor.close()
         # Only an instance with room to be kept is worth the state check.
-        keep = not tainted[0] and len(_idle) < _MAX_IDLE and instance.reset()
+        keep = (
+            not tainted[0]
+            and len(_idle) < _MAX_IDLE
+            and instance.reset(moved=tainted[1])
+        )
     except Exception:
         keep = False
     with _lock:

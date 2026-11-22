@@ -38,9 +38,7 @@ address {SALES};
 
 def _configured() -> bool:
     names = ("DATABRICKS_HOST", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN")
-    return all(
-        os.getenv(n) and not os.getenv(n, "").startswith("vault:") for n in names
-    )
+    return all(os.getenv(n) for n in names)
 
 
 @pytest.fixture(scope="module")

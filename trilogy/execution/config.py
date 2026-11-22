@@ -27,6 +27,7 @@ from trilogy.utility import safe_open
 
 DEFAULT_PARALLELISM = 4
 DB_LOCATION_KEY = "db_location"
+SANDBOX_KEY = "sandbox"
 DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
 
 
@@ -183,6 +184,9 @@ class AgentConfig:
     # ``file list`` still works. Query-generation evals turn this off — the model
     # is meant to discover schema via ``explore``, not by reading raw files.
     allow_file_read: bool = True
+    # When False, the agent's file tools refuse to write ``.py`` files, so a
+    # query-generation agent cannot author code a datasource or `call` would run.
+    allow_script_write: bool = True
     # When True, skip the post-submit reviewer gate (the one-shot LLM check that
     # the agent didn't self-signal "still working" before return_control_to_user).
     # Off by default; an A/B knob to measure whether the gate helps or just adds
@@ -318,6 +322,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "force_tool_choice",
         "allow_database_introspection",
         "allow_file_read",
+        "allow_script_write",
         "disable_reviewer",
     },
 }
@@ -408,6 +413,8 @@ def load_config_file(
                     engine_config_raw["path"] = resolve_db_location(
                         engine_config_raw.pop(DB_LOCATION_KEY), path.parent
                     )
+                if engine_config_raw.pop(SANDBOX_KEY, False):
+                    engine_config_raw["sandbox_root"] = str(path.parent.resolve())
                 engine_config = DuckDBConfig(**engine_config_raw)
             else:
                 engine_config = None
@@ -500,6 +507,7 @@ def load_config_file(
             agent_raw.get("allow_database_introspection", True)
         ),
         allow_file_read=bool(agent_raw.get("allow_file_read", True)),
+        allow_script_write=bool(agent_raw.get("allow_script_write", True)),
         disable_reviewer=bool(agent_raw.get("disable_reviewer", False)),
     )
 
