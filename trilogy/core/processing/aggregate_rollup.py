@@ -758,6 +758,20 @@ def _grain_reaches(
     return True
 
 
+def _reads(concept: BuildConcept, target: str, seen: set[str]) -> bool:
+    """`concept` is computed from `target`: grouped by such a key, a partial
+    cannot feed `target` (`select species, tree_id ? min(x) by form < 10 as f,
+    min(x)`: the groups of `min(x)` are decided by the value they would
+    re-aggregate into, `Filters.partial_grouped_by_its_reader`)."""
+    if concept.address in seen or concept.lineage is None:
+        return False
+    seen.add(concept.address)
+    return any(
+        arg.address == target or _reads(arg, target, seen)
+        for arg in concept.lineage.concept_arguments
+    )
+
+
 def _rolls_up_from(
     coarse: BuildConcept,
     fine: BuildConcept,
@@ -777,6 +791,12 @@ def _rolls_up_from(
     if not _grain_reaches(coarse_grain, fine_grain, concepts_by_address):
         return False
     if _grain_reaches(fine_grain, coarse_grain, concepts_by_address):
+        return False
+    if any(
+        _reads(concepts_by_address[address], coarse.address, set())
+        for address in fine.grain.components
+        if address in concepts_by_address
+    ):
         return False
     base_keys = _base_keys(_aggregate_inputs(coarse))
     return all(

@@ -1066,7 +1066,8 @@ def _projects_parent_rows(
         narrows = _filter_intrinsic_pushdown_safe(
             group_graph, plan.attrs, gid, outputs, reads.mandatory_list, environment
         )
-        return filter_row_predicate(outputs, available, narrows) is None
+        sets = _shown_by_statement(reads.mandatory_list, environment)
+        return filter_row_predicate(outputs, available, narrows, sets) is None
     return not reads.regroups(outputs, parents)
 
 
@@ -2546,8 +2547,12 @@ def _window_rows_at_grain(
     is grouped first. The group keeps every parent column at or above that
     grain, which a later pass may carry through the window."""
     needed = {c.address: c for c in outputs}
+    supplied = _output_addresses(parents)
     for concept in outputs:
-        if concept.lineage is not None:
+        # a value a parent hands over is read as itself: the column a
+        # filtered key was read off is no key of the window's rows
+        # (`Filters.rejected_rows_share_one_null`)
+        if concept.lineage is not None and concept.address not in supplied:
             needed |= {a.address: a for a in concept.lineage.concept_arguments}
     # the window's own grain: `rank(g)` ranks the distinct `g`, though `g`
     # (a property of `id`) sits at `id`
@@ -3786,6 +3791,18 @@ def _group_span_scope(
     )
 
 
+def _shown_by_statement(
+    mandatory_list: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """The plan's outputs are the statement's own, not a sub-plan's (a set's
+    feeder, a HAVING's semijoin): only there does a predicate reading a set
+    narrow the rows."""
+    shown = environment.statement_output_addresses
+    return shown is not None and all(
+        {c.address, *c.pseudonyms} & shown for c in mandatory_list
+    )
+
+
 def _filter_intrinsic_pushdown_safe(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -3801,7 +3818,9 @@ def _filter_intrinsic_pushdown_safe(
     CASE."""
     if (
         statement_filter_population(
-            mandatory_list, environment.statement_hidden_addresses
+            mandatory_list,
+            environment.statement_hidden_addresses,
+            _shown_by_statement(mandatory_list, environment),
         )
         is None
     ):
@@ -8211,6 +8230,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 mandatory_list,
                 environment,
             ),
+            set_filter_pushdown=_shown_by_statement(mandatory_list, environment),
             existence_source=feeds_existence(
                 unfolded.group_graph, unfolded.group_edges, gid
             ),

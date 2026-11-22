@@ -222,21 +222,59 @@ def concept_source_address(concept: BuildConcept) -> str:
 def rowset_source_grain(
     grain: BuildGrain,
     environment: BuildEnvironment,
+    padded: frozenset[str] = frozenset(),
 ) -> BuildGrain:
     concepts = [
-        concept_source_address(environment.concepts[address])
+        (
+            address
+            if address in padded
+            else concept_source_address(environment.concepts[address])
+        )
         for address in grain.components
     ]
     return BuildGrain.from_concepts(concepts, environment=environment)
+
+
+def _applied_atoms(source: GrainSource) -> set[str]:
+    condition = getattr(source, "condition", None)
+    return (
+        {str(atom) for atom in decompose_condition(condition)} if condition else set()
+    )
+
+
+def padded_filters(
+    grain: BuildGrain,
+    parents: Iterable[GrainSource],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The filtered values of `grain` whose condition no parent applied to its
+    rows: NULL on every row the condition rejects, so they name none of them
+    (`Filters.rejected_rows_share_one_null`). `tree_id ? c` beside `city` is
+    one NULL row per city, however many trees `c` rejects."""
+    applied = [_applied_atoms(parent) for parent in parents]
+    padded = set()
+    for address in grain.components:
+        concept = environment.concepts[address]
+        if concept.derivation != Derivation.FILTER or not isinstance(
+            concept.lineage, BuildFilterItem
+        ):
+            continue
+        atoms = {
+            str(atom) for atom in decompose_condition(concept.lineage.where.conditional)
+        }
+        if not any(atoms <= held for held in applied):
+            padded.add(address)
+    return frozenset(padded)
 
 
 def _grain_coverage_addresses(
     grain: BuildGrain,
     environment: BuildEnvironment,
     include_aggregate_by_keys: bool = True,
+    padded: frozenset[str] = frozenset(),
 ) -> set[str]:
     addresses: set[str] = set()
-    for candidate in (grain, rowset_source_grain(grain, environment)):
+    for candidate in (grain, rowset_source_grain(grain, environment, padded)):
         for address in candidate.components:
             concept = environment.concepts[address]
             addresses.update(

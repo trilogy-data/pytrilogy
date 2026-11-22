@@ -3,7 +3,7 @@
 Runs the random selects of `tests/discovery/test_oracle_sweep_laws.py`
 (`--family first`), `test_oracle_spellings_laws.py` (`--family spellings`),
 `test_oracle_expressions_laws.py` (`--family expressions`) and their later
-siblings (`compositions`, `windows`) past the seeds the
+siblings (`compositions`, `windows`, `filters`) past the seeds the
 suites commit, checks each against the raw-row oracle, and
 records what the plan cost. It replaces the scratchpad scripts each
 formalization round rewrote (`effsweep.py` and its kin).
@@ -46,6 +46,11 @@ finishes, so:
 - a second run on unchanged sources costs nothing, and a wider range runs only
   the seeds it is missing;
 - two sweeps cannot write one side's records: the second exits at once.
+
+A plan that takes more than 30 seconds is recorded as a raise (`TimeoutError:
+no plan in 30s`): a planner loop is a failing seed, where it used to stall the
+pool until the sweep was killed. Workers outlive a killed sweep; `pkill -f
+multiprocessing` before starting the next.
 
 `--no-cache` runs every seed again. The cache key also holds the generator
 files (the two older families' and the model's for every family, plus a

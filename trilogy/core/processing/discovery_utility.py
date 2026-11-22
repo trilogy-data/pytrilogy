@@ -40,6 +40,7 @@ from trilogy.core.processing.grain_utility import (
     concept_source_address,
     determined_past_nulls,
     nullable_spellings,
+    padded_filters,
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
@@ -178,8 +179,9 @@ def check_if_group_required(
     # value of them to them, so an upstream at the by-grain is finer and a
     # regroup is required, whatever else the target holds
     # (`SelectGrain.by_keys_split_tuple`).
+    padded = padded_filters(target_grain, parents, environment)
     target_coverage = _grain_coverage_addresses(
-        target_grain, environment, include_aggregate_by_keys=False
+        target_grain, environment, include_aggregate_by_keys=False, padded=padded
     )
     # A projected column is constant within its own output row, so it covers
     # itself and determines what it determines, whatever the target grain's
@@ -252,7 +254,7 @@ def check_if_group_required(
     ngrain = []
     for con in target_grain.components:
         full = environment.concepts[con]
-        ngrain.append(concept_source_address(full))
+        ngrain.append(con if con in padded else concept_source_address(full))
     target_grain2 = BuildGrain.from_concepts(
         ngrain,
         environment=environment,
