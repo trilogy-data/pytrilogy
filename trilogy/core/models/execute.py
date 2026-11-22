@@ -1858,6 +1858,9 @@ class QueryDatasource:
                 else self.condition or other.condition
             ),
             source_type=self.source_type,
+            # identity: dropping it reverts EXCEPT/INTERSECT to UNION_ALL,
+            # re-sorting arms and renaming the merged source (#1078)
+            set_operator=self.set_operator,
             partial_concepts=unique(
                 self.partial_concepts + other.partial_concepts, "address"
             ),
