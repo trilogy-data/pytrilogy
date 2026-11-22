@@ -13,7 +13,7 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.530.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.531.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
@@ -236,7 +236,7 @@ or fix their planning beyond keeping existing tests green.
   no committed case covered).
 - Rerun the whole family and the committed seeds after every planner change,
   narrowing included, and the broad suite after the last one. A spot check
-  of the seeds a fix targets is no A/B: 0.3.530's second batch passed every
+  of the seeds a fix targets is no A/B: 0.3.531's second batch passed every
   targeted seed and regressed 14 windows seeds, 83 filters seeds and two
   pinned plans, on both models where the checks ran one. Re-sweep the
   old range on the branch too: twice a round reported a range clean from
@@ -527,7 +527,7 @@ See `docs/handoff_summary_cover_next.md` for the approach.
 
 Open in the `windows` family (`OPEN` in `test_oracle_windows_laws.py`, each
 failing on main too). 12,000-60,000 held 123 failing queries on main and
-holds 25, a fifth of the first 12,000's yield per seed, so 0.3.530 wrote the
+holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `filters` family (4b) in place of sweeping on.
 
 - A filtered key under a WHERE gate reads rows the gate never filtered:
@@ -620,7 +620,7 @@ decide. Open in it (`OPEN` in `test_oracle_filters_laws.py`, 144 seeds; 282 of
   `test_v4_existence_feeder_set_grain`).
 - **Where a WHERE aggregate is hosted beside a filtered column** is the lead
   with the most behind it (9683, 12294, 2922, and 92 `cannot be related`
-  raises). 0.3.530 backfills the gate onto the outputs when its only
+  raises). 0.3.531 backfills the gate onto the outputs when its only
   consumer is an aggregate inside a set (not an output, and only under a
   WHERE that reads no set itself), and stops counting a set the host reads by
   subselect as a row barrier. Three wider rules each fixed seeds and broke

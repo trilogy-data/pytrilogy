@@ -258,7 +258,7 @@ def shape6(seed: int) -> tuple[str, list[tuple]]:
 
 
 SEEDS = 400
-# a sample of the 1,810 seeds in 0-20,000 that 0.3.530 fixed (each failed on
+# a sample of the 1,810 seeds in 0-20,000 that 0.3.531 fixed (each failed on
 # main), the ones a first version of the round broke (5741, 7585, 11897,
 # 12260, 17195, 19498), and 14276, which planned right or wrong by hash seed
 FOUND_SEEDS = [

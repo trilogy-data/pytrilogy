@@ -2716,7 +2716,7 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     because the set it reads was counted among its row parents
     (`SelectGrain.feeder_is_no_row_parent`).
 
-- **A sixth family, `filters`, to 20,000** (0.3.530). It writes what the
+- **A sixth family, `filters`, to 20,000** (0.3.531). It writes what the
   fifth names as left: a `?` as a select target outside an aggregate, alone,
   beside the select's keys, as a group key of aggregates and windows, in a
   HAVING and an `order by`, and a filtered aggregate beside the keys that

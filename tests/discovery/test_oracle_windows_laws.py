@@ -384,7 +384,7 @@ FOUND_SEEDS = [
     40448, 40508, 41945, 42617, 43518, 44181, 45750, 45855, 46435, 48381,
     49376, 49516, 49903, 50693, 51718, 53113, 54531, 55680,
     56554, 57430, 59727,
-    # open until 0.3.530: a re-sum beside a window (summary model)
+    # open until 0.3.531: a re-sum beside a window (summary model)
     58721,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
