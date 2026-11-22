@@ -986,9 +986,28 @@ def _rows_hold(
     it never read (the select's rows beside the aggregate its condition
     reads) adds no key to them (`Filters.unread_row_parent_pairs_nothing`)."""
     held = _held(group_graph, attrs, gid, carry_demands, environment)
-    if rendered is None or attrs[gid].derivation != Derivation.FILTER:
+    if not _reads_groups(group_graph, attrs, gid, rendered):
         return held
+    assert rendered is not None
     return held & rendered.get(gid, held)
+
+
+def _reads_groups(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    rendered: dict[str, frozenset[str]] | None,
+) -> bool:
+    """A filter beside a grouped parent: its row parents' columns are what
+    the build projects to its grain, held only if the node renders them."""
+    return (
+        rendered is not None
+        and attrs[gid].derivation == Derivation.FILTER
+        and any(
+            attrs[p].derivation in GROUPING_DERIVATIONS
+            for p in _group_parents(group_graph, attrs, gid)
+        )
+    )
 
 
 def _looked_up_keys(
@@ -1133,7 +1152,7 @@ def plan_final_join(
                 | identity[gid]
                 | carry_demands.get(gid, frozenset())
             )
-        elif rendered is not None and attrs[gid].derivation == Derivation.FILTER:
+        elif rendered is not None and _reads_groups(group_graph, attrs, gid, rendered):
             held &= rendered.get(gid, held) | identity[gid]
         carries[gid] = (
             held
