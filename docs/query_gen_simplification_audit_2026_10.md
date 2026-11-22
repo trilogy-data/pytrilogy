@@ -249,7 +249,7 @@ optimizer rule's firings over the non-law suite: 912 before the first slice,
 fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
-eighth and 46 after the ninth; over the whole suite, laws included, its CTE
+eighth, 46 after the ninth and 35 after the tenth, measured from 40; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done, 10 landed every keyed read (rowset, subquery, statement) and the group-owned grouping sets below the planner; 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
@@ -837,7 +837,7 @@ election, not the padded fallback.
      stopped there by the WHERE it pushed down first. The join matrix's
      `equal` oracle drops a one-sided NULL group, but a value NULL is no
      value the declaration speaks for, so this is a semantic decision, not an
-     ownership move, and is left open.
+     ownership move. Ruled in the tenth slice: it keeps its rows.
    - **q64's other three lookups (9 firings).** After the cover the planner
      types them RIGHT, and `ensure_content_preservation` widens them to FULL
      for the item lookup's padding. Only the consumer's WHERE (`cnt_00 <=
@@ -864,6 +864,36 @@ election, not the padded fallback.
    it. No test changed outcome. Corpus (205 statements, tpc-ds aggregates
    included): 0 moved. The suite, laws included, fails the same
    25 tests as `main`. Fuzzer 522/522.
+
+   **Tenth slice (landed): a declared relation does not speak for a NULL.**
+   The ninth slice left the EQUAL key one side NULLs alone open as a semantic
+   question. Ruled: `merge a into b` declares one value space and says
+   nothing of a NULL; a nullable binding (`?`, a null-propagating
+   derivation such as `split(agency, '/')[1]`) or a guest keeps its rows.
+   `_null_groups_differ` had the opposite branch for a declared relation (it
+   "spoke for its keys' value NULLs", made the pair null-safe and narrowed
+   to INNER, dropping a NULL group only one side held); it now treats a
+   declared relation's nullable key like any other, so the optimizer refuses
+   the upgrade unless both sides read the same filtered rows. The planner
+   already kept those rows, so the ruling is the planner's answer and the
+   optimizer stops overriding it.
+   - The census on `4ede680` read 40 firings over the non-law suite; five
+     went through the EQUAL-nullable branch (`first_org` twice,
+     `web.billing_customer.sk` three times, both left-nullable). After: 35,
+     those five gone, none new.
+   - The test-sized gcat models declared `merge first_org into org.code`
+     where the real model says `~org.code` (not every org code is a first
+     org): `gcat2/launch.preql` and the two `first_org` discovery tests now
+     declare the subset. hackernews `merge github.repo_url into
+     any_github_url` stays EQUAL (neither side is a subset); its
+     `any_github_url` is nullable, so the ruling keeps its posts.
+   - Corpus: 1 moved, `_q04_agent_rowset_union_join` types its web-sales to
+     customer lookup LEFT (`ws_bill_customer_sk` is `?`); the 8 rows on
+     sf=1 are identical. `test_equal_merge_keeps_null_bindings.py` pins the
+     ruling (red on `main`: the launch with no agency dropped). The join
+     matrix holds a NULL row on both sides of every nullable cell and does
+     not reach the branch.
+
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle

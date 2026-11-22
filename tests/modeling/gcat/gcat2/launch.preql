@@ -38,7 +38,7 @@ property launch_tag.orgs string;
 property launch_tag._split_orgs <- split(orgs,'/');
 property launch_tag.first_org <- _split_orgs[1];
 
-MERGE first_org into org.code;
+MERGE first_org into ~org.code;
 
 property launch_tag.launch_date <- date_add('1900-01-01'::date,day,CAST((CAST(launch_jd AS float) - 2415021) AS int));
 property launch_tag.success_flag <- CASE
