@@ -2180,3 +2180,22 @@ theorem where_over_total_not_idempotent :
       keepBelowCount (keepBelowCount [1, 2, 3]) = [1] := by decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A property shown without its key -/
+
+/-- `select tree_form as f where tree_form in (<set>) or tag = 'x'`: a
+property shown without its key is its distinct values. The plan grouped the
+rows by the property's key, `species`, hidden, and showed broadleaf once per
+broadleaf species (`hidden_key_repeats_property`). A filtered value's own
+keys are the one hidden grouping a select keeps (`select name, bulk_name` is
+a row per product). -/
+theorem hidden_key_repeats_property :
+    -- (species, tree_form): Acer and Quercus are broadleaf
+    let species : List (Nat × Nat) := [(0, 0), (1, 0), (2, 1)]
+    (species.map (·.2)).eraseDups.length = 2 ∧
+      (species.eraseDups.map (·.2)).length = 3 := by
+  decide
+
+end Trilogy.SelectGrain
