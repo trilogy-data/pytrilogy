@@ -6213,13 +6213,30 @@ def _groups_past_outputs(
     node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
 ) -> bool:
     """A grouping that kept a key the outputs do not determine (a derived
-    key's own grain, `species` of `fc`) holds a row per value of it."""
+    key's own grain, `species` of `fc`) holds a row per value of it. Hidden,
+    it counts when it keys a property shown without it: `tree_form as f`
+    grouped by `species` repeats a form per species
+    (`SelectGrain.hidden_key_repeats_property`). A filtered value's keys are
+    the one exception: `select name, bulk_name` is a row per product."""
     closure = strict_fd_closure(environment, {c.address for c in outputs})
+    hidden = node.hidden_concepts or set()
+    keys_of = partial(_keys_of, outputs)
+    property_keys = keys_of(
+        lambda c: c.purpose == Purpose.PROPERTY
+        and not isinstance(c.lineage, BuildFilterItem)
+    ) - keys_of(lambda c: isinstance(c.lineage, BuildFilterItem))
     return any(
-        o.address not in closure and not o.is_aggregate
+        o.address not in closure
+        and not o.is_aggregate
+        and (o.address not in hidden or o.address in property_keys)
         for o in node.output_concepts
-        if o.address not in (node.hidden_concepts or set())
     )
+
+
+def _keys_of(
+    outputs: list[BuildConcept], which: Callable[[BuildConcept], bool]
+) -> set[str]:
+    return {key for c in outputs if which(c) for key in c.keys or ()}
 
 
 def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:
@@ -7099,7 +7116,7 @@ def _assemble_final_node(
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
     # what each contributor's rows hold, as built
-    holds = {
+    built_holds = {
         gid: frozenset(o.address for o in node.output_concepts)
         for gid, node in built.items()
     }
@@ -7111,7 +7128,7 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
-        rendered=holds,
+        rendered=built_holds,
     )
     bridges = bridged.extras
     extras = _final_extra_sides(
@@ -7132,7 +7149,7 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         extras=bridges + extras.groups,
-        rendered=holds,
+        rendered=built_holds,
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}

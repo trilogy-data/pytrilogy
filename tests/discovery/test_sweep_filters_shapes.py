@@ -229,6 +229,16 @@ SHAPES = [
         ),
         [("A", "broadleaf", None), ("B", "broadleaf", None), ("B", "linden", None)],
     ),
+    # a property shown without its key is its distinct values, a rename too:
+    # grouped past it by its hidden key, a form showed once per species
+    # (25880, reduced; no `?` needed)
+    (
+        (
+            "select tree_form as v0 where tree_form in (tree_form ? tree_form ="
+            " 'broadleaf') or tag = 'x';"
+        ),
+        [("broadleaf",), ("linden",), (None,)],
+    ),
 ]
 
 
