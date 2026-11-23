@@ -734,15 +734,10 @@ def _uncovered_exposing_output_contributor(
             for host in collapsing_hosts
         )
     ):
-        # a filtered value is no key: its content's keys determine it
-        keys = {
-            k
-            for k in mandatory_addrs
-            & set().union(
-                *(buckets[gid].grain_components for gid in covered if gid in buckets)
-            )
-            if environment.concepts[k].derivation != Derivation.FILTER
-        }
+        keys = mandatory_addrs & set().union(
+            *(buckets[gid].grain_components for gid in covered if gid in buckets)
+        )
+        keys -= _filters_the_keys_decide(keys, environment)
         return (
             not any(build_fd_determines_all(environment, own, keys) for own in held)
             and row_inputs <= final_exposable
@@ -792,6 +787,25 @@ def _uncovered_exposing_output_contributor(
         ):
             return True
     return False
+
+
+def _filters_the_keys_decide(
+    keys: set[str], environment: BuildEnvironment
+) -> set[str]:
+    """Filtered values whose content the other keys determine (`(sum(x) by
+    fc) ? c` beside `fc`): no key of the rows. A filtered row value
+    (`height ? c`) keys them as its content does."""
+    plain = {k for k in keys if environment.concepts[k].derivation != Derivation.FILTER}
+    return {
+        k
+        for k in keys - plain
+        if isinstance(lineage := environment.concepts[k].lineage, BuildFilterItem)
+        and isinstance(content := lineage.content, BuildConcept)
+        and content.grain is not None
+        and build_fd_determines_all(
+            environment, plain, set(pairing_keys(content.grain.components))
+        )
+    }
 
 
 IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
@@ -1150,12 +1164,13 @@ def _hosts_carrying_condition_grain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
     group_own_keys: dict[str, set[str]],
+    strict: bool = False,
 ) -> list[str]:
     """Hosts that can pair a condition-phase aggregate's branch: an atom over
     `sum(amount) by status` joins that branch on `status`, so a host without
     the grain (the ROOT scan, when `status` is a derivation of a sibling
     group) cannot render it (`Missing source map entry`). Leaves the pool
-    alone when no host carries the grain."""
+    alone when no host carries the grain, unless `strict`."""
     grains: list[set[str]] = [
         set(b.grain_components)
         for b in buckets.values()
@@ -1165,13 +1180,13 @@ def _hosts_carrying_condition_grain(
         and row_inputs & set(b.primary_members)
     ]
     if not grains:
-        return restricted
+        return [] if strict else restricted
     carrying = [
         gid
         for gid in restricted
         if all(grain <= group_own_keys.get(gid, set()) for grain in grains)
     ]
-    return carrying or restricted
+    return carrying if strict else carrying or restricted
 
 
 def _grouping_barrier_host(
@@ -1951,13 +1966,14 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
                 - consumed_barriers
             )
         ]
-    # a group only sets read filters their rows, not the statement's: it hosts
-    # beside a row host, never instead of one
-    # (`Filters.gate_on_a_set_filters_no_row`)
+    # a group only sets read filters their rows, not the statement's: the
+    # statement's own rows host it instead (`Filters.gate_hosted_on_set_input_alone`);
+    # a dimension peel holds entities, not those rows
     row_hosts = [
         gid
         for gid in restricted
         if not feeds_only_sets(group_graph, scope.group_edges, gid)
+        and not buckets[gid].anchor_keys
     ]
     restricted = _hosts_carrying_condition_grain(
         row_hosts or restricted, row_inputs, buckets, scope.group_own_keys
