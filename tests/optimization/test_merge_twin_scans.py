@@ -119,3 +119,25 @@ def test_filtered_scan_reads_its_unfiltered_twin(query: str, expected: list[tupl
     sql = ex.generate_sql(query)[-1]
     assert _scans(sql) == 1, sql
     assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(expected)
+
+
+HAVING = [
+    # filters 0.3.534 lead: the grouped scan's HAVING kept it off its row twin
+    (
+        (
+            "select tree_form, height ? tree_id in (tree_id ? max(height) by city,"
+            " species is not null) as f where height between 2 and 5;"
+        ),
+        [("broadleaf", 5), ("broadleaf", 3), ("linden", 2)],
+    ),
+]
+
+
+@pytest.mark.parametrize("query, expected", HAVING)
+def test_grouped_scan_keeps_its_having_over_its_row_twin(
+    query: str, expected: list[tuple]
+):
+    ex = executor("base")
+    sql = ex.generate_sql(query)[-1]
+    assert _scans(sql) == 1, sql
+    assert normalize(ex.execute_raw_sql(sql).fetchall()) == normalize(expected)

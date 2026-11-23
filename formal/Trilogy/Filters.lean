@@ -45,7 +45,9 @@ aggregate's rows and not the filter's own; both must pass it
 (`gate_on_a_condition_filters_no_row`).
 A filter its keys decide is a property of them, shown once per value like
 any other (`decided_filter_repeats_per_key`); only one reading finer than its
-keys is a value per key.
+keys is a value per key. A filter whose content and condition an aggregate
+answers is still a value of the select's rows: read off the aggregate alone
+it holds no other key of them (`filter_over_aggregate_keeps_its_rows`).
 -/
 
 namespace Trilogy.Filters
@@ -251,6 +253,21 @@ showed once per species (`decided_filter_repeats_per_key`). Rows are
 theorem decided_filter_repeats_per_key :
     let rows : List (Nat × Nat × Option Nat) := [(0, 0, none), (1, 0, none)]
     (rows.map fun r => r.2).eraseDups.length = 1 ∧ rows.eraseDups.length = 2 := by
+  decide
+
+/-- `select city, tree_form, city ? sum(height) by city > 2 as f where
+max(height) by tree_form is not null`: the kept trees' `(city, form)` pairs
+are (A, broadleaf), (B, broadleaf), (B, linden). The filter was read off the
+city sum alone, so its rows held cities and no form, and met the WHERE's
+forms on nothing: A beside linden, four rows for three
+(`filter_over_aggregate_keeps_its_rows`). Read off the rows beside the sum,
+it is one value per pair. -/
+theorem filter_over_aggregate_keeps_its_rows :
+    let kept : List (Nat × Nat) := [(0, 0), (1, 0), (1, 1)]
+    let cities := (kept.map (·.1)).eraseDups
+    let forms := (kept.map (·.2)).eraseDups
+    (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 ∧
+      kept.eraseDups.length = 3 := by
   decide
 
 end Trilogy.Filters

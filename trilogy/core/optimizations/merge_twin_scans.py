@@ -9,13 +9,14 @@ projections.
 
 A scan under a condition beside an unconditioned scan of the same table reads
 the unconditioned rows and applies its own condition there: the table is read
-whole once either way.
+whole once either way. A grouped scan's HAVING stays on it: only its WHERE
+names the rows it reads.
 """
 
 from __future__ import annotations
 
 from trilogy.core.constants import ALL_ROWS_ADDRESS
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.models.build import BoolExpr, BuildConcept
 from trilogy.core.models.execute import CTE, DatasourceCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import repoint_consumers
@@ -92,12 +93,12 @@ def _group_reads(group: DatasourceCTE) -> list[BuildConcept] | None:
     return reads
 
 
-def _condition_reads(cte: DatasourceCTE, reads: list[BuildConcept]) -> bool:
-    """Whether `cte`'s own condition reads only columns in `reads`."""
-    if cte.condition is None or any(cte.condition.existence_arguments):
+def _condition_reads(condition: BoolExpr | None, reads: list[BuildConcept]) -> bool:
+    """Whether `condition` reads only columns in `reads`."""
+    if condition is None or any(condition.existence_arguments):
         return False
     names = {c.address for c in reads}
-    return {c.address for c in cte.condition.concept_arguments} <= names
+    return {c.address for c in condition.concept_arguments} <= names
 
 
 def _rows_for(cte: DatasourceCTE, rows: DatasourceCTE, read: tuple) -> bool | None:
@@ -118,6 +119,7 @@ def _rebase(
     rows: DatasourceCTE,
     reads: list[BuildConcept],
     shared: bool = True,
+    having: BoolExpr | None = None,
 ) -> None:
     """`group` reads the rows `rows` already reads instead of scanning the
     table again. A shared condition stays on `rows`; otherwise `group` applies
@@ -143,8 +145,8 @@ def _rebase(
     group.parent_ctes = [rows]
     group.existence_source_map = {}
     if shared:
-        group.condition = None
-        group.source.condition = None
+        group.condition = having
+        group.source.condition = having
     group.source.datasources = [rows.source]
     group.source.base_datasource = None
     group.source_map = {c.address: [rows.name] for c in reads}
@@ -188,14 +190,24 @@ class MergeTwinScans(OptimizationRule):
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         reads = _group_reads(cte)
+        placement = cte.condition_placement
         if (
             reads is None
             # a re-sum reads stored partials through its own source map
             or cte.rollup_concepts
             or cte.partial_sources
+            # a HAVING reading a set needs the existence wiring the rebase drops
+            or placement.qualify is not None
+            or (
+                placement.having is not None
+                and any(placement.having.existence_arguments)
+            )
         ):
             return False, None
-        return self._rebase_over_twin(cte, reads, inverse_map, True), None
+        return (
+            self._rebase_over_twin(cte, reads, inverse_map, True, placement.having),
+            None,
+        )
 
     def _filter_over_rows(
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -211,11 +223,15 @@ class MergeTwinScans(OptimizationRule):
         reads: list[BuildConcept],
         inverse_map: dict[str, list[CTE | UnionCTE]],
         allow_shared: bool,
+        having: BoolExpr | None = None,
     ) -> bool:
         read = _read(cte)
         if read is None or _inlined_anywhere(cte.name, inverse_map[cte.name]):
             return False
-        filtered = _condition_reads(cte, reads)
+        where = cte.condition_placement.where if having else cte.condition
+        # the rows are named by the WHERE alone; the HAVING stays on `cte`
+        read = (read[0], str(where), *read[2:])
+        filtered = _condition_reads(where, reads)
         for consumers in inverse_map.values():
             for consumer in consumers:
                 for rows in consumer.dependency_nodes():
@@ -233,7 +249,7 @@ class MergeTwinScans(OptimizationRule):
                     ):
                         continue
                     self.log(f"Reading {cte.name} over its twin rows {rows.name}")
-                    _rebase(cte, rows, reads, shared)
+                    _rebase(cte, rows, reads, shared, having)
                     inverse_map[rows.name].append(cte)
                     return True
         return False
