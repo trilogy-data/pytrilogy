@@ -26,8 +26,6 @@ _TRACKED = (
     "_proven_subset_of",
     "_genuine_partial_stamp",
     "_rowset_definition_boundary",
-    "_joined_complete",
-    "_recursion_seed",
     "_on_complete_grain",
     "_authoritative_scan",
     "_same_filter_chain",

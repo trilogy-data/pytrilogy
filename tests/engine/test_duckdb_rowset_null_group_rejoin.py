@@ -531,9 +531,8 @@ DIRECT_PATH_CASES = [
     # the domain pads at FINAL. The guest's group (a NULL description through
     # its NULL item) has no item row to pair with: that FINAL is FULL, typed
     # so at plan time (`_unpaired_value_nulls`: the feeder's NULL is guest
-    # padding the holder lacks) and kept so by the optimizer's subset proof
-    # (`_unpaired_guest_padding`), which took the `?` on the description for
-    # a null-safe partner and narrowed it to LEFT.
+    # padding the holder lacks); a nullable subset key never narrows in the
+    # optimizer.
     (
         "GUEST_ALLDESC_MODEL",
         DIRECT_COUNT_GRAIN_BY_DESCRIPTION,
