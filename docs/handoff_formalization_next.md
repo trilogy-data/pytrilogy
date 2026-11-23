@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.535.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.536.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 80,000; the PR of each
-round holds its sweep totals. `filters` has 110 `OPEN` seeds in 0-20,000 and
-707 failing queries in 20,000-80,000 not yet listed (area 4b),
+group key of aggregates and windows, in a HAVING) to 100,000; the PR of each
+round holds its sweep totals. `filters` has 54 `OPEN` seeds in 0-20,000 and
+497 failing queries in 20,000-100,000 not yet listed (area 4b),
 `windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -595,10 +595,12 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (110 seeds of
-0-20,000) and, at 0.3.535, 707 failing queries of 20,000-80,000, each
-failing on main too. The 60,000-80,000 ones group as 90 `cannot be related`
-(the WHERE-gate host below), 54 wrong answers, 44 keyless joins, 15
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (54 seeds of
+0-20,000) and, at 0.3.536, 497 failing queries of 20,000-100,000 (310
+raises, 172 wrong, 15 invalid), each failing on main too but for 25203,
+49355 and 71788 (raised or invalid on main, wrong rows now). At 0.3.535
+the 60,000-80,000 ones grouped as 90 `cannot be related` (the WHERE-gate
+host below), 54 wrong answers, 44 keyless joins, 15
 recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
 `Ambiguous reference` (below).
 
@@ -686,7 +688,8 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
   where avg(height) by city, species != 2` (2922) still returns every
   species. 0.3.536 also backfills under a WHERE that reads a set, unless
-  the gate is a total (above); that fixed 61 of 82 seeds in 80,000-100,000.
+  the gate is a total (above); with the rest of 0.3.536 that fixed 75 of 139 failing seeds in
+  80,000-100,000.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's

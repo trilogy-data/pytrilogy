@@ -2910,6 +2910,28 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     inner `by city, species` aggregate to supply `species`, and FINAL does
     not deduplicate it.
 
+- **`filters` to 100,000** (0.3.536). On main seeds 80,000-100,000 (40,000
+  queries) hold 62 wrong answers, 196 raises and 12 invalid statements. Over
+  0-100,000 the round fixes 590 queries (58 wrong answers, 503 raises, 29
+  invalid) and breaks none right on main, with 867 fewer joins and 4 more
+  scans on queries main already answered. Three seeds (25203, 49355, 71788)
+  that raised or were invalid on main now return wrong rows: each reaches a
+  WHERE on an aggregate off the select's grain that main answers wrong alone.
+  - A set holds only the rows its own condition kept, so the final cover
+    elects no set to hold select keys (`set_holds_no_select_keys`), and no
+    aggregate only sets read regrafts a derived key.
+  - A shown filter only FINAL reads meets the WHERE gate on the gate's full
+    grain, and passes its row parents through whole
+    (`filter_meets_gate_on_its_grain`, `filtered_key_identifies_no_row`).
+  - `DropIdentityGroup` takes no unique key off a parent that supplies a
+    membership set; the gate backfill under a WHERE membership skips `by *`
+    totals (`gate_beside_set_filters_rows`).
+  - Two merged copies of one datasource that each joined the same CTE
+    rendered it under one alias twice; the duplicate joins now coalesce.
+  - Not fixed: excluding a set's inner aggregate from the cover
+    (`set_input_supplies_no_output`) fixed 17550 but broke four seeds right
+    on main, so it was dropped; 17550 is open again.
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
