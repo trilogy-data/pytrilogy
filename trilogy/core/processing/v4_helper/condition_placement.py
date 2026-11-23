@@ -59,6 +59,7 @@ from .edges import (
     EdgeMap,
     edge_kind,
     edges_of_kind,
+    feeds_only_sets,
     lineage_subgraph,
     subgraph_of_kinds,
 )
@@ -832,7 +833,10 @@ def _unfiltered_filter_streams(
         and b.depth_label not in NESTED_DEPTHS
         and shown & set(b.primary_members)
         and any(scope.group_graph.has_edge(host, gid) for host in chosen)
-        and build_fd_determines_all(scope.environment, b.grain_components, keys)
+        and (
+            build_fd_determines_all(scope.environment, b.grain_components, keys)
+            or set(scope.group_graph.successors(gid)) == {FINAL_NODE_ID}
+        )
         and not _rows_filtered_by(gid, chosen, scope, memo)
     }
 
@@ -1915,8 +1919,16 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
                 - consumed_barriers
             )
         ]
+    # a group only sets read filters their rows, not the statement's: it hosts
+    # beside a row host, never instead of one
+    # (`Filters.gate_on_a_set_filters_no_row`)
+    row_hosts = [
+        gid
+        for gid in restricted
+        if not feeds_only_sets(group_graph, scope.group_edges, gid)
+    ]
     restricted = _hosts_carrying_condition_grain(
-        restricted, row_inputs, buckets, scope.group_own_keys
+        row_hosts or restricted, row_inputs, buckets, scope.group_own_keys
     )
     if not restricted:
         return [_at_final(atom, PlacementReason.FINAL_RECONVERGENCE)]

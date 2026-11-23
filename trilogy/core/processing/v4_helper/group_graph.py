@@ -2736,7 +2736,8 @@ def _regraft_candidate(
             pred_outputs |= sets.outputs_of(pred)
     my_ancestors = nx.ancestors(group_graph, gid)
     paired_downstream = any(
-        reader != FINAL_NODE_ID for reader in group_graph.successors(gid)
+        reader != FINAL_NODE_ID or group_graph.in_degree(FINAL_NODE_ID) > 1
+        for reader in group_graph.successors(gid)
     )
     best_gid: str | None = None
     best_score: tuple[int, ...] = ()

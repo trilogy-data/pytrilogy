@@ -140,6 +140,8 @@ def gen_filter(
             not build_fd_determines(environment, entity_grain, r.address)
             for lineage in filter_lineages
             for r in lineage.where.row_arguments
+            # a total is one value on every row: any key decides it
+            if r.granularity != Granularity.SINGLE_ROW
         )
         if collapsible and finer:
             # the rows keep the group's other keys their parents hold: paired

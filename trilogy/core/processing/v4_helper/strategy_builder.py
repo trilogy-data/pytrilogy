@@ -4258,6 +4258,26 @@ def _merge_sides(
     ]
 
 
+def _condition_aggregate_keys(
+    group: GroupAttrs, environment: BuildEnvironment
+) -> frozenset[str]:
+    """A filter decides its condition on each row it reads: the aggregates
+    the condition reads meet there on every key of theirs, so their grains are
+    keys of its rows (`Filters.condition_aggregates_meet_per_row`)."""
+    if group.derivation != Derivation.FILTER:
+        return frozenset()
+    return frozenset(
+        k
+        for address in group.primary_members
+        if isinstance(
+            lineage := environment.concepts[address].lineage, BuildFilterItem
+        )
+        for arg in lineage.where.row_arguments
+        if arg.is_aggregate
+        for k in pairing_keys(arg.grain.components)
+    )
+
+
 def _plan_group_bridges(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -4293,7 +4313,8 @@ def _plan_group_bridges(
             environment,
             authored,
             contracted={side: demands.get(side, frozenset()) for side in sides},
-            reader_grain=pairing_keys(attrs[gid].grain_components),
+            reader_grain=pairing_keys(attrs[gid].grain_components)
+            | _condition_aggregate_keys(attrs[gid], environment),
         )
         attrs[gid].bridges = tuple(bridged.extras)
         # a bridge elected to key a pairing joins no islands and repeats a row
