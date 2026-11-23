@@ -62,7 +62,6 @@ from trilogy.core.models.build import (
     LooseBuildConceptList,
     generate_concept_name,
     get_concept_arguments,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.core import arg_to_datatype, holds_unique_elements
@@ -878,9 +877,7 @@ def node_nulls_grouping_keys(node: StrategyNode) -> bool:
     away), so nothing may join back to it on a non-unique key, because no
     later dedup will absorb the duplicates. Both halves must ask this one
     question or they drift apart."""
-    return any(
-        nonstandard_grouping_lineage(o) is not None for o in node.output_concepts
-    )
+    return any(node.environment.pass_of(o) is not None for o in node.output_concepts)
 
 
 def _groups_null_grouping_keys(
@@ -889,7 +886,7 @@ def _groups_null_grouping_keys(
     """`node_nulls_grouping_keys` of these groups' nodes, read off what each
     outputs at stage 2."""
     return any(
-        nonstandard_grouping_lineage(concept) is not None
+        environment.pass_of(concept) is not None
         for gid in gids
         for address in attrs[gid].output_concepts
         if (concept := _concept_at(environment, address)) is not None
@@ -902,15 +899,12 @@ def _nonstandard_grouping_key_addresses(
     """Grouping-key addresses of this group's non-standard (ROLLUP/CUBE/
     GROUPING SETS) aggregate members, across the `by` spec and every grouping
     set."""
-    out: set[str] = set()
     for addr in attrs[gid].primary_members:
         concept = _concept_at(environment, addr)
-        lineage = nonstandard_grouping_lineage(concept) if concept else None
-        if lineage is not None:
-            out |= {b.address for b in lineage.by}
-            for grouping_set in lineage.grouping_sets:
-                out |= {b.address for b in grouping_set}
-    return out
+        grouping = environment.pass_of(concept) if concept else None
+        if grouping is not None:
+            return set(grouping.keys)
+    return set()
 
 
 def _provider_feeds_other_grouping(
@@ -2275,7 +2269,7 @@ def _aggregate_scalar_inputs(
     for concept in outputs:
         if concept.address not in primary_addrs:
             continue
-        if nonstandard_grouping_lineage(concept) is not None and not region_spans:
+        if environment.pass_of(concept) is not None and not region_spans:
             return []
         scalar_inputs.extend(
             aggregate_input
@@ -2708,7 +2702,7 @@ def _parents_already_at_input_grain(
     its GROUP BY clause."""
     if not input_grain:
         return False
-    if any(nonstandard_grouping_lineage(c) is not None for c in outputs):
+    if any(environment.pass_of(c) is not None for c in outputs):
         return False
     keys = set(input_grain)
 
@@ -5216,7 +5210,7 @@ def _renders_grouping_rows(
     twin of `node_nulls_grouping_keys`."""
     return any(
         (c := environment.concepts.get(address)) is not None
-        and nonstandard_grouping_lineage(c) is not None
+        and environment.pass_of(c) is not None
         for address in rendered
     )
 

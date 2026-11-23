@@ -734,7 +734,6 @@ def _demanded_aggregates(
 def _standard_rollable(concept: BuildConcept) -> bool:
     return (
         isinstance(concept.lineage, BuildAggregateWrapper)
-        and not concept.lineage.grouping.nulls_grouping_keys
         and concept.rollup_signature is not None
     )
 
