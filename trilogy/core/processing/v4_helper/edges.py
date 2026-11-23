@@ -80,6 +80,18 @@ def only_a_set(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
     return kinds == {EdgeKind.EXISTENCE}
 
 
+def feeds_only_sets(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> bool:
+    """A group whose rows reach no reader but sets: an aggregate a set's
+    condition reads holds the rows that set reads, not the statement's."""
+    succs = group_graph.successors(gid) if gid in group_graph else ()
+    readers = [s for s in succs if s != FINAL_NODE_ID]
+    return bool(readers) and all(
+        only_a_set(group_graph, group_edges, r)
+        or feeds_only_sets(group_graph, group_edges, r)
+        for r in readers
+    )
+
+
 def lineage_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
     return [
         pred

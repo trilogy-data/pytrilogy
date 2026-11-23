@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.535.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.536.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 80,000; the PR of each
-round holds its sweep totals. `filters` has 110 `OPEN` seeds in 0-20,000 and
-707 failing queries in 20,000-80,000 not yet listed (area 4b),
+group key of aggregates and windows, in a HAVING) to 100,000; the PR of each
+round holds its sweep totals. `filters` has 54 `OPEN` seeds in 0-20,000 and
+497 failing queries in 20,000-100,000 not yet listed (area 4b),
 `windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -595,10 +595,12 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (110 seeds of
-0-20,000) and, at 0.3.535, 707 failing queries of 20,000-80,000, each
-failing on main too. The 60,000-80,000 ones group as 90 `cannot be related`
-(the WHERE-gate host below), 54 wrong answers, 44 keyless joins, 15
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (54 seeds of
+0-20,000) and, at 0.3.536, 497 failing queries of 20,000-100,000 (310
+raises, 172 wrong, 15 invalid), each failing on main too but for 25203,
+49355 and 71788 (raised or invalid on main, wrong rows now). At 0.3.535
+the 60,000-80,000 ones grouped as 90 `cannot be related` (the WHERE-gate
+host below), 54 wrong answers, 44 keyless joins, 15
 recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
 `Ambiguous reference` (below).
 
@@ -628,10 +630,30 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
 - **The set's inner aggregate supplies a select key** (9919, 28312: raised
   on main, wrong rows now): in `select species, (min(height) by tree_form) ?
   tree_form in (tree_form ? min(height) by city, species >= 0) as f` the
-  cover elects that aggregate for `species` and FINAL does not dedup it.
-- **One dimension peel joined twice in one CTE** (61695, 62837): `fc` is
-  looked up for two sides of a merge, the peels dedupe to one CTE name, and
-  DuckDB rejects the duplicate alias.
+  `by city, species` aggregate feeds the set and the `by tree_form` roll-up,
+  so it is no set-only input (0.3.536 excludes those from the cover). FINAL
+  joins it on `species` and does not group, so Acer shows once per city.
+- **A derived key beside a filtered column off a peel joined on nothing**
+  (83978): `select city, case when tree_form = 'broadleaf' then 'b' else 'o'
+  end as fc, (min(height) by city) ? city in (<set>) as v0 where tag in
+  (<set>)` takes `fc` off the species peel and `city` off the filter's rows,
+  and FINAL joins them `on 1=1`. With `tree_form` in place of `fc` it is
+  right. `_keys_off_one_tuple` reads only KEY-purpose columns. Reduced,
+  `select city, tree_form, (min(height) by city) ? city in (city ?
+  max(height) by tree_form is null) as v0 where tag in (<set>)` reads
+  `tree_form` off the set's `by tree_form` aggregate beside the filter's
+  `city` (`Filters.set_input_supplies_no_output`; 17550 too). Excluding
+  every set-only input from the cover fixed it and broke four seeds right
+  on main (9515: a set's `by city, species` aggregate is the right source of
+  the WHERE-kept pairs).
+- **A row scan beside a `by *` WHERE total finds no plan when a set reads a
+  total** (`Could not resolve connections`, 9 seeds of 80,000-100,000):
+  `select tag, city ? city in (city ? sum(height) by * <= 8) as v0 where
+  count(tree_id) by city < max(height) by *`. `gen_root`'s fallback asks the
+  network search for the trees with `__preql_internal.all_rows` and the
+  gates deferred; it answers with no plan, and it answers with one when the
+  set reads no total. 0.3.536's gate backfill under a WHERE membership skips
+  totals for this reason (two seeds right on main would raise).
 - **A set over nullable content keeps the filter's padding NULLs.** The set
   of `x ? c` is the values of the rows `c` passes, a NULL included where a
   passing row's `x` is NULL; matched by identity (`_null_free_set`). The set
@@ -665,7 +687,9 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   preferring a statement-row host over a side-channel host that carries the
   gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
   where avg(height) by city, species != 2` (2922) still returns every
-  species.
+  species. 0.3.536 also backfills under a WHERE that reads a set, unless
+  the gate is a total (above); with the rest of 0.3.536 that fixed 75 of 139 failing seeds in
+  80,000-100,000.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's
@@ -683,6 +707,9 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   a seed as a strict xfail.
 - A plan that loops: seed 2917 took more than 30 s on main (a window over
   two filtered keys under a WHERE gate); the sweep now records a timeout.
+- Efficiency: 0.3.536 reads 81348 and 99524 with two scans where main read
+  one: a set's grouped `HAVING avg(height) by species is not null` scan no
+  longer merges with its row twin under the same WHERE.
 - Efficiency: a filtered key beside a derived key dedups through a second
   contributor joined back on the key's input (`select coalesce(tree_form,
   'none') as form0, tree_id ? species = 'Acer' as f` self-joins on

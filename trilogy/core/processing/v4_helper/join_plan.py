@@ -622,12 +622,26 @@ def _from_row_parents(
             in (Derivation.ROOT, Derivation.BASIC, Derivation.FILTER)
         )
     )
-    if not group.grain_components or not any(
-        attrs[parent].derivation in (*GROUPING_DERIVATIONS, Derivation.WINDOW)
-        for parent in parents
+    if (
+        not group.grain_components
+        or _read_only_by_final(group_graph, attrs, gid)
+        or not any(
+            attrs[parent].derivation in (*GROUPING_DERIVATIONS, Derivation.WINDOW)
+            for parent in parents
+        )
     ):
         return passed
     return passed & _determined(group.grain_components, environment)
+
+
+def _read_only_by_final(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> bool:
+    """A filter only FINAL reads passes its row parents' rows through whole:
+    its claimed grain is the select's, not a projection of them."""
+    return attrs[gid].derivation == Derivation.FILTER and set(
+        group_graph.successors(gid)
+    ) == {FINAL_NODE_ID}
 
 
 def _held(

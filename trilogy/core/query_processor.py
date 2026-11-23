@@ -74,6 +74,7 @@ from trilogy.core.models.execute import (
     SourceJoin,
     UnionCTE,
     UnnestJoin,
+    coalesce_duplicate_joins,
 )
 from trilogy.core.models.reference_index import dependents
 from trilogy.core.optimization import optimize_ctes
@@ -454,6 +455,11 @@ def datasource_to_cte(
         base_join_to_join(join, [x for x in parents if isinstance(x, (CTE, UnionCTE))])
         for join in query_datasource.joins
     ]
+    # two merged copies of one datasource can each join a CTE from their own
+    # base; rendered as is, that CTE is aliased twice
+    rights = [j.right.name for j in final_joins if isinstance(j, Join)]
+    if len(rights) != len(set(rights)):
+        final_joins = coalesce_duplicate_joins(final_joins)
 
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins

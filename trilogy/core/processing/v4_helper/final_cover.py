@@ -458,7 +458,9 @@ def elect_cover(
         ):
             winner = owner
         per_group[winner].append(concept)
-    return _keys_off_one_tuple(per_group, exposed, mandatory_list, groups, group_graph)
+    return _keys_off_one_tuple(
+        per_group, exposed, mandatory_list, groups, group_graph, group_edges
+    )
 
 
 def _keys_off_one_tuple(
@@ -467,11 +469,13 @@ def _keys_off_one_tuple(
     mandatory_list: Sequence[BuildConcept],
     groups: Collection[str],
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
 ) -> dict[str, list[BuildConcept]]:
     """The selected keys come off one group's rows when no winner holds them
     all: `city` off a group by `(city, tree_form)` and `species` off one by
     `species` pair every city with every species of a form, tuples no row
-    holds (`SelectGrain.keys_off_two_groups_pair_unheld`)."""
+    holds (`SelectGrain.keys_off_two_groups_pair_unheld`). A set holds only
+    the rows its own condition kept, so it is no holder."""
     keys = [
         c for c in mandatory_list if c.purpose == Purpose.KEY and not c.is_aggregate
     ]
@@ -481,7 +485,11 @@ def _keys_off_one_tuple(
     }
     if len(winners) < 2 or any(addrs <= exposed[gid] for gid in winners):
         return per_group
-    holders = [gid for gid in groups if addrs <= exposed[gid]]
+    holders = [
+        gid
+        for gid in groups
+        if addrs <= exposed[gid] and not only_a_set(group_graph, group_edges, gid)
+    ]
     if not holders:
         return per_group
     holder = max(
