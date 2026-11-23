@@ -902,7 +902,7 @@ def test_group_concepts_dedups_aliases_of_one_column():
     cte = _consumer_cte("cte", [key, alias], {key.address: [parent]})
 
     assert cte.render_binding(alias) == cte.render_binding(key)
-    assert cte.render_binding(key)[0] == "source"
+    assert cte.render_binding(key)[0] == "columns"
     assert cte.group_concepts == [key]
 
 
@@ -932,7 +932,7 @@ def test_group_concepts_dedups_outer_join_key_class():
     )
 
     assert cte.render_binding(left) == cte.render_binding(right)
-    assert cte.render_binding(left)[0] == "key_class"
+    assert len(cte.render_binding(left)) == 3
     assert len(cte.group_concepts) == 1
 
 
@@ -941,3 +941,62 @@ def test_render_binding_unbound_concept_falls_back_to_address():
     cte = _consumer_cte("cte", [key], {})
 
     assert cte.render_binding(key) == ("address", key.address)
+
+
+def _outer_key_cte(join_type: JoinType = JoinType.LEFT_OUTER):
+    left = _key_concept("k")
+    right = _key_concept("r")
+    a = _datasource_cte("a", left)
+    b = _datasource_cte("b", right)
+    join = Join(
+        right=b,
+        join_type=join_type,
+        pairs=[ConceptPair(left=left, right=right, node=a)],
+    )
+    cte = _consumer_cte(
+        "cte", [left, right], {left.address: [a], right.address: [b]}, joins=[join]
+    )
+    return cte, left, right
+
+
+def test_column_reads_coalesce_an_outer_join_key_class():
+    cte, left, right = _outer_key_cte()
+    assert {s for _, s in cte.column_reads(left)} == {"a", "b"}
+    assert set(cte.column_reads(right)) == set(cte.column_reads(left))
+    rendered = BaseDialect().render_concept_sql(left, cte, alias=False)
+    assert rendered.startswith("coalesce(")
+
+
+def test_column_reads_one_side_of_an_inner_join_key():
+    cte, left, right = _outer_key_cte(JoinType.INNER)
+    assert cte.column_reads(left) == [(left, "a")]
+    assert cte.column_reads(right) == [(right, "b")]
+
+
+def test_column_reads_one_source_an_inner_join_equates():
+    key = _key_concept("k")
+    a = _datasource_cte("a", key)
+    b = _datasource_cte("b", key)
+    join = Join(
+        right=b,
+        join_type=JoinType.INNER,
+        pairs=[ConceptPair(left=key, right=key, node=a)],
+    )
+    cte = _consumer_cte("cte", [key], {key.address: [a, b]}, joins=[join])
+    assert len(cte.column_reads(key)) == 1
+    assert BaseDialect().render_concept_sql(key, cte, alias=False).count(".") == 1
+
+
+def test_column_reads_skip_a_source_outside_the_from_scope():
+    key = _key_concept("k")
+    a = _datasource_cte("a", key)
+    exists_only = _datasource_cte("e", key)
+    cte = _consumer_cte("cte", [key], {key.address: [a, exists_only]})
+    assert cte.column_reads(key) == [(key, "a")]
+
+
+def test_a_coalesced_key_carries_no_rejection_to_one_producer():
+    from trilogy.core.optimizations.join_upgrade import _renders_exclusively_from
+
+    cte, left, _ = _outer_key_cte()
+    assert not _renders_exclusively_from(cte, left.address, {"a"})

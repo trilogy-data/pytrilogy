@@ -633,6 +633,41 @@ class CTE:
                     out |= names
         return out
 
+    def column_reads(self, concept: BuildConcept) -> list[tuple[BuildConcept, str]]:
+        """The parent columns, as (concept, source), that ``concept`` renders
+        from in this CTE; more than one renders coalesced. An outer-join key
+        reads every in-scope member of its class, since any side may be the
+        padded NULL. A bound column reads its in-scope sources, or one of them
+        when an INNER join equates them all on this key. Empty when unbound."""
+        scope = self.from_scope_aliases()
+        key_class = self.outer_join_key_class(concept.address)
+        if len(key_class) > 1:
+            reads: dict[tuple[str, str], tuple[BuildConcept, str]] = {}
+            for member in key_class:
+                for source in self.source_map.get(member.address, []):
+                    key = self.source_key_for(source)
+                    alias = self.get_alias(member, source)
+                    if key not in scope or (
+                        isinstance(alias, str)
+                        and alias.startswith(INVALID_ALIAS_PREFIX)
+                    ):
+                        continue
+                    # a non-column alias renders the same off any source
+                    column = key if isinstance(alias, str) else ""
+                    reads.setdefault((column, str(alias)), (member, source))
+            if len(reads) > 1:
+                return list(reads.values())
+        sources = list(self.source_map.get(concept.address, []))
+        if len(sources) > 1:
+            # An existence-only parent (the HAVING semijoin CTE) can leak into
+            # source_map; prefer FROM-scope providers whenever any exist.
+            sources = [s for s in sources if self.source_key_for(s) in scope] or sources
+        if len(sources) > 1 and self.inner_join_key_sources(concept.address) >= set(
+            sources
+        ):
+            sources = sorted(sources)[:1]
+        return [(concept, source) for source in sources]
+
     def from_scope_aliases(self) -> set[str]:
         """Alias tokens referenceable in this CTE's rendered FROM clause: the
         base plus every join participant. A parent wired in only through an
@@ -838,13 +873,15 @@ class CTE:
         to it; an unbound column renders through a pseudonym or canonical
         sibling this CTE does bind."""
         seen = seen | {concept.address}
-        # Members of one outer-join key class render as one coalesce.
-        key_class = self.outer_join_key_class(concept.address)
-        if len(key_class) > 1:
-            return ("key_class", *sorted(member.address for member in key_class))
-        sources = self.source_map.get(concept.address, [])
-        if sources:
-            return ("source", *sorted(sources), str(self.get_alias(concept)))
+        reads = self.column_reads(concept)
+        if reads:
+            return (
+                "columns",
+                *sorted(
+                    f"{self.source_key_for(source)}.{self.get_alias(member, source)}"
+                    for member, source in reads
+                ),
+            )
         lineage = concept.lineage
         if isinstance(lineage, BuildRowsetItem):
             return self.render_binding(lineage.content, seen)

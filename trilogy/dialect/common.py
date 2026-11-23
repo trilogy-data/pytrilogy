@@ -146,12 +146,11 @@ def _render_left_concept(
         # tautological ON clause (cross join). Pin the LHS to its own
         # left-base datasource column in that case.
         ds = join.left_local
-        sources = (
-            consumer.source_map.get(pair.left.address)
-            if isinstance(consumer, CTE)
-            else None
-        )
-        if isinstance(ds, BuildDatasource) and sources and len(sources) > 1:
+        if (
+            isinstance(ds, BuildDatasource)
+            and isinstance(consumer, CTE)
+            and len(consumer.column_reads(pair.left)) > 1
+        ):
             col = _datasource_column_for_concept(ds, pair.left)
             if isinstance(col, str):
                 use_map[ds.safe_identifier].add(pair.left.address)
@@ -258,6 +257,31 @@ def _cte_side(pair: ConceptPair) -> str:
     return pair.node.name
 
 
+def _census_outer(pairs, join, consumer) -> None:  # CENSUS
+    import json
+    import os
+
+    out = os.environ.get("COALESCE_CENSUS")
+    if not out:
+        return
+    groups = coalesced_key_groups(pairs, _cte_side)
+    agree = len(groups) == 1
+    with open(f"{out}.{os.getpid()}", "a") as f:
+        f.write(
+            json.dumps(
+                {
+                    "test": os.environ.get("PYTEST_CURRENT_TEST", ""),
+                    "agree": agree,
+                    "pairs": [
+                        [p.node.name, p.left.address, p.right.address] for p in pairs
+                    ],
+                    "groups": len(groups),
+                }
+            )
+            + "\n"
+        )
+
+
 def _build_joinkeys(
     join: Join,
     consumer: CTE | UnionCTE,
@@ -293,6 +317,7 @@ def _build_joinkeys(
             ]
             unique_renders = list(dict.fromkeys(left_renders))
             if len(unique_renders) > 1:
+                _census_outer(pairs, join, consumer)
                 coalesced = f"coalesce({', '.join(unique_renders)})"
                 result.append(
                     null_wrapper(

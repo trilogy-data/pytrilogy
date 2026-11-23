@@ -1575,33 +1575,11 @@ class BaseDialect:
     def safe_get_cte_value(
         self, cte: CTE | UnionCTE, c: BuildConcept, raise_invalid: bool = False
     ) -> str | None:
-        address = c.address
-        sources = list(cte.source_map.get(address, []))
         if isinstance(cte, CTE):
-            key_class = cte.outer_join_key_class(address)
-            if len(key_class) > 1:
-                from_scope = cte.from_scope_aliases()
-                renders: list[str] = []
-                for member in key_class:
-                    for source in cte.source_map.get(member.address, []):
-                        if cte.source_key_for(source) not in from_scope:
-                            continue
-                        rendered = cte.get_alias(member, source)
-                        if isinstance(rendered, str) and rendered.startswith(
-                            INVALID_ALIAS_PREFIX
-                        ):
-                            continue
-                        self.used_map[source].add(member.address)
-                        renders.append(
-                            self._format_cte_column(
-                                cte, source, rendered, raise_invalid
-                            )
-                        )
-                unique_renders = sorted(set(renders))
-                if len(unique_renders) > 1:
-                    return self.FUNCTION_MAP[FunctionType.COALESCE](unique_renders, [])
-
-        if not sources:
+            reads = cte.column_reads(c)
+        else:
+            reads = [(c, s) for s in cte.source_map.get(c.address, [])]
+        if not reads:
             # No explicit source, but an inlined datasource may still expose this
             # concept as a raw column (not in its pruned projection).
             if isinstance(cte, CTE):
@@ -1612,31 +1590,17 @@ class BaseDialect:
                         cte, inlined.name, inlined.consumer_column(c), raise_invalid
                     )
             return None
-
-        if isinstance(cte, CTE) and len(sources) > 1:
-            from_scope = cte.from_scope_aliases()
-            in_scope = [s for s in sources if cte.source_key_for(s) in from_scope]
-            # An existence-only parent (e.g. the HAVING semijoin CTE) can leak into
-            # source_map; prefer FROM-scope providers whenever any exist.
-            if in_scope:
-                sources = in_scope
-            # Sources an INNER join equates on this very key carry one value
-            # per row; no side is padded, so the first spells the coalesce.
-            if len(sources) > 1 and cte.inner_join_key_sources(address) >= set(sources):
-                sources = sorted(sources)[:1]
-        for x in sources:
-            self.used_map[x].add(c.address)
-        if len(sources) == 1:
-            return self._format_cte_column(
-                cte, sources[0], cte.get_alias(c, sources[0]), raise_invalid
+        renders = set()
+        for member, source in reads:
+            self.used_map[source].add(member.address)
+            renders.add(
+                self._format_cte_column(
+                    cte, source, cte.get_alias(member, source), raise_invalid
+                )
             )
-        return self.FUNCTION_MAP[FunctionType.COALESCE](
-            sorted(
-                self._format_cte_column(cte, x, cte.get_alias(c, x), raise_invalid)
-                for x in sources
-            ),
-            [],
-        )
+        if len(renders) == 1:
+            return renders.pop()
+        return self.FUNCTION_MAP[FunctionType.COALESCE](sorted(renders), [])
 
     def _format_cte_column(
         self, cte: CTE | UnionCTE, source: str, rendered: Any, raise_invalid: bool

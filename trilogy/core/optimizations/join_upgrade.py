@@ -328,10 +328,11 @@ def _renders_exclusively_from(
     consumer: CTE, address: str, producer_keys: set[str]
 ) -> bool:
     """The consumer renders ``address`` as a plain reference to one producer
-    column. A multi-source entry renders as COALESCE, which masks a one-sided
-    NULL, so it never carries a rejection back to either producer."""
-    sources = set(consumer.source_map.get(address, ()))
-    return len(sources) == 1 and sources <= producer_keys
+    column. A coalesced read masks a one-sided NULL, so it never carries a
+    rejection back to either producer."""
+    concept = consumer.get_concept(address)
+    reads = consumer.column_reads(concept) if concept else []
+    return len(reads) == 1 and reads[0][1] in producer_keys
 
 
 def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
