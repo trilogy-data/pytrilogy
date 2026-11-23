@@ -2881,7 +2881,10 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   0-80,000 the round fixes 138 queries (28 wrong answers, 110 raises; 25 in
   0-20,000, 83 in 20,000-60,000, 30 in 60,000-80,000) and breaks none right
   on main, with 576 fewer scans and 2,068 more joins (0.3%; 1,428 of them on
-  1,316 queries main already answered).
+  1,316 queries main already answered). The five older families, seeds
+  0-10,000, have no status change and no change in joins; the twin-scan
+  rebase below takes 374 scans off them (`first` 180, `spellings` 112,
+  `expressions` 39, `windows` 37, `compositions` 6).
   - A shown filter an aggregate answers was read off that aggregate alone:
     in `select city, tree_form, city ? sum(height) by city > 2 as f where
     max(height) by tree_form is not null` the filter's group claims the
