@@ -8543,17 +8543,17 @@ def _group_needed(
         and _shown_filtered_column(a, attrs, environment)
     ):
         shown = _required_final_contract(attrs).output_addresses
-        keys = {
+        grain_keys = {
             k
             for k in set(a.grain_components) & shown
             if environment.concepts[k].derivation != Derivation.FILTER
         }
         # with the shown keys those determine, which the plan pairs it on
-        needed |= keys | {
+        needed |= grain_keys | {
             k
-            for k in shown - keys
+            for k in shown - grain_keys
             if environment.concepts[k].derivation != Derivation.FILTER
-            and build_fd_determines_all(environment, keys, {k})
+            and build_fd_determines_all(environment, grain_keys, {k})
         }
     # a dimension peel is read with its key, the axis its rows are paired on,
     # unless the group projects it to a coarser grain (a value by genus off a
