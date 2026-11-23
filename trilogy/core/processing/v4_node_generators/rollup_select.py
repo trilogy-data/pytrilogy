@@ -44,23 +44,18 @@ def arm_grouping_sets(
     built: BuildSelectLineage,
     environment: Environment,
     build_environment: BuildEnvironment,
-) -> BuildGroupingSets | None:
+) -> BuildGroupingSets:
     """The arm's one pass, in its built concepts. Its keys are the `by` the
     factory gave a bare aggregate (the spec's keys, or the select's grain
-    where the spec infers them); None when the arm computes no aggregate."""
+    where the spec infers them); parsing refuses an arm with none."""
     spec = arm.grouping
     assert spec is not None
     by = next(
-        (
-            c.lineage.by
-            for c in built.output_components
-            if isinstance(c.lineage, BuildAggregateWrapper)
-            and _bare(c.address, arm, environment)
-        ),
-        None,
+        c.lineage.by
+        for c in built.output_components
+        if isinstance(c.lineage, BuildAggregateWrapper)
+        and _bare(c.address, arm, environment)
     )
-    if by is None:
-        return None
 
     def lookup(address: str) -> BuildConcept:
         return built.local_concepts.get(address) or build_environment.concepts[address]

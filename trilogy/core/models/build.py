@@ -4069,12 +4069,10 @@ class Factory:
         # ROLLUP/CUBE/GROUPING SETS pass, keyed in the spec's order; the pass
         # is the select's (`BuildGroupingSets`), never the aggregate's.
         spec = self.select_grouping
-        if base.by:
-            by = self._build_over_items(list(base.by))
-            ordered = base.grouping != AggregateGroupingMode.STANDARD
-        elif spec is not None and spec.by:
-            by = self._build_over_items(list(spec.by))
-            ordered = True
+        keys = list(base.by) or (list(spec.by) if spec is not None else [])
+        if keys:
+            by = self._build_over_items(keys)
+            ordered = not base.by or base.grouping != AggregateGroupingMode.STANDARD
         else:
             agg_grain = (
                 self.aggregate_grain if self.aggregate_grain is not None else self.grain
