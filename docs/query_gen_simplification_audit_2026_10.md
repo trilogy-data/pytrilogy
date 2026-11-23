@@ -253,7 +253,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; the eleventh deleted the nine proof branches of the rule the planner already owns, moving no firing; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice and 12 landed (the zero-filled COUNT owned by its source); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1600,6 +1600,51 @@ election, not the padded fallback.
     Gates, against `7935105`: corpus (204 statements) 0 moved; fuzzer
     522/522; suite, laws included, fails the same 36 environment tests
     (BigQuery and Snowflake credentials) as `main`.
+
+12. **One owner for a zero-filled COUNT (landed; the handoff's "wrong
+    stage" COUNT to `coalesce(..., 0)`).** A COUNT renders `coalesce(n, 0)`
+    where a join pads it, since a count over no rows is 0. The merge stamped
+    the region-padded half (`MergeNode._zero_filled_counts`), but the CTE
+    re-derived the rest at render from its own nullable list, grouping flag
+    and rollup list, and the renderer, predicate pushdown and join upgrade
+    each asked it. `execute.zero_filled_counts` is now the one rule:
+    `QueryDatasource` applies it at construction, and `CTE.zero_fills_count`
+    / `zero_filled_counts` only read the result. The merge's stamp is kept
+    apart as `region_zero_filled`.
+    - **The CTE's half was most of it.** A census over the suite (53,700
+      tests): 934 decisions in 42 test functions came from the merge's
+      stamp, 1,825 in 47 from a padded non-grouping CTE, and 468 in 4 from a
+      re-summed partial in a grouping CTE.
+    - **A plan-time stamp drifts unless the grouping flips re-decide it.**
+      Four optimizer sites change `group_to_grain` after planning:
+      `CollapseSingleParent`'s aggregate merge, an inline with `force_group`,
+      `DropIdentityGroup`, and the existence-HAVING fold. Stamping without
+      them moved 71 plans (57 gained a redundant coalesce; 14 lost a pushdown
+      that reads the stamp). They now call `CTE.regroup`, which applies the
+      same rule to the new shape. A flip to grouping keeps only the region
+      stamp, because its counts are read from a padded parent. Dropping that
+      too failed 33 region row pins (`test_derived_key_domain`,
+      `test_unmodelled_regions`, `test_duckdb_rowset_null_group_rejoin`,
+      `test_outer_padding_null_not_a_value`).
+    - **Either spelling may be the COUNT.** A nullable entry and an output
+      can share an address with only one of them a COUNT: a rowset handle
+      over the count, or a count only the WHERE reads. Asking the output
+      alone failed the same 33 pins. The rule accepts either.
+    - **One plan moved.** In `test_materialization_invariance` (statement-wide
+      gate over `*rollup(...)`), `n` is now coalesced in the final select.
+      The arm's count is nullable only because the group marks values derived
+      from a rollup key nullable. Before, the renderer asked about the
+      statement's spelling, which is not a COUNT. The answer is the same: a
+      count is never NULL there, and the twin-row assertion passes.
+    - `tests/test_zero_filled_count_owner.py` pins the ownership (red on
+      `main`: there the CTE re-derived the answer from its own nullable list).
+
+    Gates, against `7ddf99c`: corpus (206 statements, tpc_ds aggregates
+    included) 0 moved; suite SQL capture under `PYTHONHASHSEED=0`, with the
+    moved tests re-run serially on both sides, 1 statement moved, 0 outcomes
+    changed; fuzzer 522/522; suite fails the same 36 environment tests as
+    `main`. `sqldiff.py` now normalizes `MATERIALIZED` CTE names and the
+    checkout path; before, both read as moves.
 
 ## Gate used
 

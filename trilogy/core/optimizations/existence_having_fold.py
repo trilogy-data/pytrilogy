@@ -342,7 +342,7 @@ def _rebase_on_dimension(
         rows.base_name_override = aggregate.name
         rows.base_alias_override = aggregate.name
         if set(raw.grain.components) <= key.equivalent_addresses:
-            rows.group_to_grain = False
+            rows.regroup(False)
         return
     rows.joins = []
     rows.parent_ctes = []
@@ -352,7 +352,7 @@ def _rebase_on_dimension(
     rows.base_name_override = None
     rows.base_alias_override = alias
     if set(raw.grain.components) <= key.equivalent_addresses:
-        rows.group_to_grain = False
+        rows.regroup(False)
 
 
 def _tighten_rejected_padding(aggregate: CTE, condition: BoolExpr) -> None:

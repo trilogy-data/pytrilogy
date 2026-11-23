@@ -123,5 +123,5 @@ class DropIdentityGroup(OptimizationRule):
         if not isinstance(cte, CTE) or not rows_unique_at_group(cte):
             return False, None
         self.log(f"{cte.name} rows are unique at its group keys; dropping GROUP BY")
-        cte.group_to_grain = False
+        cte.regroup(False)
         return True, None

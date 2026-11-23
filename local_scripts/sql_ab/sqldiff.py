@@ -16,7 +16,7 @@ import json
 import re
 from pathlib import Path
 
-CTE_DEF = re.compile(r"^(\w+) as \($", re.MULTILINE)
+CTE_DEF = re.compile(r"^(\w+) as (?:(?:NOT )?MATERIALIZED )?\($", re.MULTILINE)
 
 NOISE = [
     (re.compile(r"pytest-\d+"), "pytest-N"),
@@ -35,6 +35,7 @@ NOISE = [
     (re.compile(r"[0-9a-f]{32}"), "HEX"),
     # the checkout's own directory, which differs between two worktrees
     (re.compile(r"coding_projects[\\/]+[\w.-]+"), "coding_projects/TREE"),
+    (re.compile(r"[\w.:\\/-]*?[\\/]pytrilogy[\w.-]*(?=[\\/]tests[\\/])"), "TREE"),
 ]
 
 

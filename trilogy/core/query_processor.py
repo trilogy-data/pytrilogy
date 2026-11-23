@@ -513,6 +513,7 @@ def datasource_to_cte(
         nullable_concepts=query_datasource.nullable_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
         hidden_concepts=query_datasource.hidden_concepts,
+        region_zero_filled=query_datasource.region_zero_filled,
         zero_filled=query_datasource.zero_filled,
         distinct_counts=query_datasource.distinct_counts,
         partial_sources=query_datasource.partial_sources,
