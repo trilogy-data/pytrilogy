@@ -628,10 +628,23 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
 - **The set's inner aggregate supplies a select key** (9919, 28312: raised
   on main, wrong rows now): in `select species, (min(height) by tree_form) ?
   tree_form in (tree_form ? min(height) by city, species >= 0) as f` the
-  cover elects that aggregate for `species` and FINAL does not dedup it.
-- **One dimension peel joined twice in one CTE** (61695, 62837): `fc` is
-  looked up for two sides of a merge, the peels dedupe to one CTE name, and
-  DuckDB rejects the duplicate alias.
+  `by city, species` aggregate feeds the set and the `by tree_form` roll-up,
+  so it is no set-only input (0.3.536 excludes those from the cover). FINAL
+  joins it on `species` and does not group, so Acer shows once per city.
+- **A derived key beside a filtered column off a peel joined on nothing**
+  (83978): `select city, case when tree_form = 'broadleaf' then 'b' else 'o'
+  end as fc, (min(height) by city) ? city in (<set>) as v0 where tag in
+  (<set>)` takes `fc` off the species peel and `city` off the filter's rows,
+  and FINAL joins them `on 1=1`. With `tree_form` in place of `fc` it is
+  right. `_keys_off_one_tuple` reads only KEY-purpose columns.
+- **A row scan beside a `by *` WHERE total finds no plan when a set reads a
+  total** (`Could not resolve connections`, 9 seeds of 80,000-100,000):
+  `select tag, city ? city in (city ? sum(height) by * <= 8) as v0 where
+  count(tree_id) by city < max(height) by *`. `gen_root`'s fallback asks the
+  network search for the trees with `__preql_internal.all_rows` and the
+  gates deferred; it answers with no plan, and it answers with one when the
+  set reads no total. 0.3.536's gate backfill under a WHERE membership skips
+  totals for this reason (two seeds right on main would raise).
 - **A set over nullable content keeps the filter's padding NULLs.** The set
   of `x ? c` is the values of the rows `c` passes, a NULL included where a
   passing row's `x` is NULL; matched by identity (`_null_free_set`). The set
@@ -665,7 +678,8 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   preferring a statement-row host over a side-channel host that carries the
   gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
   where avg(height) by city, species != 2` (2922) still returns every
-  species.
+  species. 0.3.536 also backfills under a WHERE that reads a set, unless
+  the gate is a total (above); that fixed 61 of 82 seeds in 80,000-100,000.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's
@@ -683,6 +697,9 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   a seed as a strict xfail.
 - A plan that loops: seed 2917 took more than 30 s on main (a window over
   two filtered keys under a WHERE gate); the sweep now records a timeout.
+- Efficiency: 0.3.536 reads 81348 and 99524 with two scans where main read
+  one: a set's grouped `HAVING avg(height) by species is not null` scan no
+  longer merges with its row twin under the same WHERE.
 - Efficiency: a filtered key beside a derived key dedups through a second
   contributor joined back on the key's input (`select coalesce(tree_form,
   'none') as form0, tree_id ? species = 'Acer' as f` self-joins on
