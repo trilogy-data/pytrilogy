@@ -338,6 +338,30 @@ SHAPES = [
             ("B", "Tilia", "linden", "B", 2),
         ],
     ),
+    # a filtered aggregate keyed by a key the select does not show (79687,
+    # raised a keyless join): Ulmus's form is the NULL group, one tree
+    (
+        (
+            "select species, (count(tree_id) by tree_form) ? tree_form in"
+            " (tree_form ? species != 'Tilia') as v0, max(count(tree_id) by"
+            " species) over () as v1;"
+        ),
+        [
+            ("Acer", 4, 3),
+            ("Quercus", 4, 3),
+            ("Ulmus", 1, 3),
+            ("Tilia", None, 3),
+        ],
+    ),
+    # a filter the select does not show keeps its own rows: A's Acers, the
+    # species of three trees
+    (
+        (
+            "select tree_id, height where city = 'A' and count(tree_id) by species"
+            " in (count(tree_id) by species ? species = 'Acer');"
+        ),
+        [("a1", 3), ("a2", None)],
+    ),
 ]
 
 

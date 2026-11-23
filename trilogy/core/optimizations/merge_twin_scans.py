@@ -190,17 +190,18 @@ class MergeTwinScans(OptimizationRule):
         self, cte: DatasourceCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         reads = _group_reads(cte)
+        placement = cte.condition_placement
         if (
             reads is None
             # a re-sum reads stored partials through its own source map
             or cte.rollup_concepts
             or cte.partial_sources
-        ):
-            return False, None
-        placement = cte.condition_placement
-        # a HAVING reading a set needs the existence wiring the rebase drops
-        if placement.qualify is not None or (
-            placement.having is not None and any(placement.having.existence_arguments)
+            # a HAVING reading a set needs the existence wiring the rebase drops
+            or placement.qualify is not None
+            or (
+                placement.having is not None
+                and any(placement.having.existence_arguments)
+            )
         ):
             return False, None
         return (

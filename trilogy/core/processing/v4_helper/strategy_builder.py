@@ -8439,16 +8439,19 @@ def _shown_filtered_column(
     rows: a filtered column, or a filtered aggregate keyed by what the select
     does not show (one keyed by shown keys pairs on them)."""
     shown = _required_final_contract(attrs).output_addresses
-    for m in a.primary_members:
-        lineage = environment.concepts[m].lineage
-        if m not in shown or not isinstance(lineage, BuildFilterItem):
-            continue
-        content = lineage.content
-        if not (isinstance(content, BuildConcept) and content.is_aggregate):
-            return True
-        if not pairing_keys(content.grain.components) <= shown:
-            return True
-    return False
+    lineages = [
+        lineage
+        for m in set(a.primary_members) & shown
+        if isinstance(lineage := environment.concepts[m].lineage, BuildFilterItem)
+    ]
+    return any(
+        not (
+            isinstance(content := lineage.content, BuildConcept)
+            and content.is_aggregate
+        )
+        or not pairing_keys(content.grain.components) <= shown
+        for lineage in lineages
+    )
 
 
 def _group_needed(
