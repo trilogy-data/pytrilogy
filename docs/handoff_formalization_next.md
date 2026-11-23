@@ -632,6 +632,15 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
 - **One dimension peel joined twice in one CTE** (61695, 62837): `fc` is
   looked up for two sides of a merge, the peels dedupe to one CTE name, and
   DuckDB rejects the duplicate alias.
+- **A set over nullable content keeps the filter's padding NULLs.** The set
+  of `x ? c` is the values of the rows `c` passes, a NULL included where a
+  passing row's `x` is NULL; matched by identity (`_null_free_set`). The set
+  is rendered as the CASE stream, so where `x` is not null-free the rows `c`
+  rejects add NULL members: `select tree_id where city = 'A' and max(height)
+  by species in (max(height) by species ? species = 'Acer')` keeps the
+  Ulmus `a4` (the set is `{7}`; on main too). Build such a set off the rows
+  `c` keeps. The generators write only `col in (col ? c)`, so no family
+  reaches it.
 
 - **Decide: a condition its keys do not decide.** For a filtered property
   beside its key or its content the reading is pinned
