@@ -482,16 +482,6 @@ SHAPES = [
         ),
         [("A", "x", None), ("B", "x", None), ("B", "y", None)],
     ),
-    # a value FINAL pairs on its grain is not read off a group lacking it
-    # (112517, reduced): A's formless Ulmus has no y tag
-    (
-        (
-            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
-            " tag ? city in (city ? min(height) by city, tree_form is null) as v0,"
-            " min(height) by * as v1;"
-        ),
-        [("b", "x", 2), ("b", "y", 2), ("b", None, 2), ("o", "x", 2), ("o", None, 2)],
-    ),
     # a filter of a gated aggregate holds that aggregate's groups (113128,
     # reduced, raised): B alone has at most three trees
     (

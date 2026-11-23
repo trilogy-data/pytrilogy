@@ -67,7 +67,8 @@ filter whose content is a gated aggregate holds groups that passed already
 (`hosted_content_passed_gate`). A total in a condition is one value on every
 row and splits no key (`total_splits_no_key`); an aggregate in a condition
 meets it on every key of its own grain (`condition_aggregates_meet_per_row`);
-a key regrafted beside a paired one keeps it (`regraft_keeps_paired_key`);
+a key regrafted beside a paired one keeps it (`regraft_keeps_paired_key`,
+open);
 and a chain of partials grouped by a reader of its head has no build order
 (`partial_chain_reads_itself`).
 -/
@@ -440,7 +441,8 @@ theorem condition_aggregates_meet_per_row :
 /-- `select fc, tag ? city in (<set>) as v0, min(height) by * as v1`: `fc` was
 read off the `(city, tree_form)` minimum the total rolls up, and met the tags
 on `city` alone: A's Ulmus form `o` beside Acer's `y`
-(`regraft_keeps_paired_key`, 112517). Trees of A are `(fc, tag)`. -/
+(`regraft_keeps_paired_key`, 112517, open: counting FINAL as a pairing
+reader broke TPC-DS q25 and q66). Trees of A are `(fc, tag)`. -/
 theorem regraft_keeps_paired_key :
     let trees : List (Nat × Nat) := [(0, 0), (0, 1), (0, 0), (1, 0)]
     let fcs := (trees.map (·.1)).eraseDups

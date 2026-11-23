@@ -20,7 +20,7 @@ History lives elsewhere, so this file stays short:
 group key of aggregates and windows, in a HAVING) to 120,000; the PR of each
 round holds its sweep totals. `filters` has 50 `OPEN` seeds and 430 failing
 queries in 20,000-120,000 not yet listed (area 4b),
-`windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
+`windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -548,8 +548,8 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
   the gate is not decided per whole group (51466, 54409; `where height > 2
   and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
 - Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444
-  (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
-  11457.
+  (a re-sum fans out beside a window or a `by` denominator). Raises: 28981
+  (11457 is right at 0.3.537).
 - Two parents of one group with no pairing render as a cross join; the
   keyless-join guard does not fire (59727 before its fix).
 - Efficiency: a summary no longer answers `agg(x ? k in <set>)` (301 of
@@ -700,6 +700,14 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   no key (`total_splits_no_key`) turns 91381 into a keyless join, and the
   content-hosted gate with the filtered-key rule (113128) turns 59678 and
   72714 into keyless joins: each beside a window or a derived key.
+- **A derived key regrafted onto a group its FINAL peer pairs with on a
+  coarser key** (112517, base): `select fc, tag ? city in (<set>) as v0,
+  min(height) by * as v1` reads `fc` off the `(city, tree_form)` minimum the
+  total rolls up, and FINAL meets the tags on `city` alone
+  (`Filters.regraft_keeps_paired_key`). Counting FINAL as a pairing reader in
+  `_regraft_candidate` fixed it and broke TPC-DS q25 (a WHERE placed past the
+  aggregates) and q66 (+20% SQL); a peer that shares or determines the
+  dropped key did not separate them either.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's

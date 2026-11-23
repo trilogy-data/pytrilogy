@@ -2735,16 +2735,8 @@ def _regraft_candidate(
         for pred in lineage_predecessors(group_graph, group_edges, gid):
             pred_outputs |= sets.outputs_of(pred)
     my_ancestors = nx.ancestors(group_graph, gid)
-    readers = set(group_graph.successors(gid))
-    paired_downstream = bool(readers - {FINAL_NODE_ID})
-    final_peers = (
-        {
-            p
-            for p in group_graph.predecessors(FINAL_NODE_ID)
-            if p != gid and attrs[p].derivation != Derivation.ROOT
-        }
-        if FINAL_NODE_ID in readers
-        else set()
+    paired_downstream = any(
+        reader != FINAL_NODE_ID for reader in group_graph.successors(gid)
     )
     best_gid: str | None = None
     best_score: tuple[int, ...] = ()
@@ -2775,7 +2767,7 @@ def _regraft_candidate(
         # `gid` with other rows on its own grain finds none of it there
         if (
             full
-            and (paired_downstream or bool(final_peers - {candidate}))
+            and paired_downstream
             and cattrs.derivation in GROUPING_DERIVATIONS
             and not pairing_keys(grain) <= sets.outputs_of(candidate)
         ):

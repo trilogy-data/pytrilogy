@@ -316,7 +316,7 @@ FOUND_SEEDS = [
     70315, 70484, 71788, 71909, 73954, 79516, 83007, 84861, 85694, 86405,
     87935, 88362, 90797, 91229, 92525, 92801, 93401, 93956, 95099, 95264,
     95295, 96559, 96587, 99252, 101162, 102209, 102614, 104327, 105498, 106327,
-    108370, 108466, 108499, 109332, 109876, 111272, 112517, 113128, 114764,
+    108370, 108466, 108499, 109332, 109876, 111272, 113128, 114764,
     115007, 115712, 117080, 118822, 119219, 119222, 119366,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
@@ -406,6 +406,7 @@ OPEN: dict[tuple[int, str], str | None] = {
     (18629, "summary"): None,
     (19214, "base"): "cannot be related to the query outputs",
     (19214, "summary"): "cannot be related to the query outputs",
+    (112517, "base"): None,
     # right on main, raised since 0.3.537 (area 4b)
     (8532, "base"): "Could not resolve connections",
     (8532, "summary"): "Could not resolve connections",
