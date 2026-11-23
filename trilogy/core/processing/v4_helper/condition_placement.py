@@ -30,6 +30,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
+    BuildFilterItem,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
@@ -733,9 +734,15 @@ def _uncovered_exposing_output_contributor(
             for host in collapsing_hosts
         )
     ):
-        keys = mandatory_addrs & set().union(
-            *(buckets[gid].grain_components for gid in covered if gid in buckets)
-        )
+        # a filtered value is no key: its content's keys determine it
+        keys = {
+            k
+            for k in mandatory_addrs
+            & set().union(
+                *(buckets[gid].grain_components for gid in covered if gid in buckets)
+            )
+            if environment.concepts[k].derivation != Derivation.FILTER
+        }
         return (
             not any(build_fd_determines_all(environment, own, keys) for own in held)
             and row_inputs <= final_exposable
@@ -838,7 +845,32 @@ def _unfiltered_filter_streams(
             or set(scope.group_graph.successors(gid)) == {FINAL_NODE_ID}
         )
         and not _rows_filtered_by(gid, chosen, scope, memo)
+        and not _content_hosted(b, chosen, scope)
     }
+
+
+def _content_hosted(
+    bucket: GroupBucket, chosen: tuple[str, ...], scope: "_PlacementScope"
+) -> bool:
+    """Every filtered value's content is a host's own aggregate (`(sum(x) by
+    fc) ? ...` over a host by `fc`): the filter's rows are that host's groups,
+    which passed the atom."""
+    hosted = {
+        m
+        for h in chosen
+        if h in scope.buckets and _emits_group_by(h, scope.buckets)
+        for m in scope.buckets[h].primary_members
+    }
+    contents = [
+        lineage.content
+        for m in bucket.primary_members
+        if (c := scope.environment.concepts.get(m)) is not None
+        and isinstance(lineage := c.lineage, BuildFilterItem)
+    ]
+    return bool(contents) and all(
+        isinstance(content, BuildConcept) and content.address in hosted
+        for content in contents
+    )
 
 
 def _final_reads_at_host_grain(
