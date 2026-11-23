@@ -1164,13 +1164,12 @@ def _hosts_carrying_condition_grain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
     group_own_keys: dict[str, set[str]],
-    strict: bool = False,
 ) -> list[str]:
     """Hosts that can pair a condition-phase aggregate's branch: an atom over
     `sum(amount) by status` joins that branch on `status`, so a host without
     the grain (the ROOT scan, when `status` is a derivation of a sibling
     group) cannot render it (`Missing source map entry`). Leaves the pool
-    alone when no host carries the grain, unless `strict`."""
+    alone when no host carries the grain."""
     grains: list[set[str]] = [
         set(b.grain_components)
         for b in buckets.values()
@@ -1180,13 +1179,13 @@ def _hosts_carrying_condition_grain(
         and row_inputs & set(b.primary_members)
     ]
     if not grains:
-        return [] if strict else restricted
+        return restricted
     carrying = [
         gid
         for gid in restricted
         if all(grain <= group_own_keys.get(gid, set()) for grain in grains)
     ]
-    return carrying if strict else carrying or restricted
+    return carrying or restricted
 
 
 def _grouping_barrier_host(
@@ -1969,11 +1968,15 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # a group only sets read filters their rows, not the statement's: the
     # statement's own rows host it instead (`Filters.gate_hosted_on_set_input_alone`);
     # a dimension peel holds entities, not those rows
+    set_only = {
+        gid
+        for gid in restricted
+        if feeds_only_sets(group_graph, scope.group_edges, gid)
+    }
     row_hosts = [
         gid
         for gid in restricted
-        if not feeds_only_sets(group_graph, scope.group_edges, gid)
-        and not buckets[gid].anchor_keys
+        if not set_only or (gid not in set_only and not buckets[gid].anchor_keys)
     ]
     restricted = _hosts_carrying_condition_grain(
         row_hosts or restricted, row_inputs, buckets, scope.group_own_keys

@@ -614,13 +614,6 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   keyless join, wrong rows in 49404). Reading the set's rows off the
   statement's WHERE-kept stream, which the efficiency lead in area 4 asks for
   anyway, would fix both.
-- **A filtered column beside a WHERE aggregate its keys do not determine**
-  still crosses: `select tree_form, city ? avg(height) by * <= 8 as f where
-  count(tree_id) by species = 1` returns six rows for three. Keeping
-  `tree_form` on the row stream (as 0.3.534 does without the WHERE aggregate)
-  raises a keyless join instead: the join plan does not count `species` as a
-  column of the filter's rows although the filter passes it through
-  (17162 shows it; main is right there only because one row survives).
 - **A filter's claimed grain is still the select's.** 0.3.535 has a shown
   filter only FINAL reads ask for the shown keys of it (`_group_needed`),
   not a set's filter, one another group reads (77134) or a filtered
@@ -685,11 +678,27 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   windows seeds, 40 here: the column's group cannot render every gate);
   reading a barrier that feeds only a filter's condition as unhosted; and
   preferring a statement-row host over a side-channel host that carries the
-  gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
-  where avg(height) by city, species != 2` (2922) still returns every
-  species. 0.3.536 also backfills under a WHERE that reads a set, unless
+  gate's grain (17300, 18372). 0.3.537 gates a filter only FINAL reads
+  whatever its grain (2922), and hosts a WHERE on the statement's rows rather
+  than on a group only sets read (117080 and 29 more); that raises on five
+  seeds (8532, 17300, 18372, 39289, 50368) where the statement's remaining
+  hosts cannot carry the gate's grain. Keeping the set host when its members
+  decide the gate's grain fixed three of them and made six wrong again, so it
+  is not in. 0.3.536 also backfills under a WHERE that reads a set, unless
   the gate is a total (above); with the rest of 0.3.536 that fixed 75 of 139 failing seeds in
   80,000-100,000.
+- **Left after 0.3.537** (seeds 100,000-120,000, each failing on main too):
+  a set's row stream beside a gated total reads unfiltered rows (115173;
+  hosting the gate on filter groups under `IN_SET_PLAN` raised `Missing
+  source reference to height`); on the summary model FINAL reads root rows
+  without grouping once `_keys_off_one_tuple` moves `city` and `species` to
+  the root (107276); a nested set plan reaches an outer FilterNode holding
+  `v0`/`form0` and recurses (111857); a WHERE `tag in <set> or ...` (117965);
+  windows over filtered keys (104811, 111761, 119253); and 14 keyless-join
+  raises (100817, 102885, 105862, ...). 0.3.537's rule that a total decides
+  no key (`total_splits_no_key`) turns 91381 into a keyless join, and the
+  content-hosted gate with the filtered-key rule (113128) turns 59678 and
+  72714 into keyless joins: each beside a window or a derived key.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's

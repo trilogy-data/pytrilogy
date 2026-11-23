@@ -58,6 +58,18 @@ reads holds the set's rows: neither supplies the select's keys
 parent of a value beside them (`set_input_is_no_row_parent`). A WHERE
 aggregate only such an aggregate reads still filters the select's rows
 (`gate_beside_set_filters_rows`).
+
+A WHERE reaches a filter's rows through its row parents, not through the
+value its condition reads: hosted only on that value, the filter's rows go
+unfiltered (`gate_reaches_a_filter_alone`), and hosted only on a set's input
+it filters the set, not the statement (`gate_hosted_on_set_input_alone`). A
+filter whose content is a gated aggregate holds groups that passed already
+(`hosted_content_passed_gate`). A total in a condition is one value on every
+row and splits no key (`total_splits_no_key`); an aggregate in a condition
+meets it on every key of its own grain (`condition_aggregates_meet_per_row`);
+a key regrafted beside a paired one keeps it (`regraft_keeps_paired_key`);
+and a chain of partials grouped by a reader of its head has no build order
+(`partial_chain_reads_itself`).
 -/
 
 namespace Trilogy.Filters
@@ -372,7 +384,8 @@ theorem gate_beside_set_filters_rows :
 A filter's rows are its row parents', whatever value its condition reads:
 a WHERE hosted only on that value, or only on a set's input, has filtered
 neither. A total its condition reads is one value on every row, so it splits
-no key. -/
+no key. A filter whose content is a gated aggregate holds that aggregate's
+groups, which passed the WHERE already. -/
 
 /-- `select species ? avg(height) by * < 10 as f where avg(height) by city,
 species != 2`: the WHERE keeps A's Acer and Quercus and B's Acer. Hosted only
@@ -433,6 +446,21 @@ theorem regraft_keeps_paired_key :
     let fcs := (trees.map (·.1)).eraseDups
     let tags := (trees.map (·.2)).eraseDups
     trees.eraseDups.length = 3 ∧ (fcs.flatMap fun f => tags.map fun t => (f, t)).length = 4 := by
+  decide
+
+/-- `select fc, (sum(height) by fc) ? max(height) by * > 3 as v0 where
+count(tree_id) by city <= 3`: the WHERE keeps B's two trees, so the sums are
+`b` 7 and `o` 2. The filter's rows are the gated sum's groups, which passed the
+WHERE already; gated again as unfiltered rows, they found no host and the
+planner raised (`hosted_content_passed_gate`, 113128). Trees are `(city, fc,
+height)`. -/
+theorem hosted_content_passed_gate :
+    let trees : List (Nat × Nat × Nat) := [(0, 0, 3), (0, 0, 0), (0, 0, 5), (0, 1, 0), (1, 0, 7), (1, 1, 2)]
+    let count (c : Nat) := (trees.filter (·.1 == c)).length
+    let kept := trees.filter fun r => count r.1 ≤ 3
+    let sum (f : Nat) := ((kept.filter (·.2.1 == f)).map (·.2.2)).foldl (· + ·) 0
+    [0, 1].map (fun f => (f, sum f)) = [(0, 7), (1, 2)] ∧
+      (kept.filter fun r => count r.1 ≤ 3).length = kept.length := by
   decide
 
 /-- `select city, tree_form, species ? ... as v0, tag ? not (tree_form in
