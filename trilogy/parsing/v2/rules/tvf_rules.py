@@ -344,7 +344,7 @@ def lower_grouping_select(
     namespace = context.environment.namespace
     columns = arm.output_components
     hidden = arm.hidden_components
-    _validate_grouping_signature(arm, len(columns) - len(hidden))
+    validate_grouping_signature(arm, len(columns) - len(hidden))
     align_items = [
         AlignItem(
             alias=f"_{scope}_rollup_{ref.address.replace('.', '_')}",
@@ -383,7 +383,7 @@ def lower_grouping_select(
     return statement
 
 
-def _validate_grouping_signature(arm: SelectStatement, width: int) -> None:
+def validate_grouping_signature(arm: SelectStatement, width: int) -> None:
     if not arm.signature:
         return
     if len(arm.signature) != width:

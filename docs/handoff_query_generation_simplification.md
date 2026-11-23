@@ -108,11 +108,12 @@ select clause is gone: it still parses, to raise a migration error. Every read
 of a keyed rollup is of new key and property concepts, so nothing above the arm
 tracks grouping-set padding. Below the planner the pass is the group's:
 `GroupNode` decides its `BuildGroupingSets` once and the datasource, CTE,
-renderer and optimizer read that, never an aggregate's mode. The arm itself is
+renderer and optimizer read that, never an aggregate's mode. The arm is
+pure: windows, scalars over measures, HAVING, ORDER BY and LIMIT are lifted
+into a select over its relation (`rollup_lift.py`), but the arm itself is
 still planned by the select mutator. Design, gates and the remaining steps
-(move the post-aggregate columns and HAVING out of the arm, which the arm
-planned standard was measured to need first; then a select-level one-pass
-flag in place of the mode; then delete the mode) are seam 10 of
+(a select-level one-pass flag in place of the mode, the arm planned
+standard, then delete the mode) are seam 10 of
 `docs/query_gen_simplification_audit_2026_10.md`.
 
 Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`

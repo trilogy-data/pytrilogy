@@ -99,3 +99,6 @@ reason = "A string concept cast to a date (`date.date`, bound to `_date_string`)
 
 ["tpc_ds_duckdb/zquery58.log"]
 reason = "Human CTE names are hashed from the planned source's identifier, which now brackets a join's members so a wrapped join and a join of a wrapped side stay distinct; the plan is unchanged, its names longer (formal/Trilogy/Identity.lean, naive_wrap_of_join_collides)"
+
+["tpc_ds_duckdb/zquery67.log"]
+reason = "The rank over the rollup reads the pass through its TVF handles (the arm holds only keys, aggregates and flags), so the same three CTEs and joins carry the longer handle aliases (`_rollup_<id>__pass_<column>`)"
