@@ -414,7 +414,6 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             for column in parent.output_columns
             if column.address in cte.output_lcl
         ]
-        parent.group_to_grain = True
         parent.grain = cte.grain
         # The child's re-sum of a summary column now runs over the parent's
         # rows, and so does the parent's, except one an aggregate the child
@@ -427,6 +426,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             + [r for r in parent.rollup_concepts if r.address not in kept],
             "address",
         )
+        parent.regroup(True)
     elif merge_mode == MergeMode.WINDOW:
         # The parent's intermediate columns may still be referenced by window
         # expressions, so extend without pruning.

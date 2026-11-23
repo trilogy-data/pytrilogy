@@ -1758,7 +1758,7 @@ class BaseDialect:
             # a pre-aggregated COUNT rolled up through a join that padded it
             # (a sparse summary table beside its dimension): the group of one
             # padded row counts nothing, 0, as the granular path says
-            if isinstance(cte, CTE) and cte.zero_fills_count(c, rolled_up=True):
+            if isinstance(cte, CTE) and cte.zero_fills_count(c):
                 return self.FUNCTION_MAP[FunctionType.COALESCE]([summed, "0"], [])
             return summed
 

@@ -213,9 +213,11 @@ them.
   the `base_alias` / `source_address` fallback chains.
 - **Wrong stage but live**, for the record: outer-join key COALESCE
   (`dialect/base.py`), multi-source COALESCE, join-key COALESCE
-  (`dialect/common.py`), COUNT to `coalesce(..., 0)`. The natural owner of the
-  last one is nullability stamping in `merge_node.py`
-  (`join_resolution.merge_partial_addresses` and the resolve-time stamps).
+  (`dialect/common.py`). COUNT to `coalesce(..., 0)` has moved: the source
+  decides it (`QueryDatasource.zero_filled`, seam 12 of the audit) and the
+  CTE, renderer and pushdown read it. Do not move the decision back into the
+  CTE: an optimizer that changes a CTE's grouping re-decides it through
+  `CTE.regroup`, and that is the only place the CTE recomputes it.
 - **Design-level note, not a handoff**: 448 planner FULLs "because partial" are
   narrowed by `_narrow_directionally` in 59 statements. That is the documented
   preserving-render contract (`docs/subset_union_join_design.md`) and conflicts
