@@ -146,11 +146,12 @@ def _render_left_concept(
         # tautological ON clause (cross join). Pin the LHS to its own
         # left-base datasource column in that case.
         ds = join.left_local
-        if (
-            isinstance(ds, BuildDatasource)
-            and isinstance(consumer, CTE)
-            and len(consumer.column_reads(pair.left)) > 1
-        ):
+        sources = (
+            consumer.source_map.get(pair.left.address)
+            if isinstance(consumer, CTE)
+            else None
+        )
+        if isinstance(ds, BuildDatasource) and sources and len(sources) > 1:
             col = _datasource_column_for_concept(ds, pair.left)
             if isinstance(col, str):
                 use_map[ds.safe_identifier].add(pair.left.address)
@@ -257,31 +258,6 @@ def _cte_side(pair: ConceptPair) -> str:
     return pair.node.name
 
 
-def _census_outer(pairs, join, consumer) -> None:  # CENSUS
-    import json
-    import os
-
-    out = os.environ.get("COALESCE_CENSUS")
-    if not out:
-        return
-    groups = coalesced_key_groups(pairs, _cte_side)
-    agree = len(groups) == 1
-    with open(f"{out}.{os.getpid()}", "a") as f:
-        f.write(
-            json.dumps(
-                {
-                    "test": os.environ.get("PYTEST_CURRENT_TEST", ""),
-                    "agree": agree,
-                    "pairs": [
-                        [p.node.name, p.left.address, p.right.address] for p in pairs
-                    ],
-                    "groups": len(groups),
-                }
-            )
-            + "\n"
-        )
-
-
 def _build_joinkeys(
     join: Join,
     consumer: CTE | UnionCTE,
@@ -292,80 +268,40 @@ def _build_joinkeys(
 ) -> list[str]:
     if not join.pairs:
         return ["1=1"]
-    # Group pairs by right concept address to detect coalesce scenarios.
-    # When multiple pairs share the same right concept but come from
-    # different left CTEs, use COALESCE on the left values.
-    right_groups: dict[str, list] = {}
-    for pair in join.pairs:
-        right_groups.setdefault(pair.right.address, []).append(pair)
-
+    # One key read off several CTEs is COALESCE'd, however each spells it
+    # (`coalesced_key_groups`); different left concepts of one CTE are
+    # separate AND conditions.
     result: list[str] = []
-    for pairs in right_groups.values():
+    for pairs in coalesced_key_groups(join.pairs, _cte_side):
         right_render = _render_right_concept(
             pairs[0], join, consumer, quote_character, render_expr_func, use_map
         )
-        if join.join_type in (
-            JoinType.LEFT_OUTER,
-            JoinType.RIGHT_OUTER,
-            JoinType.FULL,
-        ):
-            left_renders = [
+        left_renders = list(
+            dict.fromkeys(
                 _render_left_concept(
                     p, join, consumer, quote_character, render_expr_func, use_map
                 )
                 for p in pairs
-            ]
-            unique_renders = list(dict.fromkeys(left_renders))
-            if len(unique_renders) > 1:
-                _census_outer(pairs, join, consumer)
-                coalesced = f"coalesce({', '.join(unique_renders)})"
-                result.append(
-                    null_wrapper(
-                        coalesced,
-                        right_render,
-                        [
-                            modifier
-                            for pair in pairs
-                            for modifier in _collect_modifiers(pair, join)
-                        ],
-                        join.join_type,
-                    )
+            )
+        )
+        if len(left_renders) == 1:
+            result.append(
+                null_wrapper(
+                    left_renders[0],
+                    right_render,
+                    _collect_modifiers(pairs[0], join),
+                    join.join_type,
                 )
-                continue
-        # One key read off several CTEs is COALESCE'd, however each spells it
-        # (`coalesced_key_groups`); different left concepts of one CTE are
-        # separate AND conditions.
-        for sub_pairs in coalesced_key_groups(pairs, _cte_side):
-            left_renders = [
-                _render_left_concept(
-                    p, join, consumer, quote_character, render_expr_func, use_map
-                )
-                for p in sub_pairs
-            ]
-            unique_renders = list(dict.fromkeys(left_renders))
-            if len(unique_renders) > 1:
-                coalesced = f"coalesce({', '.join(unique_renders)})"
-                result.append(
-                    null_wrapper(
-                        coalesced,
-                        right_render,
-                        [
-                            modifier
-                            for pair in sub_pairs
-                            for modifier in _collect_modifiers(pair, join)
-                        ],
-                        join.join_type,
-                    )
-                )
-            else:
-                result.append(
-                    null_wrapper(
-                        unique_renders[0],
-                        right_render,
-                        _collect_modifiers(sub_pairs[0], join),
-                        join.join_type,
-                    )
-                )
+            )
+            continue
+        result.append(
+            null_wrapper(
+                f"coalesce({', '.join(left_renders)})",
+                right_render,
+                [m for pair in pairs for m in _collect_modifiers(pair, join)],
+                join.join_type,
+            )
+        )
     return result or ["1=1"]
 
 
