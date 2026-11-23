@@ -40,7 +40,7 @@ this stack shipped a silent cross join through a byte-identical corpus and a
 green suite. Any change to what a group's consumers see as their parent needs
 this gate.
 
-## 1. 2.3(b) Filter-virtual wrapping (NOT LANDED)
+## 1. 2.3(b) Filter-virtual wrapping (first slice landed)
 
 RENDER decision that should be a planner decision. 2.3(a), the ORDER BY
 `min(leaf)` wrapping, landed; the planner emits it now and
@@ -54,21 +54,37 @@ planner change).
 Filter virtuals are wrapped in `MAX(...)` at render (`dialect/base.py`,
 `render_concept_sql`) in coordination with `execute.CTE.filter_collapses_to_grain`
 and the GROUP BY exclusion in `CTE.group_concepts`, plus
-`_aggregate_over_collapsed_filter` (`dialect/base.py`). This is live and
+`_aggregate_over_collapsed_filter` (`dialect/base.py`) and the HAVING
+placement in `CTE.condition_placement`. This is live and
 load-bearing for the `count(<key>)` double-count over a filter virtual whose
-keys sit inside the grain but whose predicate reads non-grain columns; two files
-coordinate through `filter_collapses_to_grain` to keep `group_concepts` and the
-rendered column in agreement.
+keys sit inside the grain but whose predicate reads non-grain columns.
 
-- Change: build such a filter virtual with a `max(case ...)` aggregate lineage
-  at the hosting GroupNode, so the two agree by construction. The grain that
-  decides it is only known at node resolve, not at concept build, so the
-  substitution changes a concept's identity mid-plan.
+**First slice (landed): one owner for the elided CASE.** Whether a filter's
+per-row CASE renders at all is `execute.filter_case_elided`, read by the
+renderer, the collapse and `_has_local_aggregate`. Before, only the renderer
+knew a parent can guarantee the predicate, so the CTE wrapped an elided bare
+column in MAX and grouped by it too
+(`tests/test_filter_guaranteed_by_parent_stays_group_key.py`). The predicate
+arm of `_has_local_aggregate` is deleted: 0 firings over the suite, since
+the planner materializes a filter's predicate inputs in a parent. Each other
+site was switched off alone against the 357 tests the collapse fires in (and
+the 3,524 the elision fires in); every one fails tests, so all are pinned.
+Detail: seam 11 of `docs/query_gen_simplification_audit_2026_10.md`.
 
-Delete after: ~110 LOC in `base.py`, ~30 in `execute.py`. Pins: q16/q95/q05
-rows, `tests/test_filtered_count_at_regroup_grain.py`,
-`tests/test_filter_cte_grouped_metric_projection.py`. Risk MEDIUM-HIGH
-(semantics), confidence MEDIUM.
+- **Measured, not landed: a stamp from the plan.** The handoff's idea of
+  deciding the collapse once at the hosting node does not hold as stated.
+  The collapse is a fact about a (concept, CTE) pair, and most firings are a
+  concept read only as an aggregate's argument in a CTE that does not output
+  it, often after `CollapseSingleParent` folds the per-row CTE into the
+  group: a birth-time stamp of each CTE's outputs disagreed with the live
+  answer in every firing test file sampled.
+- Still open: build such a filter virtual with a `max(case ...)` aggregate
+  lineage at the hosting GroupNode, so the two agree by construction. The
+  grain that decides it is only known at node resolve, not at concept build,
+  so the substitution changes a concept's identity mid-plan. Pins: q16/q95/q78
+  rows, `tests/test_filtered_count_at_regroup_grain.py`,
+  `tests/test_filter_concept_is_a_value.py`, the filters and windows oracle
+  laws. Risk MEDIUM-HIGH (semantics), confidence MEDIUM.
 
 ## 2. 2.1 step 4: the residual optimizer LEFT/RIGHT to INNER branches (decision)
 

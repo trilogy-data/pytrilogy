@@ -168,6 +168,46 @@ def _same_conjunction(left: object, right: object) -> bool:
     return len(a) == len(b) and all(x in b for x in a) and all(y in a for y in b)
 
 
+def filter_case_elided(cte: CTE | UnionCTE, lineage: BuildFilterItem) -> bool:
+    """A filter's per-row CASE WHEN is redundant, and renders as bare content,
+    when the CTE's WHERE implies its predicate, or its parents guarantee it:
+    plain-CTE parents whose conditions imply the predicate supply every column
+    the filter reads, under no join that could NULL-pad a row (INNER only)
+    (a group parent's HAVING holding the filter's aggregate condition)."""
+    from trilogy.core.processing.condition_utility import condition_implies
+
+    where_cond = lineage.where.conditional
+    if cte.condition is not None and (
+        cte.condition == where_cond or condition_implies(cte.condition, where_cond)
+    ):
+        return True
+    if not cte.parent_ctes:
+        return False
+    if isinstance(cte, CTE) and any(
+        not isinstance(join, Join) or join.join_type != JoinType.INNER
+        for join in cte.joins
+    ):
+        return False
+    guaranteeing = {
+        parent.name
+        for parent in cte.parent_ctes
+        if isinstance(parent, CTE)
+        and parent.condition is not None
+        and (
+            where_cond == parent.condition
+            or condition_implies(parent.condition, where_cond)
+        )
+    }
+    if not guaranteeing:
+        return False
+    refs = {a.address for a in lineage.content_concept_arguments}
+    refs |= {a.address for a in lineage.where.row_arguments}
+    return all(
+        (sources := cte.source_map.get(r)) and set(sources) <= guaranteeing
+        for r in refs
+    )
+
+
 @dataclass
 class CTE:
     name: str
@@ -701,7 +741,6 @@ class CTE:
         grain determines is that value. When the CTE's own condition implies
         the predicate, its own CASE is elided to bare content, which the grain
         determines, and it stays a group key."""
-        from trilogy.core.processing.condition_utility import condition_implies
 
         if not (
             self.group_to_grain
@@ -726,11 +765,7 @@ class CTE:
                 isinstance(self.condition, BuildConceptArgs)
                 and c.address in {a.address for a in self.condition.row_arguments}
             )
-        where_cond = c.lineage.where.conditional
-        return self.condition is None or not (
-            self.condition == where_cond
-            or condition_implies(self.condition, where_cond)
-        )
+        return not filter_case_elided(self, c.lineage)
 
     @property
     def condition_placement(self) -> ConditionPlacement:
@@ -858,7 +893,6 @@ class CTE:
         return keys
 
     def _has_local_aggregate(self, c: BuildConcept, rollup_addresses: set[str]) -> bool:
-        from trilogy.core.processing.condition_utility import condition_implies
 
         # does the rendered column value of `c` contain an aggregate computed
         # in this CTE? A concept sourced from a parent is a plain column here,
@@ -881,29 +915,12 @@ class CTE:
             and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
-        # The filtered content renders as the value, but when the per-row
-        # CASE WHEN is emitted the where condition is part of the column
-        # expression too, so a local aggregate in the predicate (a HAVING
-        # `sum(x) > threshold` lowered to a filter virtual) makes the column
-        # aggregate-bearing and unfit for GROUP BY. When the CTE's own
-        # condition implies the filter predicate the renderer elides the
-        # CASE to bare content (dialect/base.py); the where aggregate is
-        # then not in the column and the filter follows its content, so
-        # only widen for the un-elided case.
+        # A filter is computed over predicate inputs its parents materialize,
+        # so only its content can hold an aggregate computed here.
         if c.derivation == Derivation.FILTER and isinstance(c.lineage, BuildFilterItem):
-            if any(
+            return any(
                 self._has_local_aggregate(x, rollup_addresses)
                 for x in c.lineage.content_concept_arguments
-            ):
-                return True
-            where_cond = c.lineage.where.conditional
-            elided = self.condition is not None and (
-                self.condition == where_cond
-                or condition_implies(self.condition, where_cond)
-            )
-            return not elided and any(
-                self._has_local_aggregate(x, rollup_addresses)
-                for x in c.lineage.where.rendered_concept_arguments
             )
         if c.derivation == Derivation.BASIC and c.lineage:
             return any(
