@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.536.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.537.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 100,000; the PR of each
-round holds its sweep totals. `filters` has 54 `OPEN` seeds in 0-20,000 and
-497 failing queries in 20,000-100,000 not yet listed (area 4b),
+group key of aggregates and windows, in a HAVING) to 120,000; the PR of each
+round holds its sweep totals. `filters` has 50 `OPEN` seeds and 430 failing
+queries in 20,000-120,000 not yet listed (area 4b),
 `windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -595,10 +595,11 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (54 seeds of
-0-20,000) and, at 0.3.536, 497 failing queries of 20,000-100,000 (310
-raises, 172 wrong, 15 invalid), each failing on main too but for 25203,
-49355 and 71788 (raised or invalid on main, wrong rows now). At 0.3.535
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (42 seeds of
+0-20,000 and eight right on main that 0.3.537 raises on) and, at 0.3.537,
+430 failing queries of 20,000-120,000 (280 raises, 131 wrong, 19 invalid),
+each failing on main too but for 25203 and 49355 (raised or invalid on
+main, wrong rows now; 71788 is right at 0.3.537) and the eight `OPEN` ones. At 0.3.535
 the 60,000-80,000 ones grouped as 90 `cannot be related` (the WHERE-gate
 host below), 54 wrong answers, 44 keyless joins, 15
 recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8

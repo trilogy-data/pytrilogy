@@ -789,9 +789,7 @@ def _uncovered_exposing_output_contributor(
     return False
 
 
-def _filters_the_keys_decide(
-    keys: set[str], environment: BuildEnvironment
-) -> set[str]:
+def _filters_the_keys_decide(keys: set[str], environment: BuildEnvironment) -> set[str]:
     """Filtered values whose content the other keys determine (`(sum(x) by
     fc) ? c` beside `fc`): no key of the rows. A filtered row value
     (`height ? c`) keys them as its content does."""

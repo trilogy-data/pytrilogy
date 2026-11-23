@@ -4269,9 +4269,7 @@ def _condition_aggregate_keys(
     return frozenset(
         k
         for address in group.primary_members
-        if isinstance(
-            lineage := environment.concepts[address].lineage, BuildFilterItem
-        )
+        if isinstance(lineage := environment.concepts[address].lineage, BuildFilterItem)
         for arg in lineage.where.row_arguments
         if arg.is_aggregate
         for k in pairing_keys(arg.grain.components)

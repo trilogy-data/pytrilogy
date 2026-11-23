@@ -2932,6 +2932,31 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (`set_input_supplies_no_output`) fixed 17550 but broke four seeds right
     on main, so it was dropped; 17550 is open again.
 
+- **`filters` to 120,000** (0.3.537). On main seeds 100,000-120,000 (40,000
+  queries) hold 26 wrong answers, 67 raises and 6 invalid statements. Over
+  0-120,000 the round fixes 199 queries (75 wrong answers, 122 raises, 2
+  invalid), with 817 fewer joins and 14 more scans on queries main already
+  answered, and 42 fewer summary-table reads. 15 queries right on main (8
+  seeds) now raise; none returns wrong rows.
+  - A WHERE reaches a filter's rows through its row parents: a filter FINAL
+    alone reads is gated whatever its grain (`gate_reaches_a_filter_alone`),
+    and a gate goes on the statement's rows, not on a group only sets read
+    (`gate_hosted_on_set_input_alone`). A filter whose content is a gated
+    aggregate is not gated again (`hosted_content_passed_gate`), and a
+    filtered value the other keys decide is no key of the FINAL rows.
+  - A total in a filter's condition no longer makes it collapse to its keys
+    (`total_splits_no_key`); a filter's bridges carry the grains of the
+    aggregates its condition reads (`condition_aggregates_meet_per_row`); a
+    key regrafted beside another reader of FINAL keeps the pairing
+    (`regraft_keeps_paired_key`).
+  - A partial is not elected when its chain of re-aggregations is grouped by
+    a reader of its head (`partial_chain_reads_itself`; it recursed or built
+    a cycle on 48 seeds).
+  - Not fixed: hosting the gate on the statement's rows raises where those
+    hosts cannot carry the gate's grain (8532, 17300, 18372, 39289, 50368),
+    and the total and content-hosted rules turn 59678, 72714 and 91381 into
+    keyless joins beside a window or a derived key. All eight are `OPEN`.
+
 ## Limits
 
 The model is a reference semantics, not a refinement proof of the planner.
