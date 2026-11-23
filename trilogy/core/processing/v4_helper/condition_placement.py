@@ -30,6 +30,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
+    BuildFilterItem,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
@@ -59,6 +60,7 @@ from .edges import (
     EdgeMap,
     edge_kind,
     edges_of_kind,
+    feeds_only_sets,
     lineage_subgraph,
     subgraph_of_kinds,
 )
@@ -735,6 +737,7 @@ def _uncovered_exposing_output_contributor(
         keys = mandatory_addrs & set().union(
             *(buckets[gid].grain_components for gid in covered if gid in buckets)
         )
+        keys -= _filters_the_keys_decide(keys, environment)
         return (
             not any(build_fd_determines_all(environment, own, keys) for own in held)
             and row_inputs <= final_exposable
@@ -786,6 +789,23 @@ def _uncovered_exposing_output_contributor(
     return False
 
 
+def _filters_the_keys_decide(keys: set[str], environment: BuildEnvironment) -> set[str]:
+    """Filtered values whose content the other keys determine (`(sum(x) by
+    fc) ? c` beside `fc`): no key of the rows. A filtered row value
+    (`height ? c`) keys them as its content does."""
+    plain = {k for k in keys if environment.concepts[k].derivation != Derivation.FILTER}
+    return {
+        k
+        for k in keys - plain
+        if isinstance(lineage := environment.concepts[k].lineage, BuildFilterItem)
+        and isinstance(content := lineage.content, BuildConcept)
+        and content.grain is not None
+        and build_fd_determines_all(
+            environment, plain, set(pairing_keys(content.grain.components))
+        )
+    }
+
+
 IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
 
 
@@ -832,9 +852,37 @@ def _unfiltered_filter_streams(
         and b.depth_label not in NESTED_DEPTHS
         and shown & set(b.primary_members)
         and any(scope.group_graph.has_edge(host, gid) for host in chosen)
-        and build_fd_determines_all(scope.environment, b.grain_components, keys)
+        and (
+            build_fd_determines_all(scope.environment, b.grain_components, keys)
+            or set(scope.group_graph.successors(gid)) == {FINAL_NODE_ID}
+        )
         and not _rows_filtered_by(gid, chosen, scope, memo)
+        and not _content_hosted(b, chosen, scope)
     }
+
+
+def _content_hosted(
+    bucket: GroupBucket, chosen: tuple[str, ...], scope: "_PlacementScope"
+) -> bool:
+    """Every filtered value's content is a host's own aggregate (`(sum(x) by
+    fc) ? ...` over a host by `fc`): the filter's rows are that host's groups,
+    which passed the atom."""
+    hosted = {
+        m
+        for h in chosen
+        if h in scope.buckets and _emits_group_by(h, scope.buckets)
+        for m in scope.buckets[h].primary_members
+    }
+    contents = [
+        lineage.content
+        for m in bucket.primary_members
+        if (c := scope.environment.concepts.get(m)) is not None
+        and isinstance(lineage := c.lineage, BuildFilterItem)
+    ]
+    return bool(contents) and all(
+        isinstance(content, BuildConcept) and content.address in hosted
+        for content in contents
+    )
 
 
 def _final_reads_at_host_grain(
@@ -1915,8 +1963,21 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
                 - consumed_barriers
             )
         ]
+    # a group only sets read filters their rows, not the statement's: the
+    # statement's own rows host it instead (`Filters.gate_hosted_on_set_input_alone`);
+    # a dimension peel holds entities, not those rows
+    set_only = {
+        gid
+        for gid in restricted
+        if feeds_only_sets(group_graph, scope.group_edges, gid)
+    }
+    row_hosts = [
+        gid
+        for gid in restricted
+        if not set_only or (gid not in set_only and not buckets[gid].anchor_keys)
+    ]
     restricted = _hosts_carrying_condition_grain(
-        restricted, row_inputs, buckets, scope.group_own_keys
+        row_hosts or restricted, row_inputs, buckets, scope.group_own_keys
     )
     if not restricted:
         return [_at_final(atom, PlacementReason.FINAL_RECONVERGENCE)]

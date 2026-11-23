@@ -438,6 +438,75 @@ SHAPES = [
         ),
         [("B", "B")],
     ),
+    # a WHERE hosted on a filter's condition alone reaches its rows (2922):
+    # Tilia averages 2 and the Ulmus has no average
+    (
+        (
+            "select species ? avg(height) by * < 10 as f where avg(height) by"
+            " city, species != 2;"
+        ),
+        [("Acer",), ("Quercus",)],
+    ),
+    # a total splits no key (111272, reduced): collapsed to its city, the
+    # filter met the forms on nothing
+    (
+        (
+            "select city, tree_form, city ? count_distinct(tag) by * < 0 as v0"
+            " where avg(height) by species != 1;"
+        ),
+        [("A", "broadleaf", None), ("B", "broadleaf", None), ("B", "linden", None)],
+    ),
+    (
+        (
+            "select tree_form, city ? avg(height) by * <= 8 as f where"
+            " count(tree_id) by species = 1;"
+        ),
+        [("broadleaf", "A"), ("linden", "B"), (None, "A")],
+    ),
+    # a set's input hosts a WHERE beside the rows, not instead of them
+    # (117080, reduced): no city's shortest tree is under 2
+    (
+        (
+            "select tree_form ? not (species in (species ? count(tree_id) by city"
+            " = 0)) as v0 where min(height) by city < 2;"
+        ),
+        [],
+    ),
+    # a condition's aggregates meet on each row's keys (114764, reduced): paired
+    # on the form alone, B's broadleaf sum met Quercus's minimum
+    (
+        (
+            "select city, tag, tree_form ? species in (species ? sum(height) by"
+            " city, tree_form > min(height) by species) as v0 where avg(height)"
+            " by city, species != 3;"
+        ),
+        [("A", "x", None), ("B", "x", None), ("B", "y", None)],
+    ),
+    # a filter of a gated aggregate holds that aggregate's groups (113128,
+    # reduced, raised): B alone has at most three trees
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
+            " (sum(height) by fc) ? max(height) by * > 3 as v0 where"
+            " count(tree_id) by city <= 3;"
+        ),
+        [("b", 7), ("o", 2)],
+    ),
+    # a partial's chain is grouped by no reader of its head (109332, reduced,
+    # recursed): no species outnumbers its form's shortest tree
+    (
+        (
+            "select city, tree_form, tag ? tree_form in (tree_form ? count(tree_id)"
+            " by species > min(height) by tree_form) as v1, min(height) as v2,"
+            " min(height) by city, tree_form as v3;"
+        ),
+        [
+            ("A", "broadleaf", None, 3, 3),
+            ("A", None, None, None, None),
+            ("B", "broadleaf", None, 7, 7),
+            ("B", "linden", None, 2, 2),
+        ],
+    ),
 ]
 
 

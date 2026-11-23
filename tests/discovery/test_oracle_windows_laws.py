@@ -388,6 +388,8 @@ FOUND_SEEDS = [
     58721,
     # open until 0.3.534: a filter's keys kept on its rows
     15366,
+    # open until 0.3.537 (summary model)
+    11457,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
 # what the planner raises or DuckDB rejects, or None for wrong rows
@@ -398,7 +400,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (3018, "summary"): "Missing source reference to local.tag",
     (10318, "base"): "cannot be related to the query outputs",
     (10318, "summary"): "cannot be related to the query outputs",
-    (11457, "summary"): "does not have a column",
     (16181, "base"): "Missing source CTE",
     (16181, "summary"): "Missing source CTE",
     (18040, "base"): None,

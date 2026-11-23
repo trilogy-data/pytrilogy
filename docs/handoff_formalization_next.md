@@ -13,14 +13,14 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.536.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.537.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 100,000; the PR of each
-round holds its sweep totals. `filters` has 54 `OPEN` seeds in 0-20,000 and
-497 failing queries in 20,000-100,000 not yet listed (area 4b),
-`windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
+group key of aggregates and windows, in a HAVING) to 120,000; the PR of each
+round holds its sweep totals. `filters` has 50 `OPEN` seeds and 430 failing
+queries in 20,000-120,000 not yet listed (area 4b),
+`windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -548,8 +548,8 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
   the gate is not decided per whole group (51466, 54409; `where height > 2
   and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
 - Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444
-  (a re-sum fans out beside a window or a `by` denominator). Raises: 28981,
-  11457.
+  (a re-sum fans out beside a window or a `by` denominator). Raises: 28981
+  (11457 is right at 0.3.537).
 - Two parents of one group with no pairing render as a cross join; the
   keyless-join guard does not fire (59727 before its fix).
 - Efficiency: a summary no longer answers `agg(x ? k in <set>)` (301 of
@@ -595,10 +595,11 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (54 seeds of
-0-20,000) and, at 0.3.536, 497 failing queries of 20,000-100,000 (310
-raises, 172 wrong, 15 invalid), each failing on main too but for 25203,
-49355 and 71788 (raised or invalid on main, wrong rows now). At 0.3.535
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (42 seeds of
+0-20,000 and eight right on main that 0.3.537 raises on) and, at 0.3.537,
+430 failing queries of 20,000-120,000 (280 raises, 131 wrong, 19 invalid),
+each failing on main too but for 25203 and 49355 (raised or invalid on
+main, wrong rows now; 71788 is right at 0.3.537) and the eight `OPEN` ones. At 0.3.535
 the 60,000-80,000 ones grouped as 90 `cannot be related` (the WHERE-gate
 host below), 54 wrong answers, 44 keyless joins, 15
 recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
@@ -614,13 +615,6 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   keyless join, wrong rows in 49404). Reading the set's rows off the
   statement's WHERE-kept stream, which the efficiency lead in area 4 asks for
   anyway, would fix both.
-- **A filtered column beside a WHERE aggregate its keys do not determine**
-  still crosses: `select tree_form, city ? avg(height) by * <= 8 as f where
-  count(tree_id) by species = 1` returns six rows for three. Keeping
-  `tree_form` on the row stream (as 0.3.534 does without the WHERE aggregate)
-  raises a keyless join instead: the join plan does not count `species` as a
-  column of the filter's rows although the filter passes it through
-  (17162 shows it; main is right there only because one row survives).
 - **A filter's claimed grain is still the select's.** 0.3.535 has a shown
   filter only FINAL reads ask for the shown keys of it (`_group_needed`),
   not a set's filter, one another group reads (77134) or a filtered
@@ -685,11 +679,35 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   windows seeds, 40 here: the column's group cannot render every gate);
   reading a barrier that feeds only a filter's condition as unhosted; and
   preferring a statement-row host over a side-channel host that carries the
-  gate's grain (17300, 18372). `select species ? avg(height) by * < 10 as f
-  where avg(height) by city, species != 2` (2922) still returns every
-  species. 0.3.536 also backfills under a WHERE that reads a set, unless
+  gate's grain (17300, 18372). 0.3.537 gates a filter only FINAL reads
+  whatever its grain (2922), and hosts a WHERE on the statement's rows rather
+  than on a group only sets read (117080 and 29 more); that raises on five
+  seeds (8532, 17300, 18372, 39289, 50368) where the statement's remaining
+  hosts cannot carry the gate's grain. Keeping the set host when its members
+  decide the gate's grain fixed three of them and made six wrong again, so it
+  is not in. 0.3.536 also backfills under a WHERE that reads a set, unless
   the gate is a total (above); with the rest of 0.3.536 that fixed 75 of 139 failing seeds in
   80,000-100,000.
+- **Left after 0.3.537** (seeds 100,000-120,000, each failing on main too):
+  a set's row stream beside a gated total reads unfiltered rows (115173;
+  hosting the gate on filter groups under `IN_SET_PLAN` raised `Missing
+  source reference to height`); on the summary model FINAL reads root rows
+  without grouping once `_keys_off_one_tuple` moves `city` and `species` to
+  the root (107276); a nested set plan reaches an outer FilterNode holding
+  `v0`/`form0` and recurses (111857); a WHERE `tag in <set> or ...` (117965);
+  windows over filtered keys (104811, 111761, 119253); and 14 keyless-join
+  raises (100817, 102885, 105862, ...). 0.3.537's rule that a total decides
+  no key (`total_splits_no_key`) turns 91381 into a keyless join, and the
+  content-hosted gate with the filtered-key rule (113128) turns 59678 and
+  72714 into keyless joins: each beside a window or a derived key.
+- **A derived key regrafted onto a group its FINAL peer pairs with on a
+  coarser key** (112517, base): `select fc, tag ? city in (<set>) as v0,
+  min(height) by * as v1` reads `fc` off the `(city, tree_form)` minimum the
+  total rolls up, and FINAL meets the tags on `city` alone
+  (`Filters.regraft_keeps_paired_key`). Counting FINAL as a pairing reader in
+  `_regraft_candidate` fixed it and broke TPC-DS q25 (a WHERE placed past the
+  aggregates) and q66 (+20% SQL); a peer that shares or determines the
+  dropped key did not separate them either.
 - A filtered total beside rows is one value for the statement: `select
   species, tag, (min(height) by *) ? tag = 'x' as f` shows 2 on the y row
   (the constant twin `1 ? tag = 'x'` is per row). Giving it the condition's

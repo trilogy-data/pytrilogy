@@ -834,7 +834,34 @@ def elect_partials(
             elected[coarse.address] = min(
                 candidates, key=lambda c: (len(c.grain.components), c.address)
             )
-    return elected
+    return {
+        address: fine
+        for address, fine in elected.items()
+        if not _chain_reads(address, elected, concepts_by_address)
+    }
+
+
+def _chain_reads(
+    coarse: str,
+    elected: Mapping[str, BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> bool:
+    """A partial further down `coarse`'s chain of re-aggregations is grouped
+    by a reader of `coarse`: `min(x) by form` off `by city, form`, itself off
+    `min(x)` at a select grain holding a filter whose set reads `min(x) by
+    form`, is built from itself (`Filters.partial_grouped_by_its_reader`)."""
+    seen = {coarse}
+    link = elected.get(coarse)
+    while link is not None and link.address not in seen:
+        seen.add(link.address)
+        if any(
+            _reads(concepts_by_address[address], coarse, set())
+            for address in link.grain.components
+            if address in concepts_by_address
+        ):
+            return True
+        link = elected.get(link.address)
+    return False
 
 
 def sourced_arguments(
