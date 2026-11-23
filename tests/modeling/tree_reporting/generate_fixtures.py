@@ -11,6 +11,7 @@ tests swap each `file` script address for one of these.
 """
 
 import math
+import os
 from datetime import date, datetime
 from pathlib import Path
 
@@ -488,8 +489,12 @@ PUBLISHED_SCHEMA = TREE_SCHEMA + [
 
 
 def write(table: pa.Table, path: Path) -> None:
+    # every xdist worker regenerates the fixtures while others read them:
+    # write beside the target and swap, so a reader never sees a partial file
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, path)
+    staged = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    pq.write_table(table, staged)
+    os.replace(staged, path)
 
 
 def published_table(city: str) -> pa.Table:
