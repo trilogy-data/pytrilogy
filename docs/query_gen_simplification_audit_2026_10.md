@@ -251,7 +251,7 @@ optimizer rule's firings over the non-law suite: 912 before the first slice,
 fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
-eighth, 46 after the ninth and 35 after the tenth, measured from 40; over the whole suite, laws included, its CTE
+eighth, 46 after the ninth and 35 after the tenth, measured from 40; the eleventh deleted the nine proof branches of the rule the planner already owns, moving no firing; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
 9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
@@ -895,6 +895,77 @@ election, not the padded fallback.
      ruling (red on `main`: the launch with no agency dropped). The join
      matrix holds a NULL row on both sides of every nullable cell and does
      not reach the branch.
+
+   **Eleventh slice (landed): the rule's proofs the planner owns, ablated.**
+   Ten slices moved proofs into the planner without deleting the optimizer's
+   copies. This one asks, branch by branch, which of them still decide a
+   firing. A census over the whole suite (non-law and law files, the
+   `tests/grids.txt` grids included) puts the rule at 87 firings in 75
+   tests across 28 files: 35 non-law, 52 law. Each of 24 proof branches got
+   a temporary off switch. Every switch makes the rule narrow less, so it
+   can move only a plan the rule fires in. Each was switched off alone
+   against those tests under a SQL capture (`PYTHONHASHSEED=0`, two
+   baseline runs to fix the noise floor: one sweep shape renames a CTE). The
+   nine that moved nothing were then switched off together, and the deletion
+   itself was measured against the same tests. 0 plans moved. About 170
+   lines are gone from `value_set_join_upgrade.py`:
+   - `_recursion_seed` and its exemption in `_accumulate_filter`. A
+     recursion gate now counts as a filter on the twin test. The planner's
+     `complete_key_domain` reads the walk (`_walk_carries`, eighth slice).
+   - In `_complete_values`, everything past the direct evidence: the 1:1
+     passthrough recursion, the rowset rename at matching grain arity, the
+     BASIC/ROWSET derivation transfer, and `_joined_complete` /
+     `_keeps_rows_of`. `complete_key_domain` and `_carries_every_value`
+     prove each one on the datasource tree. What is left is the grain of a
+     GROUP BY or an authoritative scan, and a non-partial binding on that
+     scan.
+   - The EQUAL nullable upgrade in `_upgrade_to_inner`. An EQUAL key that a
+     side can NULL no longer becomes null-safe and INNER; it refuses, as
+     every other nullable key does. The tenth slice's ruling already stops
+     the case it served through `_null_groups_differ`.
+   - `_anchors_coalesce` and `_paired_before` (join-axis audit, part 84: a
+     second `subset join` member's ON coalesces its lefts). Since the
+     plan-time subset slices, no firing reaches it: the
+     `test_scoped_left_join_multi_partial_anchor` chain and its
+     `shape_flipped` twin plan the same SQL without it. A walk-flip run (`WALK_FLIP=shape,name`) over the 121
+     test files naming a `subset join` or `union join` fails the same tests
+     before and after.
+   - The declared-relation NULL-key partner in `_pair_fully_matches`,
+     with `_unpaired_guest_padding` and `_guest_padded`. A subset side
+     that can NULL the key no longer narrows. The planner types the guest
+     case (`_unpaired_value_nulls`), and the unit row pinning the helper's
+     negative case is dropped.
+
+   **Kept, each with what moves without it:**
+   - The equivalence upgrade and its `_equated_reads` witnesses: 6 plans,
+     and `test_a_left_an_inner_join_equates_witnesses_the_key_set`.
+   - Directional narrowing: 8 plans.
+   - Each of its directions: FULL to LEFT (2 tests fail), FULL to RIGHT
+     (4 plans), and directional to INNER (7 plans).
+   - The graph path (7 plans), the stamp path and the genuine stamp (4
+     each), rule B (3).
+   - The rowset-definition boundary: 3 plans, and q44 and the store-anchor
+     chain fail.
+   - `_complete_values`' authoritative-scan arm (2 plans) and its grain
+     arm. Off, the grain arm moves no suite plan, but it fails two
+     hand-built rows of `test_value_set_join_upgrade` (rule B, the genuine
+     stamp), and one law plan reorders its columns.
+   - The EQUAL arm of `_pair_values_equal` (1 plan) and
+     `_lefts_alone_before` (2).
+
+   The vetoes (`_null_extended_before`, `_unshared_join_padding`,
+   `_null_groups_differ`, `_row_limited`, `_extent_free`, the grouping-set
+   guard) were not ablated. Turning a veto off makes the rule narrow more,
+   which is a semantic change, not a harvest.
+
+   Gates, against `5da38ee`:
+   - Firing tests: 0 plans moved, non-law (14 files, 333 tests) or law (49
+     tests).
+   - Corpus (206 statements, tpc-ds aggregates included): 0 moved.
+   - Fuzzer: 522/522.
+   - Walk flip over the 121 subset/union-join files: the same failures as
+     `main`.
+   - Suite: see the PR.
 
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees

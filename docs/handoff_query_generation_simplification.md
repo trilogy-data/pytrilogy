@@ -85,6 +85,14 @@ LEFT/RIGHT arms of `_downgrade` and the BaseJoin loop in
 the planner. That visibility is the decision; it is the same prerequisite as
 2.6's remaining sites.
 
+The same holds for `UpgradeOuterFromKeySetEquivalence` (seam 2 of
+`docs/query_gen_simplification_audit_2026_10.md`): 87 firings over the
+whole suite, and its proof branches were ablated one by one (eleventh
+slice). The nine the planner's `complete_key_domain` already proves are
+deleted. Each branch kept names the plans or the test that move without it,
+so do not re-ablate them without a new premise. Its vetoes were not
+ablated, since turning one off makes the rule narrow more.
+
 `SimplifyNullSafeJoins` (`null_safe_join.py`) exists only because join types
 change after planning and leave stale NULLABLE modifiers. Re-measure it if the
 above ever moves; delete if it reaches 0.

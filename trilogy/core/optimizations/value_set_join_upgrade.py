@@ -30,12 +30,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from trilogy.constants import RECURSIVE_GATING_CONCEPT
 from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
-from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
+from trilogy.core.enums import Derivation, JoinType, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
-    BuildComparison,
     BuildConcept,
     BuildRowsetItem,
 )
@@ -44,7 +42,6 @@ from trilogy.core.models.execute import (
     BuildDatasource,
     ConceptPair,
     Join,
-    RecursiveCTE,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -270,32 +267,13 @@ def _accumulate_filter(
         return None
     next_visited = _visited | {side_cte.name}
     parts: list[BoolExpr] = []
-    if side_cte.condition is not None and _recursion_seed(side_cte) is None:
+    if side_cte.condition is not None:
         parts.append(side_cte.condition)
     for parent in side_cte.parent_ctes:
         sub = _accumulate_filter(parent, next_visited)
         if sub is not None:
             parts.append(sub)
     return combine_condition_atoms(parts)
-
-
-def _recursion_seed(side_cte: CTE) -> CTE | None:
-    """The seed of the recursion whose terminal rows ``side_cte`` keeps. The
-    gate picks the one row each seed row's walk ends on, so it restricts no
-    seed value: the terminal rows carry the seed's value sets."""
-    condition = side_cte.condition
-    if not (
-        isinstance(condition, BuildComparison)
-        and isinstance(condition.left, BuildConcept)
-        and condition.left.name == RECURSIVE_GATING_CONCEPT
-        and len(side_cte.parent_ctes) == 1
-    ):
-        return None
-    recursion = side_cte.parent_ctes[0]
-    if not isinstance(recursion, RecursiveCTE) or len(recursion.parent_ctes) != 1:
-        return None
-    seed = recursion.parent_ctes[0]
-    return seed if isinstance(seed, CTE) else None
 
 
 def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
@@ -375,60 +353,11 @@ def _equated_reads(cte: CTE, target: Join, pair: ConceptPair) -> list[ConceptPai
     return reads
 
 
-def _paired_before(cte: CTE, target: Join, a: ConceptPair, b: ConceptPair) -> bool:
-    """Whether a join before ``target`` paired the two reads' left keys with a
-    plain equality: on any row each is the other's value or NULL."""
-    reads = {(a.node.name, a.left.address), (b.node.name, b.left.address)}
-    joins = cte.joins or []
-    return any(
-        not p.is_nullable
-        and {(p.node.name, p.left.address), (j.right.name, p.right.address)} == reads
-        for j in joins[: next(i for i, j in enumerate(joins) if j is target)]
-        if isinstance(j, Join)
-        for p in j.pairs or []
-    )
-
-
-def _anchors_coalesce(
-    cte: CTE,
-    target: Join,
-    anchor: ConceptPair,
-    pair: ConceptPair,
-) -> bool:
-    """``anchor`` decides the value ``target`` reads ``pair``'s right key off:
-    the two read the same right key, the anchor's left is on every row entering
-    ``target`` with no NULL key, and ``pair``'s left was paired with it before.
-    The ON's coalesce of the lefts is then the anchor's value, whichever left
-    the walk joined first (a second `subset join` member beside the anchor)."""
-    return (
-        anchor is not pair
-        and anchor.right.address == pair.right.address
-        and not _null_extended_before(cte, target, anchor.node.name)
-        and not _emits_null(anchor.left, anchor.node)
-        and _paired_before(cte, target, anchor, pair)
-    )
-
-
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """True when ``side_cte`` can emit NULL for ``concept`` (a ROLLUP/CUBE/
     GROUPING SETS key carries NULL at its subtotal rows)."""
     return isinstance(side_cte, CTE) and _spelled_among(
         concept, side_cte.nullable_concepts
-    )
-
-
-def _unpaired_guest_padding(
-    sub_concept: BuildConcept,
-    sub_cte: CTE | UnionCTE,
-    sup_concept: BuildConcept,
-    sup_cte: CTE | UnionCTE,
-) -> bool:
-    """The sub side NULLs the key for a `~?` guest (a value-NULL key that
-    found no partner: the guest sale's description) and the sup side does
-    not. Null-safe equality pairs that NULL only with a NULL member the sup
-    side happens to hold, so the sub side's preservation stays load-bearing."""
-    return _guest_padded(sub_concept, sub_cte) and not _guest_padded(
-        sup_concept, sup_cte
     )
 
 
@@ -465,12 +394,6 @@ def _same_filtered_rows(left_cte: CTE | UnionCTE, right_cte: CTE | UnionCTE) -> 
         return True
     return leaf_tables(left_cte.source) == leaf_tables(right_cte.source) and (
         _same_filter_chain(left_cte, right_cte)
-    )
-
-
-def _guest_padded(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
-    return isinstance(cte, CTE) and bool(
-        concept.all_spellings & provenance(cte.source).guest
     )
 
 
@@ -525,9 +448,6 @@ def _pair_key_sets_equivalent(
     return _same_filter_chain(left_cte, right_cte)
 
 
-_COMPLETENESS_TRANSFERRING = (Derivation.BASIC, Derivation.ROWSET)
-
-
 def _complete_values(
     concept: BuildConcept,
     side_cte: CTE | UnionCTE,
@@ -536,94 +456,23 @@ def _complete_values(
     """The side carries every value of the concept's domain: the superset
     test for directional narrowing. Weaker than ``_complete_distinct``:
     duplicates are allowed (fan-out is a property of the data, not of the
-    join type), and a derived concept's domain is the image of its inputs'
-    domains, so completeness transfers through BASIC/ROWSET lineage but never
-    through a FILTER. Only ``_own_coverage_partial`` stamps veto the claim; a
-    row LIMIT anywhere in the chain vetoes unconditionally."""
+    join type). Scan evidence is trusted because every caller is
+    declaration-gated; only ``_own_coverage_partial`` stamps veto it, and a
+    row LIMIT anywhere in the chain vetoes unconditionally. Completeness
+    carried through a passthrough, a derivation, a join or a recursion walk
+    is the planner's proof (`join_resolution.complete_key_domain`)."""
     if not isinstance(side_cte, CTE):
         return False
     if _row_limited(side_cte) or _extent_free(concept, side_cte):
         return False
-    keys = concept.all_spellings
-    if not _own_coverage_partial(concept, side_cte, graph):
-        # Scan evidence is trusted here because every caller of this path is
-        # declaration-gated.
-        if _on_complete_grain(concept, side_cte):
-            return True
-        # A non-partial binding on an authoritative scan carries the full
-        # value set even off the grain; grain membership only matters for
-        # distinctness, which value completeness does not need.
-        if _authoritative_scan(side_cte) and any(
-            concept.address == c.address for c in side_cte.output_columns
-        ):
-            return True
-    # A pure 1:1 passthrough (no grouping, joins, or condition, one parent)
-    # preserves its parent's row set, so completeness carries through the
-    # projection rename.
-    if (
-        side_cte.condition is None
-        and not side_cte.joins
-        and len(side_cte.parent_ctes) == 1
-        and isinstance(side_cte.parent_ctes[0], CTE)
-    ):
-        parent = side_cte.parent_ctes[0]
-        for parent_concept in parent.output_columns:
-            if parent_concept.all_spellings & keys and _complete_values(
-                parent_concept, parent, graph
-            ):
-                return True
-        # A rowset translation renames the key with no shared address across
-        # the boundary; the wrapper's grain is the renamed parent grain, so
-        # grain membership at matching arity carries the parent's grain
-        # completeness through the rename.
-        grain_addrs = _grain_addresses(side_cte)
-        parent_grain = _grain_addresses(parent)
-        if (
-            grain_addrs & keys
-            and parent.group_to_grain
-            and parent_grain
-            and len(parent_grain) == len(grain_addrs)
-            and not any(
-                p.address not in graph.subset_sources() for p in parent.partial_concepts
-            )
-        ):
-            return True
-    if concept.derivation in _COMPLETENESS_TRANSFERRING:
-        args = concept.concept_arguments
-        return bool(args) and all(
-            _complete_values(arg, side_cte, graph) for arg in args
-        )
-    return _joined_complete(concept, side_cte, graph)
-
-
-def _joined_complete(concept: BuildConcept, side_cte: CTE, graph: DomainGraph) -> bool:
-    """A column read off one parent keeps every value that parent carries when
-    each join keeps every row of it: the parent is the preserved side, or each
-    row finds a partner (a `~` enrichment LEFT joined from its complete key)."""
-    if side_cte.condition is not None or not side_cte.joins:
+    if _own_coverage_partial(concept, side_cte, graph):
         return False
-    joins = [join for join in side_cte.joins if isinstance(join, Join)]
-    if len(joins) != len(side_cte.joins):
-        return False
-    parents = {p.name: p for p in side_cte.parent_ctes if isinstance(p, CTE)}
-    for name in side_cte.source_map.get(concept.address, []):
-        source = parents.get(name)
-        if source is None or not _complete_values(concept, source, graph):
-            continue
-        if all(_keeps_rows_of(join, source, graph) for join in joins):
-            return True
-    return False
-
-
-def _keeps_rows_of(join: Join, source: CTE, graph: DomainGraph) -> bool:
-    on_right = join.right is source
-    # a join padding the other side keeps every row of this one
-    preserved = PADS_LEFT_JOIN_TYPES if on_right else PADS_RIGHT_JOIN_TYPES
-    if join.join_type in preserved:
+    if _on_complete_grain(concept, side_cte):
         return True
-    return bool(join.pairs) and all(
-        _pair_side_fully_matches(*_subset_first(pair, join.right, on_right), graph)
-        for pair in join.pairs
+    # off the grain only distinctness is lost, which value completeness
+    # does not need
+    return _authoritative_scan(side_cte) and any(
+        concept.address == c.address for c in side_cte.output_columns
     )
 
 
@@ -922,9 +771,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # rows the equality never matches (a ROLLUP subtotal key); INNER
         # would silently drop them. A null-safe pair matches the NULL groups
         # both sides hold, which off a declared relation only reads of the
-        # same rows are known to (`_null_groups_differ`). For an
-        # EQUAL-declared key both sides name one value space, so the pair is
-        # made null-safe rather than refusing the upgrade.
+        # same rows are known to (`_null_groups_differ`).
         for pair, witness in zip(join.pairs, witnesses):
             assert witness is not None
             # Null-safety pairs the NULL groups but says nothing about the
@@ -949,10 +796,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if _key_nullable(witness.left, witness.node) or _key_nullable(
                 pair.right, right_cte
             ):
-                if self._pair_equal_declared(pair):
-                    pair.modifiers = list(pair.modifiers) + [Modifier.NULLABLE]
-                else:
-                    return False
+                return False
         original = join.join_type
         join.join_type = JoinType.INNER
         left_name = join.pairs[0].node.name
@@ -971,24 +815,13 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         graph_proof_only: bool,
     ) -> bool:
         """Every row of one side of `join` finds a partner on the other, its
-        NULL-key rows included, so preserving it keeps nothing. A subset
-        right whose key the ON reads off several lefts (a FULL's coalesce)
-        needs one of them to hold it whole (`_anchors_coalesce`)."""
-        pairs = join.pairs or []
-        for pair in pairs:
-            if self._pair_fully_matches(
+        NULL-key rows included, so preserving it keeps nothing."""
+        return all(
+            self._pair_fully_matches(
                 cte, join, pair, right_cte, right_is_subset, graph_proof_only
-            ):
-                continue
-            if not right_is_subset or not any(
-                _anchors_coalesce(cte, join, anchor, pair)
-                and self._pair_fully_matches(
-                    cte, join, anchor, right_cte, True, graph_proof_only
-                )
-                for anchor in pairs
-            ):
-                return False
-        return True
+            )
+            for pair in join.pairs or []
+        )
 
     def _pair_fully_matches(
         self,
@@ -1009,13 +842,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             graph_proof_only=graph_proof_only,
         ):
             return False
-        # Off a declared relation, a NULL-key row of the subset side has a
-        # partner only if the superset side happens to hold a NULL group.
-        if _key_nullable(sub, sub_cte) and not (
-            pair.is_nullable
-            and self._pair_declared(pair)
-            and not _unpaired_guest_padding(sub, sub_cte, sup, sup_cte)
-        ):
+        # a NULL-key row of the subset side has a partner only if the
+        # superset side happens to hold a NULL group
+        if _key_nullable(sub, sub_cte):
             return False
         return (
             right_is_subset

@@ -38,7 +38,6 @@ from trilogy.core.optimizations.value_set_join_upgrade import (
     _filters_equivalent,
     _pair_key_sets_equivalent,
     _same_filtered_rows,
-    _unpaired_guest_padding,
 )
 
 
@@ -742,10 +741,3 @@ def test_same_filtered_rows_reads_the_cte_chain_past_its_sources():
         grain=planned.grain,
     )
     assert not _same_filtered_rows(planned, union)
-
-
-def test_a_side_with_no_guest_rows_pads_no_unpaired_guest():
-    key = _concept("CLASS")
-    base = _datasource_cte("base", [key])
-    child = _grouped_child("child", base, key)
-    assert not _unpaired_guest_padding(key, child, key, base)
