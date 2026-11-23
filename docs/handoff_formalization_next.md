@@ -636,7 +636,14 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   end as fc, (min(height) by city) ? city in (<set>) as v0 where tag in
   (<set>)` takes `fc` off the species peel and `city` off the filter's rows,
   and FINAL joins them `on 1=1`. With `tree_form` in place of `fc` it is
-  right. `_keys_off_one_tuple` reads only KEY-purpose columns.
+  right. `_keys_off_one_tuple` reads only KEY-purpose columns. Reduced,
+  `select city, tree_form, (min(height) by city) ? city in (city ?
+  max(height) by tree_form is null) as v0 where tag in (<set>)` reads
+  `tree_form` off the set's `by tree_form` aggregate beside the filter's
+  `city` (`Filters.set_input_supplies_no_output`; 17550 too). Excluding
+  every set-only input from the cover fixed it and broke four seeds right
+  on main (9515: a set's `by city, species` aggregate is the right source of
+  the WHERE-kept pairs).
 - **A row scan beside a `by *` WHERE total finds no plan when a set reads a
   total** (`Could not resolve connections`, 9 seeds of 80,000-100,000):
   `select tag, city ? city in (city ? sum(height) by * <= 8) as v0 where

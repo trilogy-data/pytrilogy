@@ -17,7 +17,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase
 from .condition_placement import args_holding_on_absent, feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
-from .edges import EdgeKind, EdgeMap, edges_of_kind, feeds_only_sets, only_a_set
+from .edges import EdgeKind, EdgeMap, edges_of_kind, only_a_set
 from .functional_dependency import build_fd_determines
 from .group_graph import read_row_parents
 from .models import ExtentOwnership, GroupAttrs
@@ -380,7 +380,6 @@ def elect_cover(
         }
         return not row_atoms <= held
 
-    mandatory = {c.address for c in mandatory_list}
     for concept in mandatory_list:
         addr = concept.address
         mates = coalescing_mates(environment, addr)
@@ -401,14 +400,9 @@ def elect_cover(
         if not candidates:
             continue
         # a set supplies no output another group holds: its rows are the ones
-        # its own condition kept (`SelectGrain.set_supplies_no_output`); nor
-        # does a group only sets read, whose rows pair with the select's on
-        # nothing (`Filters.set_input_supplies_no_output`)
+        # its own condition kept (`SelectGrain.set_supplies_no_output`)
         candidates = [
-            gid
-            for gid in candidates
-            if not only_a_set(group_graph, group_edges, gid)
-            and not _only_a_set_input(group_graph, group_edges, attrs, gid, mandatory)
+            gid for gid in candidates if not only_a_set(group_graph, group_edges, gid)
         ] or candidates
         # A COALESCING mate carries only its own side's domain: a group that
         # never read the one hosting the concept itself misses that side's rows.
@@ -466,19 +460,6 @@ def elect_cover(
         per_group[winner].append(concept)
     return _keys_off_one_tuple(
         per_group, exposed, mandatory_list, groups, group_graph, group_edges
-    )
-
-
-def _only_a_set_input(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    mandatory: set[str],
-) -> bool:
-    """A group computing no output whose rows reach only sets."""
-    return not set(attrs[gid].primary_members) & mandatory and feeds_only_sets(
-        group_graph, group_edges, gid
     )
 
 

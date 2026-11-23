@@ -293,14 +293,14 @@ FOUND_SEEDS = [
     20025, 20955, 24114, 25247, 27088, 30256, 30456, 31900, 36448, 36977,
     39296, 40546, 41916, 47769, 50507, 57793, 59771, 62466, 69047, 70342,
     71319, 73639, 76828, 79687,
-    # 0.3.536: a set and an aggregate only sets read hold no select rows, a
-    # shown filter meets the gate on its grain, and a gate beside a WHERE
-    # membership is backfilled onto the outputs
+    # 0.3.536: a set holds no select keys, a set's input parents no derived
+    # key, a shown filter meets the gate on its grain, and a gate beside a
+    # WHERE membership is backfilled onto the outputs
     854, 930, 1306, 1820, 2356, 3456, 3594, 3634, 3777, 3884, 3915, 4122,
     4425, 4586, 4639, 5085, 5213, 5690, 5706, 5953, 6484, 6854, 7404, 8126,
     8768, 9068, 9582, 9743, 10503, 11518, 11600, 11741, 12337, 12460, 12508,
     12927, 12928, 13179, 13920, 14317, 15308, 15706, 16447, 16504, 16930,
-    17435, 17550, 17591, 17759, 17815, 18285, 18628, 18809, 18864, 19226,
+    17435, 17591, 17759, 17815, 18285, 18628, 18809, 18864, 19226,
     19292, 19423, 80568, 82423, 82889, 83127, 84440, 85135, 85660, 85675,
     85723, 90166, 91873, 92007, 93028, 93577, 93700, 93784, 95193, 95283,
     96257, 96425, 96630, 97546, 98204, 99771,
@@ -399,6 +399,8 @@ OPEN: dict[tuple[int, str], str | None] = {
     (17186, "summary"): "maximum recursion",
     (17527, "base"): "cannot be related to the query outputs",
     (17527, "summary"): "cannot be related to the query outputs",
+    (17550, "base"): None,
+    (17550, "summary"): None,
     (17742, "base"): "Could not resolve connections",
     (17742, "summary"): "Could not resolve connections",
     (17748, "base"): "keyless join",

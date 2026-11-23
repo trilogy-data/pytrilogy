@@ -395,18 +395,8 @@ SHAPES = [
             ("B", "Tilia", None),
         ],
     ),
-    # nor does an aggregate only a set reads (83978, reduced): every form met
-    # every city
-    (
-        (
-            "select city, tree_form, (min(height) by city) ? city in (city ?"
-            " max(height) by tree_form is null) as v0 where tag in (tag ? tree_form"
-            " is null);"
-        ),
-        [("A", "broadleaf", 3), ("A", None, 3), ("B", "linden", None)],
-    ),
-    # ...nor is it a derived key's rows (98603, reduced): the form of a city's
-    # trees met each of that city's tags
+    # an aggregate only a set reads parents no derived key (98603, reduced):
+    # the form of a city's trees met each of that city's tags
     (
         (
             "select coalesce(tree_form, 'none') as form0, tag ? city in (city ?"
