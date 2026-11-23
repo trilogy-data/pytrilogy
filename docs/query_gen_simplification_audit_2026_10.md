@@ -1398,7 +1398,9 @@ election, not the padded fallback.
       - **Gates, against `c1647f9`:** corpus (204 statements) 0 moved. The
         rollup-touching files (109 test files, 12,450 tests, both law files
         included): the same 18 credential-bound failures as `main`. The two
-        law files: green. Full suite and fuzzer: FULL_SUITE_RESULT.
+        law files: green. Full suite, laws included (53,100 passed): the
+        credential-bound failures and `the_look`'s known one, as on `main`.
+        Fuzzer 522/522.
         `test_rollup_arm_standard.py` pins the mode-free wrapper and the
         pinned-at-keys rows (both red on `main`), two arms of one statement
         each running their own pass, and an aggregate at another grain.
