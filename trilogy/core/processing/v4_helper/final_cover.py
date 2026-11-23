@@ -362,6 +362,13 @@ def elect_cover(
         )
 
     memos: list[dict[str, bool]] = [{} for _ in where_atoms]
+    selected = {c.address for c in mandatory_list}
+
+    def only_sets_read(gid: str) -> bool:
+        # a group whose own members are selected holds the statement's rows too
+        return selected.isdisjoint(attrs[gid].primary_members) and feeds_only_sets(
+            group_graph, group_edges, gid
+        )
 
     def rows_filtered(gid: str) -> bool:
         return all(
@@ -443,7 +450,7 @@ def elect_cover(
                 not feeds_absent_atom(gid),
                 # an aggregate only a set reads holds the set's rows
                 # (`Filters.set_input_supplies_no_output`)
-                not feeds_only_sets(group_graph, group_edges, gid),
+                not only_sets_read(gid),
                 gid not in steered,
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,
