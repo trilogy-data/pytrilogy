@@ -922,6 +922,18 @@ def _add_marker_flags(
     )
 
 
+def _imports_comment(links: list[str]) -> list[Comment]:
+    """One import per line for readers of the file; the trailing `,`/`.` keep
+    the flattened `file list` description reading as a list."""
+    if len(links) == 1:
+        return [Comment(text=f"# Imports: {links[0]}.")]
+    last = len(links) - 1
+    return [Comment(text="# Imports:")] + [
+        Comment(text=f"#   {link}{'.' if i == last else ','}")
+        for i, link in enumerate(links)
+    ]
+
+
 def _describe_ingested(
     rec: IngestRecord,
     bindings: dict[str, FKBinding],
@@ -978,12 +990,10 @@ def _describe_ingested(
         lines.append(Comment(text=f"# Flags: {rendered}."))
     if bindings:
         links = sorted(
-            f"{alias} via {column} (fields as {alias}.*)"
-            for column, alias in (
-                (column, _fk_target(binding)[1]) for column, binding in bindings.items()
-            )
+            f"{_fk_target(binding)[1]} via {column}"
+            for column, binding in bindings.items()
         )
-        lines.append(Comment(text=f"# Imports: {', '.join(links)}."))
+        lines.extend(_imports_comment(links))
     if referenced_by:
         lines.append(Comment(text=f"# Referenced by: {', '.join(referenced_by)}."))
     return lines
