@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFunction,
+    BuildGroupingSets,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.keyspace import Keyspace
@@ -220,6 +221,10 @@ class BuildEnvironment:
     # of it, by address (`aggregate_rollup.elect_partials`). A sourcing
     # decision the plan reads; no concept's lineage changes.
     partial_sources: dict[str, BuildConcept] = field(default_factory=dict)
+    # The one ROLLUP/CUBE/GROUPING SETS pass of the select this environment
+    # plans (a rollup arm, `gen_rollup_select`): the pass is the select's, and
+    # every aggregate at its keys computes in it.
+    grouping: BuildGroupingSets | None = None
     # A delta materialization's baseline (`Factory.build_environment_delta`):
     # its classes carry over while every name matches the baseline's.
     class_baseline: "BuildEnvironment | None" = field(
@@ -231,6 +236,12 @@ class BuildEnvironment:
     _classes_seen: dict[bool, _NamesSnapshot] = field(
         default_factory=dict, repr=False, compare=False
     )
+
+    def pass_of(self, concept: BuildConcept) -> BuildGroupingSets | None:
+        """The select's grouping pass when `concept` is one of its aggregates."""
+        if self.grouping is not None and self.grouping.computes(concept):
+            return self.grouping
+        return None
 
     @property
     def scoped_join_key_groups(self) -> dict[str, set[str]]:

@@ -40,7 +40,6 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     get_concept_arguments,
     is_grouping_identity,
-    nonstandard_grouping_spec,
     rollup_reaggregate,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -931,8 +930,7 @@ def _grouping_pass_sibling_axis_members(
     columns into the pass's GROUP BY shape (BinderException) or strands the
     flag on a node its pass pairs with via the literal-0 grain-match stamp
     (subtotal rows drop)."""
-    spec = nonstandard_grouping_spec(concept.lineage)
-    if spec is None:
+    if environment.pass_of(concept) is None:
         return frozenset()
     members: set[str] = set()
     seen: set[str] = set()
@@ -941,7 +939,7 @@ def _grouping_pass_sibling_axis_members(
             other.address == concept.address
             or other.address in seen
             or is_grouping_identity(other)
-            or nonstandard_grouping_spec(other.lineage) != spec
+            or environment.pass_of(other) is None
         ):
             continue
         seen.add(other.address)
@@ -1811,7 +1809,10 @@ def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
     # BY, the other GROUP BY ROLLUP).
     grouping_mode: AggregateGroupingMode | None = None
     if not is_materialized_root and isinstance(concept.lineage, BuildAggregateWrapper):
-        grouping_mode = concept.lineage.grouping
+        grouping = environment.pass_of(concept)
+        grouping_mode = (
+            grouping.mode if grouping is not None else AggregateGroupingMode.STANDARD
+        )
     # Rowset identity: every handle of one rowset shares a row population (the
     # rowset is one sub-query, planned in full by `gen_rowset`), so the rowset
     # grouping rule buckets them into a single boundary group by name. This

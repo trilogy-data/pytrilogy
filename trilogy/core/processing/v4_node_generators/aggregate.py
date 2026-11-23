@@ -3,8 +3,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
     BuildWhereClause,
-    get_grouped_aggregate_wrapper,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import sourced_function_arguments
@@ -53,7 +51,7 @@ def _abstract_output_grain(
 
 
 def _renders_nonstandard_grouping(
-    outputs: list[BuildConcept], upstream: set[str]
+    outputs: list[BuildConcept], upstream: set[str], environment: BuildEnvironment
 ) -> bool:
     """A node that renders `GROUP BY ROLLUP/CUBE/GROUPING SETS` takes its
     GROUP BY from the aggregate wrapper's `by` list verbatim, so any other
@@ -61,9 +59,7 @@ def _renders_nonstandard_grouping(
     reaches join inference from the other side; this side keeps only its
     grouping keys."""
     return any(
-        (wrapper := get_grouped_aggregate_wrapper(c)) is not None
-        and wrapper.grouping.nulls_grouping_keys
-        and c.address not in upstream
+        environment.pass_of(c) is not None and c.address not in upstream
         for c in outputs
     )
 
@@ -110,7 +106,7 @@ def outputs_with_scoped_join_mates(
     if not group_mates or _abstract_output_grain(outputs, environment):
         return outputs
     upstream = {c.address for parent in parents for c in parent.output_concepts}
-    if _renders_nonstandard_grouping(outputs, upstream):
+    if _renders_nonstandard_grouping(outputs, upstream, environment):
         return outputs
     present = {c.address for c in outputs}
     visible = {
@@ -144,9 +140,7 @@ def gen_aggregate(
     grouping (ROLLUP/CUBE/GROUPING_SETS); the GroupNode's grain-match
     shortcut would otherwise drop the GROUP BY entirely, losing the
     subtotal rows the rollup adds."""
-    has_non_standard_grouping = any(
-        nonstandard_grouping_lineage(c) is not None for c in outputs
-    )
+    has_non_standard_grouping = any(environment.pass_of(c) is not None for c in outputs)
     outputs = outputs_with_scoped_join_mates(outputs, parents, environment)
     available_by_address = {
         concept.address: concept

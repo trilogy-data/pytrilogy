@@ -11,8 +11,6 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildRowsetItem,
     BuildWhereClause,
-    get_grouped_aggregate_wrapper,
-    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
@@ -455,21 +453,14 @@ def statement_filter_population(
 
 
 def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
-    """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
+    """Grouping keys of the select's ROLLUP/CUBE/GROUPING SETS pass.
     The subtotal rows NULL these, so they are not a row identity and must never
     be volunteered as a join axis: pairing on one drops every subtotal row (a
     rolled-up NULL matches nothing). The join resolver applies the same rule
     per-datasource via `rollup_padded_addresses`; this is the environment-wide
     view the demand pass needs before any datasource exists."""
-    padded: set[str] = set()
-    for concept in (
-        *environment.concepts.values(),
-        *environment.alias_origin_lookup.values(),
-    ):
-        wrapper = get_grouped_aggregate_wrapper(concept)
-        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
-            padded |= {c.address for c in wrapper.by}
-    return frozenset(padded)
+    grouping = environment.grouping
+    return frozenset(grouping.keys) if grouping is not None else frozenset()
 
 
 def reads_a_rollup(address: str, environment: BuildEnvironment) -> bool:
@@ -488,7 +479,7 @@ def reads_a_rollup(address: str, environment: BuildEnvironment) -> bool:
         if concept is None or concept.lineage is None:
             continue
         for arg in concept.lineage.concept_arguments:
-            if nonstandard_grouping_lineage(arg) is not None:
+            if environment.pass_of(arg) is not None:
                 return True
             stack.append(arg.address)
     return False

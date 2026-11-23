@@ -2,7 +2,7 @@
 
 What is left of the 2026-08 simplification audit. Everything that landed has
 been removed from this file; the git history is the record of that. Four items
-remain (2.3(b), 2.1 step 4, 2.7, the grouping-set TVF), plus a set of verdicts that exist to stop them being re-opened.
+remain (2.3(b), 2.1 step 4, 2.7, the grouping-set TVF's reader ablation), plus a set of verdicts that exist to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -110,11 +110,12 @@ tracks grouping-set padding. Below the planner the pass is the group's:
 `GroupNode` decides its `BuildGroupingSets` once and the datasource, CTE,
 renderer and optimizer read that, never an aggregate's mode. The arm is
 pure: windows, scalars over measures, HAVING, ORDER BY and LIMIT are lifted
-into a select over its relation (`rollup_lift.py`), but the arm itself is
-still planned by the select mutator. Design, gates and the remaining steps
-(a select-level one-pass flag in place of the mode, the arm planned
-standard, then delete the mode) are seam 10 of
-`docs/query_gen_simplification_audit_2026_10.md`.
+into a select over its relation (`rollup_lift.py`), and the arm is planned
+as a standard select: no aggregate carries a grouping mode. The pass is the
+select's, `BuildEnvironment.grouping` on the arm's build environment, and
+every reader asks `BuildEnvironment.pass_of`. What remains is ablating those
+readers one by one now that the arm sits behind its TVF (seam 10, "What is
+left of (c)", of `docs/query_gen_simplification_audit_2026_10.md`).
 
 Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`
 (rowset reads against the statement) and

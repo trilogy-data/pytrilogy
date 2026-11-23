@@ -34,7 +34,6 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import ALL_ROWS_ADDRESS, rowset_alias_prefix
 from trilogy.core.enums import (
-    AggregateGroupingMode,
     BooleanOperator,
     Derivation,
     FunctionClass,
@@ -937,21 +936,6 @@ class _Extractor:
         self, concept: BuildConcept, wrapper: BuildAggregateWrapper | None
     ) -> list[str]:
         if wrapper is not None:
-            if (
-                wrapper.grouping == AggregateGroupingMode.GROUPING_SETS
-                and wrapper.grouping_sets
-            ):
-                sets = ", ".join(
-                    "(" + ", ".join(_short(c.address) for c in gs) + ")"
-                    for gs in wrapper.grouping_sets
-                )
-                return [f"grouping sets ({sets})"]
-            if wrapper.grouping in (
-                AggregateGroupingMode.ROLLUP,
-                AggregateGroupingMode.CUBE,
-            ):
-                hierarchy = ", ".join(_short(c.address) for c in wrapper.by)
-                return [f"{wrapper.grouping.value}({hierarchy})"]
             by_keys = [
                 _short(c.address) for c in wrapper.by if c.address != ALL_ROWS_ADDRESS
             ]
