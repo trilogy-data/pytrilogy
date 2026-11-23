@@ -93,6 +93,7 @@ from trilogy.core.processing.v4_helper.concept_graph import (
     derived_key,
     upstream_concepts,
 )
+from trilogy.core.processing.v4_helper.condition_placement import planning_a_set
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_closure,
     strict_fd_closure,
@@ -174,14 +175,15 @@ def append_existence_check(
         # the unfiltered universe and its value never matches the filtered
         # output. A user `x in (select ...)` RHS is an independent set (no
         # conditions) and stays unfiltered.
-        parent = search_concepts(
-            mandatory_list=[*subselect],
-            history=history,
-            environment=environment,
-            depth=0,
-            g=graph,
-            conditions=[conditions] if conditions else [],
-        ).strategy_node
+        with planning_a_set():
+            parent = search_concepts(
+                mandatory_list=[*subselect],
+                history=history,
+                environment=environment,
+                depth=0,
+                g=graph,
+                conditions=[conditions] if conditions else [],
+            ).strategy_node
         assert parent, "Could not resolve existence clause"
         node.add_parents([parent])
         logger.info(f"{LOGGER_PREFIX} found {[str(c) for c in subselect]}")

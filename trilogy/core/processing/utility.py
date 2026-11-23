@@ -368,6 +368,17 @@ def unrenderable_outputs(
     ]
 
 
+def _parent_has_own(cte: CTE | UnionCTE, address: str, sources: list[str]) -> bool:
+    """A source parent lists `address` as a column of its own (an arm column
+    beside the TVF output it renames), which a lookup would read by the wrong
+    name; render the alias through its lineage instead."""
+    return any(
+        parent.name in sources
+        and any(c.address == address for c in parent.output_columns)
+        for parent in cte.parent_ctes
+    )
+
+
 def sort_select_output_processed(
     cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE | UnionCTE:
@@ -388,7 +399,11 @@ def sort_select_output_processed(
         # same ALIAS rename `select oc as target` builds, so it renders through
         # `oc` (and whatever `oc` renders through) and the collapse rules pin
         # it to the consumed column exactly as they pin an authored alias.
-        if target.address not in cte.source_map and oc.address in cte.source_map:
+        if (
+            target.address not in cte.source_map
+            and oc.address in cte.source_map
+            and not _parent_has_own(cte, target.address, cte.source_map[oc.address])
+        ):
             cte.source_map[target.address] = list(cte.source_map[oc.address])
         lineage = BuildFunction(
             operator=FunctionType.ALIAS,

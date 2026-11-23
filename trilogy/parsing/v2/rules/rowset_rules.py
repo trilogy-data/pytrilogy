@@ -26,11 +26,13 @@ from trilogy.core.statements.author import (
 )
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
+from trilogy.parsing.v2.rules.rollup_lift import ArmSplit, outer_select, split_arm
 from trilogy.parsing.v2.rules.tvf_rules import (
     TVF_GROUPING_MODES,
     TVF_INVOCATION_OPERATORS,
     bind_set_op,
     lower_grouping_select,
+    validate_grouping_signature,
 )
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -39,7 +41,10 @@ from trilogy.parsing.v2.rules_context import (
     core_meta,
     fail,
 )
-from trilogy.parsing.v2.select_finalize import finalize_select_tree
+from trilogy.parsing.v2.select_finalize import (
+    finalize_select_statement,
+    finalize_select_tree,
+)
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 from trilogy.utility import string_to_hash
 
@@ -62,7 +67,7 @@ def rowset_derivation_statement(
     # the scope intentionally — it operates on already-resolved addresses.
     finalize_select_tree(select, context)
     if isinstance(select, SelectStatement):
-        select = lower_grouping_select(select, context, name, core_meta(node.meta))
+        select = lower_grouping_arm(select, context, name, core_meta(node.meta))
     output = RowsetDerivationStatement(
         name=name,
         select=select,
@@ -133,7 +138,7 @@ def scalar_subquery(
             "a `(select ...)` used as a scalar value must return one row: "
             "aggregate it with no `by` (`(select max(v))`) or add `limit 1`",
         )
-    body = lower_grouping_select(select, context, name, core_meta(node.meta))
+    body = lower_grouping_arm(select, context, name, core_meta(node.meta))
     output = RowsetDerivationStatement(
         name=name,
         select=body,
@@ -179,13 +184,12 @@ def _call_rowset_name(call: SyntaxNode, context: RuleContext) -> str:
     return f"{ROLLUP_NAMESPACE_PREFIX}{string_to_hash(place)}"
 
 
-def _lower_call(
-    arm: SelectStatement, name: str, context: RuleContext, meta: Any
+def _anonymous_rowset(
+    body: SelectStatement | RollupSelectStatement,
+    name: str,
+    context: RuleContext,
+    meta: Any,
 ) -> tuple[RowsetDerivationStatement, list[Concept]]:
-    """A finalized grouping arm as an anonymous rowset over its rollup TVF,
-    with that rowset's handles, one per arm column."""
-    body = lower_grouping_select(arm, context, name, meta)
-    assert isinstance(body, RollupSelectStatement)
     rowset = RowsetDerivationStatement(
         name=name,
         select=body,
@@ -194,6 +198,58 @@ def _lower_call(
     handles = _register_rowset(rowset, context, meta)
     context.environment.add_rowset(name, body.as_lineage(context.environment))
     return rowset, handles
+
+
+def _lower_call(
+    arm: SelectStatement, name: str, context: RuleContext, meta: Any
+) -> tuple[RowsetDerivationStatement, list[Concept]]:
+    """A finalized grouping arm as an anonymous rowset over its rollup TVF,
+    with that rowset's handles, one per arm column."""
+    body = lower_grouping_select(arm, context, name, meta)
+    assert isinstance(body, RollupSelectStatement)
+    return _anonymous_rowset(body, name, context, meta)
+
+
+def _lift(
+    arm: SelectStatement, split: ArmSplit, name: str, context: RuleContext, meta: Any
+) -> SelectStatement:
+    """The pure arm as an anonymous rowset over its TVF, and the select over
+    that rowset's handles that computes what the arm read off the pass."""
+    finalize_select_statement(split.arm, context)
+    pass_name = f"{name}__pass"
+    rowset, handles = _lower_call(split.arm, pass_name, context, meta)
+    by_column = {
+        column.address: handle
+        for column, handle in zip(split.arm.output_components, handles)
+    }
+    outer = outer_select(arm, split, by_column, name, context)
+    outer.source = rowset
+    outer.signature = arm.signature
+    finalize_select_statement(outer, context)
+    return outer
+
+
+def lower_grouping_arm(
+    arm: SelectStatement, context: RuleContext, name: str, meta: Any
+) -> SelectStatement | RollupSelectStatement:
+    """`lower_grouping_select`, with the arm's post-aggregate columns and
+    HAVING lifted into a select over the relation (see `rollup_lift`)."""
+    split = _split(arm, context)
+    if split is None:
+        return lower_grouping_select(arm, context, name, meta)
+    return _lift(arm, split, name, context, meta)
+
+
+def _split(arm: SelectStatement, context: RuleContext) -> ArmSplit | None:
+    if arm.grouping is None or not arm.grain.components:
+        return None
+    validate_grouping_signature(
+        arm, len(arm.output_components) - len(arm.hidden_components)
+    )
+    split = split_arm(arm, context)
+    if split is not None:
+        split.arm.signature = []
+    return split
 
 
 def _bind_grouping_call(
@@ -210,6 +266,17 @@ def _bind_grouping_call(
     with context.semantic_state.rowset_alias_scope(name):
         arm: SelectStatement = hydrate(call)
     finalize_select_tree(arm, context)
+    split = _split(arm, context)
+    if split is not None:
+        outer = _lift(arm, split, f"{name}__lift", context, meta)
+        rowset, handles = _anonymous_rowset(outer, name, context, meta)
+        hidden = outer.hidden_components
+        shown = [
+            h
+            for column, h in zip(outer.output_components, handles)
+            if column.address not in hidden
+        ]
+        return rowset, {out.name: h for out, h in zip(arm.signature, shown)}
     rowset, handles = _lower_call(arm, name, context, meta)
     body = rowset.select
     assert isinstance(body, RollupSelectStatement)
@@ -331,6 +398,11 @@ def _spread_grouping(
         # one standard group: the wrapped select is the statement (the
         # statement plan finalizing it again is a no-op)
         return arm
+    split = _split(arm, context)
+    if split is not None:
+        outer = _lift(arm, split, _call_rowset_name(call, context), context, meta)
+        outer.spread = True
+        return outer
     rowset, handles = _lower_call(
         replace(arm, order_by=None, limit=None),
         _call_rowset_name(call, context),

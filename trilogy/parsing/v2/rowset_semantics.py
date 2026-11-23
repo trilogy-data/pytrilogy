@@ -100,12 +100,19 @@ def _signature_name(
     body: SelectStatement | MultiSelectStatement, address: str
 ) -> str | None:
     """The `-> (...)` name a rollup call gives this output, if it has one."""
-    if not isinstance(body, RollupSelectStatement) or not body.outputs:
+    if isinstance(body, RollupSelectStatement):
+        visible = [i.aligned_concept for i in body.align.items if not i.hidden]
+        names = body.outputs
+    elif isinstance(body, SelectStatement):
+        # a call whose post-aggregate columns were lifted over its relation
+        hidden = body.hidden_components
+        visible = [c.address for c in body.output_components if c.address not in hidden]
+        names = body.signature
+    else:
         return None
-    visible = [i.aligned_concept for i in body.align.items if not i.hidden]
-    if address not in visible:
+    if not names or address not in visible:
         return None
-    return body.outputs[visible.index(address)].name
+    return names[visible.index(address)].name
 
 
 def _rowset_concept(
@@ -126,6 +133,9 @@ def _rowset_concept(
             body.arm_concept[orig_address.address].address
         )
         body = body.selects[0]
+    elif isinstance(body, SelectStatement) and orig_address.address in body.labels:
+        # a lifted arm's select: each output shows as the arm column it computes
+        surface = context.concepts.require(body.labels[orig_address.address].address)
     name = _unmangle_alias_name(surface.name, rowset.name)
     if isinstance(surface.lineage, FilterItem):
         lineage = surface.lineage

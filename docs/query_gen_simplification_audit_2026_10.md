@@ -249,9 +249,9 @@ optimizer rule's firings over the non-law suite: 912 before the first slice,
 fourth, 299 after the fifth, most of that drop refusals of unsound
 narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
-eighth and 46 after the ninth; over the whole suite, laws included, its CTE
+eighth, 46 after the ninth and 35 after the tenth, measured from 40; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement) and the group-owned grouping sets below the planner; 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner and a pure arm (step (a)); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -837,7 +837,7 @@ election, not the padded fallback.
      stopped there by the WHERE it pushed down first. The join matrix's
      `equal` oracle drops a one-sided NULL group, but a value NULL is no
      value the declaration speaks for, so this is a semantic decision, not an
-     ownership move, and is left open.
+     ownership move. Ruled in the tenth slice: it keeps its rows.
    - **q64's other three lookups (9 firings).** After the cover the planner
      types them RIGHT, and `ensure_content_preservation` widens them to FULL
      for the item lookup's padding. Only the consumer's WHERE (`cnt_00 <=
@@ -864,6 +864,36 @@ election, not the padded fallback.
    it. No test changed outcome. Corpus (205 statements, tpc-ds aggregates
    included): 0 moved. The suite, laws included, fails the same
    25 tests as `main`. Fuzzer 522/522.
+
+   **Tenth slice (landed): a declared relation does not speak for a NULL.**
+   The ninth slice left the EQUAL key one side NULLs alone open as a semantic
+   question. Ruled: `merge a into b` declares one value space and says
+   nothing of a NULL; a nullable binding (`?`, a null-propagating
+   derivation such as `split(agency, '/')[1]`) or a guest keeps its rows.
+   `_null_groups_differ` had the opposite branch for a declared relation (it
+   "spoke for its keys' value NULLs", made the pair null-safe and narrowed
+   to INNER, dropping a NULL group only one side held); it now treats a
+   declared relation's nullable key like any other, so the optimizer refuses
+   the upgrade unless both sides read the same filtered rows. The planner
+   already kept those rows, so the ruling is the planner's answer and the
+   optimizer stops overriding it.
+   - The census on `4ede680` read 40 firings over the non-law suite; five
+     went through the EQUAL-nullable branch (`first_org` twice,
+     `web.billing_customer.sk` three times, both left-nullable). After: 35,
+     those five gone, none new.
+   - The test-sized gcat models declared `merge first_org into org.code`
+     where the real model says `~org.code` (not every org code is a first
+     org): `gcat2/launch.preql` and the two `first_org` discovery tests now
+     declare the subset. hackernews `merge github.repo_url into
+     any_github_url` stays EQUAL (neither side is a subset); its
+     `any_github_url` is nullable, so the ruling keeps its posts.
+   - Corpus: 1 moved, `_q04_agent_rowset_union_join` types its web-sales to
+     customer lookup LEFT (`ws_bill_customer_sk` is `?`); the 8 rows on
+     sf=1 are identical. `test_equal_merge_keeps_null_bindings.py` pins the
+     ruling (red on `main`: the launch with no agency dropped). The join
+     matrix holds a NULL row on both sides of every nullable cell and does
+     not reach the branch.
+
 3. **A rowset handle is a leaf (landed).** `row_lineage_arguments`
    returns nothing for a ROWSET handle, so no assembly row-lineage walk sees
    through one, and `concept_satisfiable` no longer judges a handle
@@ -1161,8 +1191,8 @@ election, not the padded fallback.
       above stays live for the arm's own pass, and a merge arm or union arm
       carrying a spec is still a mutated select. Next, in order: (a) move
       the post-aggregate scalars and HAVING out of the arm into the outer
-      select, leaving a pure arm (keys, aggregates, flags); the statement's
-      outer select is where they land, with no shadowing needed; (b) plan
+      select, leaving a pure arm (keys, aggregates, flags) (landed, fifth
+      slice below); (b) plan
       the arm as a STANDARD select and have the generator set the grouping
       sets on its root `GroupNode`, with a per-grouping-set union as the
       fallback where the arm is not one group; (c) delete the mode from
@@ -1269,6 +1299,60 @@ election, not the padded fallback.
         `_partition_grouped_aggregates` does for a mode today. After (a) that
         rule is all the planner needs from the arm: a select-level "one pass"
         flag in place of the per-aggregate mode, which is what (c) deletes.
+    - **Fifth slice: the arm is the pass (step (a), landed).** Every grouping
+      call lowers through `lower_grouping_arm` (`rowset_rules.py`): named,
+      inline-signed, spread and subquery alike. `rollup_lift.split_arm`
+      keeps in the arm only the pass: keys, aggregates and grouping flags.
+      A window, a BASIC column that reads an aggregate, the HAVING, the ORDER
+      BY and the LIMIT move to a select over the pure arm's relation
+      (`outer_select`), re-pointed at its handles. An aggregate written
+      inline in a lifted column (`order by sum(w)`, `grouping(g1) = 1` inside
+      a CASE) becomes a hidden arm column, and so does a named one the arm
+      does not show. Each output is labelled with the arm column it shows
+      as, so the statement, a named rowset's handles and a signature read
+      the authored names. A column reading a row-level value no handle
+      carries leaves the arm as it was. Three facts carry the arm's meaning
+      across:
+      - A rank of a tuple (`rank(g1, g2) over ...`) ranks the relation's
+        rows: its tuple gains the grouping flags, since the visible keys do
+        not tell a subtotal from a NULL key (`_ranked_by_identity`).
+      - The outer select reads every handle, hidden ones included, so a read
+        of the relation never dedups its identity.
+      - HAVING stays the outer select's HAVING, which filters after the
+        window as a plain select's does. On a plain select
+        `rank() ... having total < 25` ranks first, and the arm did the
+        same; a WHERE would have re-ranked.
+      - **Fixed on the way (`main` bug):** a named rollup read through its
+        handles (`with r as rollup((select g1, total, rank() over (order by
+        total desc) as rk, total * 2 as dbl), g1) -> (a, t, k, d)`) planned
+        the window beside the pass and joined it back on the visible `g1`.
+        The subtotal NULL and the data NULL fanned out: 6 rows, ranks 1 and
+        3 for the same row. It is now 4 rows, `test_rollup_arm_lift.py`
+        (red on `main`, with the pure-arm pin).
+      - **Render.** A labelled output that resolves to a handle renders
+        through the handle when the parent also lists the arm column as its
+        own (`_parent_has_own` in `sort_select_output_processed`); the
+        parent never projected that name.
+      - **Gates, against `c996f28`:**
+        - Corpus (208 statements, tpc-ds aggregates included): 1 moved.
+          q67 has the same 3 CTEs and joins under longer handle aliases
+          (3,424 to 4,385 characters; its size budget is rebaselined), and
+          its rows are checked by `test_sixty_seven`.
+        - Rollup suites (both law files, 379 tests): green.
+        - Full suite: the same credential-bound failures as `main`, plus
+          `the_look`'s known one.
+        - Fuzzer 522/522.
+        - Two test edits. `test_grouping_membership_in_having_routes_to_having_not_where`
+          no longer asserts that the text has no WHERE: the outer HAVING
+          renders as a WHERE over the materialized flags, after
+          aggregation, and DuckDB executing it is the check. q67's budget
+          log is rebaselined.
+      - **What it buys (b).** The arm planned standard failed 143 tests in
+        the prototype, on two shapes. One was post-aggregate columns
+        planned beside the pass; this slice moves every such column out of
+        the arm. The other, several facts under one pass, still needs the
+        select-level one-pass flag. Step (b) is now that flag plus the
+        prototype.
 
 ## Gate used
 

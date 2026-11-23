@@ -37,7 +37,15 @@ A value the condition reads is built before the filtered column:
 A filter's rows pair with the select's other streams on its grain, so they
 must be one per grain value there: a column it carries below its grain fans
 the pairing out (`carried_column_fans_out`), and a collapse past a key the
-pairing reads crosses every value of it (`collapse_drops_paired_key`).
+pairing reads crosses every value of it (`collapse_drops_paired_key`). Its
+keys are columns of the rows it filters: moved to a scan of their own, they
+leave it nothing to pair on (`filter_keys_stay_on_its_rows`). And a WHERE
+hosted only beneath an aggregate its condition reads has filtered that
+aggregate's rows and not the filter's own; both must pass it
+(`gate_on_a_condition_filters_no_row`).
+A filter its keys decide is a property of them, shown once per value like
+any other (`decided_filter_repeats_per_key`); only one reading finer than its
+keys is a value per key.
 -/
 
 namespace Trilogy.Filters
@@ -208,5 +216,41 @@ theorem collapse_drops_paired_key :
       pairs.length = 4 := by
   decide
 
+
+/-- `select tree_form, city ? city = 'A' as f where species in (<set>)`: the
+kept trees are `(form, city)` = (broadleaf, A), (none, A), (linden, B), three
+rows. The WHERE's set moved `tree_form` to a scan of the species table, so the
+filter's rows held `f` alone and met the forms on nothing: every form beside
+every `f`, six rows (`filter_keys_stay_on_its_rows`). -/
+theorem filter_keys_stay_on_its_rows :
+    let kept : List (Nat × Nat) := [(0, 0), (2, 0), (1, 1)]
+    let f : Nat × Nat → Option Nat := filt (·.2 == 0) (·.2)
+    let shown := (kept.map fun r => (r.1, f r)).eraseDups
+    let forms := (kept.map (·.1)).eraseDups
+    let values := (kept.map f).eraseDups
+    shown.length = 3 ∧ (forms.flatMap fun k => values.map fun v => (k, v)).length = 6 := by
+  decide
+
+/-- `select height ? count(tree_id) by city < 10 as f where min(height) by
+species < 4`: the WHERE keeps the species whose minimum is under 4. Hosted
+only on the count, it filtered the rows the count reads, while the heights
+shown were read beside it off every tree: Quercus's 5 came back
+(`gate_on_a_condition_filters_no_row`). Trees are `(species, height)`. -/
+theorem gate_on_a_condition_filters_no_row :
+    let trees : List (Nat × Nat) := [(0, 3), (0, 7), (1, 5), (3, 2)]
+    let speciesMin (s : Nat) := ((trees.filter (·.1 == s)).map (·.2)).foldl min 100
+    let kept := trees.filter fun r => speciesMin r.1 < 4
+    (kept.map (·.2)) = [3, 7, 2] ∧ (trees.map (·.2)).contains 5 = true := by
+  decide
+
+/-- `select fc, tree_form ? species in (<set>) as f`: Acer and Quercus are
+both broadleaf, and neither is in the set. The select's rows are the distinct
+`(fc, f)`, one; grouped by the hidden `species` that `f` is keyed by, the row
+showed once per species (`decided_filter_repeats_per_key`). Rows are
+`(species, fc, f)`. -/
+theorem decided_filter_repeats_per_key :
+    let rows : List (Nat × Nat × Option Nat) := [(0, 0, none), (1, 0, none)]
+    (rows.map fun r => r.2).eraseDups.length = 1 ∧ rows.eraseDups.length = 2 := by
+  decide
 
 end Trilogy.Filters

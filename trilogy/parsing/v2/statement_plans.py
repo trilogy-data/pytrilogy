@@ -359,7 +359,10 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
             for arm in select.source.select.selects
         )
         for select in selects:
-            intersection = select.locally_derived.intersection(pre_keys)
+            derived = select.locally_derived
+            # a column lifted out of a grouping arm shows as its authored name
+            shown = {select.labels[a].address for a in derived if a in select.labels}
+            intersection = (derived | shown).intersection(pre_keys)
             if not intersection:
                 continue
             shadowed = sorted(intersection)

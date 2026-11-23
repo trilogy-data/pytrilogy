@@ -43,7 +43,7 @@ key id string;
 property id.agency string;
 property id.first_org <- split(agency, '/')[1];
 
-merge first_org into org.code;
+merge first_org into ~org.code;
 
 datasource launches (
     id: id,
