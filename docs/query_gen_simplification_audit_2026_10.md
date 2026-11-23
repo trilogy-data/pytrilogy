@@ -251,7 +251,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner and a pure arm (step (a)); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)) and a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1353,6 +1353,65 @@ election, not the padded fallback.
         the arm. The other, several facts under one pass, still needs the
         select-level one-pass flag. Step (b) is now that flag plus the
         prototype.
+    - **Sixth slice: the arm is planned standard, the pass is the select's
+      (step (b), and the mode half of (c)).** No aggregate carries a
+      grouping mode any more: `BuildAggregateWrapper.grouping` and
+      `.grouping_sets` are deleted. The factory still keys a bare aggregate of
+      a spec'd select on the spec's keys, in the spec's order, and skips the
+      FD reduction of that `by` (a rolled key is a subtotal level), but it
+      writes no mode. The pass is a fact of the arm's planning scope:
+      `gen_rollup_select` sets `BuildEnvironment.grouping` (a
+      `BuildGroupingSets`) on the arm's build environment, keyed by the `by`
+      the factory gave a bare aggregate, and `BuildEnvironment.pass_of(c)` is
+      the one question every reader asks: an aggregate at the pass's keys is
+      one of its outputs (`BuildGroupingSets.computes`).
+      - **The one-pass flag** is that environment field. The concept graph
+        reads a node's grouping mode off it, so `_partition_grouped_aggregates`
+        still co-sources every member in one pass (the flags beside the
+        measures, two facts joined below the pass), and `GroupNode` takes the
+        pass itself when it computes a member (`GroupNode.grouping_pass`,
+        never skipped as a grain match). Nothing stamps a node after the
+        plan.
+      - **Readers moved off the aggregate's lineage**, each onto the
+        environment or the datasource that owns the pass:
+        `null_provenance.rollup_padded_addresses` (the datasource's
+        `grouping_sets`), `rollup_padded_keys`, `reads_a_rollup`,
+        `join_plan`'s pinned-grain walk, `region_reads`, the axis-widening
+        `_grouping_pass_sibling_axis_members`, `gen_aggregate` and
+        `_renders_nonstandard_grouping`, `datasource_nodes`' forced group,
+        and the strategy builder's `node_nulls_grouping_keys`,
+        `_groups_null_grouping_keys`, `_nonstandard_grouping_key_addresses`,
+        `_aggregate_scalar_inputs`, `_parents_already_at_input_grain` and
+        `_renders_grouping_rows`. Deleted: `nonstandard_grouping_spec`,
+        `nonstandard_grouping_lineage`, `computed_grouping_sets` and the
+        mode term of `_concept_is_relevant` (a `grouping()` flag only exists
+        under a spec). `_standard_rollable` and the scope diagnostics' rollup
+        label lost their mode term: the statement-level partial election
+        never sees an arm aggregate behind the TVF boundary.
+      - **One semantic change, pinned.** An aggregate pinned at exactly the
+        pass's keys (`sum(v) by g1` in `rollup(..., g1)`) is now a member of
+        the pass. On `main` it was its own standard group joined back
+        null-safe on `g1`, so the grand-total row read the data-NULL group's
+        value (7 where the pass says 42): the collision the TVF exists to
+        prevent. An aggregate at another grain (`max(v) by id`) stays its own
+        group, as before.
+      - **Gates, against `c1647f9`:** corpus (204 statements) 0 moved. The
+        rollup-touching files (109 test files, 12,450 tests, both law files
+        included): the same 18 credential-bound failures as `main`. The two
+        law files: green. Full suite and fuzzer: FULL_SUITE_RESULT.
+        `test_rollup_arm_standard.py` pins the mode-free wrapper and the
+        pinned-at-keys rows (both red on `main`), two arms of one statement
+        each running their own pass, and an aggregate at another grain.
+      - **What is left of (c).** The planner-side readers above are still
+        live: they now ask the select's pass instead of each aggregate's
+        mode, so the "about a hundred sites" are about twenty-five, each a
+        one-line `pass_of`. Whether each is still needed with the arm
+        isolated behind its TVF is an ablation per site (the
+        `rollup_padding` join rule, `rollup_padded_keys` in the demand pass,
+        `node_nulls_grouping_keys`' FINAL exemption, `_fold_rollup_key_dims`,
+        the `grp:` bucket segment), not a refactor. The author-side
+        `AggregateWrapper.grouping` survives only as the factory's marker that
+        a bare aggregate took the spec's keys.
 
 ## Gate used
 

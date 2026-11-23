@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
     get_concept_row_arguments,
-    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 
@@ -252,8 +251,7 @@ def lineage_pinned_grain(
         # A ROLLUP/CUBE/GROUPING SETS aggregate NULLs its grouping keys on the
         # subtotal rows, so those keys are no row identity: pinning them drops
         # every subtotal row from the merge (a rolled-up NULL never pairs).
-        wrapper = get_grouped_aggregate_wrapper(concept)
-        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
+        if environment.pass_of(concept) is not None:
             continue
         if concept.derivation in GROUPING_DERIVATIONS:
             if concept.grain:

@@ -6,8 +6,8 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildGroupingSets,
     BuildOrderBy,
-    computed_grouping_sets,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
@@ -92,10 +92,22 @@ class GroupNode(StrategyNode):
             ordering=ordering,
         )
 
+    def grouping_pass(self) -> BuildGroupingSets | None:
+        """The select's ROLLUP/CUBE/GROUPING SETS pass when this group
+        computes one of its aggregates itself: the pass is the group's."""
+        inputs = {c.address for c in self.input_concepts}
+        if any(
+            c.address not in inputs and self.environment.pass_of(c) is not None
+            for c in self.output_concepts
+        ):
+            return self.environment.grouping
+        return None
+
     def _resolve(self) -> QueryDatasource:
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
+        grouping_sets = self.grouping_pass()
 
         grains = check_if_group_required(
             self.output_concepts, parent_sources, self.environment, self.depth
@@ -103,15 +115,19 @@ class GroupNode(StrategyNode):
         target_grain = grains.target
         comp_grain = grains.upstream
         # skip the group when parents already sit at the target grain
-        if not grains.required and (
-            self.force_group is not True
-            or is_identity_group(
-                parent_sources,
-                [],
-                target_grain,
-                self.conditions,
-                self.output_concepts,
-                self.rollup_concepts,
+        if (
+            not grains.required
+            and grouping_sets is None
+            and (
+                self.force_group is not True
+                or is_identity_group(
+                    parent_sources,
+                    [],
+                    target_grain,
+                    self.conditions,
+                    self.output_concepts,
+                    self.rollup_concepts,
+                )
             )
         ):
             source_type = SourceType.SELECT
@@ -149,17 +165,6 @@ class GroupNode(StrategyNode):
                 if concept.address in input_addresses:
                     continue
                 source_map[concept.address] = set()
-        # the pass this group runs, owned here: the renderer and optimizer
-        # read it off the datasource, never off the aggregates
-        grouping_sets = (
-            computed_grouping_sets(
-                c
-                for c in self.output_concepts
-                if c.is_aggregate and c.address not in input_addresses
-            )
-            if source_type == SourceType.GROUP
-            else None
-        )
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )

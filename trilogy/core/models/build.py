@@ -315,68 +315,6 @@ def is_grouping_identity(concept: BuildConcept) -> bool:
     )
 
 
-GroupingSpec = tuple[
-    AggregateGroupingMode, tuple[str, ...], tuple[tuple[str, ...], ...]
-]
-
-
-def nonstandard_grouping_spec(lineage: Any) -> GroupingSpec | None:
-    """Identity of the ROLLUP/CUBE/GROUPING SETS pass an aggregate computes in
-    (None for standard grouping or non-aggregate lineage). Aggregates sharing a
-    spec are outputs of one grouping pass; their visible dims are NOT a row
-    identity across grouping sets (a rolled-up NULL and a data NULL collide), so
-    they must co-source in that pass rather than be joined back on the dims."""
-    if not isinstance(lineage, BuildAggregateWrapper):
-        return None
-    if not lineage.grouping.nulls_grouping_keys:
-        return None
-    return (
-        lineage.grouping,
-        tuple(c.address for c in lineage.by),
-        tuple(tuple(c.address for c in gs) for gs in lineage.grouping_sets),
-    )
-
-
-def nonstandard_grouping_lineage(concept: Any) -> BuildAggregateWrapper | None:
-    """The concept's aggregate lineage when that aggregate emits ROLLUP/CUBE/
-    GROUPING SETS rows, else None. The concept-level companion to
-    `nonstandard_grouping_spec`.
-
-    Returns the wrapper rather than a bool so callers that go on to read `by`
-    or `grouping_sets` keep the narrowed type — the reason this predicate kept
-    being open-coded at each site instead of shared."""
-    lineage = concept.lineage
-    if (
-        isinstance(lineage, BuildAggregateWrapper)
-        and lineage.grouping.nulls_grouping_keys
-    ):
-        return lineage
-    return None
-
-
-def computed_grouping_sets(
-    concepts: Iterable[BuildConcept],
-) -> BuildGroupingSets | None:
-    """The one ROLLUP/CUBE/GROUPING SETS pass ``concepts`` (the aggregates a
-    group computes itself) share, or None for a standard group."""
-    specs = {
-        spec: wrapper
-        for c in concepts
-        if (wrapper := nonstandard_grouping_lineage(c)) is not None
-        and (spec := nonstandard_grouping_spec(wrapper)) is not None
-    }
-    if not specs:
-        return None
-    if len(specs) > 1:
-        raise ValueError("Cannot mix aggregate grouping passes in one group")
-    wrapper = next(iter(specs.values()))
-    return BuildGroupingSets(
-        mode=wrapper.grouping,
-        by=list(wrapper.by),
-        sets=[list(s) for s in wrapper.grouping_sets],
-    )
-
-
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
@@ -397,7 +335,6 @@ def _concept_is_relevant(
     if (
         isinstance(concept.lineage, BuildAggregateWrapper)
         and concept.lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
-        and concept.lineage.grouping != AggregateGroupingMode.STANDARD
     ):
         return True
     if concept.is_aggregate and not (
@@ -1851,6 +1788,13 @@ class BuildGroupingSets:
     def keys(self) -> set[str]:
         return {c.address for c in self.by} | {c.address for s in self.sets for c in s}
 
+    def computes(self, concept: BuildConcept) -> bool:
+        """An aggregate at the pass's keys: one of its outputs."""
+        lineage = concept.lineage
+        return isinstance(lineage, BuildAggregateWrapper) and {
+            c.address for c in lineage.by
+        } == {c.address for c in self.by}
+
     @property
     def has_empty_set(self) -> bool:
         if self.mode in (AggregateGroupingMode.ROLLUP, AggregateGroupingMode.CUBE):
@@ -1866,8 +1810,6 @@ class BuildGroupingSets:
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     function: BuildFunction
     by: list[BuildConcept] = field(default_factory=list)
-    grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
-    grouping_sets: list[list[BuildConcept]] = field(default_factory=list)
     # True when the author pinned no grain (`sum(x)` not `sum(x) by ...`), so
     # `by` was filled from the resolution grain — i.e. the value silently took
     # the enclosing select's grain. Diagnostic metadata only, excluded from
@@ -3804,7 +3746,7 @@ class Factory:
         if not isinstance(lineage, BuildAggregateWrapper) or len(lineage.by) < 2:
             return lineage
         # A ROLLUP/CUBE key is a subtotal level, not only a grouping key.
-        if lineage.grouping.nulls_grouping_keys:
+        if self.select_grouping is not None:
             return lineage
         # Statement joins declare SUBSET/INCOMPARABLE, never EQUAL, so the
         # closure is the same for a datasource column and a query's concept.
@@ -4123,60 +4065,32 @@ class Factory:
 
     @_build_dispatch.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
+        # A bare aggregate in a select with a grouping spec computes in its one
+        # ROLLUP/CUBE/GROUPING SETS pass, keyed in the spec's order; the pass
+        # is the select's (`BuildGroupingSets`), never the aggregate's.
         spec = self.select_grouping
-        grouping = base.grouping
-        grouping_sets_source = base.grouping_sets
-        if not base.by:
-            if spec is not None and base.grouping == AggregateGroupingMode.STANDARD:
-                # A bare aggregate materialized in this select's projection
-                # scope computes in the select's single ROLLUP/CUBE/GROUPING
-                # SETS pass; inferred-key specs (`by rollup ()`) group by the
-                # resolution grain.
-                grouping = spec.mode
-                grouping_sets_source = spec.grouping_sets
-                if spec.by:
-                    by = self._build_over_items(list(spec.by))
-                else:
-                    agg_grain = (
-                        self.aggregate_grain
-                        if self.aggregate_grain is not None
-                        else self.grain
-                    )
-                    by = [
-                        self._build_concept(self.environment.concepts[c])
-                        for c in agg_grain.component_order
-                    ]
-            else:
-                agg_grain = (
-                    self.aggregate_grain
-                    if self.aggregate_grain is not None
-                    else self.grain
-                )
-                by = [
-                    self._build_concept(self.environment.concepts[c])
-                    for c in agg_grain.component_order
-                ]
-        else:
+        if base.by:
             by = self._build_over_items(list(base.by))
-        grouping_sets = [
-            self._build_over_items(list(grouping_set))
-            for grouping_set in grouping_sets_source
-        ]
-        if grouping != AggregateGroupingMode.STANDARD and not by and not grouping_sets:
-            # A rollup/cube over zero keys has exactly one grouping set - the
-            # grand total - which is what a standard grouping with no keys
-            # already renders. `by rollup ()` on a grainless select (only
-            # constants and aggregates projected) lands here.
-            grouping = AggregateGroupingMode.STANDARD
-        if grouping == AggregateGroupingMode.STANDARD:
+            ordered = base.grouping != AggregateGroupingMode.STANDARD
+        elif spec is not None and spec.by:
+            by = self._build_over_items(list(spec.by))
+            ordered = True
+        else:
+            agg_grain = (
+                self.aggregate_grain if self.aggregate_grain is not None else self.grain
+            )
+            by = [
+                self._build_concept(self.environment.concepts[c])
+                for c in agg_grain.component_order
+            ]
+            ordered = spec is not None
+        if not ordered:
             by = sorted(by, key=lambda x: x.address)
 
         parent: BuildFunction = self._build_aggregate_input(base)
         return BuildAggregateWrapper(
             function=parent,
             by=by,
-            grouping=grouping,
-            grouping_sets=grouping_sets,
             grain_inherited=base.grain_inherited or not base.by,
         )
 

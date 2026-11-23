@@ -1,10 +1,8 @@
 from types import SimpleNamespace
 
-import pytest
-
 from trilogy import Dialects
 from trilogy.core.enums import AggregateGroupingMode
-from trilogy.core.models.build import BuildAggregateWrapper, computed_grouping_sets
+from trilogy.core.models.build import BuildAggregateWrapper, BuildGroupingSets
 from trilogy.core.models.execute import CTE
 
 MODEL = """
@@ -78,19 +76,18 @@ rowset per_pair <- select group_id as g, active as a, sum(amount) as amt;
     ]
 
 
-def _rollup_over(*keys: str) -> SimpleNamespace:
+def _aggregate_over(*keys: str) -> SimpleNamespace:
     return SimpleNamespace(
         lineage=BuildAggregateWrapper(
             function=None,  # type: ignore[arg-type]
             by=[SimpleNamespace(address=k) for k in keys],  # type: ignore[misc]
-            grouping=AggregateGroupingMode.ROLLUP,
         )
     )
 
 
-def test_one_group_runs_one_pass():
-    spec = computed_grouping_sets([_rollup_over("a", "b"), _rollup_over("a", "b")])
-    assert spec is not None and spec.keys == {"a", "b"}
-    assert computed_grouping_sets([SimpleNamespace(lineage=None)]) is None
-    with pytest.raises(ValueError, match="one group"):
-        computed_grouping_sets([_rollup_over("a"), _rollup_over("a", "b")])
+def test_the_pass_computes_every_aggregate_at_its_keys():
+    keys = [SimpleNamespace(address=k) for k in ("a", "b")]
+    spec = BuildGroupingSets(mode=AggregateGroupingMode.ROLLUP, by=keys)  # type: ignore[arg-type]
+    assert spec.computes(_aggregate_over("b", "a"))  # type: ignore[arg-type]
+    assert not spec.computes(_aggregate_over("a"))  # type: ignore[arg-type]
+    assert not spec.computes(SimpleNamespace(lineage=None))  # type: ignore[arg-type]
