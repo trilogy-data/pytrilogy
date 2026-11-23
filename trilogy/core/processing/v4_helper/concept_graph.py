@@ -13,7 +13,7 @@ optional metadata, they're what keeps row identity intact through the SUM.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -59,6 +59,7 @@ from trilogy.core.processing.node_generators.select_node import root_is_unsource
 from trilogy.utility import unique
 
 from .constants import (
+    IN_SET_PLAN,
     REPEAT_BLIND_AGGREGATES,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
@@ -1683,23 +1684,82 @@ def _feeds_only_sets(
     node: str,
     shown: Collection[str],
     seen: set[str],
+    conditioned: Mapping[str, str] | None = None,
 ) -> bool:
     """`node` is no output (`shown`) and reaches the statement's rows only as
     part of a set's condition:
     `count(id) by species` in `species ? species in (species ? count(id) by
     species >= 3)`. A WHERE value such a barrier consumed has filtered the
-    set's rows, not the statement's (`Filters.gate_on_a_set_filters_no_row`)."""
+    set's rows, not the statement's (`Filters.gate_on_a_set_filters_no_row`).
+    Nor, planning a set alone, has one only its filter's condition reads
+    (`conditioned`: each shown filter's content)."""
     if node in shown:
         return False
     if attrs[node].existence_only or node in seen:
         return True
     seen.add(node)
     successors = list(graph.successors(node))
+    conditioned = conditioned or {}
     return bool(successors) and all(
         edge_kind(edges, node, succ) == EdgeKind.EXISTENCE
-        or _feeds_only_sets(graph, edges, attrs, succ, shown, seen)
+        or conditioned.get(succ, attrs[node].address) != attrs[node].address
+        or _feeds_only_sets(graph, edges, attrs, succ, shown, seen, conditioned)
         for succ in successors
     )
+
+
+def _reaches_only_sets(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    src: str,
+    shown: Collection[str],
+    has_sets: bool,
+    conditioned: Mapping[str, str] | None = None,
+) -> bool:
+    """A WHERE value no barrier of the statement's rows consumed: each reader
+    is a set's, or (`conditioned`) a shown filter's condition's."""
+    return all(
+        attrs[succ].existence_only
+        or (not has_sets or not _reads_a_total(src, attrs))
+        and _feeds_only_sets(graph, edges, attrs, succ, shown, set(), conditioned)
+        for succ in graph.successors(src)
+    )
+
+
+def _barrier_at_gate_grain(
+    graph: nx.DiGraph, attrs: dict[str, ConceptAttrs], src: str
+) -> bool:
+    """An aggregate reading a WHERE value at the value's own grain meets the
+    rows it pairs with on every key of the gate, so it filters them."""
+    grain = attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+    return any(
+        attrs[succ].derivation == Derivation.AGGREGATE
+        and grain <= attrs[succ].grain_components
+        for succ in graph.successors(src)
+    )
+
+
+def _shown_filter_contents(
+    shown: Collection[str],
+    attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+) -> dict[str, str]:
+    """Planning a set alone, each shown filter's content: a value its
+    condition reads filtered the condition's rows, not the filter's
+    (`Filters.gate_on_a_condition_filters_no_row`)."""
+    if not IN_SET_PLAN.get():
+        return {}
+    return {
+        n: lineage.content.address
+        for n in shown
+        if n in attrs
+        and isinstance(
+            lineage := environment.concepts[attrs[n].address].lineage,
+            BuildFilterItem,
+        )
+        and isinstance(lineage.content, BuildConcept)
+    }
 
 
 def _reads_a_total(node: str, attrs: dict[str, ConceptAttrs]) -> bool:
@@ -2501,6 +2561,19 @@ def _joins_no_key(condition: ConceptAttrs, scalar: ConceptAttrs) -> bool:
     )
 
 
+def _condition_row_inputs(
+    graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
+) -> list[str]:
+    """The row-level inputs of a filter: its content and the row columns its
+    condition reads, whose rows the gate filters."""
+    return [
+        p
+        for p in graph.predecessors(nid)
+        if edge_kind(edges, p, nid) == EdgeKind.LINEAGE
+        and attrs[p].derivation not in (Derivation.AGGREGATE, Derivation.WINDOW)
+    ] or [nid]
+
+
 def _scalar_row_sources(
     graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
 ) -> list[str]:
@@ -2945,19 +3018,39 @@ def build_concept_graph(
     #   - skip nodes that already have an outgoing edge into the row stream
     #     (one feeding only a membership subselect's set still needs a host).
     mandatory_blank_ids = dict.fromkeys(node_id("", c.address) for c in mandatory_list)
+    conditioned = _shown_filter_contents(mandatory_blank_ids, attrs, environment)
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
-    backfill = [
+    eligible = [
         src
         for src in outer_condition_nodes
         if attrs[src].derivation != Derivation.ROOT
         and attrs[src].address in row_arg_addresses
-        and all(
-            attrs[succ].existence_only
-            or (not existence_arg_pairs or not _reads_a_total(src, attrs))
-            and _feeds_only_sets(graph, edges, attrs, succ, mandatory_blank_ids, set())
-            for succ in graph.successors(src)
+    ]
+    backfill = [
+        src
+        for src in eligible
+        if _reaches_only_sets(
+            graph, edges, attrs, src, mandatory_blank_ids, bool(existence_arg_pairs)
         )
     ]
+    # reaching a shown filter only through its condition's aggregate, the
+    # condition gates the filter's own rows
+    through_condition = {
+        src
+        for src in eligible
+        if src not in backfill
+        and not _barrier_at_gate_grain(graph, attrs, src)
+        and _reaches_only_sets(
+            graph,
+            edges,
+            attrs,
+            src,
+            mandatory_blank_ids,
+            bool(existence_arg_pairs),
+            conditioned,
+        )
+    }
+    backfill += sorted(through_condition)
     # a constant is the same value on every row: the rowed outputs carry a
     # condition its grain has no key for, which it would join on no key (`4`
     # at `big, city` beside `min(height) by species`). Constrained by some of
@@ -2984,9 +3077,13 @@ def build_concept_graph(
             for dst in mandatory_blank_ids
             if dst in graph.nodes
             for row_source in (
-                _scalar_row_sources(graph, edges, attrs, dst)
-                if _joins_no_key(attrs[src], attrs[dst])
-                else [dst]
+                _condition_row_inputs(graph, edges, attrs, dst)
+                if src in through_condition and dst in conditioned
+                else (
+                    _scalar_row_sources(graph, edges, attrs, dst)
+                    if _joins_no_key(attrs[src], attrs[dst])
+                    else [dst]
+                )
             )
         )
         rowed = [d for d in targets if d not in unkeyed]

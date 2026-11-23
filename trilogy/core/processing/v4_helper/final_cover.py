@@ -17,7 +17,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from .concept_graph import _scope_and_phase
 from .condition_placement import args_holding_on_absent, feeder_conditions_implied
 from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
-from .edges import EdgeKind, EdgeMap, edges_of_kind, only_a_set
+from .edges import EdgeKind, EdgeMap, edges_of_kind, feeds_only_sets, only_a_set
 from .functional_dependency import build_fd_determines
 from .group_graph import read_row_parents
 from .models import ExtentOwnership, GroupAttrs
@@ -441,6 +441,9 @@ def elect_cover(
                     and _single_valued(attrs[gid], environment)
                 ),
                 not feeds_absent_atom(gid),
+                # an aggregate only a set reads holds the set's rows
+                # (`Filters.set_input_supplies_no_output`)
+                not feeds_only_sets(group_graph, group_edges, gid),
                 gid not in steered,
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
                 addr not in attrs[gid].dim_keys,

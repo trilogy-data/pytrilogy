@@ -477,4 +477,68 @@ theorem partial_chain_reads_itself :
     buildable ((3, 1) :: lineage) [0, 1, 2, 3] 4 = true ∧
       buildable ((2, 3) :: (3, 1) :: lineage) [0, 1, 2, 3] 4 = false := by decide
 
+/-! ## What a set beside a stream supplies (0.3.538)
+
+A set feeds no rows, so it supplies no column to a group beside it, and an
+aggregate only a set reads holds the set's rows, not the select's. A set
+planned alone under the WHERE reads the rows the WHERE kept, its filter's
+own rows included, and so does a set a select target reads when FINAL
+re-sources it. -/
+
+/-- `select city, tag, (count(tree_id) by city) ? city in (<set>) as v0 where
+count(tree_id) by city >= count(tree_id) by city, species`: A holds four
+trees and its Acers two, so every tree passes. The select's count by city
+was asked for the WHERE's count too, but dropped it as one the set beside it
+could supply; a set supplies no column, and the filter recounted it per row
+as 1, so A's Acers failed (`set_supplies_no_column`, 123427). Trees are
+`(city, species)`. -/
+theorem set_supplies_no_column :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let byCity (c : Nat) := (trees.filter (·.1 == c)).length
+    let byPair (c s : Nat) := (trees.filter fun r => r.1 == c && r.2 == s).length
+    (trees.filter fun r => byCity r.1 ≥ byPair r.1 r.2).length = 6 ∧
+      (trees.filter fun r => 1 ≥ byPair r.1 r.2).length = 4 := by
+  decide
+
+/-- `select city, tag, species ? tree_form in (tree_form ? count_distinct(tag)
+by species < 6 and city = 'B') as v1 where min(height) by city, species <= 3`:
+the WHERE keeps A's Acers and B's Tilia, so the set is B's kept forms,
+linden. Planned alone, the set's filter read every B tree beside the gated
+count and took B's Acer's broadleaf too: A's Acers showed `Acer`
+(`set_plan_gates_its_rows`, 128462). Trees are `(city, species, form,
+height)`, 0 for no height. -/
+theorem set_plan_gates_its_rows :
+    let trees : List (Nat × Nat × Nat × Nat) :=
+      [(0, 0, 0, 3), (0, 0, 0, 0), (0, 1, 0, 5), (0, 2, 2, 0), (1, 0, 0, 7), (1, 3, 1, 2)]
+    let low (c s : Nat) :=
+      ((trees.filter fun r => r.1 == c && r.2.1 == s).map (·.2.2.2)).filter (· != 0)
+    let kept := trees.filter fun r => (low r.1 r.2.1).any (· ≤ 3)
+    ((kept.filter (·.1 == 1)).map (·.2.2.1)).eraseDups = [1] ∧
+      ((trees.filter (·.1 == 1)).map (·.2.2.1)).eraseDups = [0, 1] := by
+  decide
+
+/-- `select city ? city in (city ? tree_form = 'linden') as v0, tag ? ... as
+v1, count(tree_id) by * as v3 where min(height) by city, species >= 6 having
+v3 <= 1`: only B's Acer passes, a broadleaf, so the set is empty and `v0` is
+NULL. FINAL re-sourced the filter and wired the set the graph built off
+every tree, where B's Tilia is linden (`select_reads_kept_set`, 130249).
+Trees are `(city, form, min height of its city and species)`. -/
+theorem select_reads_kept_set :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 3), (0, 0, 3), (0, 0, 5), (0, 2, 0), (1, 0, 7), (1, 1, 2)]
+    let kept := trees.filter (·.2.2 ≥ 6)
+    (kept.filter (·.2.1 == 1)).length = 0 ∧ (trees.filter (·.2.1 == 1)).length = 1 := by
+  decide
+
+/-- `select species, (sum(height) by tree_form) ? tree_form in (tree_form ?
+count_distinct(tag) by city, species > 6) as v0, sum(height) by tree_form as
+v1`: one row per species, four. The filter holds no species, and `species`
+was read off the set's `by city, species` count, the group furthest
+downstream holding it: Acer once per city, five rows
+(`set_input_supplies_no_key`, 129123). Groups are `(city, species)`. -/
+theorem set_input_supplies_no_key :
+    let groups : List (Nat × Nat) := [(0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    (groups.map (·.2)).eraseDups.length = 4 ∧ (groups.map (·.2)).length = 5 := by
+  decide
+
 end Trilogy.Filters

@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from enum import Enum
 
 from trilogy.core.enums import Derivation, FunctionType
@@ -111,3 +112,6 @@ FINAL_NODE_ID = "__final__"
 
 # condition-phase groups: reached through the WHERE, never a select output
 NESTED_DEPTHS = (DepthLabel.D1, DepthLabel.ROOT_D1)
+
+# planning a set alone, under the statement's WHERE (`planning_a_set`)
+IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
