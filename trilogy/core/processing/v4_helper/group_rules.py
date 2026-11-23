@@ -82,19 +82,14 @@ def _apply_grouping_mode(
     grouping_mode: AggregateGroupingMode | None,
     *extra: str,
 ) -> None:
-    """Record an aggregate's GROUP BY mode on its bucket.
-
-    Two things fall out of one mode and must not drift apart: the SEMANTICS
-    consumers ask about (`bucket.nulls_grouping_keys`) and the IDENTITY that
-    keeps a non-standard bucket from colliding with a STANDARD one of the same
-    (label, depth, grain), since one CTE cannot carry both GROUP BY clauses.
-    ``extra`` appends further discriminator segments for rules that also split
-    on their own signature."""
+    """Record an aggregate's GROUP BY mode on its bucket. A pass's members are
+    partitioned apart from standard aggregates before any bucket is built
+    (`partition_aggregates`), so the mode needs no id segment of its own.
+    ``extra`` appends discriminator segments for rules that also split on
+    their own signature."""
     segments: list[str] = []
     if grouping_mode is not None:
         bucket.grouping_mode = grouping_mode
-        if nulls_grouping_keys(grouping_mode):
-            segments.append(f"grp:{grouping_mode.value}")
     segments += extra
     if segments:
         bucket.discriminator = ":".join(segments)

@@ -2263,14 +2263,11 @@ def _aggregate_scalar_inputs(
     named: frozenset[str],
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
-    """The BASIC row inputs an aggregate projects onto its merged input rows:
-    none under a nonstandard grouping unless beside a region domain."""
+    """The BASIC row inputs an aggregate projects onto its merged input rows."""
     scalar_inputs: list[BuildConcept] = []
     for concept in outputs:
         if concept.address not in primary_addrs:
             continue
-        if environment.pass_of(concept) is not None and not region_spans:
-            return []
         scalar_inputs.extend(
             aggregate_input
             for aggregate_input in _aggregate_row_preserving_inputs(
@@ -2695,14 +2692,8 @@ def _parents_already_at_input_grain(
     keys: fixing the input grain fixes the row. A finer parent key that the
     input grain does NOT determine (a per-item key under a per-order count)
     keeps the normalization, so a fact-line scan is still regrouped before
-    aggregation.
-
-    Never fires for non-standard grouping (ROLLUP/CUBE/GROUPING_SETS): those need
-    the explicit normalization GROUP so a renamed grouping key stays in sync with
-    its GROUP BY clause."""
+    aggregation."""
     if not input_grain:
-        return False
-    if any(environment.pass_of(c) is not None for c in outputs):
         return False
     keys = set(input_grain)
 
@@ -7624,7 +7615,6 @@ def _at_declared_identity(
         group.derivation in GROUPING_DERIVATIONS
         or group.derivation == Derivation.ROWSET
         or group.extent_spans
-        or node_nulls_grouping_keys(node)
     ):
         return node
     keys = identity - {ALL_ROWS_ADDRESS}

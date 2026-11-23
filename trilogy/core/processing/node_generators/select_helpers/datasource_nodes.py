@@ -398,8 +398,6 @@ def create_datasource_node(
         f"{datasource.grain} for target grain {target_grain}: "
         f"{'wrapped in group' if force_group else 'no group required'}"
     )
-    if any(c.is_aggregate and environment.pass_of(c) is not None for c in all_concepts):
-        force_group = True
     if stacked:
         rollup_concepts = arm_rollup_concepts(
             datasource,

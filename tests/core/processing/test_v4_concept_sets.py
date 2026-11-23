@@ -195,7 +195,7 @@ def test_q02_shape_basic_exposes_inherited_grain_key(
             gedges,
             attrs,
             buckets,
-            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+            Demand(cg, cedges, cattrs, mandatory, empty_environment),
         ),
     )
 
@@ -251,7 +251,7 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate(
             gedges,
             attrs,
             buckets,
-            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+            Demand(cg, cedges, cattrs, mandatory, empty_environment),
         ),
     )
 
@@ -334,7 +334,7 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain(
             gedges,
             attrs,
             buckets,
-            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+            Demand(cg, cedges, cattrs, mandatory, empty_environment),
         ),
     )
 
@@ -393,7 +393,7 @@ def test_aggregate_inputs_include_primary_lineage_args(
             gedges,
             attrs,
             buckets,
-            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+            Demand(cg, cedges, cattrs, mandatory, empty_environment),
         ),
     )
 
@@ -453,7 +453,7 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally(
             gedges,
             attrs,
             buckets,
-            Demand(cg, cedges, cattrs, mandatory, empty_environment, frozenset()),
+            Demand(cg, cedges, cattrs, mandatory, empty_environment),
         ),
     )
 
@@ -482,6 +482,6 @@ def test_a_lineage_cycle_states_no_sets(empty_environment: BuildEnvironment):
         gedges,
         attrs,
         {},
-        Demand(cg, {}, cattrs, [_FakeConcept("x")], empty_environment, frozenset()),
+        Demand(cg, {}, cattrs, [_FakeConcept("x")], empty_environment),
     )
     assert sets == ConceptSets()

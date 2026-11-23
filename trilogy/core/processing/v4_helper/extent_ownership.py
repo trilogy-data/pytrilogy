@@ -196,20 +196,6 @@ def takes_a_value_on_padding(
     )
 
 
-def rows_above_a_rollup(
-    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs]
-) -> set[str]:
-    """Groups reading a ROLLUP/CUBE/GROUPING SETS pass. Its rows are subtotals
-    of whatever entered below it, so no region is absent on them: a region's
-    rows enter under the pass or not at all."""
-    return {
-        below
-        for gid, a in attrs.items()
-        if a.derivation == Derivation.AGGREGATE and a.nulls_grouping_keys
-        for below in nx.descendants(group_graph, gid)
-    }
-
-
 def solid_groups(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -225,12 +211,10 @@ def solid_groups(
     may read the region's rows. An aggregate above one is not part of its row
     stream, and may extend."""
     solid: set[str] = set()
-    above_rollup = rows_above_a_rollup(group_graph, attrs)
     stack = [
         gid
         for gid, a in attrs.items()
         if a.derivation in ROW_STREAM_DERIVATIONS
-        and gid not in above_rollup
         and any(
             takes_a_value_on_padding(m, region, keyspace, environment)
             for m in a.primary_members

@@ -51,7 +51,6 @@ from .region_reads import (
     filtered_beside,
     inline_arguments_taking_a_value,
     keyless,
-    nameable,
     restated_over_region,
 )
 
@@ -374,7 +373,6 @@ def _region_domain(
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
     relation_spans: set[str],
-    rollup_padded: frozenset[str],
 ) -> RegionDomain | None:
     eligible = [
         b for b in buckets.values() if b.label == label and _splits_for_region(b)
@@ -388,21 +386,6 @@ def _region_domain(
         return None
     scope = (buckets, label, region, keyspace, environment)
     named, inline = _named_value_on_padding(*scope), _inline_values_on_padding(*scope)
-    if carried & rollup_padded and (
-        not (named or inline) or not all(nameable(argument) for argument in inline)
-    ):
-        # a rollup's subtotal rows NULL the key a domain would join back on,
-        # so the region's rows enter below the pass or not at all. The padded
-        # plan does that, and is right while nothing below the pass takes a
-        # value on a padded row. A derivation that does is computed on the
-        # solid rows and the domain pads it under the pass
-        # (`evaluated_over_region`): a named one as its own node, an inline
-        # function argument once the strategy builder stands a concept in
-        # for it. Any other inline argument has no node to compute on first,
-        # and keeps the padded plan.
-        return RegionDomain(
-            region, DomainKind.PADDED, label, carried, note="rollup key"
-        )
     if region.spans & relation_spans and not named:
         return RegionDomain(region, DomainKind.RELATION, label, carried)
     if not any(_mixes_region(b, region, keyspace) for b in eligible):
@@ -482,7 +465,6 @@ def decide_region_domains(
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
-    rollup_padded: frozenset[str],
 ) -> list[RegionDomain]:
     """Say where the rows of each live extension region the statement asks
     rows of come from (`DomainKind`), giving the region a ROOT bucket of its
@@ -518,7 +500,6 @@ def decide_region_domains(
                 condition_arg_addresses,
                 mandatory_list,
                 relation_spans,
-                rollup_padded,
             )
             if domain is not None:
                 domains.append(domain)

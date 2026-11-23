@@ -452,17 +452,6 @@ def statement_filter_population(
     return shared_filter_predicate(shown, sets)
 
 
-def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
-    """Grouping keys of the select's ROLLUP/CUBE/GROUPING SETS pass.
-    The subtotal rows NULL these, so they are not a row identity and must never
-    be volunteered as a join axis: pairing on one drops every subtotal row (a
-    rolled-up NULL matches nothing). The join resolver applies the same rule
-    per-datasource via `rollup_padded_addresses`; this is the environment-wide
-    view the demand pass needs before any datasource exists."""
-    grouping = environment.grouping
-    return frozenset(grouping.keys) if grouping is not None else frozenset()
-
-
 def reads_a_rollup(address: str, environment: BuildEnvironment) -> bool:
     """Whether the concept at `address` is computed on the rows of a
     ROLLUP/CUBE/GROUPING SETS pass: it reads one of the pass's aggregates,
