@@ -367,4 +367,84 @@ theorem gate_beside_set_filters_rows :
     (kept.map (·.1)).eraseDups = [1] := by
   decide
 
+/-! ## Where a WHERE reaches a filter's rows (0.3.537)
+
+A filter's rows are its row parents', whatever value its condition reads:
+a WHERE hosted only on that value, or only on a set's input, has filtered
+neither. A total its condition reads is one value on every row, so it splits
+no key. -/
+
+/-- `select species ? avg(height) by * < 10 as f where avg(height) by city,
+species != 2`: the WHERE keeps A's Acer and Quercus and B's Acer. Hosted only
+on the total, it left the species `f` shows unfiltered: Tilia (average 2) and
+Ulmus (no average) came back (`gate_reaches_a_filter_alone`, 2922). Rows are
+`(species, average of its city and species)`. -/
+theorem gate_reaches_a_filter_alone :
+    let pairs : List (Nat × Option Nat) :=
+      [(0, some 3), (1, some 5), (2, none), (0, some 7), (3, some 2)]
+    let kept := pairs.filter fun p => p.2 != none && p.2 != some 2
+    (kept.map (·.1)).eraseDups = [0, 1] ∧ (pairs.map (·.1)).eraseDups.length = 4 := by
+  decide
+
+/-- `select city, tree_form, city ? count_distinct(tag) by * < 0 as v0 where
+avg(height) by species != 1`: a total decides nothing finer than the city.
+Collapsed to its city as if it did, the filter lost the species its rows meet
+the forms on: A beside linden, four rows for three
+(`total_splits_no_key`, 111272). Kept `(city, form)` pairs. -/
+theorem total_splits_no_key :
+    let kept : List (Nat × Nat) := [(0, 0), (1, 0), (1, 1)]
+    let cities := (kept.map (·.1)).eraseDups
+    let forms := (kept.map (·.2)).eraseDups
+    kept.eraseDups.length = 3 ∧ (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 := by
+  decide
+
+/-- `select tree_form ? not (species in (species ? count(tree_id) by city = 0))
+as v0 where min(height) by city < 2`: no city's minimum is under 2, so the
+answer is empty. The set's count was the one host keyed by `city`; hosted
+there alone the WHERE emptied the set, and `not in` an empty set kept every
+form (`gate_hosted_on_set_input_alone`, 117080). Trees are `(city, form)`. -/
+theorem gate_hosted_on_set_input_alone :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 2), (1, 0), (1, 1)]
+    let cityMin (c : Nat) := if c == 0 then 3 else 2
+    (trees.filter fun r => cityMin r.1 < 2).length = 0 ∧
+      (trees.map (·.2)).eraseDups.length = 3 := by
+  decide
+
+/-- `select city, tag, tree_form ? species in (species ? sum(height) by city,
+tree_form > min(height) by species) as v0 where avg(height) by city, species
+!= 3`: on each kept row the city-form sum equals the species minimum, so the
+set is empty. Paired on the form alone, B's broadleaf sum 7 met Quercus's
+minimum 5 and Quercus joined it (`condition_aggregates_meet_per_row`, 114764).
+Kept rows are `(city, species, form, height)`. -/
+theorem condition_aggregates_meet_per_row :
+    let rows : List (Nat × Nat × Nat × Nat) := [(0, 1, 0, 5), (1, 0, 0, 7), (1, 3, 1, 2)]
+    let sum (c f : Nat) := ((rows.filter fun r => r.1 == c && r.2.2.1 == f).map (·.2.2.2)).foldl (· + ·) 0
+    let low (s : Nat) := ((rows.filter (·.2.1 == s)).map (·.2.2.2)).foldl min 100
+    (rows.filter fun r => sum r.1 r.2.2.1 > low r.2.1).length = 0 ∧
+      (rows.any fun r => rows.any fun o => o.2.2.1 == r.2.2.1 && sum o.1 o.2.2.1 > low r.2.1) = true := by
+  decide
+
+/-- `select fc, tag ? city in (<set>) as v0, min(height) by * as v1`: `fc` was
+read off the `(city, tree_form)` minimum the total rolls up, and met the tags
+on `city` alone: A's Ulmus form `o` beside Acer's `y`
+(`regraft_keeps_paired_key`, 112517). Trees of A are `(fc, tag)`. -/
+theorem regraft_keeps_paired_key :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 1), (0, 0), (1, 0)]
+    let fcs := (trees.map (·.1)).eraseDups
+    let tags := (trees.map (·.2)).eraseDups
+    trees.eraseDups.length = 3 ∧ (fcs.flatMap fun f => tags.map fun t => (f, t)).length = 4 := by
+  decide
+
+/-- `select city, tree_form, species ? ... as v0, tag ? not (tree_form in
+(tree_form ? sum(height) by city, species - min(height) by tree_form = 3)) as
+v1, min(height) as v2, min(height) by city, tree_form as v3`: `v1` reads the
+minimum by form (1 feeds 0), `v2` is grouped by `v1` (0 feeds 2), and `v3` is
+grouped finer than the form (3). Electing `v3` as the form's partial (3 feeds
+1) and `v2` as `v3`'s (2 feeds 3) is a cycle no single step shows
+(`partial_chain_reads_itself`, 109332: the planner recursed). -/
+theorem partial_chain_reads_itself :
+    let lineage : List (Nat × Nat) := [(1, 0), (0, 2)]
+    buildable ((3, 1) :: lineage) [0, 1, 2, 3] 4 = true ∧
+      buildable ((2, 3) :: (3, 1) :: lineage) [0, 1, 2, 3] 4 = false := by decide
+
 end Trilogy.Filters
