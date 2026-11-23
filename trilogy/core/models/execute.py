@@ -915,24 +915,12 @@ class CTE:
             and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
-        # The filtered content renders as the value, but when the per-row
-        # CASE WHEN is emitted the where condition is part of the column
-        # expression too, so a local aggregate in the predicate (a HAVING
-        # `sum(x) > threshold` lowered to a filter virtual) makes the column
-        # aggregate-bearing and unfit for GROUP BY. When the CTE's own
-        # condition implies the filter predicate the renderer elides the
-        # CASE to bare content (dialect/base.py); the where aggregate is
-        # then not in the column and the filter follows its content, so
-        # only widen for the un-elided case.
+        # A filter is computed over predicate inputs its parents materialize,
+        # so only its content can hold an aggregate computed here.
         if c.derivation == Derivation.FILTER and isinstance(c.lineage, BuildFilterItem):
-            if any(
+            return any(
                 self._has_local_aggregate(x, rollup_addresses)
                 for x in c.lineage.content_concept_arguments
-            ):
-                return True
-            return not filter_case_elided(self, c.lineage) and any(
-                self._has_local_aggregate(x, rollup_addresses)
-                for x in c.lineage.where.rendered_concept_arguments
             )
         if c.derivation == Derivation.BASIC and c.lineage:
             return any(

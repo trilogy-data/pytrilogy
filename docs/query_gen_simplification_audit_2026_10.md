@@ -1551,6 +1551,56 @@ election, not the padded fallback.
       `null_provenance.rollup_padded_addresses`, which feeds the kept join
       readers. They own the pass. `reads_a_rollup` was not measured.
 
+11. **One owner for a filter's rendered form (handoff 2.3(b), first
+    slice, landed).** A filter virtual renders three ways: a per-row CASE,
+    bare content when the CASE is redundant, or MAX(...) when a grouping
+    CTE's grain holds its keys but not its predicate (the collapse). The
+    redundant-CASE test was written three times: the renderer
+    (`_render_concept_sql`, own WHERE or `_filter_guaranteed_by_parents`),
+    the collapse and `_has_local_aggregate` (own WHERE only). It is one
+    function now, `execute.filter_case_elided`, and the dialect's copy is
+    gone.
+    - **The disagreement was live.** A CTE whose parent's HAVING guarantees
+      a filtered key's predicate rendered it bare but still collapsed it:
+      `max("p"."city") ... GROUP BY "p"."city"`. Now it stays a group key.
+      Suite capture (`PYTHONHASHSEED=0`, 53,734 tests, re-run serially
+      against base to clear xdist noise): one plan moved,
+      `test_oracle_windows_laws[255]` base and summary, 18 characters
+      smaller, rows checked by the oracle.
+      `test_filter_guaranteed_by_parent_stays_group_key.py` pins it (red on
+      `main`).
+    - **The predicate arm of `_has_local_aggregate` is deleted.** It counted
+      a filter as aggregate-bearing when its un-elided CASE read an
+      aggregate computed in the CTE. A census over the whole suite (53,321
+      tests) recorded no firing: the planner materializes a filter's
+      predicate inputs in a parent, so the aggregate is never computed
+      where the CASE renders.
+    - **The rest is pinned.** Each site got an off switch, run alone under a
+      SQL capture against the tests it fires in (357 for the collapse, 3,524
+      for the elision; noise floor from a second baseline run, residual moves
+      re-run serially). Every switch fails tests:
+
+      | site | tests failing with it off |
+      |---|---|
+      | keyless one-row collapse | 2, `test_outer_where_pushes_into_global_agg` |
+      | collapse of a parent-computed filter | 2, `test_rule_soundness_laws::test_filtered_value_collapses_to_its_key` |
+      | collapse of a filter computed here | 10, q16, q95, `test_filter_concept_is_a_value` |
+      | an atom on a collapsed filter is HAVING | 19, filters oracle laws and sweep |
+      | aggregate over a collapse is its one-row formula | 16, q78, q95, `test_filtered_count_at_regroup_grain` |
+      | a parent guarantees the predicate | 5, q16, q94, q95, `test_aggregate_filter_uses_having` |
+
+    - **Measured, not landed: the collapse stamped at planning.** The
+      collapse is a fact about a (concept, CTE) pair, read most often for a
+      concept that is only an aggregate's argument in a CTE that does not
+      output it, and often only after `CollapseSingleParent` folds the
+      per-row CTE into the group. A birth-time stamp of each CTE's outputs
+      missed every firing in the sampled test files. The planner-owned form
+      remains the handoff's lineage substitution.
+
+    Gates, against `7935105`: corpus (204 statements) 0 moved; fuzzer
+    522/522; suite, laws included, fails the same 36 environment tests
+    (BigQuery and Snowflake credentials) as `main`.
+
 ## Gate used
 
 ```
