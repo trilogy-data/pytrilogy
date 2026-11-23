@@ -1,8 +1,9 @@
 # Query-generation simplification: remaining work
 
 What is left of the 2026-08 simplification audit. Everything that landed has
-been removed from this file; the git history is the record of that. Four items
-remain (2.3(b), 2.1 step 4, 2.7, the grouping-set TVF's reader ablation), plus a set of verdicts that exist to stop them being re-opened.
+been removed from this file; the git history is the record of that. Three items
+remain (2.3(b), 2.1 step 4, 2.7); the grouping-set TVF (4) is done but for a
+short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -113,9 +114,14 @@ pure: windows, scalars over measures, HAVING, ORDER BY and LIMIT are lifted
 into a select over its relation (`rollup_lift.py`), and the arm is planned
 as a standard select: no aggregate carries a grouping mode. The pass is the
 select's, `BuildEnvironment.grouping` on the arm's build environment, and
-every reader asks `BuildEnvironment.pass_of`. What remains is ablating those
-readers one by one now that the arm sits behind its TVF (seam 10, "What is
-left of (c)", of `docs/query_gen_simplification_audit_2026_10.md`).
+every reader asks `BuildEnvironment.pass_of`. The readers were ablated one by
+one (seam 10, seventh slice, of `docs/query_gen_simplification_audit_2026_10.md`):
+14 of 28 toggles are deleted. Each of the 12 sites kept names a test or a set of
+plans that moves without it: 7 for rows, 5 for plan size (the other two toggles
+were unions of kept sites). The plan-size half is the
+only open lead: `_fold_rollup_key_dims` both saves and costs plans, so
+narrowing it (fold only a dim no later read can compute above the pass) could
+delete its remainder. Do not re-ablate the others without a new premise.
 
 Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`
 (rowset reads against the statement) and

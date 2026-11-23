@@ -248,11 +248,6 @@ def lineage_pinned_grain(
         if concept.address in seen:
             continue
         seen.add(concept.address)
-        # A ROLLUP/CUBE/GROUPING SETS aggregate NULLs its grouping keys on the
-        # subtotal rows, so those keys are no row identity: pinning them drops
-        # every subtotal row from the merge (a rolled-up NULL never pairs).
-        if environment.pass_of(concept) is not None:
-            continue
         if concept.derivation in GROUPING_DERIVATIONS:
             if concept.grain:
                 grain |= set(concept.grain.components)

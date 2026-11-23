@@ -238,7 +238,6 @@ def _placed_atom_graph(
     [
         ("basic", AggregateGroupingMode.STANDARD, True),
         ("root", AggregateGroupingMode.ROLLUP, True),
-        ("agg", AggregateGroupingMode.ROLLUP, True),
         ("root", AggregateGroupingMode.STANDARD, True),
         ("side", AggregateGroupingMode.STANDARD, False),
         ("agg", AggregateGroupingMode.STANDARD, False),

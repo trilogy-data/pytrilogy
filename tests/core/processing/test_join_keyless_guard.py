@@ -80,9 +80,8 @@ def _keyless(left: str, right: str, jointype: JoinType) -> JoinOrderOutput:
 def _check(
     joins: list[JoinOrderOutput],
     sources: dict[str, QueryDatasource],
-    rollup_padded: frozenset[str] = frozenset(),
 ) -> None:
-    _raise_if_keyless_row_bearing_join(joins, sources, {}, rollup_padded, None)
+    _raise_if_keyless_row_bearing_join(joins, sources, {}, None)
 
 
 def test_keyless_join_with_shared_axis_raises() -> None:
@@ -259,17 +258,6 @@ def test_keyless_join_later_in_tree_raises() -> None:
     ]
     with pytest.raises(UnresolvableQueryException, match="keyless join"):
         _check(joins, sources)
-
-
-def test_rollup_padded_axis_excluded() -> None:
-    """A ROLLUP-padded key is not a usable axis (subtotal rows NULL it), so a
-    keyless join sharing only that address stays legal."""
-    sources = {
-        "ds~rollup": _source("rollup", {"local.cat"}, [_concept("cat")]),
-        "ds~dims": _source("dims", {"local.cat"}, [_concept("cat")]),
-    }
-    joins = [_keyless("ds~rollup", "ds~dims", JoinType.FULL)]
-    _check(joins, sources, rollup_padded=frozenset({"local.cat"}))
 
 
 def _arm_scan() -> BuildDatasource:

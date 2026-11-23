@@ -919,44 +919,6 @@ def _aggregate_axis_members(
     return frozenset(widen), frozenset(coalesced)
 
 
-def _grouping_pass_sibling_axis_members(
-    concept: BuildConcept, environment: BuildEnvironment
-) -> frozenset[str]:
-    """The axis widening a grouping()/grouping_id() identity inherits: the
-    union of `_aggregate_axis_members` over the (non-identity) aggregates
-    sharing its grouping spec. The identity is part of the pass's row identity
-    and MUST land in the same bucket-shape as its pass siblings; computing its
-    widening from its own arg lineage instead either drags orthogonal axis
-    columns into the pass's GROUP BY shape (BinderException) or strands the
-    flag on a node its pass pairs with via the literal-0 grain-match stamp
-    (subtotal rows drop)."""
-    if environment.pass_of(concept) is None:
-        return frozenset()
-    members: set[str] = set()
-    seen: set[str] = set()
-    for other in environment.concepts.values():
-        if (
-            other.address == concept.address
-            or other.address in seen
-            or is_grouping_identity(other)
-            or environment.pass_of(other) is None
-        ):
-            continue
-        seen.add(other.address)
-        other_grain = frozenset(other.grain.components) if other.grain else frozenset()
-        if environment.scoped_join_key_groups:
-            other_grain = _aggregate_authored_grain(other, other_grain, environment)
-        other_input = _aggregate_input_grain(other, environment, other_grain)
-        other_dimension_grain = {
-            addr for addr in other_grain if addr != ALL_ROWS_ADDRESS
-        }
-        if other_input and other_dimension_grain:
-            members |= _aggregate_axis_members(
-                other, environment, other_input, other_grain
-            )[0]
-    return frozenset(members)
-
-
 def _upstream_aggregate(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -1894,25 +1856,17 @@ def _add_concept(concept: BuildConcept, walk: _Walk, label: str = "") -> None:
             or (not reaggregated and null_sensitive(concept))
             or _aggregates_a_coalescing_member(concept, environment)
         )
+        # A grouping()/grouping_id() identity is a key of its pass, not a row
+        # reader: widening it from its own argument (a grouping key) names
+        # columns the pass never groups (BinderException).
+        and not is_grouping_identity(concept)
+        and aggregate_input_grain
     ):
-        if is_grouping_identity(concept):
-            # A grouping()/grouping_id() identity is a KEY of its pass, not a
-            # row reader: widening it from its OWN arg lineage (its arg IS a
-            # grouping key, whose lineage rides the axis even when the pass's
-            # measures don't) puts it in a bucket whose grain names columns the
-            # rendered GROUP BY (the by-list verbatim) never groups: a bare
-            # ungrouped projection (BinderException). But it must still bucket
-            # WITH its pass; a separately-bucketed flag pairs with the
-            # aggregate via the literal-0 grain-match stamp and the join drops
-            # subtotal rows. So it inherits exactly the axis widening of the
-            # aggregates sharing its grouping spec.
-            out_grain |= _grouping_pass_sibling_axis_members(concept, environment)
-        elif aggregate_input_grain:
-            widen, coalesced_axis = _aggregate_axis_members(
-                concept, environment, aggregate_input_grain, out_grain
-            )
-            out_grain |= widen
-            aggregate_input_grain |= coalesced_axis
+        widen, coalesced_axis = _aggregate_axis_members(
+            concept, environment, aggregate_input_grain, out_grain
+        )
+        out_grain |= widen
+        aggregate_input_grain |= coalesced_axis
     graph.add_node(nid)
     walk.attrs[nid] = ConceptAttrs(
         address=concept.address,

@@ -73,7 +73,6 @@ from .models import (
     GroupAttrs,
     GroupBucket,
     RootReason,
-    nulls_grouping_keys,
     pairing_keys,
 )
 from .projection import decided_at_output_grain, iter_row_lineage, literal_producible
@@ -678,17 +677,11 @@ def _uncovered_exposing_output_contributor(
     (d1) groups are skipped as contributors: they feed the WHERE side channel,
     never a mandatory output, so they cannot be the unfiltered projection that
     re-fans the universe. (They DO receive row atoms, see
-    `_nested_scope_swallows_atom`, just not as outputs.)
-
-    Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS):
-    those groups NULL-inject rolled-up dims on subtotal rows, and a WHERE
-    re-applied above the merge would drop every subtotal."""
+    `_nested_scope_swallows_atom`, just not as outputs.)"""
     buckets = scope.buckets
     carried = scope.carried
     group_graph = scope.group_graph
     environment = scope.environment
-    if any(b.nulls_grouping_keys for b in buckets.values()):
-        return False
     row_inputs = {c.address for c in atom.row_arguments}
     mandatory_addrs = {c.address for c in scope.mandatory_list}
     accepts_absent = holds_on_absent_group(atom)
@@ -2317,9 +2310,7 @@ def accumulated_atoms_above(
         if anc == FINAL_NODE_ID:
             continue
         anc_attrs = attrs[anc]
-        collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
-            nulls_grouping_keys(anc_attrs.grouping_mode)
-        )
+        collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS
         columns = set(anc_attrs.members) | set(anc_attrs.grain_components)
         for atom in anc_attrs.condition_atoms:
             if collapsing and not ({c.address for c in atom.row_arguments} <= columns):

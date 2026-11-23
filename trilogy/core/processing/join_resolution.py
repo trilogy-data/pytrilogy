@@ -2153,7 +2153,6 @@ def _raise_if_keyless_row_bearing_join(
     joins: list[JoinOrderOutput],
     ds_node_map: dict[str, DataSource],
     canonical: dict[str, str],
-    rollup_padded_addresses: frozenset[str],
     environment: BuildEnvironment | None,
 ) -> None:
     """A keyless join between row-bearing sources is a planner bug when the
@@ -2166,8 +2165,6 @@ def _raise_if_keyless_row_bearing_join(
     row-bearing sides off DIFFERENT relations cross-join legitimately
     (selecting an aggregate without its grouping key is an authored fan-out),
     as does a row-independent side (constant / global-aggregate scalar).
-    ROLLUP-padded keys are excluded: subtotal rows NULL them, so consumers
-    deliberately avoid joining on them.
 
     Hard failure by design: silently shipping the cartesian is the worse
     outcome. When this fires, the fix belongs upstream in the demand/contract
@@ -2203,7 +2200,7 @@ def _raise_if_keyless_row_bearing_join(
             # source column): the axis a sibling renders under the original
             # name.
             addrs.update(concept.pseudonyms)
-        result = frozenset({_canon(a) for a in addrs}) - rollup_padded_addresses
+        result = frozenset({_canon(a) for a in addrs})
         direct_cache[node] = result
         return result
 
@@ -2236,7 +2233,7 @@ def _raise_if_keyless_row_bearing_join(
                 continue
             frontier.update(_closure_keys(concept_ref, environment))
             frontier.update(concept_ref.pseudonyms)
-        result = frozenset({_canon(a) for a in closure}) - rollup_padded_addresses
+        result = frozenset({_canon(a) for a in closure})
         closure_cache[node] = result
         return result
 
@@ -3627,11 +3624,6 @@ def get_node_joins(
         joins,
         ds_node_map,
         canonical,
-        frozenset(
-            node.removeprefix("c~")
-            for side in sides.values()
-            for node in side.rollup_padded
-        ),
         environment,
     )
     agreement = _Agreement(strict=True)

@@ -1713,15 +1713,6 @@ def _widen_mixed_scalar_basic_to_final_spine(
             pred_derivations & GROUPING_DERIVATIONS
         ):
             continue
-        # A grouping parent that NULL-injects its keys (ROLLUP/CUBE) is not a
-        # by-key value stream: joining or re-graining its consumer at the row
-        # spine pairs subtotal rows on their NULLed keys.
-        if any(
-            attrs[pred].nulls_grouping_keys
-            for pred in lineage_preds
-            if facts[pred].derivation in GROUPING_DERIVATIONS
-        ):
-            continue
         candidates.append(gid)
     if not candidates:
         return
