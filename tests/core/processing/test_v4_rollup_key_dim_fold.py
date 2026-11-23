@@ -1,17 +1,12 @@
-"""Regression lock for the v4 rollup-key dimension fold
-(`_fold_rollup_key_dims` in `v4_helper/group_graph.py`, the q80 family).
+"""A BASIC dim that is purely a function of a rollup's grouping keys
+(`channel <- case chan`, `outlet <- 'x' || txt`) carries the rolled-up key
+values on the subtotal and grand-total rows (the q80 family).
 
-A BASIC dim that is purely a function of a ROLLUP group's grouping keys
-(`channel <- case chan`, `outlet <- 'x' || txt`) must be folded into the
-GROUP BY ROLLUP node so it is emitted as a column there and carries the
-rolled-up key values on the subtotal/grand-total rows. Otherwise it buckets
-into its own leaf-grain BASIC group and is joined back on the raw keys; at a
-subtotal row the rolled-up key is NULL, the join finds no leaf match, and the
-dim comes back NULL — dropping the dimension value the rollup must preserve.
-
-The discriminating evidence is the per-channel subtotal rows
-(`('aa', None, 30.0)`, `('bb', None, 30.0)`): `channel` is non-NULL there only
-because the derived dim rides the rollup node."""
+The planner once folded such a dim into the ROLLUP group
+(`_fold_rollup_key_dims`); with the arm behind its TVF it is computed in
+the pass's own SELECT, over the rolled keys. The per-channel subtotal rows
+(`('aa', None, 30.0)`, `('bb', None, 30.0)`) are the discriminating
+evidence."""
 
 from trilogy import Dialects, Environment
 

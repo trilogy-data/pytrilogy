@@ -147,7 +147,9 @@ Nullability:
 - `guest_padded`: `tests/engine/test_duckdb_rowset_null_group_rejoin.py`.
 - `rollup_padded` and the `rollup_padding` join rule: six engine tests in
   `test_duckdb.py`, `test_duckdb_fuzzer_regressions.py`,
-  `test_duckdb_rollup_rowset_binding.py`.
+  `test_duckdb_rollup_rowset_binding.py`. Re-ablated behind the TVF (seam 10,
+  seventh slice): the rule and `_null_alike`'s term still hold a pin each;
+  the keyless guard's exclusion is gone.
 - `span_padding` modifier path: four engine tests. Its type-rule branch in
   `_nullable_join` is reached by its unit pin alone (instrumented over 3,044
   engine, join matrix and processing tests): a side that span-pads a key
@@ -251,7 +253,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)) and a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 18 of 28 sites deleted, the rest pinned); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1414,6 +1416,58 @@ election, not the padded fallback.
         the `grp:` bucket segment), not a refactor. The author-side
         `AggregateWrapper.grouping` survives only as the factory's marker that
         a bare aggregate took the spec's keys.
+    - **Seventh slice: the readers ablated (the rest of (c)).** Each of
+      the 28 planner sites that asked the pass was switched off alone against
+      the rollup-named test files (34 files, 4,110 tests), then all survivors
+      together against every rollup-touching file (111 files, 12,500 tests),
+      the corpus and the fuzzer. A survivor that moved any of those is kept.
+      18 are deleted (about 270 lines net):
+      - `_fold_rollup_key_dims`. A dim over the rolled keys (`case chan`) is
+        computed in the pass's own SELECT now;
+        `test_v4_rollup_key_dim_fold` keeps its rows.
+      - The demand pass's padded keys (`rollup_padded_keys`, `Demand.rollup_padded`)
+        and with them the rollup-key PADDED region domain (`note="rollup
+        key"`, 19 of seam 1's 55 padded-fallback tests).
+      - The keyless-join guard's padded-axis exclusion and its unit pin.
+      - The spine skip over a pass parent (`group_graph`).
+      - `node_nulls_grouping_keys` in the row-stream dedup.
+      - `_aggregate_scalar_inputs`' and `_parents_already_at_input_grain`'s
+        pass terms.
+      - In `condition_placement`: the uncovered-contributor skip, the
+        region-domain host term, and the pass exemption in
+        `accumulated_atoms_above`. A unit row of
+        `test_v4_final_extra_sides` built that graph by hand and is dropped.
+      - `rows_above_a_rollup`, the pass term of `region_reads`' `one_pass`,
+        and `_grouping_pass_sibling_axis_members`: a flag now takes no axis
+        widening at all.
+      - The pass skip in `join_plan`'s pinned-grain walk.
+      - `_renders_nonstandard_grouping` and the forced group in
+        `gen_aggregate` and in `datasource_nodes`. `GroupNode.grouping_pass`
+        already refuses the grain-match skip.
+      - The `grp:` bucket-id segment: `partition_aggregates` splits a pass's
+        members from standard ones before any bucket exists.
+
+      **Kept**, each with what moves without it:
+      - `_null_alike`'s rollup term:
+        `test_grouping_set_join_not_narrowed::test_rollup_grand_total_survives_a_subset_join_back`.
+      - The `rollup_padding` join rule and `_one_read`'s pad check:
+        `test_duckdb_fuzzer_regressions::test_rollup_label_over_union_joined_rowsets`.
+      - `_groups_null_grouping_keys`:
+        `test_rollup_extra_leaf_dim_dedups_pairs` and `..._with_grouping_sets`.
+      - `_nonstandard_grouping_key_addresses`:
+        `test_duckdb::test_grouping_over_aliased_rollup_key_builds`.
+      - `region_domains`' `one_pass`:
+        `test_derived_key_domain::test_rollup_by_an_absent_key_counts_the_region`
+        and `test_scalar_folded_into_pass_reads_its_rewritten_aggregate`.
+      - `_renders_grouping_rows`: 7 `test_duckdb_rollup_rename_backjoin` tests.
+      - `node_nulls_grouping_keys`' FINAL exemption. Rows hold without it, but
+        q36, q70 and q86 gain a regroup above the pass that re-projects every
+        flag (corpus, larger).
+      - The one-pass flag itself (the concept graph's mode,
+        `partition_aggregates`, `GroupNode.grouping_pass`) and
+        `null_provenance.rollup_padded_addresses`, which feeds the kept join
+        readers. Neither was ablated: they own the pass.
+      - `reads_a_rollup` was not measured.
 
 ## Gate used
 
