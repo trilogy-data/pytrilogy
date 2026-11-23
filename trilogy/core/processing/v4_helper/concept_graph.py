@@ -1742,6 +1742,12 @@ def _feeds_only_sets(
     )
 
 
+def _reads_a_total(node: str, attrs: dict[str, ConceptAttrs]) -> bool:
+    """A `by *` total: backfilled beside a WHERE membership onto the
+    statement's rows, its scan finds no plan."""
+    return ALL_ROWS_ADDRESS in attrs[node].grain_components
+
+
 def _grain_off_its_readers(
     concept: BuildConcept, grain: frozenset[str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -2992,9 +2998,7 @@ def build_concept_graph(
         and attrs[src].address in row_arg_addresses
         and all(
             attrs[succ].existence_only
-            # under a WHERE that reads a set itself, its atoms are placed with
-            # the set and the barrier's host stands
-            or not existence_arg_pairs
+            or (not existence_arg_pairs or not _reads_a_total(src, attrs))
             and _feeds_only_sets(graph, edges, attrs, succ, mandatory_blank_ids, set())
             for succ in graph.successors(src)
         )

@@ -47,7 +47,17 @@ A filter its keys decide is a property of them, shown once per value like
 any other (`decided_filter_repeats_per_key`); only one reading finer than its
 keys is a value per key. A filter whose content and condition an aggregate
 answers is still a value of the select's rows: read off the aggregate alone
-it holds no other key of them (`filter_over_aggregate_keeps_its_rows`).
+it holds no other key of them (`filter_over_aggregate_keeps_its_rows`),
+and it meets a WHERE gate on the gate's whole grain
+(`filter_meets_gate_on_its_grain`). A filtered key is no identity of the
+rows (`filtered_key_identifies_no_row`).
+
+A set's rows are the ones its condition kept, and an aggregate only a set
+reads holds the set's rows: neither supplies the select's keys
+(`set_holds_no_select_keys`, `set_input_supplies_no_output`) nor is the
+parent of a value beside them (`set_input_is_no_row_parent`). A WHERE
+aggregate only such an aggregate reads still filters the select's rows
+(`gate_beside_set_filters_rows`).
 -/
 
 namespace Trilogy.Filters
@@ -268,6 +278,93 @@ theorem filter_over_aggregate_keeps_its_rows :
     let forms := (kept.map (·.2)).eraseDups
     (cities.flatMap fun c => forms.map fun f => (c, f)).length = 4 ∧
       kept.eraseDups.length = 3 := by
+  decide
+
+/-! ## What a set's own rows are not
+
+A set holds the rows its own condition kept, and an aggregate only a set's
+condition reads holds the rows that set reads. Neither is a stream of the
+select's rows: not a supplier of its keys, not a parent of a value computed
+beside them. -/
+
+/-- `select city, species, (count(tree_id) by city) ? city in (city ?
+count(tree_id) by species > 5) as v0`: no species has six trees, so the set's
+rows are empty while the select's are its five `(city, species)` pairs. The
+keys were read off the set's rows, the one group holding both, and the
+select returned nothing (`set_holds_no_select_keys`, 87783). -/
+theorem set_holds_no_select_keys :
+    -- (city, species) per tree; species counts 3, 1, 1, 1
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let count (s : Nat) := (trees.filter (·.2 == s)).length
+    (trees.filter fun r => count r.2 > 5).length = 0 ∧ trees.eraseDups.length = 5 := by
+  decide
+
+/-- `select city, tree_form, (min(height) by city) ? city in (city ?
+max(height) by tree_form is null) as v0 where tag in (<set>)`: the kept trees'
+`(city, form)` pairs are (A, broadleaf), (A, none), (B, linden). `tree_form`
+was read off the set's `by tree_form` aggregate, the forms of every kept tree,
+and met the cities on nothing: six rows for three
+(`set_input_supplies_no_output`, 83978). -/
+theorem set_input_supplies_no_output :
+    let kept : List (Nat × Nat) := [(0, 0), (0, 2), (1, 1)]
+    let cities := (kept.map (·.1)).eraseDups
+    let forms := (kept.map (·.2)).eraseDups
+    (cities.flatMap fun c => forms.map fun f => (c, f)).length = 6 ∧
+      kept.eraseDups.length = 3 := by
+  decide
+
+/-- `select coalesce(tree_form, 'none') as form0, tag ? city in (city ?
+count(tree_id) by city, tree_form < 10) as v0`: `form0` was computed off the
+set's `by city, tree_form` aggregate and paired with the tags on `city`, so
+B's linden met its y tree: six rows for four. Off the trees it is one value
+per tree (`set_input_is_no_row_parent`, 98603). Trees are `(city, form,
+tag)`. -/
+theorem set_input_is_no_row_parent :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 0), (0, 0, 1), (0, 0, 0), (0, 2, 0), (1, 0, 1), (1, 1, 0)]
+    let forms := (trees.map fun r => (r.1, r.2.1)).eraseDups
+    let tags := (trees.map fun r => (r.1, r.2.2)).eraseDups
+    let paired := (forms.flatMap fun f =>
+      (tags.filter (·.1 == f.1)).map fun t => (f.2, t.2)).eraseDups
+    paired.length = 6 ∧ (trees.map fun r => (r.2.1, r.2.2)).eraseDups.length = 4 := by
+  decide
+
+/-- `select city, tag, (max(height) by city) ? tag = 'x' as v0 where
+min(height) by city, species < 6`: the gate keeps A's Acers and Quercus and
+B's Tilia. The filter's rows held `(city, tag)` alone, so FINAL met the gate
+on `city` and kept B's y tree, whose Acer failed it
+(`filter_meets_gate_on_its_grain`, 85660). Trees are `(city, species, tag)`;
+kept `(city, species)` pairs. -/
+theorem filter_meets_gate_on_its_grain :
+    let trees : List (Nat × Nat × Nat) := [(0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 1), (1, 3, 0)]
+    let kept : List (Nat × Nat) := [(0, 0), (0, 1), (1, 3)]
+    ((trees.filter fun r => kept.contains (r.1, r.2.1)).map
+        fun r => (r.1, r.2.2)).eraseDups.length = 3 ∧
+      ((trees.filter fun r => kept.any (·.1 == r.1)).map
+        fun r => (r.1, r.2.2)).eraseDups.length = 4 := by
+  decide
+
+/-- `select species, tag, tree_id ? count(tree_id) by species < 0 as v0 where
+species in (species ? species = 'Acer')`: the condition holds nowhere, so
+`v0` is NULL on all three Acers and the rows are two. The GROUP BY was
+dropped as if the membership's set, one row per species, were the rows read
+(`filtered_key_identifies_no_row`, 89848). Rows are `(tag, v0)`. -/
+theorem filtered_key_identifies_no_row :
+    let acers : List (Nat × Option Nat) := [(0, none), (1, none), (1, none)]
+    acers.length = 3 ∧ acers.eraseDups.length = 2 := by
+  decide
+
+/-- `select city, city ? city in (city ? avg(height) by city > 1) as v0 where
+tag in (<set>) and count(tree_id) by city <= 3`: the count reaches only the
+set's average, under a WHERE that also reads a set. Hosted there alone it
+filtered the set's rows; the select's must pass it too, and only B has at
+most three trees (`gate_beside_set_filters_rows`, 82889: no host was found,
+and the planner raised). Trees are `(city, tag)`. -/
+theorem gate_beside_set_filters_rows :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 1), (0, 0), (0, 0), (1, 1), (1, 0)]
+    let count (c : Nat) := (trees.filter (·.1 == c)).length
+    let kept := trees.filter fun r => r.2 == 0 && count r.1 ≤ 3
+    (kept.map (·.1)).eraseDups = [1] := by
   decide
 
 end Trilogy.Filters

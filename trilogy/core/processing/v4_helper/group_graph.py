@@ -68,6 +68,7 @@ from .edges import (
     dependency_subgraph,
     edge_kind,
     edges_of_kind,
+    feeds_only_sets,
     lineage_edges,
     lineage_predecessors,
     lineage_subgraph,
@@ -2756,8 +2757,11 @@ def _regraft_candidate(
             continue
         if cattrs.label != current.label:
             continue
-        # a set holds only the rows its own condition kept
-        if only_a_set(group_graph, group_edges, candidate):
+        # a set holds only the rows its own condition kept, and a group only
+        # sets read the rows the set reads
+        if only_a_set(group_graph, group_edges, candidate) or feeds_only_sets(
+            group_graph, group_edges, candidate
+        ):
             continue
         candidate_ancestors = nx.ancestors(group_graph, candidate)
         if not (my_ancestors & candidate_ancestors):

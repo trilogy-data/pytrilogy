@@ -32,13 +32,26 @@ def unique_key(node: CTE | UnionCTE) -> set[str] | None:
         return {c.address for c in node.group_concepts}
     if node.source.source_type == SourceType.GROUP or node.joins:
         return None
-    parents = [b.node for b in node.source_bindings() if b.node is not None]
+    sets = _membership_sets(node)
+    parents = [
+        b.node
+        for b in node.source_bindings()
+        if b.node is not None and not output_addresses(b.node) & sets
+    ]
     if len(parents) != 1:
         return None
     parent_key = unique_key(parents[0])
     if parent_key is None or not parent_key <= output_addresses(node):
         return None
     return parent_key
+
+
+def _membership_sets(cte: CTE) -> set[str]:
+    """The columns of the sets `cte`'s condition reads: a set a membership
+    reads is no row source."""
+    if cte.condition is None:
+        return set()
+    return {c.address for group in cte.condition.existence_arguments for c in group}
 
 
 def _is_pure_distinct(cte: CTE) -> bool:
@@ -77,12 +90,7 @@ def rows_unique_at_group(cte: CTE) -> bool:
     joins = [j for j in cte.joins if isinstance(j, Join)]
     if len(joins) != len(cte.joins):
         return False
-    sets = (
-        {c.address for group in cte.condition.existence_arguments for c in group}
-        if cte.condition is not None
-        else set()
-    )
-    # a set a membership reads is no row source
+    sets = _membership_sets(cte)
     nodes = {
         b.node.name: b.node
         for b in cte.source_bindings()

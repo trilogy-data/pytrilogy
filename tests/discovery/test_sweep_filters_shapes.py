@@ -362,6 +362,92 @@ SHAPES = [
         ),
         [("a1", 3), ("a2", None)],
     ),
+    # one merge built twice joins its dimension once (61695, an ambiguous
+    # duplicate alias): both copies paired the peel with their own side
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc,"
+            " species ? not (species in (species ? count(tree_id) by city, species"
+            " >= 8)) as v0, height ? (height is not null or sum(height) by species"
+            " != 8) as v1, count(tree_id) as v2;"
+        ),
+        [
+            ("b", "Acer", 3, 1),
+            ("b", "Acer", 7, 1),
+            ("b", "Acer", None, 1),
+            ("b", "Quercus", 5, 1),
+            ("o", "Tilia", 2, 1),
+            ("o", "Ulmus", None, 1),
+        ],
+    ),
+    # a set holds no select keys (87783, reduced): no species has 6 trees,
+    # and the keys came off the set's empty rows
+    (
+        (
+            "select city, species, (count(tree_id) by city) ? city in (city ?"
+            " count(tree_id) by species > 5) as v0;"
+        ),
+        [
+            ("A", "Acer", None),
+            ("A", "Quercus", None),
+            ("A", "Ulmus", None),
+            ("B", "Acer", None),
+            ("B", "Tilia", None),
+        ],
+    ),
+    # nor does an aggregate only a set reads (83978, reduced): every form met
+    # every city
+    (
+        (
+            "select city, tree_form, (min(height) by city) ? city in (city ?"
+            " max(height) by tree_form is null) as v0 where tag in (tag ? tree_form"
+            " is null);"
+        ),
+        [("A", "broadleaf", 3), ("A", None, 3), ("B", "linden", None)],
+    ),
+    # ...nor is it a derived key's rows (98603, reduced): the form of a city's
+    # trees met each of that city's tags
+    (
+        (
+            "select coalesce(tree_form, 'none') as form0, tag ? city in (city ?"
+            " count(tree_id) by city, tree_form < 10) as v0;"
+        ),
+        [("broadleaf", "x"), ("broadleaf", "y"), ("none", "x"), ("linden", "x")],
+    ),
+    # a WHERE gate meets a filtered column's rows on its whole grain (85660,
+    # reduced): paired on `city` alone, B's y tree came back
+    (
+        (
+            "select city, tag, (max(height) by city) ? tag = 'x' as v0 where"
+            " min(height) by city, species < 6;"
+        ),
+        [("A", "x", 5), ("A", "y", None), ("B", "x", 2)],
+    ),
+    (
+        (
+            "select city, tag, (max(height) by city) ? tag = 'x' as v0 where"
+            " min(height) by city, species < sum(height) by tree_form;"
+        ),
+        [("A", "x", 5), ("A", "y", None), ("B", "y", None)],
+    ),
+    # a filtered key identifies no row (89848, reduced): the GROUP BY was
+    # dropped as if the membership's set were the rows
+    (
+        (
+            "select species, tag, tree_id ? count(tree_id) by species < 0 as v0"
+            " where species in (species ? species = 'Acer');"
+        ),
+        [("Acer", "x", None), ("Acer", "y", None)],
+    ),
+    # a WHERE aggregate only a set's aggregate reads, under a WHERE that reads
+    # a set (82889, reduced, raised): only B has at most three trees
+    (
+        (
+            "select city, city ? city in (city ? avg(height) by city > 1) as v0"
+            " where tag in (tag ? tag = 'x') and count(tree_id) by city <= 3;"
+        ),
+        [("B", "B")],
+    ),
 ]
 
 

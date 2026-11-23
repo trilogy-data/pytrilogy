@@ -8558,6 +8558,13 @@ def _group_needed(
             if environment.concepts[k].derivation != Derivation.FILTER
             and build_fd_determines_all(environment, grain_keys, {k})
         }
+    # a shown filter's rows meet FINAL's WHERE gate on the gate's grain: one
+    # key short, the gate keeps the rows it rejected on another
+    # (`SelectGrain.gate_paired_short_of_its_grain`)
+    if derivation == Derivation.FILTER and set(group_graph.successors(gid)) == {
+        FINAL_NODE_ID
+    }:
+        needed |= pairing_keys(_final_gate_keys(attrs, environment))
     # a dimension peel is read with its key, the axis its rows are paired on,
     # unless the group projects it to a coarser grain (a value by genus off a
     # species peel): then that grain is the axis
