@@ -1806,6 +1806,8 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         # (`count(sale_id) by item_sk`): that pair unites at FINAL. A
         # host grouped by something else (`count(customer_id) by
         # status`) still takes it on its input rows, member by member.
+        # So does a ROLLUP pass keyed by the span: nothing pads a
+        # member back above it, and FINAL would test its subtotal rows.
         hosts = _region_domain_grouping_hosts(
             candidates, buckets, group_graph, scope.group_edges
         )
@@ -1813,7 +1815,10 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
             row_inputs, buckets, scope.keyspace, scope.environment
         ):
             hosts = tuple(
-                h for h in hosts if not _grain_within_a_span(buckets[h], buckets)
+                h
+                for h in hosts
+                if buckets[h].nulls_grouping_keys
+                or not _grain_within_a_span(buckets[h], buckets)
             )
         return [
             ConditionPlacement(

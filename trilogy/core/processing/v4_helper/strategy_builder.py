@@ -2692,8 +2692,14 @@ def _parents_already_at_input_grain(
     keys: fixing the input grain fixes the row. A finer parent key that the
     input grain does NOT determine (a per-item key under a per-order count)
     keeps the normalization, so a fact-line scan is still regrouped before
-    aggregation."""
+    aggregation.
+
+    Never fires for non-standard grouping (ROLLUP/CUBE/GROUPING_SETS): those need
+    the explicit normalization GROUP so a renamed grouping key stays in sync with
+    its GROUP BY clause."""
     if not input_grain:
+        return False
+    if any(environment.pass_of(c) is not None for c in outputs):
         return False
     keys = set(input_grain)
 

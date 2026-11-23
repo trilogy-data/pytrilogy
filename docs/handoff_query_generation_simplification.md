@@ -116,8 +116,12 @@ as a standard select: no aggregate carries a grouping mode. The pass is the
 select's, `BuildEnvironment.grouping` on the arm's build environment, and
 every reader asks `BuildEnvironment.pass_of`. The readers were ablated one by
 one (seam 10, seventh slice, of `docs/query_gen_simplification_audit_2026_10.md`):
-18 of 28 are deleted. The 10 left each name the test or corpus statement that
-moves without them; do not re-ablate them without a new premise.
+14 of 28 toggles are deleted. Each of the 12 sites kept names a test or a set of
+plans that moves without it: 7 for rows, 5 for plan size (the other two toggles
+were unions of kept sites). The plan-size half is the
+only open lead: `_fold_rollup_key_dims` both saves and costs plans, so
+narrowing it (fold only a dim no later read can compute above the pass) could
+delete its remainder. Do not re-ablate the others without a new premise.
 
 Gate any change here with `tests/engine/test_duckdb_rollup_tvf_laws.py`
 (rowset reads against the statement) and
@@ -170,7 +174,7 @@ them.
   tests).
 - **Corpus-silent but pinned elsewhere**, so a coverage- or corpus-only argument
   for deleting them is void: LOGICAL `resolve_alternatives` and hub helpers,
-  `_bound_column_components`, `group_rules._lineage_layers`,
+  `_fold_rollup_key_dims`, `_bound_column_components`, `group_rules._lineage_layers`,
   `partition_roots` single-row arms, `_post_aggregation_producers`, the
   `source_planning` `_plan_*` family, `then where` stage labels, `_seed_cover`,
   `_fold_covered_contributors`, `_carry_order_by_concepts`, `_bridge_pseudonyms`;

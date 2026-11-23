@@ -56,6 +56,7 @@ from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    NESTED_DEPTHS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
@@ -83,7 +84,7 @@ from .functional_dependency import (
     strict_fd_determines_all,
 )
 from .group_behaviors import Behavior, behavior_for
-from .group_rules import DEFAULT_RULE, GROUPING_RULES
+from .group_rules import DEFAULT_RULE, GROUPING_RULES, _lineage_reach
 from .join_plan import (
     authored_axes,
     carryable,
@@ -102,7 +103,10 @@ from .models import (
     RootReason,
     pairing_keys,
 )
-from .projection import iter_row_lineage
+from .projection import (
+    iter_row_lineage,
+    rollup_padded_keys,
+)
 from .region_domains import (
     detach_final_span_domain_producers,
     feed_region_domains_to_present_scalars,
@@ -203,6 +207,92 @@ class _GroupAssigner:
             self.buckets[bucket.group_id] = bucket
             for member in bucket.primary_node_ids:
                 self.primary_group[member] = bucket.group_id
+
+
+def _lineage_leaf_addresses(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    node: str,
+) -> set[str]:
+    """Addresses of `node`'s lineage ancestors that have no lineage parent of
+    their own: the raw inputs the concept ultimately computes from."""
+    return {
+        concept_attrs[ancestor].address
+        for ancestor in _lineage_reach(
+            node, lineage_predecessors, concept_graph, concept_edges
+        )
+        if not lineage_predecessors(concept_graph, concept_edges, ancestor)
+    }
+
+
+def _fold_rollup_key_dims(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+    buckets: dict[str, GroupBucket],
+) -> None:
+    """Fold a BASIC dim that is purely a function of a ROLLUP/CUBE/GROUPING_SETS
+    group's grouping keys into that group, so it is emitted as a column of the
+    GROUP BY ROLLUP node and carries the rolled-up key values on the
+    subtotal/grand-total rows.
+
+    Otherwise such a dim (``channel <- case chan``) buckets by
+    stop-signature/grain into a leaf-grain BASIC group and is joined back to
+    the rollup on the raw keys. At a subtotal row the rolled-up key is NULL,
+    so the join finds no leaf match and the dim comes back NULL. Such dims are
+    already marked nullable for the null-safe assembly join.
+
+    Scoped to non-standard grouping: a standard GROUP BY key is never
+    NULL-injected, so a downstream dim computed over the key join is already
+    correct and folding there would only churn SQL shape."""
+    rollups = [
+        (gid, b)
+        for gid, b in buckets.items()
+        if b.derivation == Derivation.AGGREGATE and b.nulls_grouping_keys
+    ]
+    if not rollups:
+        return
+    # Most specific (largest key set) first so a dim folds into the rollup whose
+    # keys most tightly cover it.
+    rollups.sort(key=lambda kv: (-len(kv[1].grain_components), kv[0]))
+    moves: dict[str, str] = {}
+    for gid, bucket in buckets.items():
+        if bucket.derivation != Derivation.BASIC:
+            continue
+        for node in bucket.primary_node_ids:
+            attrs = concept_attrs[node]
+            if attrs.depth_label in NESTED_DEPTHS:
+                continue
+            # A pure rename is a pseudonym of its source key; the renderer
+            # resolves it to the rolled-up key column directly, so it neither
+            # needs nor tolerates folding.
+            if attrs.is_rename:
+                continue
+            leaves = _lineage_leaf_addresses(
+                concept_graph, concept_edges, concept_attrs, node
+            )
+            if not leaves:
+                continue
+            for r_gid, r_bucket in rollups:
+                if r_gid == gid or r_bucket.label != bucket.label:
+                    continue
+                if leaves <= set(r_bucket.grain_components):
+                    moves[node] = r_gid
+                    break
+    for node, target_gid in moves.items():
+        src = buckets[primary_group[node]]
+        idx = src.primary_node_ids.index(node)
+        address = src.primary_members.pop(idx)
+        src.primary_node_ids.pop(idx)
+        src.member_depths.pop(address, None)
+        tgt = buckets[target_gid]
+        if node not in tgt.primary_node_ids:
+            tgt.add_member(address, node, concept_attrs[node].depth_label)
+        primary_group[node] = target_gid
+    for gid in [g for g, b in buckets.items() if not b.primary_node_ids]:
+        del buckets[gid]
 
 
 def _materialize_group_graph(
@@ -1822,6 +1912,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
     lineage_parents = demand.lineage_parents
     region_join_keys = ctx.region_join_keys
     relation_edge_members = demand.relation_edge_members
+    rollup_padded = demand.rollup_padded
     scoped_axis_mates = demand.scoped_axis_mates
     solid = ctx.solid
     if gid == FINAL_NODE_ID:
@@ -1917,11 +2008,11 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                         if fact.grain <= io.capability[sibling] and _grain_determines(
                             environment, sibling_fact.grain, fact.grain
                         ):
-                            outs |= fact.grain & cap_gid
+                            outs |= (fact.grain - rollup_padded) & cap_gid
                         if _grain_determines(
                             environment, fact.grain, sibling_fact.grain
                         ):
-                            outs |= sibling_fact.grain & cap_gid
+                            outs |= (sibling_fact.grain - rollup_padded) & cap_gid
                     # A row stream beside a coarser row step over groups,
                     # whose stored grain its own grain determines, pairs on
                     # that grain: it carries it (a per-tree value beside a flag by city and
@@ -1943,7 +2034,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                             environment, fact.grain, sibling_fact.grain
                         )
                     ):
-                        outs |= sibling_fact.grain
+                        outs |= sibling_fact.grain - rollup_padded
                     # Same-grain sibling: the grain IS the shared row
                     # identity. A STRICTLY FINER sibling that can also
                     # produce these components is the same story one level
@@ -2044,6 +2135,7 @@ class Demand:
     concept_attrs: dict[str, ConceptAttrs]
     mandatory_list: list[BuildConcept]
     environment: BuildEnvironment
+    rollup_padded: frozenset[str]
     scoped_axis_mates: dict[str, frozenset[str]] = field(default_factory=dict)
     relation_edge_members: frozenset[str] = frozenset()
 
@@ -2124,6 +2216,7 @@ def statement_demand(
         concept_attrs=concept_attrs,
         mandatory_list=mandatory_list,
         environment=environment,
+        rollup_padded=rollup_padded_keys(environment),
         scoped_axis_mates=_scoped_axis_mates(environment),
         relation_edge_members=relation_edge_members,
     )
@@ -2463,6 +2556,9 @@ def build_group_graph(
         concept_attrs,
         demand.output_addresses | condition_arg_addresses,
     )
+    _fold_rollup_key_dims(
+        concept_graph, concept_edges, concept_attrs, primary_group, buckets
+    )
     trace_buckets("buckets assigned", buckets, primary_group)
     partition = partition_root_demand(
         buckets,
@@ -2475,6 +2571,7 @@ def build_group_graph(
         environment,
         datasources,
         keyspace,
+        demand.rollup_padded,
     )
     split_carried_only_row_streams(
         buckets, primary_group, partition.domains, keyspace, environment

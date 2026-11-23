@@ -111,7 +111,9 @@ _NO_READS: defaultdict[int, frozenset[str]] = defaultdict(frozenset)
 def _demand(
     concept_attrs: dict, concept_edges: EdgeMap, environment: BuildEnvironment
 ) -> Demand:
-    return Demand(nx.DiGraph(), concept_edges, concept_attrs, [], environment)
+    return Demand(
+        nx.DiGraph(), concept_edges, concept_attrs, [], environment, frozenset()
+    )
 
 
 @pytest.fixture
