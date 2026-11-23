@@ -37,6 +37,7 @@ from trilogy.scripts.agent_tools import (
     handle_show_message,
     handle_todo,
     handle_trilogy,
+    list_files_payload,
     truncate_middle,
 )
 from trilogy.scripts.file_helpers import preql_description
@@ -428,10 +429,9 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
 # --- Additional coverage for handlers and helpers ---
 
 
-def _list_entries(out: str) -> dict[str, dict]:
-    """Parse a handle_list_files JSON payload into a path -> entry map."""
-    payload = json.loads(out)
-    assert payload["event"] == "files"
+def _list_entries(payload: dict | str) -> dict[str, dict]:
+    """Map a list_files payload's entries by path."""
+    assert isinstance(payload, dict) and payload["event"] == "files"
     return {e["path"]: e for e in payload["entries"]}
 
 
@@ -440,7 +440,7 @@ def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_tools_mod, "_LIST_FILES_MAX_ENTRIES", 3)
     for i in range(10):
         (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
-    payload = json.loads(handle_list_files(AgentState(), {"path": "."}))
+    payload = list_files_payload(AgentState(), {"path": "."})
     assert payload["truncated"] is True
     assert payload["count"] == 3
 
@@ -451,7 +451,7 @@ def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
     (tmp_path / "__pycache__").mkdir()  # exercises the skip-continue branch
     (tmp_path / "q.preql").write_text("x", encoding="utf-8")
     entries = _list_entries(
-        handle_list_files(AgentState(), {"path": ".", "recursive": False})
+        list_files_payload(AgentState(), {"path": ".", "recursive": False})
     )
     assert "raw/" in entries
     assert "q.preql" in entries
@@ -459,7 +459,7 @@ def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
 
 
 def test_list_files_reports_empty_directory(tmp_path):
-    payload = json.loads(handle_list_files(AgentState(), {"path": str(tmp_path)}))
+    payload = list_files_payload(AgentState(), {"path": str(tmp_path)})
     assert payload["count"] == 0
     assert payload["entries"] == []
 
@@ -473,7 +473,7 @@ def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
         "key ticket_number int;\n",
         encoding="utf-8",
     )
-    payload = json.loads(handle_list_files(AgentState(), {"path": "."}))
+    payload = list_files_payload(AgentState(), {"path": "."})
     entries = {e["path"]: e for e in payload["entries"]}
     desc = entries["store_sales.preql"]["description"]
     assert "Store channel sales" in desc
@@ -484,7 +484,7 @@ def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
 def test_list_files_skips_description_when_no_header_comment(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "bare.preql").write_text("key id int;\n", encoding="utf-8")
-    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    entries = _list_entries(list_files_payload(AgentState(), {"path": "."}))
     assert "description" not in entries["bare.preql"]
 
 
@@ -494,7 +494,7 @@ def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
         "key id int;\n# this comment is not the leading block\n",
         encoding="utf-8",
     )
-    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    entries = _list_entries(list_files_payload(AgentState(), {"path": "."}))
     assert "description" not in entries["midcomment.preql"]
 
 
@@ -504,7 +504,7 @@ def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
     (tmp_path / "wordy.preql").write_text(
         f"# {long_desc}\nkey id int;\n", encoding="utf-8"
     )
-    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    entries = _list_entries(list_files_payload(AgentState(), {"path": "."}))
     desc = entries["wordy.preql"]["description"]
     assert desc.endswith("…")
     assert len(desc) <= agent_tools_mod._LIST_FILES_DESC_LIMIT
@@ -515,7 +515,7 @@ def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
     (tmp_path / "notes.md").write_text(
         "# Markdown header that is not a preql description\n", encoding="utf-8"
     )
-    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    entries = _list_entries(list_files_payload(AgentState(), {"path": "."}))
     assert "description" not in entries["notes.md"]
 
 
@@ -852,7 +852,7 @@ def test_reviewer_transcript_only_agent_messages_no_task_or_results():
         LLMMessage(role="system", content="ignored"),
         LLMMessage(role="user", content="THE TASK do the thing"),
         LLMMessage(role="assistant", content="I will run it"),
-        LLMMessage(role="user", content='{"tool":"trilogy","result":"TOOL_OUTPUT ok"}'),
+        LLMMessage(role="user", content="TOOL_OUTPUT ok"),
     ]
     msgs[2].model_info = {
         "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
@@ -1120,20 +1120,19 @@ def test_dump_conversation_block_wraps_long_string_args(tmp_path):
 
 
 def test_dump_conversation_pretty_prints_tool_result(tmp_path):
-    """User-role messages whose content is the ``{"tool": ..., "result": ...}``
-    payload that ``_run_turn`` writes get rendered as a ``[tool_result]`` block
-    with the result string un-escaped (real newlines) and wrapped at 80 cols."""
-    import json as _json
-
+    """A message answering an assistant tool call renders as a
+    ``[tool_result] <call name>`` block wrapped at 80 cols."""
     from trilogy.ai.conversation import Conversation
     from trilogy.scripts.agent import _dump_conversation
 
     provider = ScriptedProvider(responses=[])
     conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("", role="assistant")
+    conv.messages[-1].model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
+    }
     result_body = "exit_code: 0\n--- stdout ---\nfoo bar baz\n--- stderr ---\n"
-    conv.add_message(
-        _json.dumps({"tool": "trilogy", "result": result_body}), role="user"
-    )
+    conv.add_message(result_body, role="user")
     log_path = tmp_path / "session.log"
     log_path.write_text("", encoding="utf-8")
     _dump_conversation(conv, log_path)
@@ -1685,16 +1684,6 @@ def test_format_tool_call_non_dict_arguments():
     assert any("a" in ln for ln in lines[1:])
 
 
-def test_try_parse_tool_result_rejects_bad_json_and_wrong_shape():
-    assert agent_mod._try_parse_tool_result("not json") is None
-    assert agent_mod._try_parse_tool_result("{bad json}") is None
-    assert agent_mod._try_parse_tool_result('{"tool": "x"}') is None
-    assert agent_mod._try_parse_tool_result('{"tool": "trilogy", "result": "ok"}') == {
-        "tool": "trilogy",
-        "result": "ok",
-    }
-
-
 def test_dump_conversation_block_wraps_single_long_line(tmp_path):
     from trilogy.ai.conversation import Conversation
     from trilogy.scripts.agent import _dump_conversation
@@ -1923,3 +1912,17 @@ def test_trilogy_subprocess_withholds_llm_keys(monkeypatch):
     handle_trilogy(state, {"args": ["--version"]})
     assert "DEEPSEEK_API_KEY" not in captured["env"]
     assert captured["env"]["KEEP_ME"] == "1"
+
+
+def test_pretty_keeps_rows_compact_around_redaction_marker():
+    rendered = display_core._pretty({"rows": [[1, "a"], "<redacted 5 rows>", [2, "b"]]})
+    assert rendered.splitlines() == [
+        "{",
+        '  "rows": [',
+        '    [1,"a"],',
+        '    "<redacted 5 rows>",',
+        '    [2,"b"]',
+        "  ]",
+        "}",
+    ]
+    assert display_core._pretty(["a", "b"]) == '[\n  "a",\n  "b"\n]'

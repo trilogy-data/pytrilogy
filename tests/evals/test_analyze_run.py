@@ -149,3 +149,15 @@ def test_funnel_rows_overlap_is_order_independent():
     assert {key: (row["unique"], row["shared"]) for key, row in rows.items()} == {
         key: (row["unique"], row["shared"]) for key, row in reversed_rows.items()
     }
+
+
+def test_structured_error_message_reads_text_rendered_events():
+    from evals.common.analyze_run import _structured_error_message
+
+    inline = "exit_code: 1\n--- stdout ---\nevent: write\npath: q.preql\n\nevent: error\nmessage: Undefined concept x\n--- stderr ---\n"
+    block = (
+        "event: error\nerror_type: parse\nmessage: |\n  bad token\n    ^---\nrows: 1\n"
+    )
+    assert _structured_error_message(inline) == "Undefined concept x"
+    assert _structured_error_message(block) == "bad token\n  ^---"
+    assert _structured_error_message('{"event": "error", "message": "old"}') == "old"

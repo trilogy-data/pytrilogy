@@ -2937,7 +2937,7 @@ def test_header_names_grain_properties_and_links():
     lines = [c.text for c in _describe_ingested(rec, bindings, ["Premium"])]
     assert lines == [
         "# Grain: policy_amount_identifier. Properties: policy_amount.",
-        "# Imports: Policy via Policy_Identifier (fields as Policy.*).",
+        "# Imports: Policy via Policy_Identifier.",
         "# Referenced by: Premium.",
     ]
 
@@ -2957,4 +2957,21 @@ def test_header_uses_role_alias_and_caps_properties():
     bindings = {"Ship_Date": FKBinding("Date.Date_Id@ship", partial=True)}
     lines = [c.text for c in _describe_ingested(rec, bindings, [])]
     assert lines[0].endswith("c10, c11, +2 more.")
-    assert lines[1] == "# Imports: ship via Ship_Date (fields as ship.*)."
+    assert lines[1] == "# Imports: ship via Ship_Date."
+
+
+def test_header_lists_several_imports_one_per_line():
+    rec = _record(
+        "Orders",
+        [
+            ("Id", Purpose.KEY),
+            ("Ship_Date", Purpose.PROPERTY),
+            ("Item", Purpose.PROPERTY),
+        ],
+    )
+    bindings = {
+        "Ship_Date": FKBinding("Date.Date_Id@ship", partial=True),
+        "Item": FKBinding("Item.Item_Id", partial=False),
+    }
+    lines = [c.text for c in _describe_ingested(rec, bindings, [])]
+    assert lines[1:] == ["# Imports:", "#   Item via Item,", "#   ship via Ship_Date."]

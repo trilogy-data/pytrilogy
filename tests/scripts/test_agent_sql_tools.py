@@ -112,9 +112,9 @@ def test_envelope_shape():
 def test_execute_sql_returns_rows(sql_engine):
     out = _execute_sql(AgentState(), "select id, name from t order by id")
     assert "exit_code: 0" in out
-    assert '"columns": [' in out
+    assert 'columns: ["id","name"]' in out
     assert "[2,null]" in out
-    assert '"event": "summary"' in out
+    assert "event: summary" in out
 
 
 def test_execute_sql_rejects_non_readonly(sql_engine):
@@ -132,22 +132,22 @@ def test_execute_sql_reports_engine_error(sql_engine):
 def test_execute_sql_runs_every_statement(sql_engine):
     out = _execute_sql(AgentState(), "select 1 as a; select 99 as b")
     assert "exit_code: 0" in out
-    assert '"statement": 1' in out and '"statement": 2' in out
-    assert '"a"' in out and '"b"' in out and "99" in out
-    assert '"statements": 2' in out
+    assert "statement: 1" in out and "statement: 2" in out
+    assert 'columns: ["a"]' in out and 'columns: ["b"]' in out and "[99]" in out
+    assert "statements: 2" in out
 
 
 def test_execute_sql_single_statement_has_no_statement_index(sql_engine):
     out = _execute_sql(AgentState(), "select 1 as a")
-    assert '"statement":' not in out
-    assert '"statements": 1' in out
+    assert "statement:" not in out
+    assert "statements: 1" in out
 
 
 def test_execute_sql_batch_keeps_results_before_a_failure(sql_engine):
     out = _execute_sql(AgentState(), "select 1 as a; select * from nope")
     assert "exit_code: 1" in out
-    assert '"statement": 1' in out and '"a"' in out
-    assert '"statement": 2' in out and '"event": "error"' in out
+    assert "statement: 1" in out and 'columns: ["a"]' in out
+    assert "statement: 2" in out and "event: error" in out
 
 
 def test_execute_sql_batch_names_the_offending_statement(sql_engine):

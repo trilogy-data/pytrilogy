@@ -215,14 +215,17 @@ Discipline:
    richer content.
 3. If a tool call fails or returns the same error you have already seen, do
    NOT immediately re-issue the same call. First emit a short plain-text
-   message naming the failure and what you will try differently."""
+   message naming the failure and what you will try differently.
+4. Calls that don't depend on each other's output (several probes or checks,
+   or reading several references) go in ONE response as multiple tool
+   calls, not one per turn: every turn re-sends the whole conversation."""
     if include_todo:
         base += """
-4. Skip TODOs unless the task has 3+ truly independent steps. A single-query
+5. Skip TODOs unless the task has 3+ truly independent steps. A single-query
    task does not. Never use a TODO entry as a substitute for doing the work."""
     if include_show:
         base += """
-5. Use `show_message` rarely — only for a genuine status change, never to
+6. Use `show_message` rarely — only for a genuine status change, never to
    narrate intent or restate the plan."""
     return base
 
@@ -450,32 +453,18 @@ def _format_tool_call(tc: dict) -> list[str]:
     return lines
 
 
-def _try_parse_tool_result(content: str) -> dict | None:
-    """Detect content of the form ``{"tool": <name>, "result": <string>}``
-    that ``_run_turn`` writes for every tool result. Returns the parsed payload
-    or None — None falls back to printing the raw content verbatim."""
-    s = content.strip()
-    if not (s.startswith("{") and s.endswith("}")):
-        return None
-    try:
-        data = json.loads(s)
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(data, dict) or "tool" not in data or "result" not in data:
-        return None
-    return data
-
-
-def _format_tool_result(payload: dict) -> list[str]:
-    """Render a parsed tool-result payload as a multi-line block. The result
-    string (which often has embedded newlines and can be tens of KB after
-    truncation) is wrapped at 80 cols so the dump stays scannable."""
-    name = payload.get("tool", "?")
-    result = payload.get("result", "")
-    sresult = result if isinstance(result, str) else json.dumps(result)
-    lines = [f"[tool_result] {name}"]
-    lines.extend(_wrap_value_lines(sresult, indent=2))
-    return lines
+def _tool_result_names(messages: list[LLMMessage]) -> dict[int, str]:
+    """Index of each tool-result message -> the name of the call it answers."""
+    names: dict[int, str] = {}
+    for i, msg in enumerate(messages):
+        calls = (
+            (msg.model_info or {}).get("tool_calls")
+            if msg.role == "assistant"
+            else None
+        )
+        for j, tc in enumerate(calls or []):
+            names[i + 1 + j] = tc.get("name", "?")
+    return names
 
 
 def _dump_conversation(conv: Conversation, log_path: Path) -> None:
@@ -484,12 +473,13 @@ def _dump_conversation(conv: Conversation, log_path: Path) -> None:
     wrapped at 80 cols) so the exact history sent to the model can be
     inspected for append bugs without scrolling sideways."""
     dump_path = log_path.with_suffix(".conversation.txt")
+    result_names = _tool_result_names(conv.messages)
     blocks: list[str] = []
     for i, msg in enumerate(conv.messages):
         block = [f"===== message {i} [{msg.role}] ====="]
-        payload = _try_parse_tool_result(msg.content) if msg.content else None
-        if payload is not None:
-            block.extend(_format_tool_result(payload))
+        if i in result_names:
+            block.append(f"[tool_result] {result_names[i]}")
+            block.extend(_wrap_value_lines(msg.content or "", indent=2))
         else:
             block.append(msg.content if msg.content else "(empty content)")
         info = msg.model_info or {}
@@ -668,8 +658,9 @@ def _run_turn_inner(
                 log_path,
                 {"type": "tool_result", "name": call.name, "result": result},
             )
-            payload = json.dumps({"tool": call.name, "result": result})
-            conv.add_message(payload, role="user")
+            # Raw text: providers pair the reply to its call, and JSON-escaping
+            # the result turns every newline and quote into extra tokens.
+            conv.add_message(result, role="user")
             if state.done:
                 if state.force_return:
                     # The agent asserts completion and bypasses the reviewer —

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trilogy.ai.models import LLMToolDefinition
+from trilogy.scripts.agent_render import render_event, render_events
 from trilogy.scripts.display_core import _pretty, print_info
 from trilogy.scripts.file_helpers import preql_description
 
@@ -174,13 +175,13 @@ TRILOGY_TOOL = LLMToolDefinition(
     name="trilogy",
     description=(
         "Invoke the trilogy CLI as a subprocess. Returns captured stdout, stderr, "
-        "and exit code. stdout typically JSONL "
-        "(newline-separated, parse successively), e.g. "
-        '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
-        'output, {"type":"concepts","namespaces":{...}} for explore, '
-        '{"event":"error","message":...} for failures. Oversized output is capped and middle truncated '
+        "and exit code. stdout is a series of events separated by blank lines, "
+        "each as indented `key: value` lines (result rows one JSON array per "
+        "line), e.g. `event: result` with `columns`, `rows`, `row_count` for "
+        "query output, `type: concepts` with `namespaces` for explore, "
+        "`event: error` with `message` for failures. Oversized output is capped "
         "with a warning. Explore entries identical to earlier explore output "
-        'this session collapse to {"already_shown": <file>} stubs — the '
+        "this session collapse to `already_shown: <file>` stubs — the "
         "content is unchanged from when that file was explored; add --reshow "
         "to reprint."
     ),
@@ -211,7 +212,7 @@ LIST_FILES_TOOL = LLMToolDefinition(
     description=(
         "List files in the workspace (default: current directory, recursive). "
         "Use this to understand available files before running explore. "
-        "Returns a JSON `files` event with an `entries` array; each .preql "
+        "Returns an `event: files` block with an `entries` list; each .preql "
         "entry carries a `description` from its leading `#` comment block."
     ),
     input_schema={
@@ -366,6 +367,12 @@ def script_write_refused(state: AgentState, paths: list[str]) -> bool:
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:
+    payload = list_files_payload(state, args)
+    return payload if isinstance(payload, str) else render_event(payload)
+
+
+def list_files_payload(state: AgentState, args: dict) -> dict[str, object] | str:
+    """The listing as a ``files`` event, or an error message."""
     path = args.get("path", ".")
     recursive = args.get("recursive", True)
     if not isinstance(path, str) or not path:
@@ -413,7 +420,7 @@ def handle_list_files(state: AgentState, args: dict) -> str:
     if truncated:
         payload["truncated"] = True
     payload["entries"] = entries
-    return _pretty(payload)
+    return payload
 
 
 def _first_non_flag_arg(raw_args: list[str]) -> str | None:
@@ -560,7 +567,7 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     ):
         return "trilogy error: writing Python (.py) files is disabled for this task."
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
-    # Agents consume the CLI as structured NDJSON (one JSON event per line) —
+    # The CLI emits JSON events (rendered to plain text below for the model) —
     # same information as the rich view, none of the formatting chrome that
     # wastes tokens. A flag in `raw_args` (e.g. `--format rich`) still wins,
     # since group-level flags are parsed after the env default is applied.
@@ -607,7 +614,7 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     else:
         # stdout is structured JSON events — truncate on event boundaries so the
         # agent never receives a sliced, unparseable object. stderr is free text.
-        stdout = truncate_json_events(completed.stdout or "", out_limit)
+        stdout = render_events(truncate_json_events(completed.stdout or "", out_limit))
         stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
     return (
         f"exit_code: {completed.returncode}\n"
