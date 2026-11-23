@@ -8432,6 +8432,25 @@ def _group_outputs_and_atoms(
     return outputs, atoms
 
 
+def _shown_filtered_column(
+    a: GroupAttrs, attrs: dict[str, GroupAttrs], environment: BuildEnvironment
+) -> bool:
+    """Whether `a` computes a shown filtered value that is one of the select's
+    rows: a filtered column, or a filtered aggregate keyed by what the select
+    does not show (one keyed by shown keys pairs on them)."""
+    shown = _required_final_contract(attrs).output_addresses
+    for m in a.primary_members:
+        lineage = environment.concepts[m].lineage
+        if m not in shown or not isinstance(lineage, BuildFilterItem):
+            continue
+        content = lineage.content
+        if not (isinstance(content, BuildConcept) and content.is_aggregate):
+            return True
+        if not pairing_keys(content.grain.components) <= shown:
+            return True
+    return False
+
+
 def _group_needed(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -8512,6 +8531,30 @@ def _group_needed(
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )
+    # a filtered column FINAL shows is a value of the select's rows: read off
+    # an aggregate parent alone it holds none of the shown keys beside it
+    # (`Filters.filter_over_aggregate_keeps_its_rows`). A set's filter shows
+    # nothing, and its grain is only the select it was built in; a filtered
+    # aggregate's rows are its aggregate's; a group reading the filter pairs
+    # its rows as they are.
+    if (
+        derivation == Derivation.FILTER
+        and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
+        and _shown_filtered_column(a, attrs, environment)
+    ):
+        shown = _required_final_contract(attrs).output_addresses
+        keys = {
+            k
+            for k in set(a.grain_components) & shown
+            if environment.concepts[k].derivation != Derivation.FILTER
+        }
+        # with the shown keys those determine, which the plan pairs it on
+        needed |= keys | {
+            k
+            for k in shown - keys
+            if environment.concepts[k].derivation != Derivation.FILTER
+            and build_fd_determines_all(environment, keys, {k})
+        }
     # a dimension peel is read with its key, the axis its rows are paired on,
     # unless the group projects it to a coarser grain (a value by genus off a
     # species peel): then that grain is the axis

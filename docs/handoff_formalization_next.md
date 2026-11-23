@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.534.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.535.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 60,000; the PR of each
-round holds its sweep totals. `filters` has 123 `OPEN` seeds in 0-20,000 and
-545 failing queries in 20,000-60,000 not yet listed (area 4b),
+group key of aggregates and windows, in a HAVING) to 80,000; the PR of each
+round holds its sweep totals. `filters` has 110 `OPEN` seeds in 0-20,000 and
+707 failing queries in 20,000-80,000 not yet listed (area 4b),
 `windows` 17 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -595,11 +595,12 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (123 seeds of
-0-20,000) and, at 0.3.534, 545 failing queries of 20,000-60,000, each
-failing on main too. The 40,000-60,000 raises on main group as 114 `cannot
-be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
-`Could not resolve connections`, 10 `Merge sources`.
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (110 seeds of
+0-20,000) and, at 0.3.535, 707 failing queries of 20,000-80,000, each
+failing on main too. The 60,000-80,000 ones group as 90 `cannot be related`
+(the WHERE-gate host below), 54 wrong answers, 44 keyless joins, 15
+recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
+`Ambiguous reference` (below).
 
 - **A set planned under the WHERE reads unfiltered rows** when its condition
   reads an aggregate the WHERE is hosted on: `select city ? city in (city ?
@@ -618,15 +619,19 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
   raises a keyless join instead: the join plan does not count `species` as a
   column of the filter's rows although the filter passes it through
   (17162 shows it; main is right there only because one row survives).
-- **A filter read off its condition's aggregate alone** is planned as
-  holding the select's other keys through the rows beside it, which it never
-  read: `select city, tree_form, city ? sum(height) by city - count(tree_id)
-  by city = 2 as f where max(height) by tree_form is not null` crosses every
-  city with every kept form (20955). Reading the filter's columns off the
-  built node in `plan_final_join` and `elect_bridges` (so the kept rows
-  bridge it) fixed it and broke 33 queries right on main; narrowed to filters
-  beside a grouped parent it still broke them. The read must tell a column
-  the filter passes through from one only the plan assumed.
+- **A filter's claimed grain is still the select's.** 0.3.535 has a shown
+  filter only FINAL reads ask for the shown keys of it (`_group_needed`),
+  not a set's filter, one another group reads (77134) or a filtered
+  aggregate keyed by shown keys (73232): each broke seeds right on main. It
+  costs 1,428 joins on queries main answered; giving the filter group its
+  real grain at graph construction would retire the rule and the claim.
+- **The set's inner aggregate supplies a select key** (9919, 28312: raised
+  on main, wrong rows now): in `select species, (min(height) by tree_form) ?
+  tree_form in (tree_form ? min(height) by city, species >= 0) as f` the
+  cover elects that aggregate for `species` and FINAL does not dedup it.
+- **One dimension peel joined twice in one CTE** (61695, 62837): `fc` is
+  looked up for two sides of a merge, the peels dedupe to one CTE name, and
+  DuckDB rejects the duplicate alias.
 
 - **Decide: a condition its keys do not decide.** For a filtered property
   beside its key or its content the reading is pinned
@@ -637,19 +642,8 @@ be related` (the WHERE-gate host below), 67 keyless joins, 15 recursions, 10
   B's Acer), and adding `count(tree_id)` returns the per-row reading (`(A,
   NULL, 1)`), so a count changes the keys' rows. The generator stays off
   these (`Filters.filtered_value_off_its_keys_splits`).
-- **Three seeds that raised on main return wrong rows** (5 queries; each owes
-  its rows). 6987: a filtered aggregate (`(count(tree_id) by city, tree_form)
-  ? tree_form = 'linden'`) claims the select's grain and meets a window's
-  groups on `city` alone; giving it its aggregate's grain fixed it and broke
-  `(max(height) by city) ? city in ('B')` beside `tag` (11824, 16877, 19152).
-  9683, 12294: a WHERE aggregate reaches the set's inner aggregate and not
-  the statement's rows (below).
-- Efficiency: 0.3.534 keeps more columns on the row stream, and 155 of
-  120,000 queries scan the trees twice where main scanned once: a grouped
-  scan and a row scan of one table under one WHERE (`select tree_form, height
-  ? tree_id in (tree_id ? max(height) by city, species is not null) as f
-  where height between 2 and 5`). `MergeTwinScans` does not rebase the
-  grouped one onto its row twin there; the round is net 308 scans fewer.
+- **9683, 12294 raised on main and return wrong rows**: a WHERE aggregate
+  reaches the set's inner aggregate and not the statement's rows (below).
 - **Where a WHERE aggregate is hosted beside a filtered column** is the lead
   with the most behind it (9683, 12294, 2922, and 92 `cannot be related`
   raises). 0.3.531 backfills the gate onto the outputs when its only

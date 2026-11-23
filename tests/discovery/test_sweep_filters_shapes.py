@@ -290,6 +290,54 @@ SHAPES = [
         ),
         [("A", "b", None), ("A", "o", None), ("B", "b", None), ("B", "o", None)],
     ),
+    # a filter an aggregate answers is a value of the select's rows (20955,
+    # reduced): read off the city sum alone it held no form, and city A met
+    # the linden the WHERE keeps for B
+    (
+        (
+            "select city, tree_form, city ? sum(height) by city > 2 as v0 where"
+            " max(height) by tree_form is not null;"
+        ),
+        [("A", "broadleaf", "A"), ("B", "broadleaf", "B"), ("B", "linden", "B")],
+    ),
+    (
+        (
+            "select city, tree_form, city ? sum(height) by city - count(tree_id)"
+            " by city = 2 as v0 where max(height) by tree_form is not null;"
+        ),
+        [("A", "broadleaf", None), ("B", "broadleaf", None), ("B", "linden", None)],
+    ),
+    # ...beside a second filter (6259): every form met every city
+    (
+        (
+            "select tree_form, city ? max(height) by city <= 10 as v0, tree_form ?"
+            " min(height) by species != 0 as v1;"
+        ),
+        [
+            ("broadleaf", "A", "broadleaf"),
+            (None, "A", None),
+            ("broadleaf", "B", "broadleaf"),
+            ("linden", "B", "linden"),
+        ],
+    ),
+    # ...and with the shown keys those determine (14639, reduced): keyed by
+    # `species` alone, it was paired on `tree_form` off the set's own rows
+    (
+        (
+            "select city, species, tree_form, city ? count_distinct(tag) by city"
+            " - count_distinct(tag) by * < 2 as v0, height ? count(tree_id) by"
+            " city, species <= max(height) by tree_form or species in (species ?"
+            " not (species != 'Tilia')) as v1;"
+        ),
+        [
+            ("A", "Acer", "broadleaf", "A", 3),
+            ("A", "Acer", "broadleaf", "A", None),
+            ("A", "Quercus", "broadleaf", "A", 5),
+            ("A", "Ulmus", None, "A", None),
+            ("B", "Acer", "broadleaf", "B", 7),
+            ("B", "Tilia", "linden", "B", 2),
+        ],
+    ),
 ]
 
 
