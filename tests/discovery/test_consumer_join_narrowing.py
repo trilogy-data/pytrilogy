@@ -106,3 +106,50 @@ def test_a_regroup_by_its_own_key_folds_into_the_narrowed_merge():
     assert "FULL JOIN" not in sql, sql
     assert sql.count(" as (") == 6, sql
     assert _rows(executor, query) == [("carrier0", 21)]
+
+
+KEYED = """
+key model_code string;
+property model_code.seats int;
+datasource aircraft_model (model_code, seats) grain (model_code)
+query '''SELECT * FROM (VALUES ('M0', 9), ('M1', 3), ('M2', 1)) t(model_code, seats)''';
+key aircraft_id int;
+unique property aircraft_id.tail_num string;
+key carrier_code string;
+property carrier_code.carrier_name string;
+datasource carrier (carrier_code, carrier_name) grain (carrier_code)
+query '''SELECT * FROM (VALUES ('C0', 'carrier0')) t(carrier_code, carrier_name)''';
+key airport_id int;
+property airport_id.airport_code string;
+property airport_id.airport_name string;
+datasource airport (airport_id, airport_code, airport_name) grain (airport_id)
+query '''SELECT * FROM (VALUES (0, 'P0', 'airport0'), (1, 'P1', 'airport1')) t(airport_id, airport_code, airport_name)''';
+key id int;
+datasource flight (id, tail_num: ~tail_num, carrier_code, airport_code: ~airport_code)
+grain (id)
+query '''SELECT * FROM (VALUES (0, 'N0', 'C0', 'P0'), (1, 'N0', 'C0', 'P0'), (2, 'N2', 'C0', 'P0'), (3, 'N1', 'C0', 'P0')) t(id, tail_num, carrier_code, airport_code)''';
+datasource aircraft (aircraft_id, tail_num, model_code: ~model_code) grain (tail_num)
+query '''SELECT * FROM (VALUES (0, 'N0', 'M0'), (1, 'N1', 'M1'), (2, 'N2', 'M2'), (3, 'N3', 'M1')) t(aircraft_id, tail_num, model_code)''';
+"""
+
+
+def _keyed():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(KEYED)
+    return executor
+
+
+def test_a_consumer_join_on_a_key_read_off_one_side_narrows_the_merge():
+    """The airports' merge pads the aircraft on `tail_num`, a join key it
+    reads off the aircraft alone (the flights bind it `~`): the aircraft
+    lookup above joins on it, so a padded row reaches nothing."""
+    executor = _keyed()
+    query = "select tail_num, airport_name, count(id) as n;"
+    planned = _planned(executor, query)
+    assert JoinType.LEFT_OUTER not in [t for _, t in planned[1:]], planned
+    assert _rows(executor, query) == [
+        ("N0", "airport0", 2),
+        ("N1", "airport0", 1),
+        ("N2", "airport0", 1),
+        ("N3", None, 0),
+    ]

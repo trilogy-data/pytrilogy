@@ -1882,6 +1882,65 @@ election, not the padded fallback.
     only). Each asserts rows. Suite: the same credential-bound failures as
     `main`.
 
+17. **The planner narrows on a consumer's join through a key it reads off
+    one side (landed; the consumer channel of handoff 2.1 step 4, third
+    slice).** Seam 16 left 77 consumer flips, 46 of them in
+    `test_dimension_chain_oracle_laws`. `_keys_force` refused every join
+    key, on the ground that a key renders coalesced with the other side.
+    It does only where the merge reads it off more than one source: with
+    the flights binding `~tail_num` and the aircraft binding it complete,
+    `resolve_concept_map` never reads the partial binding, so the merge
+    renders `tail_num` off the aircraft alone. A padded aircraft row is
+    NULL there, and the aircraft lookup above, which joins on `tail_num`,
+    drops it.
+    - **What the merge read, when it took the proofs.**
+      `consumer_proofs.single_source_reads` records, as a merge takes its
+      consumers' proofs, the columns its resolve read off one source
+      (`MergeNode.key_reads`). An outer key paired with another address is
+      left out, since `CTE.outer_join_key_class` coalesces the pair. The
+      record is of the resolve the consumers' joins were read against, so
+      the rows it names are the rows they reject. `JoinProofs.key_sources`
+      carries it, and `_keys_force` forces the source a rejected key was
+      read off, join key or not.
+    - **Measured, not landed: plans whose nodes share a relation.**
+      `_consumers_first` gives up when a node reads another node of its
+      own relation (a joinless merge over the regroup it passes through):
+      521 of 38,877 compiles over discovery, TPC and the join matrix.
+      Skipping those edges lets the walk run. In dimension-chain seed 258
+      the root merge, re-resolved over the narrowed seats merge, then
+      widened its INNER on `id` to a RIGHT; it still rejects the narrowed
+      side, so `_keys_hold` passed it. The narrowed merge's extent-free
+      partial stamp also moved, which made a passthrough a domain join (one
+      more CTE) until it was masked like the joined partials. A check that
+      no source of any node becomes preserved catches the widening, but
+      also rejects the FULL+LEFT to FULL+RIGHT side flip seam 16 shipped in
+      `test_cluster_key_lookup` (its 50 flips went back to the optimizer).
+      All three were backed out; taking these plans needs a test that tells
+      a widening from a side flip.
+
+    After: 504 flips in 253 tests (pushed 434, consumer 49, planned 12, new
+    CTE 9) against 515 in 258 on `a154c09` on the same machine (pushed 426,
+    consumer 77, planned 11, new CTE 1). The pushed and new-CTE rises are
+    not plan changes: tpc_ds `test_queries` compiles some queries a varying
+    number of times (its SQL is unchanged), and `test_join_upgrade` runs
+    the rule on hand-built CTEs whose channel depends on the test before
+    it on the worker. Counted once per (test, CTE, join), flips fell from
+    304 to 284 and consumer flips from 72 to 44. Dimension chain is at 22
+    (46 before) and tpc_h adhoc07 at 0 (6).
+    `tests/discovery/test_consumer_join_narrowing.py` pins the key read off
+    one side (red on `main`).
+
+    Gates, against `a154c09`: corpus (208 statements) 0 moved; fuzzer
+    522/522. Suite SQL capture under `PYTHONHASHSEED=0` and xdist moved 848
+    tests, almost all column order; recaptured serially in both trees, 6
+    move. Four dimension-chain laws shrink by 5 to 19 characters: a
+    reader's null-safe pair on a key the narrowed merge no longer pads
+    becomes `=`, or a LEFT the optimizer kept is INNER. Filters seed 133525, base and summary, gains a CTE (8,637 to
+    9,704 characters): once a merge's LEFT to a `_wscope` regroup is INNER,
+    a HAVING-born `max <= sum` condition stays in a CTE of its own instead
+    of being pushed below the regroup. Both assert rows. Suite: the same
+    credential-bound failures as `main`.
+
 ## Gate used
 
 ```

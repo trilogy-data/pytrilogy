@@ -24,10 +24,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from trilogy.core.enums import Derivation, JoinType
-from trilogy.core.models.build import BoolExpr, BuildConcept
+from trilogy.core.models.build import BoolExpr, BuildConcept, BuildDatasource
 from trilogy.core.models.execute import (
     ConceptPair,
     Join,
+    QueryDatasource,
     UnnestJoin,
     coalesced_key_groups,
     pair_matches_nulls,
@@ -142,6 +143,32 @@ def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     }
 
 
+def single_source_reads(node: StrategyNode) -> dict[str, str]:
+    """Columns ``node`` renders off one source alone, by its identifier: NULL
+    on every row an outer join pads that source onto, join key or not. An
+    outer key paired with another address renders coalesced across the pair
+    (`CTE.outer_join_key_class`)."""
+    resolved = node.resolve()
+    classed = {
+        address
+        for join in resolved.joins
+        if isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
+        for pair in join.pairs or []
+        if pair.left.address != pair.right.address
+        for address in (pair.left.address, pair.right.address)
+    }
+    out: dict[str, str] = {}
+    for address, sources in resolved.source_map.items():
+        source = next(iter(sources), None)
+        if (
+            len(sources) == 1
+            and address not in classed
+            and isinstance(source, (QueryDatasource, BuildDatasource))
+        ):
+            out[address] = source.identifier
+    return out
+
+
 def _pair_source(pair: ConceptPair) -> str:
     return pair.node.identifier
 
@@ -248,6 +275,7 @@ class _State:
     resolved_nullable: set[str]
     proofs: ConsumerProofs | None
     partials: set[str] | None
+    key_reads: dict[str, str] | None
 
     @classmethod
     def of(cls, node: StrategyNode) -> _State:
@@ -258,6 +286,7 @@ class _State:
             _nullable(node),
             merge.consumer_proofs if merge else None,
             merge.unfiltered_partials if merge else None,
+            merge.key_reads if merge else None,
         )
 
     def restore(self) -> None:
@@ -265,6 +294,7 @@ class _State:
         if isinstance(self.node, MergeNode):
             self.node.consumer_proofs = self.proofs
             self.node.unfiltered_partials = self.partials
+            self.node.key_reads = self.key_reads
         self.node.rebuild_cache()
 
 
@@ -294,6 +324,7 @@ def _propagate(
                 node.unfiltered_partials = {
                     c.address for c in node.resolve().partial_concepts
                 }
+                node.key_reads = single_source_reads(node)
                 narrowed.add(id(node))
                 node.rebuild_cache()
             forward = here | ConsumerProofs.of(node.conditions)
