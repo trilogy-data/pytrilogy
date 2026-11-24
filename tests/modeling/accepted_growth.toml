@@ -102,3 +102,6 @@ reason = "Human CTE names are hashed from the planned source's identifier, which
 
 ["tpc_ds_duckdb/zquery67.log"]
 reason = "The rank over the rollup reads the pass through its TVF handles (the arm holds only keys, aggregates and flags), so the same three CTEs and joins carry the longer handle aliases (`_rollup_<id>__pass_<column>`)"
+
+["tpc_ds_duckdb/zquery75.log"]
+reason = "The item join is INNER from planning (the merge's WHERE proves its left stream present), so UnionDimPushdown pushes `category = 'Books'` and the item join into each sales arm; rows identical, faster on sf=1 (docs/query_gen_simplification_audit_2026_10.md, seam 14)"
