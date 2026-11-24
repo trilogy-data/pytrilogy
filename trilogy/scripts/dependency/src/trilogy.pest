@@ -847,11 +847,12 @@ _map_functions = _{ fmap_keys | fmap_values }
 fgeo_from_text = { ^"geo_from_text" ~ "(" ~ expr ~ ")" }
 fgeo_point     = { ^"geo_point" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 fgeo_distance  = { ^"geo_distance" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fgeo_contains  = { ^"geo_contains" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 fgeo_x         = { ^"geo_x" ~ "(" ~ expr ~ ")" }
 fgeo_y         = { ^"geo_y" ~ "(" ~ expr ~ ")" }
 fgeo_centroid  = { ^"geo_centroid" ~ "(" ~ expr ~ ")" }
 fgeo_transform = { ^"geo_transform" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
-_geo_functions = _{ fgeo_from_text | fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform }
+_geo_functions = _{ fgeo_from_text | fgeo_point | fgeo_distance | fgeo_contains | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform }
 
 // =============================================================================
 // DATE FUNCTIONS

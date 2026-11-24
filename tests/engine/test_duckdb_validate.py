@@ -239,6 +239,43 @@ select center_x, center_y;
     assert round(results[0].center_y, 6) == 2.0
 
 
+def test_geo_contains_filters_points_to_a_polygon():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    try:
+        default_duckdb_engine.execute_raw_sql("INSTALL spatial;")
+        default_duckdb_engine.execute_raw_sql("LOAD spatial;")
+    except Exception as exc:
+        pytest.skip(f"DuckDB spatial extension unavailable: {exc}")
+
+    test = """
+key id int;
+property id.x float;
+property id.y float;
+
+datasource points (
+    id: id,
+    x: x,
+    y: y
+)
+grain (id)
+query '''
+select 1 as id, 2.0 as x, 2.0 as y
+union all select 2, 5.0, 2.0
+union all select 3, 3.9, 0.1
+''';
+
+const square <- geo_from_text('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))');
+auto in_square <- geo_contains(square, geo_point(x, y));
+
+where in_square
+select id
+order by id asc;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert [row.id for row in results] == [1, 3]
+
+
 def test_show_validate_generation():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """

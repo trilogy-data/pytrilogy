@@ -193,6 +193,7 @@ class SyntaxNodeKind(str, Enum):
     FGEO_FROM_TEXT = "fgeo_from_text"
     FGEO_POINT = "fgeo_point"
     FGEO_DISTANCE = "fgeo_distance"
+    FGEO_CONTAINS = "fgeo_contains"
     FGEO_X = "fgeo_x"
     FGEO_Y = "fgeo_y"
     FGEO_CENTROID = "fgeo_centroid"
@@ -564,6 +565,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "fgeo_from_text": SyntaxNodeKind.FGEO_FROM_TEXT,
     "fgeo_point": SyntaxNodeKind.FGEO_POINT,
     "fgeo_distance": SyntaxNodeKind.FGEO_DISTANCE,
+    "fgeo_contains": SyntaxNodeKind.FGEO_CONTAINS,
     "fgeo_x": SyntaxNodeKind.FGEO_X,
     "fgeo_y": SyntaxNodeKind.FGEO_Y,
     "fgeo_centroid": SyntaxNodeKind.FGEO_CENTROID,

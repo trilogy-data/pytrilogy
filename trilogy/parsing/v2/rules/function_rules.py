@@ -145,6 +145,7 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FGEO_FROM_TEXT: FunctionType.GEO_FROM_TEXT,
     SyntaxNodeKind.FGEO_POINT: FunctionType.GEO_POINT,
     SyntaxNodeKind.FGEO_DISTANCE: FunctionType.GEO_DISTANCE,
+    SyntaxNodeKind.FGEO_CONTAINS: FunctionType.GEO_CONTAINS,
     SyntaxNodeKind.FGEO_X: FunctionType.GEO_X,
     SyntaxNodeKind.FGEO_Y: FunctionType.GEO_Y,
     SyntaxNodeKind.FGEO_CENTROID: FunctionType.GEO_CENTROID,

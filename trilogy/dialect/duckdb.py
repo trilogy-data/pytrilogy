@@ -284,6 +284,7 @@ FUNCTION_MAP = {
     FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
     FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]}, {x[1]})",
+    FunctionType.GEO_CONTAINS: lambda x, types: f"ST_Contains({x[0]}, {x[1]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
 }
 
