@@ -108,21 +108,34 @@ WHERE or HAVING the planner placed above the merge, so the planner now
 reads them too (seam 15): `consumer_proofs.narrow_for_consumers` hands each
 merge what all of its consumers reject on columns read off it alone, through
 plain selects, merges and non-grouping-set groups (keys only). Flips fell
-from 1,059 to 608 (pushed 433, consumer 157, planned 12). What is left:
+from 1,059 to 608 (pushed 433, consumer 157, planned 12).
 
-- 332 are one shape (`test_relation_rollup_laws`): the narrowed CTE is also
-  read under an unnest, which stops the proof, and both readers render as
-  one relation. Letting a proof pass an unnest on a non-element column
-  would take them.
-- The 157 consumer-channel flips carry no condition on the flipped CTE
-  (`test_cluster_key_lookup`, `test_dimension_chain_oracle_laws` the
-  largest), so the proof is a consumer's join, not its filter. The likely
-  lead (unmeasured) is a consumer's INNER equality on the merge's key:
-  `narrow_joins_read_by_inner` across merges.
+A consumer's join equality now reads too (seam 16): a NULL never matches
+`=`, so `consumer_proofs.join_rejections` hands a merge the columns its
+consumers join on, on a side the join drops unmatched rows of, and the merge
+forces a side through any column it alone renders, partial or not. A
+consumer's join type can widen when it is re-resolved over the narrowed
+merge, so the channel is checked against the plan it built and dropped if a
+consumer stopped rejecting (tpc_h adhoc07). Flips fell from 597 to 529
+(pushed 431, consumer 77, planned 12, new CTE 9). What is left:
+
+- 332 are one shape (`test_relation_rollup_laws`), and it is not a row
+  proof the planner can make. `PredicatePushdown` pushes the root's
+  `ecoregion_id = 1` into the unnest CTE as a filter on the element, then
+  into the parent CTE's own `ecoregion_id`: under `merge ... into` the two
+  are one address. No consumer rejects the parent's padded rows as rows
+  (the merge above reads the key coalesced, and the unnest's reader joins
+  it as its padded side), so taking these means teaching the planner that
+  merged-address equivalence, not passing a proof through the unnest.
+- 99 pushed flips elsewhere (tpc_ds q-files 27, the filters and windows
+  laws), not yet censused by shape.
+- 77 consumer flips: `test_dimension_chain_oracle_laws` (46: a key that
+  renders coalesced, or a plan the check rejected), `test_semi_join_pushdown`
+  (10, CTEs the optimizer builds), tpc_h adhoc07 (6, the rejected widening).
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
-until those two are planned. Re-run the census
+until those are planned. Re-run the census
 (`local_scripts/sql_ab/guard_census_plugin.py`) before deleting any of them.
 
 The same holds for `UpgradeOuterFromKeySetEquivalence` (seam 2 of
