@@ -390,6 +390,8 @@ FOUND_SEEDS = [
     15366,
     # open until 0.3.537 (summary model)
     11457,
+    # open until 0.3.538
+    24973,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
 # what the planner raises or DuckDB rejects, or None for wrong rows
@@ -404,8 +406,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (16181, "summary"): "Missing source CTE",
     (18040, "base"): None,
     (18040, "summary"): None,
-    (24973, "base"): None,
-    (24973, "summary"): None,
     (28981, "base"): "keyless join",
     (28981, "summary"): "keyless join",
     (34305, "base"): None,

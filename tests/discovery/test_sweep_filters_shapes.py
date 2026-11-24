@@ -507,6 +507,62 @@ SHAPES = [
             ("B", "linden", None, 2, 2),
         ],
     ),
+    # a set feeds a group beside it no column (123427, reduced): the WHERE's
+    # count by city was dropped from the select's count as one the set
+    # supplied, and recounted per row as 1; A's Acers fell
+    (
+        (
+            "select city, tag, (count(tree_id) by city) ? city in (city ?"
+            " min(height) by city, tree_form > 0) as v0 where count(tree_id) by"
+            " city >= count(tree_id) by city, species;"
+        ),
+        [("A", "x", 4), ("A", "y", 4), ("B", "x", 2), ("B", "y", 2)],
+    ),
+    # a set planned alone gates its own rows (128462, reduced): the WHERE
+    # keeps A's Acers and B's Tilia, so the set is linden; B's Acer leaked in
+    (
+        (
+            "select city, tag, species ? tree_form in (tree_form ?"
+            " count_distinct(tag) by species < 6 and city = 'B') as v1 where"
+            " min(height) by city, species <= 3;"
+        ),
+        [("A", "x", None), ("A", "y", None), ("B", "x", "Tilia")],
+    ),
+    # ...and one at the gate's own grain is gated by its pairing (138625,
+    # reduced): a2's NULL height was filtered as a minimum of 8
+    (
+        (
+            "select tree_id, tag ? city in (city ? count(tree_id) by species >"
+            " min(height) by city, species) as v0 where min(height) by city,"
+            " species != 8;"
+        ),
+        [("a1", None), ("a2", None), ("a3", None), ("b1", None), ("b2", None)],
+    ),
+    # a select target re-sourced at FINAL reads the WHERE-kept set (130249,
+    # reduced): only B's Acer passes, so no city has a kept linden
+    (
+        (
+            "select city ? city in (city ? tree_form = 'linden') as v0, tag ?"
+            " tree_form in (tree_form ? height > 3) as v1, count(tree_id) by * as"
+            " v3 where min(height) by city, species >= 6 having v3 <= 1;"
+        ),
+        [(None, "y", 1)],
+    ),
+    # a set's input supplies no select key (129123, reduced): Acer once per
+    # city
+    (
+        (
+            "select species, (sum(height) by tree_form) ? tree_form in (tree_form"
+            " ? count_distinct(tag) by city, species > 6) as v0, sum(height) by"
+            " tree_form as v1;"
+        ),
+        [
+            ("Acer", None, 15),
+            ("Quercus", None, 15),
+            ("Tilia", None, 2),
+            ("Ulmus", None, None),
+        ],
+    ),
 ]
 
 

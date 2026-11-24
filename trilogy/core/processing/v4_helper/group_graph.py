@@ -2061,9 +2061,10 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             for pred in group_graph.predecessors(succ):
                 demanded -= ctx.domain_members.get(pred, set())
         if is_grouping:
+            # a set beside it feeds no rows: it supplies nothing
             sibling_providable: set[str] = set()
-            for sib in _siblings(group_graph, gid, succ):
-                if facts[sib].derivation not in GROUPING_DERIVATIONS:
+            for sib in row_parents(group_graph, group_edges, succ):
+                if sib != gid and facts[sib].derivation not in GROUPING_DERIVATIONS:
                     sibling_providable |= io.capability.get(sib, set())
             keep = fact.primary | fact.grain
             demanded -= sibling_providable - keep

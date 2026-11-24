@@ -7,7 +7,6 @@ responsible for mutating ``GroupAttrs.condition_atoms``.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 
@@ -52,6 +51,7 @@ from .concept_graph import computed_origin_relation_members
 from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    IN_SET_PLAN,
     NESTED_DEPTHS,
     DepthLabel,
     EdgeKind,
@@ -804,9 +804,6 @@ def _filters_the_keys_decide(keys: set[str], environment: BuildEnvironment) -> s
             environment, plain, set(pairing_keys(content.grain.components))
         )
     }
-
-
-IN_SET_PLAN: ContextVar[bool] = ContextVar("IN_SET_PLAN", default=False)
 
 
 @contextmanager

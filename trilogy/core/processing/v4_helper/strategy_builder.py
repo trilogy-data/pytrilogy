@@ -8828,7 +8828,8 @@ def build_strategy_node(
                 # and are left alone.
                 return None
             # FINAL's own re-sources host their memberships unwired until here.
-            _wire_existence(final, built, ctx.feeder_cache)
+            # they are the select's: a set they read is the WHERE-kept one
+            _wire_existence(final, built, ctx.feeder_cache, select_phase=True)
             _drop_stale_resolutions(final, set())
         return final
 
