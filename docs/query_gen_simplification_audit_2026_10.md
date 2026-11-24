@@ -1808,6 +1808,54 @@ election, not the padded fallback.
     the xdist-order `test_rank_beside_partial_merge` failure that passes
     serially.
 
+16. **The planner narrows on its consumers' joins (landed; the consumer
+    channel of handoff 2.1 step 4, second slice).** Seam 15 left 157
+    consumer-channel flips that carry no condition on the flipped CTE: the
+    proof is a consumer's join equality (`_inner_pair_rejections`). A NULL
+    never matches `=`, so a parent row NULL on a column a consumer joins on,
+    on a side the join does not preserve (both of an INNER, the right of a
+    LEFT, the left of a RIGHT), reaches nothing above it.
+    `consumer_proofs.join_rejections` reads that off each consumer's
+    resolved joins (null-safe pairs, a coalesced left and opaque bindings
+    excluded) into `ConsumerProofs.keys`, which passes up a node as the
+    filter proofs do.
+    - **A partial binding still proves its side.** The merge's own WHERE
+      cannot force a side through a column bound partially there
+      (`_unprovable_addresses`). A consumer's join can: a column only the
+      padded side holds is NULL on every padded row, whatever values the
+      side lacks. `JoinProofs.key_proofs` forces a side through its
+      exclusive, non-opaque columns (`grain_utility._keys_force`); without
+      that, the flights' `~carrier_code` in `test_dimension_chain_oracle_laws`
+      kept every one of these flips the optimizer's.
+    - **A narrowed merge rejects more.** A merge's own joins are read after
+      it takes its consumers' proofs and is re-resolved, so a RIGHT it
+      narrows to INNER hands its parent the rejection the INNER makes.
+    - **A consumer's join type is not fixed.** Re-resolved over a narrowed
+      parent, a merge may preserve the side it dropped before: in tpc_h
+      adhoc07 the order lookup's narrowing left the summed side alone
+      padded, and the root merge it was keyed on went from INNER to RIGHT,
+      keeping the NULL order row its INNER had dropped. So the plan the
+      join channel built is checked (`_keys_hold`): when any narrowed
+      merge's consumers no longer reject its keys, the plan is restored and
+      narrowed on the filter channel alone. Over the 600 dimension-chain
+      laws the check fails in 6 of 583 compiles.
+    - **A regroup by its own key folds.** A narrowed merge can leave a
+      `group(x) by k` over rows already at `k` as a projection, its own
+      CTE. `rename_reference` now reads any GROUP's content as the rename
+      (the bare render is still confirmed by `consumed_parent_column`), so
+      `CollapseSingleParent` folds it into the merge it reads.
+
+    The unnest shape seam 15 left (332 flips in `test_relation_rollup_laws`)
+    is not a row proof the planner can make. Its flips come from
+    `PredicatePushdown` pushing the root's `ecoregion_id = 1` into the
+    unnest CTE as a filter on the element, then from there into the parent
+    CTE's own `ecoregion_id` column: under `merge ... into` the element and
+    the parent's column are one address. No consumer rejects the parent's
+    padded rows as rows: the merge above reads the key coalesced, and the
+    unnest's consumer reads it as its padded side.
+
+    After: FLIPS_AFTER. GATES_AFTER
+
 ## Gate used
 
 ```
