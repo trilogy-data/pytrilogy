@@ -594,4 +594,51 @@ theorem set_read_column_pins_no_row :
     trees.eraseDups.length = 5 ∧ trees.length = 6 := by
   decide
 
+/-! ## A filter's rows beside its set and its lookups (0.3.540)
+
+A WHERE hosted on a total gates the rows the total reads; a filter whose set
+reads that total meets it only through the set, so its own rows still owe the
+gate. A filtered value's step paired as a lookup holds one row per key: built
+per row, every row of a key meets every other. And a row value keeps the key
+of its rows to pair on, even where the scan it reads dropped that key after
+its WHERE read it. -/
+
+/-- `select species ? tree_form in (tree_form ? sum(height) by * != 3) as v0,
+count(tree_id) by * as v1 where min(height) by species is not null`: the
+Ulmus has no height, so three species are kept, each in the set. The gate was
+hosted on the `by *` group the set's condition and `v1` share; the filter's
+own rows read past it, and the Ulmus showed as a NULL fourth row
+(`gate_reaches_a_filter_through_its_set`, 160158). Trees are `(species,
+height)`, 0 for no height. -/
+theorem gate_reaches_a_filter_through_its_set :
+    let trees : List (Nat × Nat) := [(0, 3), (0, 0), (1, 5), (2, 0), (0, 7), (3, 2)]
+    let kept := trees.filter fun r => (trees.filter (·.1 == r.1)).any (·.2 != 0)
+    (kept.map (·.1)).eraseDups.length = 3 ∧ (trees.map (·.1)).eraseDups.length = 4 := by
+  decide
+
+/-- `select tree_form, species ? max(height) by species < 5 as v0,
+count(tree_id) as v1, sum(height ? tag = 'x') as v2 where species in
+(species ? height is not null)`: four broadleaf trees, three of them Acers.
+The `v0` step, built per tree under the WHERE, was paired with the trees on
+`species` as a lookup, so each Acer met all three and the count read 10
+(`lookup_side_counts_once`, 167663). Broadleaf trees are their species. -/
+theorem lookup_side_counts_once :
+    let trees : List Nat := [0, 0, 1, 0]
+    let paired := trees.map fun s => (trees.filter (· == s)).length
+    trees.length = 4 ∧ paired.foldl (· + ·) 0 = 10 := by
+  decide
+
+/-- `select height > 2 as big, tree_form ? species in (species ? species !=
+'Tilia') as v0 where tree_id in (tree_id ? count(tree_id) by city < 8)`: every
+tree passes, and the six trees show four `(big, v0)` pairs. The scan under the
+membership dropped `tree_id` once the WHERE read it, so `big` was deduped to
+its three values with no key left, and FINAL crossed them with `v0`'s two
+(`row_value_keeps_its_key`, 178393). Trees are `(big, v0)`: big 0 false, 1
+true, 2 NULL; v0 0 broadleaf, 1 NULL. -/
+theorem row_value_keeps_its_key :
+    let trees : List (Nat × Nat) := [(1, 0), (2, 0), (1, 0), (2, 1), (1, 0), (0, 1)]
+    trees.eraseDups.length = 4 ∧
+      (trees.map (·.1)).eraseDups.length * (trees.map (·.2)).eraseDups.length = 6 := by
+  decide
+
 end Trilogy.Filters

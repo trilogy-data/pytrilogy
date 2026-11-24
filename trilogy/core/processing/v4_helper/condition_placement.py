@@ -848,7 +848,7 @@ def _unfiltered_filter_streams(
         and b.derivation == Derivation.FILTER
         and b.depth_label not in NESTED_DEPTHS
         and shown & set(b.primary_members)
-        and any(scope.group_graph.has_edge(host, gid) for host in chosen)
+        and _reads_host_beside_rows(gid, chosen, shown, scope)
         and (
             build_fd_determines_all(scope.environment, b.grain_components, keys)
             or set(scope.group_graph.successors(gid)) == {FINAL_NODE_ID}
@@ -856,6 +856,26 @@ def _unfiltered_filter_streams(
         and not _rows_filtered_by(gid, chosen, scope, memo)
         and not _content_hosted(b, chosen, scope)
     }
+
+
+def _reads_host_beside_rows(
+    gid: str, chosen: tuple[str, ...], shown: set[str], scope: "_PlacementScope"
+) -> bool:
+    """`gid` reads a host directly, or through the filter of a set its
+    condition reads (`tree_form ? sum(height) by * != 3` under `species ?
+    tree_form in (...)`): neither passes the host's rows on to it."""
+    for pred in scope.group_graph.predecessors(gid):
+        if pred in chosen:
+            return True
+        b = scope.buckets.get(pred)
+        if (
+            b is not None
+            and b.derivation == Derivation.FILTER
+            and not shown & set(b.primary_members)
+            and _reads_host_beside_rows(pred, chosen, shown, scope)
+        ):
+            return True
+    return False
 
 
 def _content_hosted(

@@ -617,6 +617,36 @@ SHAPES = [
             ("B", "Tilia", "B", 7),
         ],
     ),
+    # a filter meeting the WHERE's host only through its set's condition
+    # still owes the gate (160158, reduced): the unmeasured Ulmus is no row
+    (
+        (
+            "select species ? tree_form in (tree_form ? sum(height) by * != 3) as"
+            " v0, count(tree_id) by * as v1 where min(height) by species is not"
+            " null;"
+        ),
+        [("Acer", 5), ("Quercus", 5), ("Tilia", 5)],
+    ),
+    # a filtered value built per tree is no lookup on its species
+    # (167663, reduced): four broadleaf trees, the x ones 3 and 5
+    (
+        (
+            "select tree_form, species ? max(height) by species < 5 as v0,"
+            " count(tree_id) as v1, sum(height ? tag = 'x') as v2 where species"
+            " in (species ? height is not null);"
+        ),
+        [("broadleaf", None, 4, 8), ("linden", "Tilia", 1, 2)],
+    ),
+    # a row value keeps the key its scan read only for the WHERE (178393,
+    # reduced): every tree passes, and big pairs with v0 per tree, not crossed
+    (
+        (
+            "select height > 2 as big, tree_form ? species in (species ? species"
+            " != 'Tilia') as v0 where tree_id in (tree_id ? count(tree_id) by"
+            " city < 8);"
+        ),
+        [(True, "broadleaf"), (None, "broadleaf"), (None, None), (False, None)],
+    ),
 ]
 
 

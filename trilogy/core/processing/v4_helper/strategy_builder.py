@@ -4151,17 +4151,28 @@ def _hold_lookup_sides(
     `columns` are what each side holds (`_side_columns`); a side held before
     supplies only what its keys determine. Whether the built rows are finer
     than the keys is the one physical read: it follows the datasource the
-    scan resolved to."""
+    scan resolved to. A filtered value's step is held the same way: built per
+    row, it repeats its value once per row of its key
+    (`Filters.lookup_side_counts_once`)."""
     held = list(parents)
     for idx, parent in enumerate(parents):
         gid = _origin_group(parent, origin)
         if gid is None or not parent.parents:
             continue
         group, keys = attrs[gid], plan.keys_for(gid)
+        # a membership's step holds its set's feeder as a parent: a dedup
+        # over it would read the feeder's rows; a filtered aggregate or row
+        # identity (`tree_id ? c`) is no value of the keys it pairs on
+        lookups = (
+            (Derivation.BASIC, Derivation.FILTER)
+            if not parent.existence_concepts
+            and _filtered_off_keys(group, keys, environment)
+            else (Derivation.BASIC,)
+        )
         # a `by *` total is one value on every row, whatever keys it rides
         determined = build_fd_closure(environment, keys | {ALL_ROWS_ADDRESS})
         if (
-            group.derivation != Derivation.BASIC
+            group.derivation not in lookups
             or not keys
             or not group.grain_components
             or not group.grain_components <= determined
@@ -4177,6 +4188,19 @@ def _hold_lookup_sides(
         concepts = [c for address, c in exposed.items() if address in determined]
         held[idx] = _forced_dedup(parent, concepts, environment, determined)
     return held
+
+
+def _filtered_off_keys(
+    group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """Every value `group` filters is a column it is paired on (`species ? c`
+    beside `species`)."""
+    return all(
+        isinstance(lineage := environment.concepts[m].lineage, BuildFilterItem)
+        and isinstance(lineage.content, BuildConcept)
+        and lineage.content.address in keys
+        for m in group.primary_members
+    )
 
 
 def _merge_plan(
