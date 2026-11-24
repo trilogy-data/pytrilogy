@@ -39,10 +39,7 @@ from trilogy.core.processing.condition_utility import (
     opaque_binding_addresses,
 )
 from trilogy.core.processing.grain_utility import non_null_proofs
-from trilogy.core.processing.join_resolution import (
-    NARROWER_JOIN_TYPES,
-    OUTER_JOIN_TYPES,
-)
+from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.core.processing.nodes import (
     GroupNode,
     MergeNode,
@@ -218,15 +215,11 @@ def _walk(root: StrategyNode) -> list[StrategyNode]:
 
 def _consumers_first(nodes: list[StrategyNode]) -> list[str] | None:
     """Relation identifiers, each after every consumer of it; None if two
-    relations read each other. A node reading a node of its own relation (a
-    joinless merge over the group it passes through) is no consumer of it."""
+    nodes of one relation read each other."""
     consumers: dict[str, set[str]] = defaultdict(set)
     for node in nodes:
-        ident = node.resolve().identifier
         for parent in node.parents:
-            pident = parent.resolve().identifier
-            if pident != ident:
-                consumers[pident].add(ident)
+            consumers[parent.resolve().identifier].add(node.resolve().identifier)
     idents = list(dict.fromkeys(n.resolve().identifier for n in reversed(nodes)))
     order: list[str] = []
     placed: set[str] = set()
@@ -249,7 +242,7 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     may preserve a side it dropped before (a merge whose other side lost its
     padding keeps this side's NULL-keyed rows). So the join channel is checked
     against the plan it built, and dropped wholesale if any consumer stopped
-    rejecting what a merge took from it, or if any join of the plan widened."""
+    rejecting what a merge took from it."""
     nodes = _walk(root)
     order = _consumers_first(nodes)
     if order is None:
@@ -263,9 +256,7 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     narrowed: set[int] = set()
     _propagate(order, by_ident, ident_of, True, narrowed)
     _rebuild(nodes, narrowed, saved)
-    if _keys_hold(order, by_ident, ident_of) and not any(
-        state.widened() for state in saved
-    ):
+    if _keys_hold(order, by_ident, ident_of):
         return
     for state in saved:
         state.restore()
@@ -282,7 +273,6 @@ class _State:
     proofs: ConsumerProofs | None
     partials: set[str] | None
     key_reads: dict[str, str] | None
-    joins: list[JoinType]
 
     @classmethod
     def of(cls, node: StrategyNode) -> _State:
@@ -294,16 +284,6 @@ class _State:
             merge.consumer_proofs if merge else None,
             merge.unfiltered_partials if merge else None,
             merge.key_reads if merge else None,
-            _join_types(node),
-        )
-
-    def widened(self) -> bool:
-        """A join of this node keeps rows it dropped before: re-resolved over
-        a narrowed merge, it is no longer the plan the proofs came from."""
-        after = _join_types(self.node)
-        return len(after) != len(self.joins) or any(
-            new != old and new not in NARROWER_JOIN_TYPES.get(old, ())
-            for old, new in zip(self.joins, after)
         )
 
     def restore(self) -> None:
@@ -356,8 +336,6 @@ def _propagate(
                         keys=frozenset(join_rejections(node, parent))
                     )
                 pident = ident_of[id(parent)]
-                if pident == ident:
-                    continue
                 prior = received.get(pident)
                 received[pident] = given if prior is None else prior & given
     return received
@@ -376,10 +354,6 @@ def _keys_hold(
         for node in group
         if isinstance(node, MergeNode) and node.consumer_proofs is not None
     )
-
-
-def _join_types(node: StrategyNode) -> list[JoinType]:
-    return [join.join_type for join in node.resolve().joins if isinstance(join, Join)]
 
 
 def _nullable(node: StrategyNode) -> set[str]:
