@@ -123,20 +123,23 @@ A join key forces its side too (seam 17), wherever the merge reads it off
 that side alone: a `~` binding beside a complete one is never read, so the
 key is NULL on the complete side's padded rows. Consumer flips fell from 77
 to 49 (dimension chain 46 to 22, tpc_h adhoc07 6 to 0); 504 flips in all
-on this run's base of 515 (distinct flips 304 to 284). What is left:
+on this run's base of 515 (distinct flips 304 to 284).
 
-- 332 are one shape (`test_relation_rollup_laws`): a WHERE on a merged
-  address (`ecoregion_id` merged with an unnest element). v4 discovery
-  plans the address twice, from `eco` and as an unnest of the same root
-  relation (`grp:unnest:d0:local.ecoregion_id`), and joins the unnest back
-  onto that relation, so the narrowed merge has a second consumer under an
-  unnest that proves nothing. `PredicatePushdown` then pushes
-  `ecoregion_id = 1` into both. A NULL-key proof does not pass the unnest
-  (the padded tree's unnested rows match only its own padded row, but that
-  is a row-identity argument, not a NULL rejection); the planner fix is in
-  discovery, not building that self-join.
-- 102 pushed flips elsewhere, now censused by shape: tpc_ds q73 (12 per
-  four compiles) is the filtered-aggregate rewrite turning `count(x ? p) >= 1`
+The 332 flips of one shape in `test_relation_rollup_laws` were discovery's
+(seam 18). A WHERE on a key an unnest is merged into (`ecoregion_id`) made
+every aggregate read the unnest as a row parent
+(`concept_graph._constrain_aggregates_by_merged_expansions`), even one
+grouped by that key, whose rows already reach it through the same unnest.
+The planner joined a second unnest of the merge's rows back on (key, row
+id) to read the key again, and put the WHERE above that self-join, where
+no proof reaches the merge's LEFT. An aggregate that reads the key itself
+now takes no such edge, so the WHERE lands on the merge. Flips fell from
+486 to 157 on one machine (pushed 416 to 87, distinct 284 to 142). What
+is left:
+
+- 87 pushed flips, censused by shape: tpc_ds q73 (12 to 15 per run, as
+  `test_queries` compiles it a varying number of times) is the
+  filtered-aggregate rewrite turning `count(x ? p) >= 1`
   into a row WHERE, an optimizer rewrite and no join proof; the filters,
   windows and expressions laws (26) push a HAVING on a `_wscope` aggregate
   into the merge that materializes it; `test_merge_union_parity` (8) pushes

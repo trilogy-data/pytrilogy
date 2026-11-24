@@ -1941,6 +1941,46 @@ election, not the padded fallback.
     of being pushed below the regroup. Both assert rows. Suite: the same
     credential-bound failures as `main`.
 
+18. **A WHERE on a grouped merged key is planned on the aggregate's own
+    rows (landed; the unnest shape of handoff 2.1 step 4).** Seams 15 and
+    16 left 332 pushed flips in `test_relation_rollup_laws`, all one plan:
+    `select ecoregion_id, count(tree_id) where ecoregion_id = 1` under
+    `merge tree_eco_region into ecoregion_id`. The concept graph's
+    `_constrain_aggregates_by_merged_expansions` gives every D0 aggregate
+    the unnest as a lineage parent when the WHERE reads the key it is
+    merged into, so the WHERE filters the rows the unnest expands. An
+    aggregate grouped by that key already reads it per row, and its row
+    stream reaches it through the same unnest (trees, the lists, LEFT the
+    unnest INNER `eco`). The extra edge planned a second unnest of that
+    stream, joined it back LEFT on (key, `tree_id`), read the key as a
+    coalesce of both and put the WHERE above. No proof passes that: the
+    stream has a consumer under an unnest, and the coalesce reads two
+    sources. `PredicatePushdown` then pushed `ecoregion_id = 1` into the
+    stream and `UpgradeJoinOnGuards` made its LEFT an INNER.
+    - **The fix is the edge.** An aggregate with a lineage edge from the
+      merged key takes no edge from its unnest. The WHERE is placed on the
+      row stream, the merge narrows its LEFT on its own condition, and the
+      self-join is never planned.
+    - Every other D0 aggregate keeps the edge: one that does not read the
+      key (`select city, count(tree_id) where ecoregion_id = 1`) has no
+      other relation between the key and its rows.
+
+    After: 157 flips in 111 tests (pushed 87, consumer 49, planned 12, new
+    CTE 9) against 486 in 253 on `5dad39d` on the same machine (pushed
+    416). `test_relation_rollup_laws` has none left (332); tpc_ds
+    `test_queries` moved 12 to 15, its varying compile count. Distinct
+    flips 284 to 142. `test_a_where_on_the_grouped_merged_key_is_planned_on_its_rows`
+    pins the plan (24 cases, all red on `main`): no outer join at plan
+    time, one unnest.
+
+    Gates, against `5dad39d`: corpus (206 statements, with
+    `tpc_ds_duckdb/aggregates`) 0 moved; fuzzer 522/522. Suite SQL capture
+    under `PYTHONHASHSEED=0` and xdist, the moved tests recaptured serially
+    in both trees: only `test_relation_rollup_laws` moves, 152 statements,
+    none larger (628 CTEs to 456, 608 joins to 304, 195,064 characters to
+    122,318). Each asserts rows against the summary-free plan. Suite: the
+    same credential-bound failures as `main`.
+
 ## Gate used
 
 ```
