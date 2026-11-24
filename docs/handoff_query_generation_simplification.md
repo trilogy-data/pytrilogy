@@ -102,14 +102,28 @@ left-deep stream, and a later INNER equality on a padded side's key proves
 it present. 1,080 flips remain, 12 of them planned (5 are `union join` FULLs
 the planner may not re-side once the merge has ordered its sources).
 
-The others rest on proofs that only exist after planning: conditions the
-optimizer itself pushed (884 of the 1,080), and cross-CTE consumer proofs
-(`join_upgrade._external_forced_map`, 175). So
-`_downgrade_base_join`, the
-LEFT/RIGHT arms of `_downgrade` and the BaseJoin loop in
-`UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay unless pushed conditions become visible to
-the planner. That visibility is the decision; it is the same prerequisite as
-2.6's remaining sites.
+The others rested on conditions the optimizer itself pushed and on
+cross-CTE consumer proofs (`join_upgrade._external_forced_map`). Both are a
+WHERE or HAVING the planner placed above the merge, so the planner now
+reads them too (seam 15): `consumer_proofs.narrow_for_consumers` hands each
+merge what all of its consumers reject on columns read off it alone, through
+plain selects, merges and non-grouping-set groups (keys only). Flips fell
+from 1,059 to 608 (pushed 433, consumer 157, planned 12). What is left:
+
+- 332 are one shape (`test_relation_rollup_laws`): the narrowed CTE is also
+  read under an unnest, which stops the proof, and both readers render as
+  one relation. Letting a proof pass an unnest on a non-element column
+  would take them.
+- The 157 consumer-channel flips carry no condition on the flipped CTE
+  (`test_cluster_key_lookup`, `test_dimension_chain_oracle_laws` the
+  largest), so the proof is a consumer's join, not its filter. The likely
+  lead (unmeasured) is a consumer's INNER equality on the merge's key:
+  `narrow_joins_read_by_inner` across merges.
+
+So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
+BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
+until those two are planned. Re-run the census
+(`local_scripts/sql_ab/guard_census_plugin.py`) before deleting any of them.
 
 The same holds for `UpgradeOuterFromKeySetEquivalence` (seam 2 of
 `docs/query_gen_simplification_audit_2026_10.md`): 87 firings over the

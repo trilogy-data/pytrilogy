@@ -253,7 +253,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; the eleventh deleted the nine proof branches of the rule the planner already owns, moving no firing; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice, 12 landed (the zero-filled COUNT owned by its source) and 13 landed (one owner for a coalesced key read), 14 landed (the planner narrows on its own WHERE: `UpgradeJoinOnGuards` flips 1,539 to 1,080); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice, 12 landed (the zero-filled COUNT owned by its source) and 13 landed (one owner for a coalesced key read), 14 landed (the planner narrows on its own WHERE: `UpgradeJoinOnGuards` flips 1,539 to 1,080), 15 landed its first slice (the planner narrows on its consumers' filters: 1,059 to 608); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1747,6 +1747,66 @@ election, not the padded fallback.
     twin; each asserts rows. Fuzzer 522/522. Suite: the same
     credential-bound failures as `main`, and the xdist-order
     `test_rank_beside_partial_merge` failure that passes serially.
+
+15. **The planner narrows on its consumers' filters (landed; the pushed
+    and consumer channels of handoff 2.1 step 4, first slice).** Seam 14
+    left 1,059 `UpgradeJoinOnGuards` flips over the suite: 863 on a
+    condition an optimizer phase pushed into the CTE, 175 on a consumer's
+    rejection (`_external_forced_map`), 12 planned and 9 in CTEs the
+    optimizer built. The pushed and consumer channels are one fact the
+    planner already holds: a WHERE or HAVING on a node above the merge (the
+    HAVING wrap, a staged filter's select, a parent merge's own WHERE).
+    `consumer_proofs.narrow_for_consumers` runs once `_plan_query_node` has
+    the statement's tree. It walks it consumers first and hands each
+    outer-joining merge what all of its consumers reject, on columns read off
+    that merge alone. The merge reads that into the same harvests as its own
+    WHERE (`MergeNode.consumer_proofs`), and the plan above it is resolved
+    again.
+    - **What passes a node.** Rows pass a plain select, a merge and a group
+      that is not a grouping-set pass unchanged; a window, unnest, limit,
+      union or rowset boundary stops the proof. Through a group only a key
+      passes: a rejected key's group holds only rows with that key NULL,
+      but dropping a padded row changes the aggregates of the group it
+      joined. A count the node zero-fills is 0 on a padded row, and a
+      partial aggregate a regroup rolls up is not a row value, so neither
+      passes, and a merge with a LIMIT takes nothing from above it.
+    - **One relation, every consumer.** Nodes are keyed by the relation
+      they resolve to (`QueryDatasource.identifier`), which does not
+      include join types: two nodes that render as one CTE take only what
+      all of their consumers reject. In `test_relation_rollup_laws`
+      (332 of the flips left) the narrowed join is in a CTE also read under
+      an unnest, so it stays the optimizer's.
+    - **Two stamps the narrowing must not move.** A merge's partial
+      stamp: the rows it drops are rows every consumer drops, so an
+      address it bound completely before stays complete
+      (`MergeNode.unfiltered_partials`). Without that, the unnest filter
+      laws re-joined the tree table above the narrowed merge (one more CTE
+      and join each). Nullability: a node keeps what its first resolve
+      found nullable (`StrategyNode.resolve`), so the narrowed merge and
+      each reader drop the padding their parents no longer report before
+      they are resolved again. Without that, a reader kept an
+      `IS NOT NULL` and a null-safe key the optimizer used to strip
+      (`test_window_expression_join`).
+
+    After: 608 flips in 298 tests (pushed 433, consumer 157, planned 12,
+    new CTE 6). q46's FULL to the bought rowset is INNER at plan time, q77's
+    three FULLs to returns are LEFT and q44's FULL is RIGHT
+    (`tests/modeling/tpc_ds_duckdb/test_planner_owned_join_narrowing.py`,
+    red on `main`). Open: the consumer channel's flips carry no condition
+    on the flipped CTE, so their proof is a consumer's join (likely an
+    INNER equality on the merge's key, unmeasured), and a relation shared
+    with a stopped reader.
+
+    Gates, against `649ebd0`: corpus (206 statements) 0 moved; fuzzer
+    522/522; suite SQL capture under `PYTHONHASHSEED=0` and xdist: 991
+    statements moved, 966 of them the same length, 2,694 characters fewer
+    in all, joins and CTEs unchanged. The 13 that grew do so by 1 to 6
+    characters: coalesce operand order, a merged key read off its twin
+    column once the join is INNER, and one FULL rendered LEFT
+    (`test_membership_set_is_no_side_of_the_merge_hosting_it`); each
+    asserts rows. Suite: the same credential-bound failures as `main`, and
+    the xdist-order `test_rank_beside_partial_merge` failure that passes
+    serially.
 
 ## Gate used
 

@@ -1,6 +1,7 @@
 """Join narrowings the planner owns, that the optimizer's join upgrade used to
 make after it (handoff 2.1): a merge's own `IS NOT NULL` on a column only one
-side of a FULL holds, and a later INNER equality on a padded side's key."""
+side of a FULL holds, a later INNER equality on a padded side's key, and a
+filter a node above the merge applies to a column the merge alone supplies."""
 
 from pathlib import Path
 
@@ -49,3 +50,20 @@ def test_a_later_inner_on_a_padded_key_narrows_at_plan_time():
     )
     assert types[address] == JoinType.INNER, types
     assert types[customer] == JoinType.INNER, types
+
+
+def _planned_file(name: str) -> dict[str, JoinType]:
+    return _planned((Path(__file__).parent / name).read_text())
+
+
+def test_a_where_above_the_merge_narrows_its_full():
+    types = _planned_file("query46.preql")
+    bought = [t for name, t in types.items() if name.startswith("(store_sales")]
+    assert bought == [JoinType.INNER], types
+
+
+def test_a_where_above_the_merge_keeps_the_side_it_does_not_reject():
+    types = _planned_file("query77.preql")
+    returns = [t for name, t in types.items() if "returns" in name]
+    assert returns == [JoinType.LEFT_OUTER] * 3, types
+    assert JoinType.FULL not in types.values(), types
