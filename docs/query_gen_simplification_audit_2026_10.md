@@ -1808,6 +1808,80 @@ election, not the padded fallback.
     the xdist-order `test_rank_beside_partial_merge` failure that passes
     serially.
 
+16. **The planner narrows on its consumers' joins (landed; the consumer
+    channel of handoff 2.1 step 4, second slice).** Seam 15 left 157
+    consumer-channel flips that carry no condition on the flipped CTE: the
+    proof is a consumer's join equality (`_inner_pair_rejections`). A NULL
+    never matches `=`, so a parent row NULL on a column a consumer joins on,
+    on a side the join does not preserve (both of an INNER, the right of a
+    LEFT, the left of a RIGHT), reaches nothing above it.
+    `consumer_proofs.join_rejections` reads that off each consumer's
+    resolved joins (null-safe pairs, a coalesced left and opaque bindings
+    excluded) into `ConsumerProofs.keys`, which passes up a node as the
+    filter proofs do.
+    - **A partial binding still proves its side.** The merge's own WHERE
+      cannot force a side through a column bound partially there
+      (`_unprovable_addresses`). A consumer's join can: a column only the
+      padded side holds is NULL on every padded row, whatever values the
+      side lacks. `JoinProofs.key_proofs` forces a side through a column
+      it alone renders (`grain_utility._keys_force`); without that, the
+      flights' `~carrier_code` in `test_dimension_chain_oracle_laws` kept
+      every one of these flips the optimizer's. A join key, or a pseudonym
+      another dataset holds, renders coalesced with the other side and is
+      not NULL on a padded row: a `subset join cust = members.mid` merge
+      narrowed on its reader's INNER on `cust` lost the member with no sale
+      (`test_explicit_is_not_null_matches_directional`).
+    - **A narrowed merge rejects more.** A merge's own joins are read after
+      it takes its consumers' proofs and is re-resolved, so a RIGHT it
+      narrows to INNER hands its parent the rejection the INNER makes.
+    - **A consumer's join type is not fixed.** Re-resolved over a narrowed
+      parent, a merge may preserve the side it dropped before: in tpc_h
+      adhoc07 the order lookup's narrowing left the summed side alone
+      padded, and the root merge it was keyed on went from INNER to RIGHT,
+      keeping the NULL order row its INNER had dropped. So the plan the
+      join channel built is checked (`_keys_hold`): when any narrowed
+      merge's consumers no longer reject its keys, the plan is restored and
+      narrowed on the filter channel alone. Over the 600 dimension-chain
+      laws the check fails in 6 of 583 compiles.
+    - **A regroup by its own key folds.** A narrowed merge can leave a
+      `group(x) by k` over rows already at `k` as a projection, its own
+      CTE. `rename_reference` now reads any GROUP's content as the rename
+      (the bare render is still confirmed by `consumed_parent_column`), so
+      `CollapseSingleParent` folds it into the merge it reads.
+
+    The unnest shape seam 15 left (332 flips in `test_relation_rollup_laws`)
+    is not a row proof the planner can make. Its flips come from
+    `PredicatePushdown` pushing the root's `ecoregion_id = 1` into the
+    unnest CTE as a filter on the element, then from there into the parent
+    CTE's own `ecoregion_id` column: under `merge ... into` the element and
+    the parent's column are one address. No consumer rejects the parent's
+    padded rows as rows: the merge above reads the key coalesced, and the
+    unnest's consumer reads it as its padded side.
+
+    After: 529 flips in 263 tests (pushed 431, consumer 77, planned 12, new
+    CTE 9), against 597 on `b85e285` measured the same way (seam 15's 608
+    was another machine's run). `test_cluster_key_lookup` has none left and
+    `test_dimension_chain_oracle_laws` 46 of 78; the consumer flips left are
+    shapes the check above rejects, a key that renders coalesced, and
+    `test_semi_join_pushdown`'s CTEs the optimizer builds.
+    `tests/discovery/test_consumer_join_narrowing.py` pins the partial
+    column's narrowing and the regroup's fold (both red on `main`).
+
+    Gates, against `b85e285`: corpus (204 statements) 1 moved, q18 (4 CTEs
+    to 3, the regroup folded; rows checked, log rebaselined). Fuzzer
+    522/522. Suite SQL capture under `PYTHONHASHSEED=0` and xdist, leaving
+    out `tests/scripts` (statement counts vary run to run) and the tests
+    that errored in the base run: 2,330 statements moved, 1,557 the same
+    length, 23,901 characters, 122 CTEs and 9 joins fewer. Of the 43 that
+    grew, 34 are `test_dashboard_queries` batch compiles the base run
+    captured twice (each statement is a character shorter); the others are
+    oracle laws and `test_cluster_key_lookup` reading a column off a
+    narrowed side (1 to 40 characters), and
+    `test_group_to_always_splits`, where `SemiJoinPushdown` now restricts
+    the population twin to the keys its INNER reader keeps (whole groups
+    only). Each asserts rows. Suite: the same credential-bound failures as
+    `main`.
+
 ## Gate used
 
 ```

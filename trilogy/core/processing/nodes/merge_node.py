@@ -697,6 +697,7 @@ class MergeNode(StrategyNode):
         proofs: set[str] = set()
         side_proofs: set[str] = set()
         or_groups: list[list[set[str]]] = []
+        key_proofs: set[str] = set()
         if self.conditions:
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
@@ -707,6 +708,7 @@ class MergeNode(StrategyNode):
             proofs |= consumer.proofs
             side_proofs |= consumer.side_proofs
             or_groups += [[set(d) for d in group] for group in consumer.or_groups]
+            key_proofs = set(consumer.keys - zero)
         if zero:
             proofs -= zero
             side_proofs -= zero
@@ -716,7 +718,10 @@ class MergeNode(StrategyNode):
         # its own HAVING, has none), so arm-local evidence must not narrow it.
         if self.node_joins is not None:
             return JoinProofs(
-                proofs=proofs, side_proofs=side_proofs, or_groups=or_groups
+                proofs=proofs,
+                side_proofs=side_proofs,
+                or_groups=or_groups,
+                key_proofs=key_proofs,
             )
         # A query-level filter pushed into the single branch that exposes its
         # columns still constrains the FINAL output: any output concept it
@@ -783,6 +788,7 @@ class MergeNode(StrategyNode):
             branch_proofs=branch_proofs,
             side_proofs=side_proofs,
             or_groups=or_groups,
+            key_proofs=key_proofs,
             filtered_ids=filtered_ids,
             coalescing_keys=coalescing,
         )
