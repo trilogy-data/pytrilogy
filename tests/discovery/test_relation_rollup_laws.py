@@ -23,7 +23,10 @@ from tests.unnest.test_unnest_filter_laws import (
     without_repeats,
 )
 from trilogy import Dialects
+from trilogy.core.models.execute import Join, QueryDatasource
 from trilogy.core.processing import join_resolution
+from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
+from trilogy.core.query_processor import get_query_datasources
 
 SEEDS = range(10)
 
@@ -284,3 +287,35 @@ def test_a_filtered_relation_keeps_the_empty_list_group(seed, where):
     sql, got = _rows(executor, f"select {value}, count(tree_id) as n where {where};")
     expected = executor.execute_raw_sql(ELEMENT_ORACLE.format(where=where))
     assert got == sorted((tuple(r) for r in expected.fetchall()), key=repr), sql
+
+
+def _outer_joins(ds: QueryDatasource) -> list[str]:
+    out = [
+        join.right.identifier
+        for join in ds.joins
+        if isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
+    ]
+    for source in ds.datasources:
+        if isinstance(source, QueryDatasource):
+            out += _outer_joins(source)
+    return out
+
+
+@pytest.mark.parametrize("summary", [False, True])
+@pytest.mark.parametrize("shape", list(SHAPES))
+@pytest.mark.parametrize("merge", list(EQUAL_MERGES))
+def test_a_where_on_the_grouped_merged_key_is_planned_on_its_rows(
+    merge, shape, summary
+):
+    """An aggregate grouped by the key an unnest is merged into reads the
+    element on its own rows: the WHERE filters them where they are joined,
+    with no second unnest of the same rows joined back to read it, and no
+    outer join left for the optimizer to narrow."""
+    model = BASE + EQUAL_MERGES[merge] + (SUMMARY if summary else "")
+    executor = _executor(model, random_data(0), merge)
+    query = f"select {SHAPES[shape].format(v='ecoregion_id')} where ecoregion_id = 1;"
+    _, statements = executor.environment.parse(query)
+    planned = get_query_datasources(executor.environment, statements[-1])
+    assert _outer_joins(planned) == []
+    sql = executor.generate_sql(query)[-1]
+    assert sql.lower().count("unnest(") == 1, sql
