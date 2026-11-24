@@ -190,18 +190,15 @@ def _reads_source(
 ) -> bool:
     """True when rendering ``concept`` in ``cte`` reaches a column of ``source``.
 
-    Follows ``CTE.render_binding``: an outer-join key renders coalesced over its
-    whole class, a bound column reads its own sources, and an unbound one reads
-    through its lineage or through a pseudonym sibling this CTE does bind."""
+    Follows ``CTE.render_binding``: a bound column reads its
+    ``CTE.column_reads``, and an unbound one reads through its lineage or
+    through a pseudonym sibling this CTE does bind."""
     if concept.address in seen:
         return False
     seen = seen | {concept.address}
-    for member in cte.outer_join_key_class(concept.address):
-        if _reads_source(cte, member, source, seen):
-            return True
-    sources = cte.source_map.get(concept.address) or []
-    if sources:
-        return source in sources
+    reads = cte.column_reads(concept)
+    if reads:
+        return any(read == source for _, read in reads)
     lineage = concept.lineage
     if lineage is not None:
         return any(

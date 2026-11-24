@@ -211,13 +211,16 @@ them.
   `_canonical_render_siblings`, `_aggregate_collapse_safe`,
   `_render_expression_membership_exists`, `_constant_output_group_by_fallback`,
   the `base_alias` / `source_address` fallback chains.
-- **Wrong stage but live**, for the record: outer-join key COALESCE
-  (`dialect/base.py`), multi-source COALESCE, join-key COALESCE
-  (`dialect/common.py`). COUNT to `coalesce(..., 0)` has moved: the source
-  decides it (`QueryDatasource.zero_filled`, seam 12 of the audit) and the
-  CTE, renderer and pushdown read it. Do not move the decision back into the
-  CTE: an optimizer that changes a CTE's grouping re-decides it through
-  `CTE.regroup`, and that is the only place the CTE recomputes it.
+- **Wrong stage, now one owner each.** COUNT to `coalesce(..., 0)`: the
+  source decides it (`QueryDatasource.zero_filled`, seam 12 of the audit)
+  and the CTE, renderer and pushdown read it. Do not move the decision back
+  into the CTE: an optimizer that changes a CTE's grouping re-decides it
+  through `CTE.regroup`, and that is the only place the CTE recomputes it.
+  Outer-join key, multi-source and join-key COALESCE: `CTE.column_reads`
+  decides which parent columns a key reads and `coalesced_key_groups` which
+  ON pairs coalesce (seam 13); the renderer only formats them. These stay
+  CTE-level on purpose: the optimizer changes join types after planning,
+  and an outer join's key class is a fact about the final joins.
 - **Design-level note, not a handoff**: 448 planner FULLs "because partial" are
   narrowed by `_narrow_directionally` in 59 statements. That is the documented
   preserving-render contract (`docs/subset_union_join_design.md`) and conflicts

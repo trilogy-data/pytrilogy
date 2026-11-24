@@ -268,79 +268,40 @@ def _build_joinkeys(
 ) -> list[str]:
     if not join.pairs:
         return ["1=1"]
-    # Group pairs by right concept address to detect coalesce scenarios.
-    # When multiple pairs share the same right concept but come from
-    # different left CTEs, use COALESCE on the left values.
-    right_groups: dict[str, list] = {}
-    for pair in join.pairs:
-        right_groups.setdefault(pair.right.address, []).append(pair)
-
+    # One key read off several CTEs is COALESCE'd, however each spells it
+    # (`coalesced_key_groups`); different left concepts of one CTE are
+    # separate AND conditions.
     result: list[str] = []
-    for pairs in right_groups.values():
+    for pairs in coalesced_key_groups(join.pairs, _cte_side):
         right_render = _render_right_concept(
             pairs[0], join, consumer, quote_character, render_expr_func, use_map
         )
-        if join.join_type in (
-            JoinType.LEFT_OUTER,
-            JoinType.RIGHT_OUTER,
-            JoinType.FULL,
-        ):
-            left_renders = [
+        left_renders = list(
+            dict.fromkeys(
                 _render_left_concept(
                     p, join, consumer, quote_character, render_expr_func, use_map
                 )
                 for p in pairs
-            ]
-            unique_renders = list(dict.fromkeys(left_renders))
-            if len(unique_renders) > 1:
-                coalesced = f"coalesce({', '.join(unique_renders)})"
-                result.append(
-                    null_wrapper(
-                        coalesced,
-                        right_render,
-                        [
-                            modifier
-                            for pair in pairs
-                            for modifier in _collect_modifiers(pair, join)
-                        ],
-                        join.join_type,
-                    )
+            )
+        )
+        if len(left_renders) == 1:
+            result.append(
+                null_wrapper(
+                    left_renders[0],
+                    right_render,
+                    _collect_modifiers(pairs[0], join),
+                    join.join_type,
                 )
-                continue
-        # One key read off several CTEs is COALESCE'd, however each spells it
-        # (`coalesced_key_groups`); different left concepts of one CTE are
-        # separate AND conditions.
-        for sub_pairs in coalesced_key_groups(pairs, _cte_side):
-            left_renders = [
-                _render_left_concept(
-                    p, join, consumer, quote_character, render_expr_func, use_map
-                )
-                for p in sub_pairs
-            ]
-            unique_renders = list(dict.fromkeys(left_renders))
-            if len(unique_renders) > 1:
-                coalesced = f"coalesce({', '.join(unique_renders)})"
-                result.append(
-                    null_wrapper(
-                        coalesced,
-                        right_render,
-                        [
-                            modifier
-                            for pair in sub_pairs
-                            for modifier in _collect_modifiers(pair, join)
-                        ],
-                        join.join_type,
-                    )
-                )
-            else:
-                result.append(
-                    null_wrapper(
-                        unique_renders[0],
-                        right_render,
-                        _collect_modifiers(sub_pairs[0], join),
-                        join.join_type,
-                    )
-                )
+            )
+            continue
+        result.append(
+            null_wrapper(
+                f"coalesce({', '.join(left_renders)})",
+                right_render,
+                [m for pair in pairs for m in _collect_modifiers(pair, join)],
+                join.join_type,
+            )
+        )
     return result or ["1=1"]
 
 
