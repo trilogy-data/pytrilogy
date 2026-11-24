@@ -2977,6 +2977,25 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (47078). 25496 is main's stray WHERE row beside a window, which a limit
     used to hide. 129123 in full still pairs on one column: the filter cannot
     expose its grain keys.
+- **`filters` to 160,000** (0.3.539). On main seeds 140,000-160,000 (40,000
+  queries) hold 21 wrong answers, 50 raises and 7 invalid statements. Over
+  0-160,000 the round fixes 15 queries (9 wrong answers, 6 raises) and
+  breaks none, with 38 more joins over 320,000 queries.
+  - A gate planned off the summary reads the WHERE's own twin of a shown
+    aggregate: the scan handed back the select's alias of the same stored
+    column, which the gate never read (`gate_reads_its_twin`; the five
+    0.3.538 summary regressions).
+  - A WHERE applied below a group says, of the finer rows joined to that
+    group on its keys, only that the keys belong to a kept row, until a group
+    collapses them to those keys again; nor does a set's subselect filter
+    the rows it gates. FINAL had taken such a side as the WHERE's population
+    and kept its rejected rows (`coarse_side_filters_no_row`, 151597).
+  - A stored aggregate a scan carries for a set's condition alone pins none
+    of the scan's rows, so FINAL dedups them (`set_read_column_pins_no_row`,
+    152317).
+  - Not fixed (each wrong on main too): a derived key read off a peel beside
+    a filter's rows (141488, 146267, the 83978 lead), windows over filtered
+    keys (141534, 148111), and the `cannot be related` WHERE-gate hosts.
 
 ## Limits
 
