@@ -39,6 +39,7 @@ def pytest_configure(config) -> None:
     worker = os.environ.get("PYTEST_XDIST_WORKER")
     path = f"{out}.{worker}.jsonl" if worker else out
     from trilogy.core import optimization as opt
+    from trilogy.core import query_processor as qp
     from trilogy.core.models.execute import CTE
     from trilogy.core.optimizations import join_upgrade as m
 
@@ -52,6 +53,7 @@ def pytest_configure(config) -> None:
         return original_optimize_ctes(input, root_cte, *args, **kwargs)
 
     opt.optimize_ctes = optimize_ctes
+    qp.optimize_ctes = optimize_ctes
     rule = m.UpgradeJoinOnGuards
     original = rule.optimize
 

@@ -1,5 +1,5 @@
 query_id = "75"
-gen_length = 7043
+gen_length = 7498
 preql_size = 1517
 comp_size = 2947
 generated_sql = """
@@ -15,6 +15,10 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
@@ -25,6 +29,10 @@ SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
@@ -34,7 +42,11 @@ SELECT
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+),
 cheerful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
@@ -76,7 +88,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2002
+    \"sales_sale_date_date\".\"D_YEAR\" = 2002
 
 GROUP BY
     1,
@@ -97,7 +109,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2001
+    \"sales_sale_date_date\".\"D_YEAR\" = 2001
 
 GROUP BY
     1,

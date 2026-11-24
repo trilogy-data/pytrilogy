@@ -1,5 +1,5 @@
 query_id = "30"
-gen_length = 5881
+gen_length = 5862
 preql_size = 1629
 comp_size = 1507
 generated_sql = """
@@ -63,7 +63,7 @@ SELECT
     sum(\"thoughtful\".\"ws_return_amount\") as \"customer_state_returns_2002\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on \"thoughtful\".\"ws_return_address_state\" is not distinct from \"cooperative\".\"ws_return_address_state\" AND \"thoughtful\".\"ws_return_customer_sk\" is not distinct from \"cooperative\".\"ws_return_customer_sk\"
+    INNER JOIN \"cooperative\" on \"thoughtful\".\"ws_return_address_state\" is not distinct from \"cooperative\".\"ws_return_address_state\" AND \"thoughtful\".\"ws_return_customer_sk\" = \"cooperative\".\"ws_return_customer_sk\"
     INNER JOIN \"questionable\" on \"cooperative\".\"ws_return_address_state\" is not distinct from \"questionable\".\"ws_return_address_state\"
 WHERE
     \"cooperative\".\"_virt_agg_sum_4733057279147332_wscope\" > \"questionable\".\"_virt_func_multiply_8895519467362601_wscope\"
