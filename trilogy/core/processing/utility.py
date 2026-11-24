@@ -21,7 +21,6 @@ from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildConceptArgs,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -292,8 +291,6 @@ def _atoms_at(
 def _atom_keys(atom: BoolExpr) -> set[str]:
     """The keys an atom's value is constant over: an aggregate's grain, a
     row argument's own address."""
-    if not isinstance(atom, BuildConceptArgs):
-        return {""}
     return {
         key
         for c in atom.row_arguments
