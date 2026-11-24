@@ -12,7 +12,11 @@ key passes, never an aggregate: a rejected key's group holds only the rows
 with that key NULL, while dropping a padded row changes the aggregates of the
 group it joined. A window, unnest, limit, union or rowset boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
-keeps what all of its consumers reject."""
+keeps what all of its consumers reject.
+
+A consumer's own join rejects too (`join_rejections`): a NULL never matches
+``=``, so a parent row NULL on a column the consumer joins on, on a side the
+join does not preserve, reaches nothing above it."""
 
 from __future__ import annotations
 
