@@ -1353,7 +1353,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.GEO_POINT: FunctionConfig(
-        valid_inputs={DataType.NUMERIC},
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.GEOGRAPHY,
         arg_count=2,
@@ -1368,6 +1368,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         valid_inputs={DataType.GEOGRAPHY},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.NUMERIC,
+        arg_count=2,
+    ),
+    FunctionType.GEO_CONTAINS: FunctionConfig(
+        valid_inputs={DataType.GEOGRAPHY},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
         arg_count=2,
     ),
     FunctionType.GEO_X: FunctionConfig(
@@ -1576,6 +1582,7 @@ FUNCTION_FAMILIES: list[tuple[str, frozenset[FunctionType]]] = [
                 FunctionType.GEO_CENTROID,
                 FunctionType.GEO_POINT,
                 FunctionType.GEO_DISTANCE,
+                FunctionType.GEO_CONTAINS,
                 FunctionType.GEO_TRANSFORM,
             }
         ),

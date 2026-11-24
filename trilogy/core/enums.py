@@ -435,6 +435,7 @@ class FunctionType(Enum):
     GEO_FROM_TEXT = "geo_from_text"
     GEO_POINT = "geo_point"
     GEO_DISTANCE = "geo_distance"
+    GEO_CONTAINS = "geo_contains"
     GEO_X = "geo_x"
     GEO_Y = "geo_y"
     GEO_CENTROID = "geo_centroid"
@@ -576,6 +577,7 @@ NULL_STRICT_FUNCTIONS: frozenset[FunctionType] = frozenset(
         FunctionType.GEO_FROM_TEXT,
         FunctionType.GEO_POINT,
         FunctionType.GEO_DISTANCE,
+        FunctionType.GEO_CONTAINS,
         FunctionType.GEO_X,
         FunctionType.GEO_Y,
         FunctionType.GEO_CENTROID,

@@ -176,6 +176,7 @@ FUNCTION_MAP = {
     FunctionType.GEO_FROM_TEXT: lambda x, types: f"ST_GEOGFROMTEXT({x[0]})",
     FunctionType.GEO_POINT: lambda x, types: f"ST_GEOGPOINT({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_DISTANCE({x[0]}, {x[1]})",
+    FunctionType.GEO_CONTAINS: lambda x, types: f"ST_CONTAINS({x[0]}, {x[1]})",
     FunctionType.GEO_CENTROID: lambda x, types: f"ST_CENTROID({x[0]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
     # aggregate
