@@ -103,6 +103,8 @@ def pytest_configure(config) -> None:
                             "from": b.value,
                             "to": a.value,
                             "channel": channel,
+                            "condition": str(cte.condition),
+                            "planned_condition": str(_planned.get(id(cte))),
                         }
                     )
                     + "\n"
