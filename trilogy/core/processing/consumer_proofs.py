@@ -142,6 +142,30 @@ def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     }
 
 
+def single_source_reads(node: StrategyNode) -> dict[str, str]:
+    """Columns ``node`` renders off one source alone, by its identifier: NULL
+    on every row an outer join pads that source onto, join key or not. An
+    outer key paired with another address renders coalesced across the pair
+    (`CTE.outer_join_key_class`)."""
+    resolved = node.resolve()
+    classed = {
+        address
+        for join in resolved.joins
+        if isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
+        for pair in join.pairs or []
+        if pair.left.address != pair.right.address
+        for address in (pair.left.address, pair.right.address)
+    }
+    out: dict[str, str] = {}
+    for address, sources in resolved.source_map.items():
+        if len(sources) != 1 or address in classed:
+            continue
+        (source,) = sources
+        if not isinstance(source, UnnestJoin):
+            out[address] = source.identifier
+    return out
+
+
 def _pair_source(pair: ConceptPair) -> str:
     return pair.node.identifier
 
@@ -191,11 +215,15 @@ def _walk(root: StrategyNode) -> list[StrategyNode]:
 
 def _consumers_first(nodes: list[StrategyNode]) -> list[str] | None:
     """Relation identifiers, each after every consumer of it; None if two
-    nodes of one relation read each other."""
+    relations read each other. A node reading a node of its own relation (a
+    joinless merge over the group it passes through) is no consumer of it."""
     consumers: dict[str, set[str]] = defaultdict(set)
     for node in nodes:
+        ident = node.resolve().identifier
         for parent in node.parents:
-            consumers[parent.resolve().identifier].add(node.resolve().identifier)
+            pident = parent.resolve().identifier
+            if pident != ident:
+                consumers[pident].add(ident)
     idents = list(dict.fromkeys(n.resolve().identifier for n in reversed(nodes)))
     order: list[str] = []
     placed: set[str] = set()
@@ -248,6 +276,7 @@ class _State:
     resolved_nullable: set[str]
     proofs: ConsumerProofs | None
     partials: set[str] | None
+    key_reads: dict[str, str] | None
 
     @classmethod
     def of(cls, node: StrategyNode) -> _State:
@@ -258,6 +287,7 @@ class _State:
             _nullable(node),
             merge.consumer_proofs if merge else None,
             merge.unfiltered_partials if merge else None,
+            merge.key_reads if merge else None,
         )
 
     def restore(self) -> None:
@@ -265,6 +295,7 @@ class _State:
         if isinstance(self.node, MergeNode):
             self.node.consumer_proofs = self.proofs
             self.node.unfiltered_partials = self.partials
+            self.node.key_reads = self.key_reads
         self.node.rebuild_cache()
 
 
@@ -294,6 +325,7 @@ def _propagate(
                 node.unfiltered_partials = {
                     c.address for c in node.resolve().partial_concepts
                 }
+                node.key_reads = single_source_reads(node)
                 narrowed.add(id(node))
                 node.rebuild_cache()
             forward = here | ConsumerProofs.of(node.conditions)
@@ -308,6 +340,8 @@ def _propagate(
                         keys=frozenset(join_rejections(node, parent))
                     )
                 pident = ident_of[id(parent)]
+                if pident == ident:
+                    continue
                 prior = received.get(pident)
                 received[pident] = given if prior is None else prior & given
     return received

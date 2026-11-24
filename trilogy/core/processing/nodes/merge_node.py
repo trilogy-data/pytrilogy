@@ -451,6 +451,10 @@ class MergeNode(StrategyNode):
         # bound completely before stays complete for them
         self.consumer_proofs: ConsumerProofs | None = None
         self.unfiltered_partials: set[str] | None = None
+        # the columns it rendered off one source alone when it took them
+        # (`single_source_reads`): a consumer's join on one rejects that
+        # source's padded rows
+        self.key_reads: dict[str, str] | None = None
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -698,6 +702,7 @@ class MergeNode(StrategyNode):
         side_proofs: set[str] = set()
         or_groups: list[list[set[str]]] = []
         key_proofs: set[str] = set()
+        key_sources: dict[str, str] = {}
         if self.conditions:
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
@@ -709,6 +714,9 @@ class MergeNode(StrategyNode):
             side_proofs |= consumer.side_proofs
             or_groups += [[set(d) for d in group] for group in consumer.or_groups]
             key_proofs = set(consumer.keys - zero)
+            key_sources = {
+                a: s for a, s in (self.key_reads or {}).items() if a in key_proofs
+            }
         if zero:
             proofs -= zero
             side_proofs -= zero
@@ -722,6 +730,7 @@ class MergeNode(StrategyNode):
                 side_proofs=side_proofs,
                 or_groups=or_groups,
                 key_proofs=key_proofs,
+                key_sources=key_sources,
             )
         # A query-level filter pushed into the single branch that exposes its
         # columns still constrains the FINAL output: any output concept it
@@ -789,6 +798,7 @@ class MergeNode(StrategyNode):
             side_proofs=side_proofs,
             or_groups=or_groups,
             key_proofs=key_proofs,
+            key_sources=key_sources,
             filtered_ids=filtered_ids,
             coalescing_keys=coalescing,
         )
