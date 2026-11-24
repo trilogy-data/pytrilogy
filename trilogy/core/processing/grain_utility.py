@@ -612,15 +612,32 @@ def _join_key_addresses(join: SourceJoin) -> tuple[set[str], set[str]]:
 
 def _keys_force(
     key_proofs: frozenset[str] | set[str],
+    join: SourceJoin,
     sources: list[GrainSource],
     final_datasets: list[GrainSource],
 ) -> bool:
     """A consumer's join drops the rows NULL on a column ``sources`` alone
-    hold, which their padded rows are unless the binding is opaque."""
+    render, which their padded rows are unless the binding is opaque. A join
+    key, or a pseudonym another dataset holds, renders coalesced with the
+    other side's and is not NULL there."""
     if not key_proofs:
         return False
+    ids = {source.identifier for source in sources}
+    others = {
+        address
+        for source in final_datasets
+        if source.identifier not in ids
+        for address in _datasource_addresses(source)
+    }
+    left_keys, right_keys = _join_key_addresses(join)
+    alone = {
+        concept.address
+        for source in sources
+        for concept in source.output_concepts
+        if not concept.pseudonyms & others
+    } & _exclusive_addresses(sources, final_datasets)
     opaque = set().union(*(opaque_binding_addresses(s) for s in sources))
-    return bool(key_proofs & (_exclusive_addresses(sources, final_datasets) - opaque))
+    return bool(key_proofs & (alone - opaque - left_keys - right_keys))
 
 
 def _side_forced(
@@ -730,7 +747,7 @@ def downgrade_join_for_proofs(
             set(),
             _unprovable_addresses(streamed),
         )
-        or _keys_force(key_proofs, streamed, final_datasets)
+        or _keys_force(key_proofs, join, streamed, final_datasets)
     )
     right_forced = (
         _side_forced(
@@ -743,7 +760,7 @@ def downgrade_join_for_proofs(
         or _side_forced(
             side_proofs | proofs, or_groups, right_exclusive, set(), right_unprovable
         )
-        or _keys_force(key_proofs, [join.right], final_datasets)
+        or _keys_force(key_proofs, join, [join.right], final_datasets)
     )
     join.join_type = unpadded_join_type(join.join_type, left_forced, right_forced)
 
@@ -782,7 +799,7 @@ def downgrade_directional_join_for_proofs(
         padded_only,
         padded_keys,
         _unprovable_addresses(padded_sources),
-    ) or _keys_force(key_proofs, padded_sources, final_datasets):
+    ) or _keys_force(key_proofs, join, padded_sources, final_datasets):
         join.join_type = JoinType.INNER
 
 
