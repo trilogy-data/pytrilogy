@@ -1223,8 +1223,14 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, joins, final_output_concepts
         )
+        extent_partials = self._extent_free_partials(
+            final_datasets, final_output_concepts, joins
+        )
         if self.unfiltered_partials is not None:
             joined_partials &= self.unfiltered_partials
+            extent_partials = [
+                c for c in extent_partials if c.address in self.unfiltered_partials
+            ]
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,
@@ -1246,9 +1252,7 @@ class MergeNode(StrategyNode):
             partial_concepts=unique(
                 self.partial_concepts
                 + [c for c in final_output_concepts if c.address in joined_partials]
-                + self._extent_free_partials(
-                    final_datasets, final_output_concepts, joins
-                ),
+                + extent_partials,
                 "address",
             ),
             rollup_concepts=rollup_concepts,

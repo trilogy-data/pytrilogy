@@ -151,11 +151,13 @@ def restore_unpadded_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
         own = join.own_type
         if own is not None and own != join.join_type:
             lefts = {source.identifier for source in join_left_sources(join)}
-            if not lefts & padded and own in _NARROWER.get(join.join_type, ()):
+            if not lefts & padded and own in NARROWER_JOIN_TYPES.get(
+                join.join_type, ()
+            ):
                 join.join_type = own
 
 
-_NARROWER: dict[JoinType, frozenset[JoinType]] = {
+NARROWER_JOIN_TYPES: dict[JoinType, frozenset[JoinType]] = {
     JoinType.FULL: frozenset(
         {JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.INNER}
     ),
