@@ -4161,8 +4161,8 @@ def _hold_lookup_sides(
             continue
         group, keys = attrs[gid], plan.keys_for(gid)
         # a membership's step holds its set's feeder as a parent: a dedup
-        # over it would read the feeder's rows; a filtered row identity
-        # (`tree_id ? c`) is no value of the other keys
+        # over it would read the feeder's rows; a filtered aggregate or row
+        # identity (`tree_id ? c`) is no value of the keys it pairs on
         lookups = (
             (Derivation.BASIC, Derivation.FILTER)
             if not parent.existence_concepts

@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.539.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.540.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 160,000; the PR of each
-round holds its sweep totals. `filters` has 41 `OPEN` seeds and 553 failing
-queries in 0-160,000 at 0.3.539 (area 4b),
+group key of aggregates and windows, in a HAVING) to 180,000; the PR of each
+round holds its sweep totals. `filters` has 36 `OPEN` seeds and 402 failing
+queries in 0-117,000 and 160,000-180,000 at 0.3.540 (area 4b),
 `windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -724,10 +724,21 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   keys at parse time (`filter_item_to_concept`) is the fix, but FINAL then
   pairs the mask with the rows on nothing: it needs the row stream as bridge.
   The generator writes no `by *` content beside a `?`.
-- Keyless joins raised: a filtered property beside a derived key under a
-  WHERE membership (`select height > 2 as big, tree_form ? tree_form =
-  'linden' as f where city in (city ? city = 'A')`, 2486), and a filtered
-  key beside a bare aggregate and a `by tree_form` value (5172).
+- Keyless joins raised: a filtered key beside a bare aggregate and a `by
+  tree_form` value (5172). 0.3.540 widens a projection that dropped a root
+  key it read only for its WHERE (2486 and four more `OPEN` seeds); the rest
+  are 169058, 170854, 172607, 177741, 178181 and 178274 (summary).
+- **Left after 0.3.540** (seeds 160,000-180,000, each failing on main too: 5
+  wrong, 43 raises, 6 invalid of 40,000): windows over filtered keys
+  (162928, 174664); the derived key off a peel (175744); nested-aggregate
+  statements DuckDB rejects (162190, 164009, 172828, 178097); recursion
+  (161496, 171031, 177584); `cannot be related` and `Could not resolve
+  connections` (163611, 165374, 172055, 173363, 173737). 18629 needs a
+  filtered aggregate's step deduped as a lookup: 0.3.540 dedups a filtered
+  step only when its filtered column is a pairing key
+  (`lookup_side_counts_once`), since deduping one whose content is an
+  aggregate (175585) or a row identity (96573, 28859) broke seeds right on
+  main. Seeds 117,000-160,000 were not compared against main this round.
 - Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main
   too (predicate pushdown read a column off a set feeder outside the FROM;
   fixed). It still renders two SQL texts by hash seed, both right: some

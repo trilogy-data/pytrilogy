@@ -332,6 +332,11 @@ FOUND_SEEDS = [
     # column (and 43195, which its first version broke)
     43195, 47078, 62004, 77287, 107276, 138477, 138625, 139232, 144447,
     145165, 146440, 151597, 152317,
+    # 0.3.540: a gate reaches a filter through its set, a lookup side counts
+    # once, a row value keeps the key its WHERE read
+    963, 2486, 5962, 9759, 12138, 25880, 28569, 45005, 48195, 61425, 72863,
+    73814, 79112, 84913, 90443, 105862, 109445, 111069, 113302, 115212,
+    160158, 160721, 163965, 165922, 167663, 175136, 177677, 178393, 179615,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. 9683,
@@ -344,12 +349,8 @@ OPEN: dict[tuple[int, str], str | None] = {
     (667, "summary"): "maximum recursion",
     (841, "base"): None,
     (841, "summary"): None,
-    (963, "base"): None,
-    (963, "summary"): None,
     (1097, "base"): "cannot be related to the query outputs",
     (1097, "summary"): "cannot be related to the query outputs",
-    (2486, "base"): "keyless join",
-    (2486, "summary"): "keyless join",
     (3730, "base"): "maximum recursion",
     (3730, "summary"): "maximum recursion",
     (3796, "base"): None,
@@ -358,8 +359,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (5172, "summary"): "keyless join",
     (5381, "base"): None,
     (5381, "summary"): None,
-    (5962, "base"): "keyless join",
-    (5962, "summary"): "keyless join",
     (6905, "base"): "keyless join",
     (6905, "summary"): "keyless join",
     (7232, "base"): "Could not resolve connections",
@@ -372,14 +371,10 @@ OPEN: dict[tuple[int, str], str | None] = {
     (8790, "summary"): "keyless join",
     (8880, "base"): "cannot be related to the query outputs",
     (8880, "summary"): "cannot be related to the query outputs",
-    (9759, "base"): "keyless join",
-    (9759, "summary"): "keyless join",
     (9884, "base"): "cannot be related to the query outputs",
     (9884, "summary"): "cannot be related to the query outputs",
     (10955, "base"): "maximum recursion",
     (10955, "summary"): "maximum recursion",
-    (12138, "base"): "keyless join",
-    (12138, "summary"): "keyless join",
     (12294, "base"): None,
     (12294, "summary"): None,
     (12376, "base"): None,

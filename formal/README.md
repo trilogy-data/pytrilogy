@@ -2977,6 +2977,20 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (47078). 25496 is main's stray WHERE row beside a window, which a limit
     used to hide. 129123 in full still pairs on one column: the filter cannot
     expose its grain keys.
+- **`filters` to 180,000** (0.3.540). On main seeds 160,000-180,000 (40,000
+  queries) hold 11 wrong answers, 55 raises and 6 invalid statements. Over
+  0-117,000 and 160,000-180,000 (274,000 queries) the round fixes 58 queries
+  (12 wrong answers, 46 raises, ten of them `OPEN` seeds) and breaks none,
+  with 371 fewer joins and 1,030 fewer CTEs; summary reads are unchanged.
+  - A WHERE gate reaches a filter through the filter of a set its condition
+    reads: neither passes the host's rows on (`gate_reaches_a_filter_through_its_set`,
+    160158).
+  - A filtered value's step built per row repeats its value once per row of
+    its key; paired on the column it filters, it is a lookup and is deduped
+    (`lookup_side_counts_once`, 167663).
+  - A projection that dropped a root key it read only for its WHERE still
+    renders it, so a row value keeps its key (`row_value_keeps_its_key`,
+    178393 and the keyless joins 2486, 5962, 9759, 12138).
 - **`filters` to 160,000** (0.3.539). On main seeds 140,000-160,000 (40,000
   queries) hold 21 wrong answers, 50 raises and 7 invalid statements. Over
   0-160,000 the round fixes 15 queries (9 wrong answers, 6 raises) and
