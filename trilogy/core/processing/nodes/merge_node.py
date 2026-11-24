@@ -1,7 +1,9 @@
 from collections.abc import Collection, Iterable
+from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
+    Derivation,
     JoinType,
     Modifier,
     SourceType,
@@ -71,6 +73,9 @@ from trilogy.core.processing.utility import (
 )
 from trilogy.core.union_find import find
 from trilogy.utility import unique
+
+if TYPE_CHECKING:
+    from trilogy.core.processing.consumer_proofs import ConsumerProofs
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
@@ -440,6 +445,12 @@ class MergeNode(StrategyNode):
         # parents (by id) that only supply values to rows the others hold (a
         # WHERE's argument): a join never preserves a row of theirs
         self.lookups = lookups
+        # what every consumer's filter rejects (`consumer_proofs`): narrows
+        # the joins like this node's own WHERE, never rendered here. The rows
+        # it drops are rows every consumer drops, so an address the merge
+        # bound completely before stays complete for them
+        self.consumer_proofs: ConsumerProofs | None = None
+        self.unfiltered_partials: set[str] | None = None
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -656,6 +667,28 @@ class MergeNode(StrategyNode):
             if not visible & {c.address for c in ds.output_concepts}
         }
 
+    def _row_reads(
+        self, final_datasets: list[QueryDatasource | BuildDatasource]
+    ) -> set[str]:
+        """What this merge reads as a row value off its parents: not a partial
+        aggregate a regroup here rolls up."""
+        rolled = {c.address for c in self.rollup_concepts}
+        for source in final_datasets:
+            if isinstance(source, QueryDatasource):
+                rolled |= {
+                    c.address
+                    for c in pending_rollups(source.rollup_concepts, source.grain)
+                }
+            elif self.force_group is not False:
+                rolled |= {
+                    c.address
+                    for c in source.output_concepts
+                    if c.derivation == Derivation.AGGREGATE
+                }
+        return {
+            c.address for source in final_datasets for c in source.output_concepts
+        } - rolled
+
     def _join_proofs(
         self,
         final_datasets: list[QueryDatasource | BuildDatasource],
@@ -668,10 +701,16 @@ class MergeNode(StrategyNode):
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
             or_groups = gather_or_groups(self.conditions)
-            if zero:
-                proofs -= zero
-                side_proofs -= zero
-                or_groups = [[d - zero for d in group] for group in or_groups]
+        if self.consumer_proofs:
+            rows = self._row_reads(final_datasets)
+            consumer = self.consumer_proofs.restrict(rows)
+            proofs |= consumer.proofs
+            side_proofs |= consumer.side_proofs
+            or_groups += [[set(d) for d in group] for group in consumer.or_groups]
+        if zero:
+            proofs -= zero
+            side_proofs -= zero
+            or_groups = [[d - zero for d in group] for group in or_groups]
         # A MULTISELECT align supplies explicit ``node_joins`` whose FULL is
         # intentional (each arm's rows survive even where the other arm, with
         # its own HAVING, has none), so arm-local evidence must not narrow it.
@@ -1168,6 +1207,8 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, joins, final_output_concepts
         )
+        if self.unfiltered_partials is not None:
+            joined_partials &= self.unfiltered_partials
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,

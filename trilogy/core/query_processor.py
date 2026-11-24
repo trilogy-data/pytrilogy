@@ -87,6 +87,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
+from trilogy.core.processing.consumer_proofs import narrow_for_consumers
 from trilogy.core.processing.discovery_utility import (
     connectivity_map,
     raise_if_disconnected_for,
@@ -955,6 +956,7 @@ def _plan_query_node(
             v4_history,
             conditions=build_statement.where_clause,
         )
+    narrow_for_consumers(ds)
     if build_statement.order_by:
         _demand_order_by_leaves(ds, build_statement.order_by)
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
