@@ -1010,3 +1010,22 @@ def test_filtered_count_reader_follows_column_reads():
     inner, left, _ = _outer_key_cte(JoinType.INNER)
     assert not _reads_source(inner, left, "b")
     assert not _reads_source(inner, _key_concept("unbound"), "a")
+
+
+def test_column_reads_skip_a_key_class_member_outside_the_from_scope():
+    cte, left, right = _outer_key_cte()
+    cte.source_map[right.address] = ["b", "e"]
+    assert {s for _, s in cte.column_reads(left)} == {"a", "b"}
+
+
+def test_a_union_reads_its_own_source_map():
+    from types import SimpleNamespace
+
+    key = _key_concept("k")
+    union = SimpleNamespace(
+        source_map={key.address: ["arm"]}, get_alias=lambda c, s: c.safe_address
+    )
+    dialect = BaseDialect()
+    rendered = dialect.safe_get_cte_value(union, key)  # type: ignore[arg-type]
+    q = dialect.QUOTE_CHARACTER
+    assert rendered == f"{q}arm{q}.{q}{key.safe_address}{q}"
