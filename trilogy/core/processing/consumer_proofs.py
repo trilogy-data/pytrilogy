@@ -24,10 +24,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from trilogy.core.enums import Derivation, JoinType
-from trilogy.core.models.build import BoolExpr, BuildConcept
+from trilogy.core.models.build import BoolExpr, BuildConcept, BuildDatasource
 from trilogy.core.models.execute import (
     ConceptPair,
     Join,
+    QueryDatasource,
     UnnestJoin,
     coalesced_key_groups,
     pair_matches_nulls,
@@ -158,10 +159,12 @@ def single_source_reads(node: StrategyNode) -> dict[str, str]:
     }
     out: dict[str, str] = {}
     for address, sources in resolved.source_map.items():
-        if len(sources) != 1 or address in classed:
-            continue
-        (source,) = sources
-        if not isinstance(source, UnnestJoin):
+        source = next(iter(sources), None)
+        if (
+            len(sources) == 1
+            and address not in classed
+            and isinstance(source, (QueryDatasource, BuildDatasource))
+        ):
             out[address] = source.identifier
     return out
 
