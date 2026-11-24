@@ -1000,3 +1000,13 @@ def test_a_coalesced_key_carries_no_rejection_to_one_producer():
 
     cte, left, _ = _outer_key_cte()
     assert not _renders_exclusively_from(cte, left.address, {"a"})
+
+
+def test_filtered_count_reader_follows_column_reads():
+    from trilogy.core.optimizations.filtered_aggregate import _reads_source
+
+    cte, left, _ = _outer_key_cte()
+    assert _reads_source(cte, left, "b")
+    inner, left, _ = _outer_key_cte(JoinType.INNER)
+    assert not _reads_source(inner, left, "b")
+    assert not _reads_source(inner, _key_concept("unbound"), "a")
