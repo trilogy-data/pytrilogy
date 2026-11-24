@@ -117,21 +117,43 @@ forces a side through any column it alone renders, partial or not. A
 consumer's join type can widen when it is re-resolved over the narrowed
 merge, so the channel is checked against the plan it built and dropped if a
 consumer stopped rejecting (tpc_h adhoc07). Flips fell from 597 to 529
-(pushed 431, consumer 77, planned 12, new CTE 9). What is left:
+(pushed 431, consumer 77, planned 12, new CTE 9).
 
-- 332 are one shape (`test_relation_rollup_laws`), and it is not a row
-  proof the planner can make. `PredicatePushdown` pushes the root's
-  `ecoregion_id = 1` into the unnest CTE as a filter on the element, then
-  into the parent CTE's own `ecoregion_id`: under `merge ... into` the two
-  are one address. No consumer rejects the parent's padded rows as rows
-  (the merge above reads the key coalesced, and the unnest's reader joins
-  it as its padded side), so taking these means teaching the planner that
-  merged-address equivalence, not passing a proof through the unnest.
-- 99 pushed flips elsewhere (tpc_ds q-files 27, the filters and windows
-  laws), not yet censused by shape.
-- 77 consumer flips: `test_dimension_chain_oracle_laws` (46: a key that
-  renders coalesced, or a plan the check rejected), `test_semi_join_pushdown`
-  (10, CTEs the optimizer builds), tpc_h adhoc07 (6, the rejected widening).
+A join key forces its side too (seam 17), wherever the merge reads it off
+that side alone: a `~` binding beside a complete one is never read, so the
+key is NULL on the complete side's padded rows. Consumer flips fell from 77
+to 49 (dimension chain 46 to 22, tpc_h adhoc07 6 to 0); 504 flips in all
+on this run's base of 515 (distinct flips 304 to 284). What is left:
+
+- 332 are one shape (`test_relation_rollup_laws`): a WHERE on a merged
+  address (`ecoregion_id` merged with an unnest element). v4 discovery
+  plans the address twice, from `eco` and as an unnest of the same root
+  relation (`grp:unnest:d0:local.ecoregion_id`), and joins the unnest back
+  onto that relation, so the narrowed merge has a second consumer under an
+  unnest that proves nothing. `PredicatePushdown` then pushes
+  `ecoregion_id = 1` into both. A NULL-key proof does not pass the unnest
+  (the padded tree's unnested rows match only its own padded row, but that
+  is a row-identity argument, not a NULL rejection); the planner fix is in
+  discovery, not building that self-join.
+- 102 pushed flips elsewhere, now censused by shape: tpc_ds q73 (12 per
+  four compiles) is the filtered-aggregate rewrite turning `count(x ? p) >= 1`
+  into a row WHERE, an optimizer rewrite and no join proof; the filters,
+  windows and expressions laws (26) push a HAVING on a `_wscope` aggregate
+  into the merge that materializes it; `test_merge_union_parity` (8) pushes
+  a rowset's `n > 0`. Each needs its rewrite planned first.
+- 49 consumer flips: `test_dimension_chain_oracle_laws` (22),
+  `test_semi_join_pushdown` (10, CTEs the optimizer builds),
+  `test_oracle_spellings_laws` (5).
+- **Plans whose nodes share a relation are never narrowed.**
+  `consumer_proofs._consumers_first` gives up when a node reads another
+  node of its own relation (a joinless merge over the regroup it passes
+  through): 1.3% of compiles over discovery, TPC and the join matrix.
+  Skipping those edges was tried and backed out: in dimension-chain seed
+  258 a consumer re-resolved over the narrowed merge widened its INNER to a
+  RIGHT (still rejecting, so `_keys_hold` passed it), and a check that no
+  source becomes preserved also rejects the side flips seam 16 shipped in
+  `test_cluster_key_lookup`. It needs a test that tells a widening from a
+  side flip.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
