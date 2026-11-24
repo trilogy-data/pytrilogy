@@ -4159,14 +4159,16 @@ def _hold_lookup_sides(
         gid = _origin_group(parent, origin)
         if gid is None or not parent.parents:
             continue
-        # a membership's step holds its set's feeder as a parent: a dedup
-        # over it would read the feeder's rows
-        lookups = (
-            (Derivation.BASIC,)
-            if parent.existence_concepts
-            else (Derivation.BASIC, Derivation.FILTER)
-        )
         group, keys = attrs[gid], plan.keys_for(gid)
+        # a membership's step holds its set's feeder as a parent: a dedup
+        # over it would read the feeder's rows; a filtered row identity
+        # (`tree_id ? c`) is no value of the other keys
+        lookups = (
+            (Derivation.BASIC, Derivation.FILTER)
+            if not parent.existence_concepts
+            and _filtered_off_keys(group, keys, environment)
+            else (Derivation.BASIC,)
+        )
         # a `by *` total is one value on every row, whatever keys it rides
         determined = build_fd_closure(environment, keys | {ALL_ROWS_ADDRESS})
         if (
@@ -4186,6 +4188,20 @@ def _hold_lookup_sides(
         concepts = [c for address, c in exposed.items() if address in determined]
         held[idx] = _forced_dedup(parent, concepts, environment, determined)
     return held
+
+
+def _filtered_off_keys(
+    group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """Every value `group` filters is a function of its other pairing keys."""
+    members = set(group.primary_members)
+    closure = build_fd_closure(environment, keys - members)
+    return all(
+        isinstance(lineage := environment.concepts[m].lineage, BuildFilterItem)
+        and isinstance(lineage.content, BuildConcept)
+        and lineage.content.address in closure
+        for m in members
+    )
 
 
 def _merge_plan(

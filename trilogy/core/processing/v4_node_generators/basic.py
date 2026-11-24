@@ -76,11 +76,14 @@ def _expose_parent_grain(
         _expose_boundary_handle(parent, key)
     available = renderable_addresses(parent)
     keys = [key for key in missing if key.address in available]
-    if isinstance(parent, SelectNode) and (
-        parent.conditions is not None or parent.existence_concepts
+    if (
+        isinstance(parent, SelectNode)
+        and (parent.conditions is not None or parent.existence_concepts)
+        and not any(c.is_aggregate for c in parent.output_concepts)
     ):
         # a projection that dropped a root key it read only for its WHERE
-        # (`tree_id in <set>`) still renders it
+        # (`tree_id in <set>`) still renders it; one over stored partials
+        # re-sums them at its own grain
         keys += [
             key
             for address in sorted(parent_grain - exposed)
