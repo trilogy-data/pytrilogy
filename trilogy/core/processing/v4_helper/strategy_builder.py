@@ -4193,14 +4193,13 @@ def _hold_lookup_sides(
 def _filtered_off_keys(
     group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
 ) -> bool:
-    """Every value `group` filters is a function of its other pairing keys."""
-    members = set(group.primary_members)
-    closure = build_fd_closure(environment, keys - members)
+    """Every value `group` filters is a column it is paired on (`species ? c`
+    beside `species`)."""
     return all(
         isinstance(lineage := environment.concepts[m].lineage, BuildFilterItem)
         and isinstance(lineage.content, BuildConcept)
-        and lineage.content.address in closure
-        for m in members
+        and lineage.content.address in keys
+        for m in group.primary_members
     )
 
 
