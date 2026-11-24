@@ -454,7 +454,10 @@ class JoinProofs:
     cross-side COALESCE, so ``IS NOT NULL`` on it proves neither side.
     ``side_proofs`` and ``or_groups`` are the full harvest (``IS NOT NULL``,
     ``BETWEEN``, OR-of-ANDs) for a LEFT/RIGHT, whose padded side is one
-    materialized relation. ``filtered_ids`` are the sources that applied an
+    materialized relation. ``key_proofs`` are columns a consumer's join
+    equality reads: a row NULL there reaches no consumer, so they force a
+    side through any column it alone holds, partial or not.
+    ``filtered_ids`` are the sources that applied an
     atom of the request WHERE this merge does not re-render, so each final
     row must have a match there; ``coalescing_keys`` are authored union/full
     relation keys whose preserving typing is row intent and stands."""
@@ -463,6 +466,7 @@ class JoinProofs:
     branch_proofs: set[str] = field(default_factory=set)
     side_proofs: set[str] = field(default_factory=set)
     or_groups: list[list[set[str]]] = field(default_factory=list)
+    key_proofs: set[str] = field(default_factory=set)
     filtered_ids: set[str] = field(default_factory=set)
     coalescing_keys: set[str] = field(default_factory=set)
 
@@ -606,6 +610,19 @@ def _join_key_addresses(join: SourceJoin) -> tuple[set[str], set[str]]:
     return keys, set(keys)
 
 
+def _keys_force(
+    key_proofs: frozenset[str] | set[str],
+    sources: list[GrainSource],
+    final_datasets: list[GrainSource],
+) -> bool:
+    """A consumer's join drops the rows NULL on a column ``sources`` alone
+    hold, which their padded rows are unless the binding is opaque."""
+    if not key_proofs:
+        return False
+    opaque = set().union(*(opaque_binding_addresses(s) for s in sources))
+    return bool(key_proofs & (_exclusive_addresses(sources, final_datasets) - opaque))
+
+
 def _side_forced(
     proofs: set[str],
     or_groups: list[list[set[str]]],
@@ -662,6 +679,7 @@ def downgrade_join_for_proofs(
     side_proofs: set[str] | None = None,
     or_groups: list[list[set[str]]] | None = None,
     stream: frozenset[str] = frozenset(),
+    key_proofs: set[str] | None = None,
 ) -> None:
     """Narrow a FULL when ``proofs`` (concepts forced non-null in every
     surviving row) rule out the padded rows it preserves: only the side
@@ -681,7 +699,10 @@ def downgrade_join_for_proofs(
         return
     side_proofs = side_proofs or set()
     or_groups = or_groups or []
-    if join.join_type != JoinType.FULL or not (proofs or side_proofs or or_groups):
+    key_proofs = key_proofs or set()
+    if join.join_type != JoinType.FULL or not (
+        proofs or side_proofs or or_groups or key_proofs
+    ):
         return
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
@@ -694,23 +715,35 @@ def downgrade_join_for_proofs(
     streamed = _stream_sources(join, final_datasets, stream)
     left_exclusive = _exclusive_addresses(streamed, final_datasets)
     right_exclusive = _exclusive_addresses([join.right], final_datasets)
-    left_forced = _side_forced(
-        proofs, [], left_only, left_keys, _partial_lookup_keys(left_sources, left_keys)
-    ) or _side_forced(
-        side_proofs | proofs,
-        or_groups,
-        left_exclusive,
-        set(),
-        _unprovable_addresses(streamed),
+    left_forced = (
+        _side_forced(
+            proofs,
+            [],
+            left_only,
+            left_keys,
+            _partial_lookup_keys(left_sources, left_keys),
+        )
+        or _side_forced(
+            side_proofs | proofs,
+            or_groups,
+            left_exclusive,
+            set(),
+            _unprovable_addresses(streamed),
+        )
+        or _keys_force(key_proofs, streamed, final_datasets)
     )
-    right_forced = _side_forced(
-        proofs,
-        [],
-        right_only,
-        right_keys,
-        _partial_lookup_keys([join.right], right_keys),
-    ) or _side_forced(
-        side_proofs | proofs, or_groups, right_exclusive, set(), right_unprovable
+    right_forced = (
+        _side_forced(
+            proofs,
+            [],
+            right_only,
+            right_keys,
+            _partial_lookup_keys([join.right], right_keys),
+        )
+        or _side_forced(
+            side_proofs | proofs, or_groups, right_exclusive, set(), right_unprovable
+        )
+        or _keys_force(key_proofs, [join.right], final_datasets)
     )
     join.join_type = unpadded_join_type(join.join_type, left_forced, right_forced)
 
@@ -721,6 +754,7 @@ def downgrade_directional_join_for_proofs(
     or_groups: list[list[set[str]]],
     final_datasets: list[GrainSource],
     stream: frozenset[str] = frozenset(),
+    key_proofs: frozenset[str] | set[str] = frozenset(),
 ) -> None:
     """A LEFT/RIGHT whose padded side is forced present by ``proofs`` keeps
     no padded row, so it is INNER. Partial and opaque bindings on the padded
@@ -729,7 +763,7 @@ def downgrade_directional_join_for_proofs(
         return
     if join.join_type not in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER):
         return
-    if not proofs and not or_groups:
+    if not proofs and not or_groups and not key_proofs:
         return
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
@@ -748,7 +782,7 @@ def downgrade_directional_join_for_proofs(
         padded_only,
         padded_keys,
         _unprovable_addresses(padded_sources),
-    ):
+    ) or _keys_force(key_proofs, padded_sources, final_datasets):
         join.join_type = JoinType.INNER
 
 
@@ -981,6 +1015,7 @@ def narrow_join_types(
             proofs.side_proofs,
             proofs.or_groups,
             stream,
+            proofs.key_proofs,
         )
         downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
         tighten_join_for_filtered_branch(
@@ -1011,6 +1046,7 @@ def narrow_directional_join_types(
             proofs.or_groups,
             final_datasets,
             streams.get(id(join), frozenset()),
+            proofs.key_proofs,
         )
     narrow_joins_read_by_inner(joins, inner_only=True)
 

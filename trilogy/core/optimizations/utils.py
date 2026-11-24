@@ -376,9 +376,10 @@ def rename_reference(column: BuildConcept) -> BuildConcept | None:
         if len(args) == 1:
             return args[0]
     if isinstance(lineage, BuildFunction) and lineage.operator == FunctionType.GROUP:
-        # `sum(x) by k` re-labels the aggregate a parent already grouped to k.
+        # `sum(x) by k` re-labels the aggregate a parent already grouped to k;
+        # `group(x) by k` over rows already at k re-labels x
         args = lineage.concept_arguments
-        if args and args[0].derivation == Derivation.AGGREGATE:
+        if args:
             return args[0]
     return None
 
