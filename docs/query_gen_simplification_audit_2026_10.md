@@ -253,7 +253,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; the eleventh deleted the nine proof branches of the rule the planner already owns, moving no firing; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice and 12 landed (the zero-filled COUNT owned by its source); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice, 12 landed (the zero-filled COUNT owned by its source) and 13 landed (one owner for a coalesced key read); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1645,6 +1645,49 @@ election, not the padded fallback.
     changed; fuzzer 522/522; suite fails the same 36 environment tests as
     `main`. `sqldiff.py` now normalizes `MATERIALIZED` CTE names and the
     checkout path; before, both read as moves.
+
+13. **One owner for a coalesced key read (landed; the handoff's last three
+    "wrong stage" COALESCEs).** A column reads one parent column, or a
+    coalesce of several: every member of an outer-join key class (any side
+    may be the padded NULL), or every in-scope source of a multi-source
+    entry unless an INNER join equates them on the key. That rule was
+    written four times, and only the renderer's copy was whole:
+    `safe_get_cte_value` (key class over in-scope sources, then the
+    FROM-scope filter and the INNER collapse), `CTE.render_binding` (key
+    class and raw sources, which decides GROUP BY dedup),
+    `filtered_aggregate._reads_source` (key class and raw sources) and
+    `join_upgrade._renders_exclusively_from` (raw sources only). It is one
+    method now, `CTE.column_reads`, and the four read it. The join ON clause
+    had a second grouping rule of its own: an outer join coalesced every
+    left side of one right key, and anything else went through
+    `coalesced_key_groups`, which the optimizer's join proofs already read.
+    - **The ON clause's outer branch was redundant.** A census over the
+      suite (53,600 tests): it fired 884 times in 86 test functions, and
+      `coalesced_key_groups` put the same pairs in one group every time.
+      It is deleted; the renderer, `inner_join_key_sources` and the join
+      upgrade's proofs read the one grouping.
+    - **The disagreement was a soundness hole, not a plan move.**
+      `_renders_exclusively_from` let a consumer's rejection of NULL on an
+      outer-join key class member prove its producer non-null, though the
+      consumer renders the key `coalesce(a.k, b.r)`, which masks a padded
+      NULL. No suite shape reaches it;
+      `test_execute_models.py::test_a_coalesced_key_carries_no_rejection_to_one_producer`
+      pins it (red on `main`).
+    - **Not moved: the `left_local` pin in `_render_left_concept`.** It
+      pins an ON key to the left base's own column when the generic render
+      might read another source. Asking `column_reads` instead of the raw
+      source count failed 15 law tests: the INNER collapse picks the
+      lexically first source, which can be the join's own right side, and
+      the key renders `"c"."k" = "c"."k"`. It keeps the raw count.
+
+    Gates, against `0450ee9`: corpus (204 statements) 0 moved; fuzzer
+    522/522; suite SQL
+    capture under `PYTHONHASHSEED=0`, the 1,285 statements that moved under
+    xdist re-run serially on both sides: 40 moved against a base-to-base
+    floor of 37, the 5 left over being assertion column order and an
+    environment skip, so 0 plans moved; suite outcomes match `main` but for
+    `test_rank_beside_partial_merge::test_a_rank_and_its_total_need_their_own_node`,
+    an xdist ordering failure that passes serially on both sides.
 
 ## Gate used
 
