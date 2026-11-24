@@ -6,11 +6,11 @@ column the merge supplies alone. The optimizer found these only after pushing
 the filter down (`UpgradeJoinOnGuards`); here the planner hands each merge
 what every one of its consumers rejects.
 
-A proof passes a node only where rows pass it unchanged: a plain select, a
-merge, or a group that is not a grouping-set pass. Through a grouping only a
-key passes, never an aggregate: a rejected key's group holds only the rows
-with that key NULL, while dropping a padded row changes the aggregates of the
-group it joined. A window, unnest, limit, union or rowset boundary stops it.
+A proof passes a node only where rows pass it unchanged: a plain select or
+filter, a merge, or a group that is not a grouping-set pass. Through a
+grouping only a key passes, never an aggregate: a rejected key's group holds
+only the rows with that key NULL, while dropping a padded row changes the
+aggregates of the group it joined. A window, unnest, limit, union or rowset boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
 keeps what all of its consumers reject.
 
@@ -42,6 +42,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.grain_utility import non_null_proofs
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.core.processing.nodes import (
+    FilterNode,
     GroupNode,
     MergeNode,
     SelectNode,
@@ -111,7 +112,7 @@ def _passes_rows(node: StrategyNode) -> bool:
         return node.node_joins is None
     if type(node) is GroupNode:
         return node.grouping_pass() is None
-    return type(node) is SelectNode
+    return type(node) in (SelectNode, FilterNode)
 
 
 def _outer_joins(node: MergeNode) -> bool:
@@ -256,16 +257,32 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     # a re-resolved node's identifier can change: relations stay keyed as found
     ident_of = {id(node): ident for ident, group in by_ident.items() for node in group}
     saved = [_State.of(node) for node in nodes]
-    narrowed: set[int] = set()
-    _propagate(order, by_ident, ident_of, True, narrowed)
-    _rebuild(nodes, narrowed, saved)
+    _narrow(nodes, order, by_ident, ident_of, True, saved)
     if _keys_hold(order, by_ident, ident_of):
         return
     for state in saved:
         state.restore()
-    narrowed = set()
-    _propagate(order, by_ident, ident_of, False, narrowed)
-    _rebuild(nodes, narrowed, saved)
+    _narrow(nodes, order, by_ident, ident_of, False, saved)
+
+
+def _narrow(
+    nodes: list[StrategyNode],
+    order: list[str],
+    by_ident: dict[str, list[StrategyNode]],
+    ident_of: dict[int, str],
+    keys: bool,
+    saved: list[_State],
+) -> None:
+    """Narrow to a fixpoint. Consumers are read before the merges under them
+    narrow, and a narrowing can make a consumer reject more: a key its other
+    side no longer pads pairs on plain ``=``, which rejects the NULL a merge
+    below pads it with."""
+    for _ in range(len(nodes)):
+        narrowed: set[int] = set()
+        _propagate(order, by_ident, ident_of, keys, narrowed)
+        if not narrowed:
+            return
+        _rebuild(nodes, narrowed, saved)
 
 
 @dataclass
@@ -319,12 +336,16 @@ def _propagate(
                 and passed
                 and isinstance(node, MergeNode)
                 and _outer_joins(node)
+                and (taken := node.consumer_proofs or ConsumerProofs()) != here | taken
             ):
-                node.consumer_proofs = here
-                node.unfiltered_partials = {
-                    c.address for c in node.resolve().partial_concepts
-                }
-                node.key_reads = single_source_reads(node)
+                # a later round only adds: what the merge took before still
+                # holds, and `_keys_hold` checks the plan that results
+                node.consumer_proofs = here | taken
+                if node.unfiltered_partials is None:
+                    node.unfiltered_partials = {
+                        c.address for c in node.resolve().partial_concepts
+                    }
+                node.key_reads = single_source_reads(node) | (node.key_reads or {})
                 narrowed.add(id(node))
                 node.rebuild_cache()
             forward = here | ConsumerProofs.of(node.conditions)

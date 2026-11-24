@@ -153,3 +153,65 @@ def test_a_consumer_join_on_a_key_read_off_one_side_narrows_the_merge():
         ("N2", "airport0", 1),
         ("N3", None, 0),
     ]
+
+
+def test_a_consumer_inner_join_after_a_full_narrows_it_to_a_left():
+    """The flights' INNER reads the aircraft's `tail_num`, so a model with no
+    aircraft (padded on the aircraft) is dropped: the FULL keeps only the
+    aircraft's padding, even after the merge has ordered its sources."""
+    executor = _executor("aircraft_id")
+    query = "select model_name, carrier_name, count(id) as n;"
+    planned = [t for _, t in _planned(executor, query)]
+    assert JoinType.FULL not in planned, planned
+    assert _rows(executor, query) == [
+        ("A320", "carrier0", 2),
+        ("E175", "carrier0", 2),
+        (None, "carrier1", 0),
+    ]
+
+
+CHAINED = """
+key model_code string;
+property model_code.model_name string;
+property model_code.seats int;
+datasource aircraft_model (model_code: ~model_code, model_name, seats)
+grain (model_code)
+query '''SELECT * FROM (VALUES ('M0', 'A320', 2)) t(model_code, model_name, seats)''';
+key aircraft_id int;
+unique property aircraft_id.tail_num string;
+key carrier_code string;
+property carrier_code.carrier_name string;
+datasource carrier (carrier_code, carrier_name) grain (carrier_code)
+query '''SELECT * FROM (VALUES ('C0', 'carrier0')) t(carrier_code, carrier_name)''';
+key airport_id int;
+property airport_id.airport_code string;
+property airport_id.airport_name string;
+datasource airport (airport_id, airport_code, airport_name) grain (airport_id)
+query '''SELECT * FROM (VALUES (0, 'P0', 'airport0'), (1, 'P1', 'airport1')) t(airport_id, airport_code, airport_name)''';
+key id int;
+datasource flight (id, tail_num: ?tail_num, carrier_code: ~carrier_code, airport_code)
+grain (id)
+query '''SELECT * FROM (VALUES (0, 'N0', 'C0', 'P0'), (1, 'N0', 'C0', 'P1'), (2, null, 'C0', 'P0')) t(id, tail_num, carrier_code, airport_code)''';
+datasource aircraft (aircraft_id, tail_num, model_code: ~model_code)
+grain (aircraft_id)
+query '''SELECT * FROM (VALUES (0, 'N0', 'M0')) t(aircraft_id, tail_num, model_code)''';
+"""
+
+
+def test_a_narrowed_merge_lets_its_consumer_narrow_the_merge_it_joins():
+    """The airports' merge narrows on the carrier lookup, which leaves its
+    `id` unpadded, so its INNER on the per-flight seats regroup pairs on
+    plain `=`: that rejects the seats' FULL padding, which a second round
+    narrows to a LEFT."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(CHAINED)
+    query = (
+        "select airport_name, model_name, carrier_name, sum(group(seats) by id) as s;"
+    )
+    planned = [t for _, t in _planned(executor, query)]
+    assert JoinType.FULL not in planned, planned
+    assert _rows(executor, query) == [
+        ("airport0", "A320", "carrier0", 2),
+        ("airport0", None, "carrier0", None),
+        ("airport1", "A320", "carrier0", 2),
+    ]
