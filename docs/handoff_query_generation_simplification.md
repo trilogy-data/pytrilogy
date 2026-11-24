@@ -93,9 +93,19 @@ Steps 1-3 landed: the proof harvest is shared and
 planner's own proofs. Optimizer flips fell from 436 to 45, and the statements
 depending on the rule from 110 to 55.
 
-The remaining 45 all rest on proofs that only exist after planning: conditions
-the optimizer itself pushed, and cross-CTE consumer proofs
-(`join_upgrade._external_forced_map`). So `_downgrade_base_join`, the
+`UpgradeJoinOnGuards` (CTE-to-CTE and base joins alike) was censused by
+proof channel (`local_scripts/sql_ab/guard_census_plugin.py`, seam 14 of the
+audit): of 1,539 flips over the suite, 475 needed only the CTE's own planned
+WHERE. The planner now makes those itself: a FULL reads `IS NOT NULL` on a
+column exclusive to one side, a RIGHT/FULL's padded side is the whole
+left-deep stream, and a later INNER equality on a padded side's key proves
+it present. 1,080 flips remain, 12 of them planned (5 are `union join` FULLs
+the planner may not re-side once the merge has ordered its sources).
+
+The others rest on proofs that only exist after planning: conditions the
+optimizer itself pushed (884 of the 1,080), and cross-CTE consumer proofs
+(`join_upgrade._external_forced_map`, 175). So
+`_downgrade_base_join`, the
 LEFT/RIGHT arms of `_downgrade` and the BaseJoin loop in
 `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay unless pushed conditions become visible to
 the planner. That visibility is the decision; it is the same prerequisite as

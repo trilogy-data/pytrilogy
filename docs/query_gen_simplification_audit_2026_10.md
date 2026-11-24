@@ -253,7 +253,7 @@ narrowings, 256 after the sixth, measured from 324 once the null-group
 matrix joined the suite, 101 after the seventh, from 255, 53 after the
 eighth, 46 after the ninth and 35 after the tenth, measured from 40; the eleventh deleted the nine proof branches of the rule the planner already owns, moving no firing; over the whole suite, laws included, its CTE
 rewrites fell from 1,045 to 496 in the fourth) and lost its per-side origin premise, 8 closed,
-9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice, 12 landed (the zero-filled COUNT owned by its source) and 13 landed (one owner for a coalesced key read); 1 and the rest of 2 remain, and
+9 half done, 10 landed every keyed read (rowset, subquery, statement), the group-owned grouping sets below the planner, a pure arm (step (a)), a standard arm whose pass is the select's, with the per-aggregate mode deleted (step (b)), and the reader ablation (step (c): 14 of 28 sites deleted, the rest pinned to a row or plan-size test); 11 landed its first slice, 12 landed (the zero-filled COUNT owned by its source) and 13 landed (one owner for a coalesced key read), 14 landed (the planner narrows on its own WHERE: `UpgradeJoinOnGuards` flips 1,539 to 1,080); 1 and the rest of 2 remain, and
 hold nearly all of the estimated lines. Seam 1 was re-measured: its blocker is the ranked owner
 election, not the padded fallback.
 
@@ -1688,6 +1688,59 @@ election, not the padded fallback.
     environment skip, so 0 plans moved; suite outcomes match `main` but for
     `test_rank_beside_partial_merge::test_a_rank_and_its_total_need_their_own_node`,
     an xdist ordering failure that passes serially on both sides.
+
+14. **The planner narrows on its own WHERE (landed; the planned half of
+    handoff 2.1 step 4).** `UpgradeJoinOnGuards` flips outer joins on three
+    proof channels: the CTE's own condition as the planner built it, a
+    condition an optimizer phase pushed there, and a consumer's rejection
+    (`_external_forced_map`). `local_scripts/sql_ab/guard_census_plugin.py`
+    decides every flip again without the consumer proofs and on the CTE's
+    planned condition, and names the weakest channel that still flips it.
+    Over the suite (53,600 tests) the base made 1,539 flips in 760 tests:
+    475 on the planned condition alone (335 in the early pass before
+    `UnionDimPushdown`), 851 on pushed conditions, 204 on consumers. The
+    planner had every input of the 475. It missed them three ways:
+    - **A FULL ignored `IS NOT NULL`.** Its proofs are the conservative
+      harvest, since a merged key renders as a cross-side coalesce. A
+      column no other dataset of the merge holds renders off its side
+      alone, so the full harvest proves that side through it
+      (`_exclusive_addresses`; a column a later join's side shares is
+      excluded, since it renders coalesced).
+    - **The padded left side was the ON clause's sources.** A RIGHT/FULL
+      pads the whole left-deep stream, so a WHERE on a dimension joined
+      INNER before it (`date.year` beside q75's FULL to returns) proves the
+      left present. `_stream_sources` reads the stream, through exclusive
+      columns only.
+    - **A later INNER equality was not a proof.** A NULL key matches nothing,
+      so a padded side whose key a later plain INNER reads keeps no padded
+      row (q91: customer LEFT, then an INNER to the address on the
+      customer's `address_sk`). `narrow_joins_read_by_inner`, to a fixpoint;
+      a coalesced left, a null-safe pair and an opaque binding prove
+      nothing, as in the optimizer's `_add_inner_join_key_proofs`.
+    - **Ordering matters.** The INNER rule may move a FULL to LEFT or RIGHT
+      only in the first narrowing step. After `compute_outer_null_status`
+      orders the sources, a FULL that changed which side it preserves left
+      a `union join` key reading the padded side
+      (`test_union_join_anchor_where_precedes_the_rowset_pairing`, two rows
+      lost). The second step narrows to INNER only, and those FULLs stay the
+      optimizer's.
+
+    After: 1,080 flips in 535 tests, 12 on the planned condition (5 of them
+    the `union join` FULLs above). The optimizer rule stays: the pushed and
+    consumer channels are the open half, and they need the pushed conditions
+    visible to the planner.
+    `tests/modeling/tpc_ds_duckdb/test_planner_owned_join_narrowing.py` pins
+    the FULL and the INNER chain at plan time (both red on `main`).
+
+    Gates, against `c7e5727`: corpus (206 statements) 5 moved, rows checked
+    by their TPC-DS tests. q30, q30-alt and q78 shrink (an INNER at plan
+    time leaves no stale null-safe pair). q75 and q80 push an item filter
+    into each sales arm, because the item join is INNER before
+    `UnionDimPushdown` runs. On sf=1 the rows are identical, q75 runs in
+    77ms against 98ms, and q80 is unchanged; q75's log is rebaselined
+    (7,043 to 7,498 characters). Fuzzer 522/522. Suite: the same
+    credential-bound failures as `main`, and the xdist-order
+    `test_rank_beside_partial_merge` failure that passes serially.
 
 ## Gate used
 
