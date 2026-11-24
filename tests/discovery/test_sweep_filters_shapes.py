@@ -647,6 +647,62 @@ SHAPES = [
         ),
         [(True, "broadleaf"), (None, "broadleaf"), (None, None), (False, None)],
     ),
+    # a window reads the rows a grouping parent's gate kept (196634,
+    # reduced): no species averages over 6; over 4, Acer and Quercus trees
+    (
+        (
+            "select city, tree_form, city ? city = 'B' as v0, sum(max(height) by"
+            " city, tree_form, v0) over (order by city) as v2 where avg(height) by"
+            " species > 6;"
+        ),
+        [],
+    ),
+    (
+        (
+            "select city, tree_form, city ? city = 'B' as v0, sum(max(height) by"
+            " city, tree_form, v0) over (order by city) as v2 where avg(height) by"
+            " species > 4;"
+        ),
+        [("A", "broadleaf", None, 5), ("B", "broadleaf", "B", 12)],
+    ),
+    # a filtered aggregate keyed by fewer shown keys than its rows is read
+    # off those rows (190095, reduced): four (city, form) pairs, not six
+    (
+        (
+            "select city, tree_form, (count(tree_id) by tree_form) ? tree_form !="
+            " 'x' as v0, max(height) by city as v1;"
+        ),
+        [
+            ("A", "broadleaf", 4, 5),
+            ("A", None, None, 5),
+            ("B", "broadleaf", 4, 7),
+            ("B", "linden", 1, 7),
+        ],
+    ),
+    # a filter folded into its predicate's aggregate is no GROUP BY key
+    # (196668, reduced)
+    (
+        (
+            "select upper(tree_form) as fc, tree_form ? min(height) by tree_form"
+            " != 0 as v0, city as v1;"
+        ),
+        [
+            ("BROADLEAF", "broadleaf", "A"),
+            ("BROADLEAF", "broadleaf", "B"),
+            ("LINDEN", "linden", "B"),
+            (None, None, "A"),
+        ],
+    ),
+    # a total in the WHERE beside a membership gates the rows (182211,
+    # reduced): B's two trees, each carrying a tag A has
+    (
+        (
+            "select height ? tag in (tag ? count(tree_id) by city >= 1) as v0"
+            " where max(height) by * <= max(height) by city and tag in (tag ?"
+            " city = 'A');"
+        ),
+        [(2,), (7,)],
+    ),
 ]
 
 

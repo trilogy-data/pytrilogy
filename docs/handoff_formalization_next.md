@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.540.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.541.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 180,000; the PR of each
-round holds its sweep totals. `filters` has 36 `OPEN` seeds and 402 failing
-queries in 0-117,000 and 160,000-180,000 at 0.3.540 (area 4b),
+group key of aggregates and windows, in a HAVING) to 200,000; the PR of each
+round holds its sweep totals. `filters` has OPEN_COUNT `OPEN` seeds and FAIL_COUNT failing
+queries in 0-200,000 at 0.3.541 (area 4b),
 `windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -656,8 +656,10 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   count(tree_id) by city < max(height) by *`. `gen_root`'s fallback asks the
   network search for the trees with `__preql_internal.all_rows` and the
   gates deferred; it answers with no plan, and it answers with one when the
-  set reads no total. 0.3.536's gate backfill under a WHERE membership skips
-  totals for this reason (two seeds right on main would raise).
+  set reads no total. The gate backfill skips a total an atom reads beside
+  a membership (`total > x or tag in <set>`) for this reason: 0.3.541 backfills
+  one in an atom of its own (six raises fixed), and backfilling the OR too
+  raised 182674, 185850 and 186115.
 - **A set over nullable content keeps the filter's padding NULLs.** The set
   of `x ? c` is the values of the rows `c` passes, a NULL included where a
   passing row's `x` is NULL; matched by identity (`_null_free_set`). The set
@@ -739,6 +741,30 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   (`lookup_side_counts_once`), since deduping one whose content is an
   aggregate (175585) or a row identity (96573, 28859) broke seeds right on
   main. Seeds 117,000-160,000 were not compared against main this round.
+- **Left after 0.3.541** (seeds 180,000-200,000, each failing on main too: 4
+  wrong, 32 raises, 7 invalid of 40,000):
+  - 198442: a window `over (partition by v0)` is planned as an aggregate by
+    `v0` and FINAL reads `(city, tree_form, v0)` off the filter's rows, which
+    never met the gate `sum(height) by species = 0` (its host is the
+    count by `city, tree_form`, a side FINAL does not join). `elect_cover`
+    ranks by `rows_filtered`, but `_where_atoms` holds only atoms that hold
+    on an absent group, so for this gate every candidate passes and the
+    most-downstream filter wins. Reduced: `select city, tree_form, city ? not
+    (city in (city ? count_distinct(tag) by city, species < 1)) as v0,
+    sum(count(tree_id) by city, tree_form, v0) over (partition by v0) as v1
+    where sum(height) by species = 0` (the answer is empty). Ranking by every
+    WHERE atom is the candidate fix; it touches every cover, so sweep it alone.
+  - 190661: the set's row half reads ungated rows (the first lead above):
+    `select city, city ? city in (city ? sum(height) by city > 0 and height >
+    2) as v2 where sum(height) by city - max(height) by city, species > 3`
+    shows B (B's kept tree is 2 tall). The set's filter joins the gated sum
+    to the raw scan for `height > 2`.
+  - Raises: keyless joins (184369, 184759, 185251, 194927, 199620), `Could not
+    resolve connections` (184974, 185997, 187204, 190792, 195260, 198604),
+    recursion (191855, 197547, 199349), `renders no column` (183765),
+    `Missing source reference` (193049). Invalid on DuckDB: a CTE alias read
+    for a column it lacks (197959), nested aggregates on the summary (183562,
+    198529, 199618), a missing `_virt_agg_sum` column (192798).
 - Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main
   too (predicate pushdown read a column off a set feeder outside the FROM;
   fixed). It still renders two SQL texts by hash seed, both right: some
