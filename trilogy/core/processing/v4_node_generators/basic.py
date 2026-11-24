@@ -76,6 +76,16 @@ def _expose_parent_grain(
         _expose_boundary_handle(parent, key)
     available = renderable_addresses(parent)
     keys = [key for key in missing if key.address in available]
+    if isinstance(parent, SelectNode):
+        # a projection that dropped a root key it read only for its WHERE
+        # (`tree_id in <set>`) still renders it
+        keys += [
+            key
+            for address in sorted(parent_grain - exposed)
+            if address in available
+            and (key := environment.concepts.get(address)) is not None
+            and key.derivation == Derivation.ROOT
+        ]
     if keys:
         widen_projection(
             parent, keys, input_candidates=keys, available_addresses=available

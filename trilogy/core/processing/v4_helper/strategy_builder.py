@@ -4151,17 +4151,26 @@ def _hold_lookup_sides(
     `columns` are what each side holds (`_side_columns`); a side held before
     supplies only what its keys determine. Whether the built rows are finer
     than the keys is the one physical read: it follows the datasource the
-    scan resolved to."""
+    scan resolved to. A filtered value's step is held the same way: built per
+    row, it repeats its value once per row of its key
+    (`Filters.lookup_side_counts_once`)."""
     held = list(parents)
     for idx, parent in enumerate(parents):
         gid = _origin_group(parent, origin)
         if gid is None or not parent.parents:
             continue
+        # a membership's step holds its set's feeder as a parent: a dedup
+        # over it would read the feeder's rows
+        lookups = (
+            (Derivation.BASIC,)
+            if parent.existence_concepts
+            else (Derivation.BASIC, Derivation.FILTER)
+        )
         group, keys = attrs[gid], plan.keys_for(gid)
         # a `by *` total is one value on every row, whatever keys it rides
         determined = build_fd_closure(environment, keys | {ALL_ROWS_ADDRESS})
         if (
-            group.derivation != Derivation.BASIC
+            group.derivation not in lookups
             or not keys
             or not group.grain_components
             or not group.grain_components <= determined
