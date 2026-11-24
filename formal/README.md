@@ -2958,6 +2958,25 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     total rolls up and meets the tags on `city` alone
     (`regraft_keeps_paired_key`). Counting FINAL as a pairing reader of the
     regrafted group fixed it and broke TPC-DS q25 and q66, so it is `OPEN`.
+- **`filters` to 140,000** (0.3.538). On main seeds 120,000-140,000 (40,000
+  queries) hold 29 wrong answers, 76 raises and 7 invalid statements. Over
+  0-140,000 the round fixes 150 queries (net 77 fewer wrong answers, 56 fewer
+  raises, 10 fewer invalid), with 12,930 fewer joins, 108 fewer scans and
+  2,060 more summary-table reads. 7 queries right on main now fail; all are
+  `OPEN`.
+  - A set beside a grouping group feeds it no rows, so it supplies no column
+    the group's demand counts as provided (`set_supplies_no_column`).
+  - A set planned under the WHERE reads the rows the WHERE kept: the
+    WHERE's aggregates gate the set's row inputs, reached through its
+    condition (`set_plan_gates_its_rows`), and the select's membership tests
+    read that kept set (`select_reads_kept_set`).
+  - An aggregate only a set reads supplies no select key, unless the select
+    reads its own members (`set_input_supplies_no_key`).
+  - Not fixed: gating a set on the summary model renders the gate off the
+    summary scan, which raises (62004, 77287, 138477, 138625) or drops a row
+    (47078). 25496 is main's stray WHERE row beside a window, which a limit
+    used to hide. 129123 in full still pairs on one column: the filter cannot
+    expose its grain keys.
 
 ## Limits
 

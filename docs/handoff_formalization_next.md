@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.537.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.538.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 120,000; the PR of each
-round holds its sweep totals. `filters` has 50 `OPEN` seeds and 430 failing
-queries in 20,000-120,000 not yet listed (area 4b),
+group key of aggregates and windows, in a HAVING) to 140,000; the PR of each
+round holds its sweep totals. `filters` has 46 `OPEN` seeds and 490 failing
+queries in 0-140,000 at 0.3.538 (area 4b),
 `windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -595,11 +595,18 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` (42 seeds of
-0-20,000 and eight right on main that 0.3.537 raises on) and, at 0.3.537,
-430 failing queries of 20,000-120,000 (280 raises, 131 wrong, 19 invalid),
-each failing on main too but for 25203 and 49355 (raised or invalid on
-main, wrong rows now; 71788 is right at 0.3.537) and the eight `OPEN` ones. At 0.3.535
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` and, at 0.3.538, 490
+failing queries of 0-140,000 (111 wrong, 358 raises, 21 invalid), each
+failing on main too but for the seven `OPEN` ones 0.3.538 broke: gating a set
+planned under the WHERE on the summary model renders the gate off the
+summary scan (raises `Missing source reference` on 62004, 77287, 138477,
+138625; drops a row on 47078), and 25496, main's stray WHERE row beside a
+window that a limit hid. 129123 in full is wrong on main and here: the filter
+cannot expose its grain keys (species, tag), so FINAL pairs on `v0` alone.
+The renderer collapses an aggregate to its argument in a CTE finer than its
+grain (`AGGREGATE_GRAIN_MATCH_MAP`); a planner placing a keyed aggregate
+there returns wrong rows silently, so a guard there would turn those into
+raises. At 0.3.535
 the 60,000-80,000 ones grouped as 90 `cannot be related` (the WHERE-gate
 host below), 54 wrong answers, 44 keyless joins, 15
 recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
