@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -245,6 +246,57 @@ def collect_applied_conditions(
             if parent.identifier not in padded:
                 out.extend(collect_applied_conditions(parent))
     return out
+
+
+def row_applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:
+    """The atoms of `applied_atoms` every row of `source` passed. A side joined
+    in at a coarser grain says only that its keys belong to a kept row: a gate
+    applied below `count(tag) by city` filtered the counted rows, not the rows
+    joined to the count on `city` (`Filters.coarse_side_filters_no_row`), until
+    a group collapses them to those keys again."""
+    return [atom for atom, keys in _atoms_at(source) if keys is None]
+
+
+def _atoms_at(
+    source: BuildDatasource | QueryDatasource,
+) -> list[tuple[BoolExpr, frozenset[str] | None]]:
+    """Each applied atom with the keys at which the rows still passed it: a
+    row's projection onto them is a kept row's (None: the row itself)."""
+    if not isinstance(source, QueryDatasource):
+        return []
+    out: list[tuple[BoolExpr, frozenset[str] | None]] = [
+        (atom, None)
+        for atom in (decompose_condition(source.condition) if source.condition else [])
+    ]
+    # a set feeds no rows: a subselect's filters are its own
+    skipped = padded_sources(source.joins) | {
+        s.identifier
+        for sources in source.existence_source_map.values()
+        for s in sources
+    }
+    grain = frozenset(source.grain.components)
+    parents = [p for p in source.datasources if p.identifier not in skipped]
+    for parent in parents:
+        held = frozenset(parent.grain.components)
+        coarse = len(parents) > 1 and not grain <= held
+        for atom, keys in _atoms_at(parent):
+            if coarse and not _atom_keys(atom) <= held:
+                keys = held if keys is None else keys & held
+            out.append((atom, keys))
+    if source.group_required:
+        out = [(a, None if k is not None and grain <= k else k) for a, k in out]
+    return out
+
+
+def _atom_keys(atom: BoolExpr) -> set[str]:
+    """The keys an atom's value is constant over: an aggregate's grain, a
+    row argument's own address."""
+    return {
+        key
+        for c in atom.row_arguments
+        for key in (c.grain.components if c.is_aggregate else {c.address})
+        if key != ALL_ROWS_ADDRESS
+    }
 
 
 def applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:

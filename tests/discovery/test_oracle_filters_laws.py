@@ -328,10 +328,14 @@ FOUND_SEEDS = [
     82898, 87323, 87620, 91307, 92202, 93985, 96931, 108294, 109496, 110932,
     111303, 115173, 117965, 120789, 121072, 123427, 124330, 125180, 125328,
     126657, 127819, 128462, 130249, 130782, 133525, 136239, 137582,
+    # 0.3.539: the summary set gates, a coarse side's gate, a set's stored
+    # column (and 43195, which its first version broke)
+    43195, 47078, 62004, 77287, 107276, 138477, 138625, 139232, 144447,
+    145165, 146440, 151597, 152317,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. 9683,
-# 9919 and 12294 raised on main and return wrong rows; the last eight
+# 9919 and 12294 raised on main and return wrong rows; the last ones
 # were right on main.
 OPEN: dict[tuple[int, str], str | None] = {
     (349, "base"): "maximum recursion",
@@ -412,16 +416,10 @@ OPEN: dict[tuple[int, str], str | None] = {
     # 0.3.538 fixed the other model only
     (23659, "base"): None,
     (60364, "base"): None,
-    # right on main, broken since 0.3.538: a set gated under the WHERE on the
-    # summary model renders its gate off the summary scan; 25496 is main's
-    # stray WHERE row a limit used to hide
+    # right on main, broken since 0.3.538: main's stray WHERE row beside a
+    # window, which a limit used to hide
     (25496, "base"): None,
     (25496, "summary"): None,
-    (47078, "summary"): None,
-    (62004, "summary"): "Missing source reference",
-    (77287, "summary"): "Missing source reference",
-    (138477, "summary"): "Missing source reference",
-    (138625, "summary"): "Missing source reference",
 }
 
 

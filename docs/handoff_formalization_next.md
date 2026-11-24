@@ -13,13 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.538.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.539.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 140,000; the PR of each
-round holds its sweep totals. `filters` has 46 `OPEN` seeds and 490 failing
-queries in 0-140,000 at 0.3.538 (area 4b),
+group key of aggregates and windows, in a HAVING) to 160,000; the PR of each
+round holds its sweep totals. `filters` has 41 `OPEN` seeds and 553 failing
+queries in 0-160,000 at 0.3.539 (area 4b),
 `windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -441,7 +441,10 @@ Reads the summary could serve:
 - Declines marked in the harness: `DISTINCT_GRAIN_COLUMNS`, `MIXED_GRAINS`,
   `GROUP_VALUE_GRAINS`, `form_case`, `form_nested`.
 - `collect_applied_conditions` counts a condition applied under a padded
-  side; fixed where it bit (0.3.500), not in general.
+  side; fixed where it bit (0.3.500), not in general. It also counts one
+  applied below a group joined back to finer rows, and a set's subselect:
+  FINAL's population test reads `row_applied_atoms` instead (0.3.539), the
+  other readers (`_partner_facts`, `_rejects_padding`) do not yet.
 - TPC-DS q83's RIGHT JOIN date pin (on main too).
 
 ### 1b. Cheapest source (`Cost.lean`)
@@ -595,13 +598,13 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
 `gen_filter`'s docstring is the rule: `x ? c` is `x` where `c` holds and NULL
 elsewhere, and a statement showing only filter values over one predicate is
 filtered by it. The family writes only conditions the filtered value's keys
-decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` and, at 0.3.538, 490
-failing queries of 0-140,000 (111 wrong, 358 raises, 21 invalid), each
-failing on main too but for the seven `OPEN` ones 0.3.538 broke: gating a set
-planned under the WHERE on the summary model renders the gate off the
-summary scan (raises `Missing source reference` on 62004, 77287, 138477,
-138625; drops a row on 47078), and 25496, main's stray WHERE row beside a
-window that a limit hid. 129123 in full is wrong on main and here: the filter
+decide. Open in it: `OPEN` in `test_oracle_filters_laws.py` and, at 0.3.539, 553
+failing queries of 0-160,000 (123 wrong, 402 raises, 28 invalid),
+each failing on main too but for 25496, main's stray WHERE row beside a
+window that a limit hid (0.3.538 changed the row order). In 140,000-160,000
+the wrong answers left are the derived key off a peel (141488, 146267),
+windows over filtered keys (141534, 148111, 155908) and 145514, 153350,
+156836, unread. 129123 in full is wrong on main and here: the filter
 cannot expose its grain keys (species, tag), so FINAL pairs on `v0` alone.
 The renderer collapses an aggregate to its argument in a CTE finer than its
 grain (`AGGREGATE_GRAIN_MATCH_MAP`); a planner placing a keyed aggregate

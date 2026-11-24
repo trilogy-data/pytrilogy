@@ -8,7 +8,7 @@ joins to satisfy it instead of re-deriving it from whatever the built parents
 happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import partial
@@ -348,6 +348,7 @@ def row_identity(
     cover: Sequence[str],
     axes: frozenset[str],
     environment: BuildEnvironment,
+    delivered: Collection[str] | None = None,
 ) -> frozenset[str]:
     """The keys `gid`'s rows are unique at, as the FINAL merge pairs them.
 
@@ -372,6 +373,12 @@ def row_identity(
     available = group.row_columns
     keys = set(_statement_scoped_relation_members(environment) & axes & available)
     pinned = group.output_concepts or group.members
+    if group.derivation == Derivation.ROOT and delivered is not None:
+        # a stored aggregate a scan carries for another reader is a lookup
+        # beside its rows, no pin on them
+        pinned = tuple(
+            a for a in pinned if a in delivered or not _grouped(a, environment)
+        )
     keys |= lineage_pinned_grain(pinned, environment) & available
     # a pinned value is evaluated on the select's rows, keyed by its anchors
     keys |= group.grain_pin_anchors & available
@@ -402,6 +409,11 @@ def row_identity(
     ):
         keys |= _member_keys(group.primary_members, environment) & available
     return frozenset(keys) | (held & available)
+
+
+def _grouped(address: str, environment: BuildEnvironment) -> bool:
+    concept = environment.concepts.get(address)
+    return concept is not None and concept.derivation in GROUPING_DERIVATIONS
 
 
 def _member_keys(members: Iterable[str], environment: BuildEnvironment) -> set[str]:
@@ -1041,7 +1053,15 @@ def plan_final_join(
         *(_paired_grain(attrs[gid]) for gid in supplying)
     )
     pins = {
-        gid: row_identity(group_graph, attrs, gid, supplying, axes, environment)
+        gid: row_identity(
+            group_graph,
+            attrs,
+            gid,
+            supplying,
+            axes,
+            environment,
+            {c.address for c in cover[gid]},
+        )
         for gid in contributors
     }
     identity = {

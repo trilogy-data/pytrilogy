@@ -563,6 +563,60 @@ SHAPES = [
             ("Ulmus", None, None),
         ],
     ),
+    # a set gated off the summary reads the WHERE's own twin of a shown
+    # aggregate (62004, reduced): only the Ulmus sum is NULL, and Acer holds
+    # the only species with two tags
+    (
+        (
+            "select species ? species in (species ? count(tag) > 1) as v0,"
+            " sum(height) by city, species as m where sum(height) by city,"
+            " species > 0;"
+        ),
+        [("Acer", 3), ("Acer", 7), (None, 2), (None, 5)],
+    ),
+    # a WHERE applied below a count by city filters no tree joined back to
+    # it on city (151597, reduced): only the formless Ulmus passes
+    (
+        (
+            "select species, tree_form, tag ? count(tag) by city < 1 as v0,"
+            " count(tree_id) as v1 where max(height) by city, tree_form is null;"
+        ),
+        [("Ulmus", None, None, 1)],
+    ),
+    (
+        (
+            "select species, tree_form, tag ? not (tag in (tag ?"
+            " count_distinct(tag) by city < 1)) as v0, max(height) as v1 where"
+            " avg(height) by city, tree_form is null;"
+        ),
+        [("Ulmus", None, "x", None)],
+    ),
+    # ...but a side regrouped to the keys it was joined on holds only kept
+    # groups (43195, reduced): no form has three trees
+    (
+        (
+            "select city, tag, city ? city in (city ? species != 'Tilia') as v1,"
+            " avg(max(height)) over (partition by v1) as v2 where count(tree_id)"
+            " by tree_form = 3;"
+        ),
+        [],
+    ),
+    # a stored count the scan carries for a set pins none of its rows
+    # (152317, reduced): A's Acer once
+    (
+        (
+            "select city, species, city ? city in (city ? min(height) by species"
+            " != 8) as v0, (max(height) by city) ? city in (city ? count(tree_id)"
+            " by city, species = 1) as v1;"
+        ),
+        [
+            ("A", "Acer", "A", 5),
+            ("A", "Quercus", "A", 5),
+            ("A", "Ulmus", "A", 5),
+            ("B", "Acer", "B", 7),
+            ("B", "Tilia", "B", 7),
+        ],
+    ),
 ]
 
 
