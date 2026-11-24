@@ -376,7 +376,9 @@ def row_identity(
     if group.derivation == Derivation.ROOT and delivered is not None:
         # a stored aggregate a scan carries for another reader is a lookup
         # beside its rows, no pin on them
-        pinned = [a for a in pinned if a in delivered or not _grouped(a, environment)]
+        pinned = tuple(
+            a for a in pinned if a in delivered or not _grouped(a, environment)
+        )
     keys |= lineage_pinned_grain(pinned, environment) & available
     # a pinned value is evaluated on the select's rows, keyed by its anchors
     keys |= group.grain_pin_anchors & available

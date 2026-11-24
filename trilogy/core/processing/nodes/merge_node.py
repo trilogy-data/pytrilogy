@@ -63,7 +63,6 @@ from trilogy.core.processing.nodes.base_node import (
 )
 from trilogy.core.processing.null_provenance import side_nullable
 from trilogy.core.processing.utility import (
-    applied_atoms,
     collect_applied_conditions,
     find_nullable_concepts,
     left_deep_joins,

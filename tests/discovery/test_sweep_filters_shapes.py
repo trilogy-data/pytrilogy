@@ -591,6 +591,16 @@ SHAPES = [
         ),
         [("Ulmus", None, "x", None)],
     ),
+    # ...but a side regrouped to the keys it was joined on holds only kept
+    # groups (43195, reduced): no form has three trees
+    (
+        (
+            "select city, tag, city ? city in (city ? species != 'Tilia') as v1,"
+            " avg(max(height)) over (partition by v1) as v2 where count(tree_id)"
+            " by tree_form = 3;"
+        ),
+        [],
+    ),
     # a stored count the scan carries for a set pins none of its rows
     # (152317, reduced): A's Acer once
     (
