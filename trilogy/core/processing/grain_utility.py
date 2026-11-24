@@ -992,6 +992,7 @@ def narrow_join_types(
         )
         if isinstance(join, Join):
             padded |= padded_by(join, stream)
+    narrow_joins_read_by_inner(joins)
 
 
 def narrow_directional_join_types(
@@ -1011,7 +1012,7 @@ def narrow_directional_join_types(
             final_datasets,
             streams.get(id(join), frozenset()),
         )
-    narrow_joins_read_by_inner(joins)
+    narrow_joins_read_by_inner(joins, inner_only=True)
 
 
 def _pair_source_id(pair: ConceptPair) -> str:
@@ -1038,10 +1039,14 @@ def _inner_rejected_sources(join: SourceJoin) -> set[str]:
     return out
 
 
-def narrow_joins_read_by_inner(joins: list[SourceJoin | UnnestJoin]) -> None:
+def narrow_joins_read_by_inner(
+    joins: list[SourceJoin | UnnestJoin], inner_only: bool = False
+) -> None:
     """An outer join whose padded side a later INNER equality reads keeps no
     padded row: the NULL key matches nothing there. Narrowing one join to
-    INNER can prove an earlier one, so this runs to a fixpoint."""
+    INNER can prove an earlier one, so this runs to a fixpoint. Once the
+    merge has ordered its sources by padding, ``inner_only`` keeps a FULL
+    from changing which side it preserves."""
     changed = True
     while changed:
         changed = False
@@ -1052,6 +1057,8 @@ def narrow_joins_read_by_inner(joins: list[SourceJoin | UnnestJoin]) -> None:
                 bool(stream & rejected),
                 join.right.identifier in rejected,
             )
+            if inner_only and new != JoinType.INNER:
+                new = join.join_type
             if new != join.join_type:
                 join.join_type = new
                 changed = True
