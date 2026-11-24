@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 8584
+gen_length = 8182
 preql_size = 1143
 comp_size = 3674
 generated_sql = """
@@ -16,9 +16,10 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -31,9 +32,10 @@ SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_store_sales_unified\".\"SS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -46,9 +48,10 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_web_sales_unified\".\"WS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 ),
 abundant as (
 SELECT
@@ -113,37 +116,36 @@ SELECT
     \"vacuous\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"vacuous\".\"sales_net_profit\" - coalesce(\"abundant\".\"sales_return_net_loss\",0) as \"profit_minus_loss\",
     CASE
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN 'store channel'
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN 'web channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as \"channel\",
     CASE
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN 'store channel'
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN 'web channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as \"channel_label\",
     CASE
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
 	ELSE null
 	END as \"id_label\",
     CASE
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_channel\" = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
 	ELSE null
 	END as \"sk\"
 FROM
     \"vacuous\"
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"vacuous\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"vacuous\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"abundant\" on \"cheerful\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
+    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
 WHERE
-    CASE WHEN regexp_full_match(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END >= date '2000-08-23' and CASE WHEN regexp_full_match(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50
+    CASE WHEN regexp_full_match(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END >= date '2000-08-23' and CASE WHEN regexp_full_match(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END <= date '2000-09-22'
 )
 SELECT
     \"abhorrent\".\"channel_label\" as \"channel\",
