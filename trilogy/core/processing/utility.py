@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -20,6 +21,7 @@ from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildConceptArgs,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -245,6 +247,42 @@ def collect_applied_conditions(
             if parent.identifier not in padded:
                 out.extend(collect_applied_conditions(parent))
     return out
+
+
+def row_applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:
+    """The atoms of `applied_atoms` every row of `source` passed. A side joined
+    in at a coarser grain passes on only the atoms its own grain decides: a
+    gate applied below `count(tag) by city` filtered the counted rows, not the
+    rows joined to the count on `city` (`Filters.coarse_side_filters_no_row`)."""
+    if not isinstance(source, QueryDatasource):
+        return []
+    out = list(decompose_condition(source.condition)) if source.condition else []
+    # a set feeds no rows: a subselect's filters are its own
+    skipped = padded_sources(source.joins) | {
+        s.identifier for sources in source.existence_source_map.values() for s in sources
+    }
+    grain = set(source.grain.components)
+    parents = [p for p in source.datasources if p.identifier not in skipped]
+    for parent in parents:
+        atoms = row_applied_atoms(parent)
+        held = set(parent.grain.components)
+        if len(parents) > 1 and not grain <= held:
+            atoms = [a for a in atoms if _atom_keys(a) <= held]
+        out.extend(atoms)
+    return out
+
+
+def _atom_keys(atom: BoolExpr) -> set[str]:
+    """The keys an atom's value is constant over: an aggregate's grain, a
+    row argument's own address."""
+    if not isinstance(atom, BuildConceptArgs):
+        return {""}
+    return {
+        key
+        for c in atom.row_arguments
+        for key in (c.grain.components if c.is_aggregate else {c.address})
+        if key != ALL_ROWS_ADDRESS
+    }
 
 
 def applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:

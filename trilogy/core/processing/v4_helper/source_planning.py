@@ -1030,7 +1030,11 @@ def _datasource_nodes_for_bridge(
             )
             else None
         )
-        scanned = subgraph_concepts(concept_nodes, request.environment, request.outputs)
+        # a condition's argument is asked for by its own name too (a WHERE
+        # twin beside the select's alias of one stored aggregate)
+        scanned = subgraph_concepts(
+            concept_nodes, request.environment, [*request.outputs, *plan.concepts]
+        )
         if ds_node in plan.joined_scans and isinstance(ds_obj, BuildDatasource):
             # its rows meet the join before any re-aggregation
             scanned = unique(

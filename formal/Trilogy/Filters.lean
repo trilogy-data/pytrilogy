@@ -541,4 +541,57 @@ theorem set_input_supplies_no_key :
     (groups.map (·.2)).eraseDups.length = 4 ∧ (groups.map (·.2)).length = 5 := by
   decide
 
+/-! ## What a joined side's filter says of the rows (0.3.539)
+
+A WHERE applied below a group filtered the rows the group read; joined back
+to finer rows on the group's keys, it says nothing of those rows unless the
+keys decide it. Nor does a stored aggregate a scan carries for a set's
+condition identify the scan's rows, and the WHERE's twin of a shown aggregate
+is read under its own name wherever the gate is applied. -/
+
+/-- `select species, tree_form, tag ? count(tag) by city < 1 as v0,
+count(tree_id) as v1 where max(height) by city, tree_form is null`: only the
+formless Ulmus passes (one row). The count by city read the kept rows, so its
+groups are the cities holding one, A; joined back to the trees on `city`,
+every A tree meets a group, and FINAL took those four rows as the WHERE's
+(`coarse_side_filters_no_row`, 151597). Trees are `(city, form, height)`, 0
+for no height. -/
+theorem coarse_side_filters_no_row :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 3), (0, 0, 0), (0, 0, 5), (0, 2, 0), (1, 0, 7), (1, 1, 2)]
+    let heights (c f : Nat) :=
+      ((trees.filter fun r => r.1 == c && r.2.1 == f).map (·.2.2)).filter (· != 0)
+    let kept := trees.filter fun r => heights r.1 r.2.1 = []
+    let cities := (kept.map (·.1)).eraseDups
+    kept.length = 1 ∧ (trees.filter fun r => cities.contains r.1).length = 4 := by
+  decide
+
+/-- `select species ? species in (species ? count(tag) > 1) as v0, sum(height)
+by city, species as m where sum(height) by city, species > 0`: the Ulmus sum
+is NULL, so the kept rows are A's Acers and Quercus and B's two trees, and
+only Acer holds two tags there. The set, gated off the summary, asked for the
+WHERE's twin of `m` and was handed `m`, a column the gate never read
+(`gate_reads_its_twin`, 62004: the planner raised). Trees are `(city,
+species, height)`, 0 for no height. -/
+theorem gate_reads_its_twin :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 3), (0, 0, 0), (0, 1, 5), (0, 2, 0), (1, 0, 7), (1, 3, 2)]
+    let sum (c s : Nat) :=
+      ((trees.filter fun r => r.1 == c && r.2.1 == s).map (·.2.2)).foldl (· + ·) 0
+    let kept := trees.filter fun r => sum r.1 r.2.1 > 0
+    let tags (s : Nat) := (kept.filter (·.2.1 == s)).length
+    kept.length = 5 ∧ ((kept.map (·.2.1)).eraseDups.filter (tags · > 1)) = [0] := by
+  decide
+
+/-- `select city, species, city ? city in (<set>) as v0, (max(height) by city)
+? city in (city ? count(tree_id) by city, species = 1) as v1`: one row per
+city and species, five. On the summary the stored count rode the tree scan
+for the set alone, and was read as pinning the scan's rows: FINAL joined the
+six trees unduplicated and A's Acer showed twice
+(`set_read_column_pins_no_row`, 152317). Trees are `(city, species)`. -/
+theorem set_read_column_pins_no_row :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    trees.eraseDups.length = 5 ∧ trees.length = 6 := by
+  decide
+
 end Trilogy.Filters

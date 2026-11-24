@@ -68,6 +68,7 @@ from trilogy.core.processing.utility import (
     find_nullable_concepts,
     left_deep_joins,
     padded_sources,
+    row_applied_atoms,
 )
 from trilogy.core.union_find import find
 from trilogy.utility import unique
@@ -729,7 +730,7 @@ class MergeNode(StrategyNode):
                 if not any(atom == r for r in rendered)
             ]
             for source in final_datasets:
-                applied = applied_atoms(source)
+                applied = row_applied_atoms(source)
                 if any(any(atom == a for a in applied) for atom in request_atoms):
                     filtered_ids.add(source.identifier)
         # Authored coalescing (union/full) relations declare row intent: only
