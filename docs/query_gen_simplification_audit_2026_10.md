@@ -1738,7 +1738,13 @@ election, not the padded fallback.
     into each sales arm, because the item join is INNER before
     `UnionDimPushdown` runs. On sf=1 the rows are identical, q75 runs in
     77ms against 98ms, and q80 is unchanged; q75's log is rebaselined
-    (7,043 to 7,498 characters). Fuzzer 522/522. Suite: the same
+    (7,043 to 7,498 characters). Suite SQL capture under `PYTHONHASHSEED=0`
+    and xdist: 1,074 statements moved, 1,050 of them the same length
+    (column and GROUP BY order); 3,582 characters fewer in all, 7 more
+    joins. Of the 8 that grew, q75, q80 and two `test_union_dim_pushdown`
+    tests are the arm pushdown above, two scoped window joins are a FULL
+    narrowed to RIGHT, and two merge-bridge reads name the merged key's
+    twin; each asserts rows. Fuzzer 522/522. Suite: the same
     credential-bound failures as `main`, and the xdist-order
     `test_rank_beside_partial_merge` failure that passes serially.
 
