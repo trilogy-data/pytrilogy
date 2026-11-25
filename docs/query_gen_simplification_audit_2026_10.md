@@ -2045,6 +2045,64 @@ election, not the padded fallback.
     (1, each `cid` read off its own scan instead of one copy). Suite: the
     same 25 credential-bound failures as `main`.
 
+20. **The consumer walk reads through computed flags and shared
+    relations (landed; handoff 2.1 step 4, pushed and consumer channels).**
+    Seam 19 left 101 flips on this run's base. Two places still stopped
+    `consumer_proofs.narrow_for_consumers`:
+    - **A proof through a computed flag.** tpc_ds q16, q94 and q95 filter
+      `order_number ? is_returned`, with `is_returned <- _returned_order_number
+      is not null`. The FilterNode's `is_returned = True` proves
+      `_returned_order_number` non-null (`_forced_true_proofs`), but the
+      select under it computes the flag and outputs only `is_returned`, so
+      `row_reads` dropped the proof one edge above the merge that LEFT joins
+      the returns. `computed_inputs` adds the columns a parent reads to
+      compute a BASIC value the consumer reads off it, and a proof on them
+      passes. An aggregate's inputs never pass: a group's value says nothing
+      of each row's.
+    - **A node reading another of its own relation.** A joinless merge over
+      the select or regroup it passes through resolves to that node's
+      identifier, so `_consumers_first` found the relation consuming itself
+      and gave up on the whole plan: q58, q83, the return-date pins,
+      filters seed 5331, the union-key HAVING semijoin and the subset join
+      key sets (376 of 8,654 compiles over the flip files). The self edge
+      is skipped in the ordering and in `_propagate`: both nodes render as
+      one relation and take what its consumers reject.
+    - **A re-resolved node that widens backs the join channel out.** The
+      shared-relation walk was backed out before because of dimension-chain
+      seeds 258 and 280. Narrowed on its consumer's INNER on `id`, the seats
+      merge stamps `tail_num` partial (`_extent_free_partials`: the aircraft
+      it preserved are gone), and the joinless merge above re-resolves into
+      a LEFT from `aircraft_by_tail_num`, which returns an aircraft no
+      flight names (pinned with a dangling aircraft,
+      `test_a_narrowing_that_widens_a_consumer_is_backed_out`). `_widened`
+      compares each node's parents kept by join type before and after: a
+      parent newly kept that did not already keep every row
+      (`preserved_sources`, a join whose rows all find a partner) sends
+      the plan to the round without join keys, as a failed `_keys_hold`
+      does. Only that round is checked: the WHERE proofs of the second
+      round reject the padded rows a widened consumer keeps (filters seed
+      133525 widens an INNER to a LEFT there, as on `main`).
+    - **Measured, not landed: masking the extent-free stamp.** Intersecting
+      `_extent_free_partials` with `unfiltered_partials`, as the joined
+      partials are, keeps 258's passthrough joinless and narrows it. It
+      also moves dimension-chain seed 582: with the stamp masked, the
+      airports merge re-resolves its INNER into a RIGHT whose pair no
+      longer rejects `tail_num`, `_keys_hold` fails and the whole join
+      channel falls back, handing two joins back to the optimizer.
+
+    After, over the 28 files holding a flip: 82 flips (pushed 36, consumer
+    28, planned 10, new CTE 8) against 101 on `81966a7` (pushed 52,
+    consumer 30, planned 10, new CTE 9); distinct 80 to 64. tpc_ds
+    `test_queries` q16, q58, q83, q94 and q95 have none left;
+    `test_partial_key_assembly_shapes`, `test_union_key_having_semijoin`,
+    `test_duckdb_union_subset_join_key_set`, `test_rank_beside_partial_merge`
+    and filters seed 5331 none. `tests/discovery/test_consumer_join_narrowing.py`
+    pins the computed flag and the shared relation at plan time (both red
+    on `main`) and the widening by rows (red without `_widened`).
+
+    Gates, against `81966a7`: corpus (204 statements) 0 moved; fuzzer
+    522/522. Suite: the same 25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```

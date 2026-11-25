@@ -12,7 +12,9 @@ grouping only a key passes, never an aggregate: a rejected key's group holds
 only the rows with that key NULL, while dropping a padded row changes the
 aggregates of the group it joined. A window, unnest, limit, union or rowset boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
-keeps what all of its consumers reject.
+keeps what all of its consumers reject. A column a node computes per row from
+its parent's (``x <- y is not null``) passes what a proof drawn through its
+lineage rejects on those (`computed_inputs`).
 
 A consumer's own join rejects too (`join_rejections`): a NULL never matches
 ``=``, so a parent row NULL on a column the consumer joins on, on a side the
@@ -29,6 +31,7 @@ from trilogy.core.models.execute import (
     ConceptPair,
     Join,
     QueryDatasource,
+    SourceJoin,
     UnnestJoin,
     coalesced_key_groups,
     pair_matches_nulls,
@@ -40,13 +43,21 @@ from trilogy.core.processing.condition_utility import (
     opaque_binding_addresses,
 )
 from trilogy.core.processing.grain_utility import non_null_proofs
-from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
+from trilogy.core.processing.join_resolution import (
+    OUTER_JOIN_TYPES,
+    preserved_sources,
+)
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
     MergeNode,
     SelectNode,
     StrategyNode,
+)
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    PADS_RIGHT_JOIN_TYPES,
+    joined_right_ids,
 )
 
 OrGroups = tuple[tuple[frozenset[str], ...], ...]
@@ -144,6 +155,28 @@ def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     }
 
 
+def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
+    """Columns ``node`` reads to compute a per-row value in ``reads``. A
+    consumer's proof drawn through that value's lineage (``x = true`` over
+    ``x <- y is not null``) names them, and holds of the rows they come from."""
+    resolved = node.resolve()
+    known = {c.address: c for c in resolved.output_concepts}
+    out: set[str] = set()
+    todo = [a for a in reads if not resolved.source_map.get(a)]
+    while todo:
+        concept = known.get(todo.pop())
+        if concept is None or concept.derivation != Derivation.BASIC:
+            continue
+        for arg in concept.lineage.concept_arguments if concept.lineage else []:
+            if arg.address in out:
+                continue
+            out.add(arg.address)
+            if not resolved.source_map.get(arg.address):
+                known.setdefault(arg.address, arg)
+                todo.append(arg.address)
+    return out
+
+
 def single_source_reads(node: StrategyNode) -> dict[str, str]:
     """Columns ``node`` renders off one source alone, by its identifier: NULL
     on every row an outer join pads that source onto, join key or not. An
@@ -219,11 +252,15 @@ def _walk(root: StrategyNode) -> list[StrategyNode]:
 
 def _consumers_first(nodes: list[StrategyNode]) -> list[str] | None:
     """Relation identifiers, each after every consumer of it; None if two
-    nodes of one relation read each other."""
+    relations read each other. A node reading another of its own relation (a
+    joinless merge over the regroup it passes through) renders as it, so
+    both take what the relation's consumers reject."""
     consumers: dict[str, set[str]] = defaultdict(set)
     for node in nodes:
+        ident = node.resolve().identifier
         for parent in node.parents:
-            consumers[parent.resolve().identifier].add(node.resolve().identifier)
+            if (pident := parent.resolve().identifier) != ident:
+                consumers[pident].add(ident)
     idents = list(dict.fromkeys(n.resolve().identifier for n in reversed(nodes)))
     order: list[str] = []
     placed: set[str] = set()
@@ -246,7 +283,8 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     may preserve a side it dropped before (a merge whose other side lost its
     padding keeps this side's NULL-keyed rows). So the join channel is checked
     against the plan it built, and dropped wholesale if any consumer stopped
-    rejecting what a merge took from it."""
+    rejecting what a merge took from it, or if a re-resolved node keeps a
+    parent's rows it dropped before (`_widened`)."""
     nodes = _walk(root)
     order = _consumers_first(nodes)
     if order is None:
@@ -257,12 +295,59 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     # a re-resolved node's identifier can change: relations stay keyed as found
     ident_of = {id(node): ident for ident, group in by_ident.items() for node in group}
     saved = [_State.of(node) for node in nodes]
+    kept = {id(node): _Kept.of(node) for node in nodes}
     _narrow(nodes, order, by_ident, ident_of, True, saved)
-    if _keys_hold(order, by_ident, ident_of):
+    if _keys_hold(order, by_ident, ident_of) and not _widened(nodes, kept):
         return
     for state in saved:
         state.restore()
     _narrow(nodes, order, by_ident, ident_of, False, saved)
+
+
+def _by_parent(node: StrategyNode, idents: set[str]) -> frozenset[int]:
+    position = {p.resolve().identifier: i for i, p in enumerate(node.parents)}
+    return frozenset(position[i] for i in idents if i in position)
+
+
+def _typed_kept(joins: list[SourceJoin | UnnestJoin], sources: set[str]) -> set[str]:
+    """The sources whose unmatched rows the join types keep, matched or not."""
+    alive = sources - joined_right_ids(joins)
+    for join in joins:
+        if not isinstance(join, Join) or join.join_type not in PADS_RIGHT_JOIN_TYPES:
+            alive = set()
+        if isinstance(join, Join) and join.join_type in PADS_LEFT_JOIN_TYPES:
+            alive.add(join.right.identifier)
+    return alive
+
+
+@dataclass(frozen=True)
+class _Kept:
+    """Which parents' rows ``node`` keeps: by its join types, and every row
+    surviving (`preserved_sources`, a join whose rows all find a partner)."""
+
+    typed: frozenset[int]
+    rows: frozenset[int]
+
+    @classmethod
+    def of(cls, node: StrategyNode) -> _Kept:
+        resolved = node.resolve()
+        sources = {ds.identifier for ds in resolved.datasources}
+        return cls(
+            _by_parent(node, _typed_kept(resolved.joins, sources)),
+            _by_parent(node, preserved_sources(resolved.datasources, resolved.joins)),
+        )
+
+
+def _widened(nodes: list[StrategyNode], kept: dict[int, _Kept]) -> bool:
+    """A node whose joins now keep a parent's unmatched rows it dropped
+    before. A narrowed merge can stamp a key partial that it was not, and a
+    passthrough above re-resolves into a LEFT from a lookup that keeps the
+    rows the narrowing dropped. A wider type over rows that all matched
+    before keeps nothing new."""
+    return any(
+        _Kept.of(node).typed - kept[id(node)].typed - kept[id(node)].rows
+        for node in nodes
+    )
 
 
 def _narrow(
@@ -350,16 +435,15 @@ def _propagate(
                 node.rebuild_cache()
             forward = here | ConsumerProofs.of(node.conditions)
             for parent in dict.fromkeys(node.parents):
-                given = (
-                    forward.restrict(row_reads(node, parent))
-                    if passed
-                    else ConsumerProofs()
-                )
+                pident = ident_of[id(parent)]
+                if pident == ident:
+                    continue
+                reads = row_reads(node, parent) if passed else set()
+                given = forward.restrict(reads | computed_inputs(parent, reads))
                 if keys:
                     given |= ConsumerProofs(
                         keys=frozenset(join_rejections(node, parent))
                     )
-                pident = ident_of[id(parent)]
                 prior = received.get(pident)
                 received[pident] = given if prior is None else prior & given
     return received
