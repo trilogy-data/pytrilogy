@@ -50,6 +50,7 @@ from trilogy.core.processing.join_resolution import (
     complete_key_domain,
     deep_extent_free_carried,
     deep_extent_free_spans,
+    OUTER_JOIN_TYPES,
     held_region_spans,
     preserved_sources,
 )
@@ -726,7 +727,7 @@ def downgrade_join_for_proofs(
     or_groups = or_groups or []
     key_proofs = key_proofs or set()
     key_sources = key_sources or {}
-    if join.join_type != JoinType.FULL or not (
+    if join.join_type not in OUTER_JOIN_TYPES or not (
         proofs or side_proofs or or_groups or key_proofs
     ):
         return

@@ -37,6 +37,7 @@ from trilogy.core.processing.grain_utility import (
     _join_right_preserves_cardinality,
     _left_join_addresses,
     anti_join_preserved_grain,
+    downgrade_join_for_proofs,
     is_identity_group,
     narrow_join_types,
     stacks_duplicate_rows,
@@ -291,6 +292,39 @@ def test_narrow_join_types_unnest_join_no_op():
     join = _unnest_join()
     narrow_join_types([join], JoinProofs(proofs={"x"}, filtered_ids={"y"}), [])
     assert isinstance(join, UnnestJoin)
+
+
+def _directional(join_type: JoinType) -> tuple[Join, list[BuildDatasource]]:
+    k = _concept("k")
+    a = _concept("a", purpose=Purpose.PROPERTY)
+    b = _concept("b", purpose=Purpose.PROPERTY)
+    left = _datasource("left", [k, a])
+    right = _datasource("right", [k, b])
+    join = Join(left=left, right=right, join_type=join_type, concepts=[k])
+    return join, [left, right]
+
+
+def test_a_directional_join_whose_padded_side_is_forced_is_inner():
+    """A side a proof forces narrows a LEFT/RIGHT as it does a FULL: an
+    earlier narrowing that made the FULL directional leaves the other side's
+    proof to finish it."""
+    for join_type, proof in (
+        (JoinType.LEFT_OUTER, "test.b"),
+        (JoinType.RIGHT_OUTER, "test.a"),
+    ):
+        join, datasets = _directional(join_type)
+        downgrade_join_for_proofs(join, {proof}, datasets)
+        assert join.join_type == JoinType.INNER, join_type
+
+
+def test_a_directional_join_whose_kept_side_is_forced_stays_outer():
+    for join_type, proof in (
+        (JoinType.LEFT_OUTER, "test.a"),
+        (JoinType.RIGHT_OUTER, "test.b"),
+    ):
+        join, datasets = _directional(join_type)
+        downgrade_join_for_proofs(join, {proof}, datasets)
+        assert join.join_type == join_type
 
 
 def _scan(columns, datasource, grain, source_type=SourceType.SELECT):
