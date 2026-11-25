@@ -449,3 +449,20 @@ def test_a_having_on_a_computed_value_narrows_through_its_lineage():
     assert JoinType.FULL not in planned, planned
     sql = executor.generate_sql(query)[-1]
     assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
+
+
+def test_a_having_over_an_align_narrows_it():
+    """The align's FULL keeps each arm's rows the other lacks, and its HAVING
+    rejects both: an arm's padded row is NULL on `n` or `model_name`."""
+    executor = _executor("aircraft_id")
+    query = """select tail_num as t1, count(id) -> n
+merge select tail_num as t2, model_name
+align t: t1, t2
+having n > 0 and model_name is not null;"""
+    planned = _planned(executor, query)
+    assert [t for name, t in planned if "grouped_by" in name] == [JoinType.INNER]
+    assert _rows(executor, query) == [
+        ("N0", "N0", 2, "N0", "E175"),
+        ("N1", "N1", 1, "N1", "A320"),
+        ("N2", "N2", 1, "N2", "A320"),
+    ]

@@ -7,14 +7,18 @@ the filter down (`UpgradeJoinOnGuards`); here the planner hands each merge
 what every one of its consumers rejects.
 
 A proof passes a node only where rows pass it unchanged: a plain select or
-filter, a merge, or a group that is not a grouping-set pass. Through a
-grouping only a key passes, never an aggregate: a rejected key's group holds
-only the rows with that key NULL, while dropping a padded row changes the
-aggregates of the group it joined. A window, unnest, limit, union or rowset boundary stops it.
+filter, a merge (a MULTISELECT align's included), or a group that is not a
+grouping-set pass. Through a grouping only a key passes, never an aggregate: a
+rejected key's group holds only the rows with that key NULL, while dropping a
+padded row changes the aggregates of the group it joined. A node's own WHERE
+reads its parent's rows before any group, so it rejects on an aggregate the
+parent computed too (`where_reads`). A window, unnest, limit, union or rowset
+boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
 keeps what all of its consumers reject. A column a node computes per row from
 its parent's (``x <- y is not null``) passes what a proof drawn through its
-lineage rejects on those (`computed_inputs`).
+lineage rejects on those (`computed_inputs`); a proof on a value the node
+computes itself reaches its NULL-strict inputs (`lineage_proofs`).
 
 A group whose every aggregate counts only the rows a filter passes
 (``count(x ? p)``) passes that filter's proofs on as a WHERE where its
@@ -156,11 +160,10 @@ class ConsumerProofs:
 def _passes_rows(node: StrategyNode) -> bool:
     if node.limit is not None:
         return False
-    if type(node) is MergeNode:
-        return node.node_joins is None
     if type(node) is GroupNode:
         return node.grouping_pass() is None
-    return type(node) in (SelectNode, FilterNode)
+    # a MULTISELECT align's merge too: its HAVING reads the aligned rows
+    return type(node) in (MergeNode, SelectNode, FilterNode)
 
 
 def _outer_joins(node: MergeNode) -> bool:
