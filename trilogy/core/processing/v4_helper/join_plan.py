@@ -1035,8 +1035,6 @@ def _foreign_filters(
 ) -> frozenset[str]:
     """The filtered columns a filter claims by the select's grain but neither
     computes nor reads: it holds no column of theirs."""
-    if group.derivation != Derivation.FILTER:
-        return frozenset()
     return frozenset(
         k
         for k in keys - set(group.output_concepts)
@@ -1049,9 +1047,9 @@ def _identity_past_filters(
     group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
 ) -> frozenset[str]:
     """A filter built over groups is identified by the keys it holds, not by
-    the select's filtered columns its grain names: another's it holds no column of, and its
-    own is a value of its content's keys where it holds them
-    (`Filters.filtered_key_identifies_no_row`)."""
+    the select's filtered columns its grain names: another's it holds no
+    column of, and its own is a value of its content's keys where it holds
+    them (`Filters.filtered_key_identifies_no_row`)."""
     rest = keys - _foreign_filters(group, keys, environment)
     held = pairing_keys(rest)
     return frozenset(
