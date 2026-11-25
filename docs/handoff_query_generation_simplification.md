@@ -134,19 +134,28 @@ The planner joined a second unnest of the merge's rows back on (key, row
 id) to read the key again, and put the WHERE above that self-join, where
 no proof reaches the merge's LEFT. An aggregate that reads the key itself
 now takes no such edge, so the WHERE lands on the merge. Flips fell from
-486 to 157 on one machine (pushed 416 to 87, distinct 284 to 142). What
-is left:
+486 to 157 on one machine (pushed 416 to 87, distinct 284 to 142).
 
-- 87 pushed flips, censused by shape: tpc_ds q73 (12 to 15 per run, as
-  `test_queries` compiles it a varying number of times) is the
-  filtered-aggregate rewrite turning `count(x ? p) >= 1`
-  into a row WHERE, an optimizer rewrite and no join proof; the filters,
-  windows and expressions laws (26) push a HAVING on a `_wscope` aggregate
-  into the merge that materializes it; `test_merge_union_parity` (8) pushes
-  a rowset's `n > 0`. Each needs its rewrite planned first.
-- 49 consumer flips: `test_dimension_chain_oracle_laws` (22),
-  `test_semi_join_pushdown` (10, CTEs the optimizer builds),
-  `test_oracle_spellings_laws` (5).
+Three gaps in the consumer walk itself were next (seam 19). A FilterNode
+stopped every proof, though its WHERE reads its parent's rows as a select's
+does: the filter laws' HAVING on a `_wscope` aggregate and the rowsets'
+`n > 0` both sit on one. The walk read each consumer once, before the merges
+under it narrowed, so a key a narrowing un-padded (a null-safe pair become
+plain `=`) never handed its rejection down: it now repeats to a fixpoint.
+And a merge that had ordered its sources could not narrow a FULL to the LEFT
+a later INNER on its stream proves (only the RIGHT that barred is unsound).
+Flips fell from 157 to 104 (pushed 87 to 55, consumer 49 to 30, planned 12
+to 10; distinct 142 to 80). What is left:
+
+- 55 pushed flips, 36 distinct. tpc_ds (24 per run, 9 distinct: q73 and
+  q58 are compiled a varying number of times) is mostly the
+  filtered-aggregate rewrite turning `count(x ? p) >= 1` into a row WHERE,
+  an optimizer rewrite and no join proof. The laws keep 9 (filters 2,
+  windows 3, expressions 3, compositions 1), the rest are one or two per
+  test. Each needs its rewrite planned first.
+- 30 consumer flips: `test_dimension_chain_oracle_laws` (12; seeds 258 and
+  280 are the shared-relation plans below), `test_semi_join_pushdown` (10,
+  CTEs the optimizer builds).
 - **Plans whose nodes share a relation are never narrowed.**
   `consumer_proofs._consumers_first` gives up when a node reads another
   node of its own relation (a joinless merge over the regroup it passes

@@ -1113,7 +1113,8 @@ def narrow_joins_read_by_inner(
     padded row: the NULL key matches nothing there. Narrowing one join to
     INNER can prove an earlier one, so this runs to a fixpoint. Once the
     merge has ordered its sources by padding, ``inner_only`` keeps a FULL
-    from changing which side it preserves."""
+    from preserving only its right side: the stream it put first may hold a
+    key the merge reads, which a RIGHT would pad."""
     changed = True
     while changed:
         changed = False
@@ -1124,7 +1125,7 @@ def narrow_joins_read_by_inner(
                 bool(stream & rejected),
                 join.right.identifier in rejected,
             )
-            if inner_only and new != JoinType.INNER:
+            if inner_only and new not in (JoinType.INNER, JoinType.LEFT_OUTER):
                 new = join.join_type
             if new != join.join_type:
                 join.join_type = new
