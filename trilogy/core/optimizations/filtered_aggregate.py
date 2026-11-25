@@ -11,32 +11,10 @@ from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import append_condition
 from trilogy.core.processing.condition_utility import condition_proves_non_null
-
-NULL_IGNORING_AGGREGATES = {
-    FunctionType.AVG,
-    FunctionType.COUNT,
-    FunctionType.MAX,
-    FunctionType.MIN,
-    FunctionType.SUM,
-}
-
-
-def _filtered_aggregate(
-    concept: BuildConcept,
-) -> tuple[BuildConcept, BuildFilterItem] | None:
-    lineage = concept.lineage
-    if not isinstance(lineage, BuildAggregateWrapper):
-        return None
-    if len(lineage.function.arguments) != 1:
-        return None
-    argument = lineage.function.arguments[0]
-    if not isinstance(argument, BuildConcept) or not isinstance(
-        argument.lineage, BuildFilterItem
-    ):
-        return None
-    if not isinstance(argument.lineage.content, BuildConcept):
-        return None
-    return argument, argument.lineage
+from trilogy.core.processing.consumer_proofs import (
+    NULL_IGNORING_AGGREGATES,
+    filtered_aggregate,
+)
 
 
 def _remove_filter(
@@ -124,7 +102,7 @@ class PushFilteredAggregateInput(OptimizationRule):
         ]
         if not aggregates:
             return False, None
-        matches = [_filtered_aggregate(concept) for concept in aggregates]
+        matches = [filtered_aggregate(concept) for concept in aggregates]
         if any(match is None for match in matches):
             return False, None
         filtered = [match for match in matches if match is not None]
@@ -182,7 +160,7 @@ def _filtered_count(
         return None
     if lineage.function.operator != FunctionType.COUNT:
         return None
-    return _filtered_aggregate(concept)
+    return filtered_aggregate(concept)
 
 
 def _reads_source(

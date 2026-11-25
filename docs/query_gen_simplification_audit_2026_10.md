@@ -2103,6 +2103,54 @@ election, not the padded fallback.
     Gates, against `81966a7`: corpus (204 statements) 0 moved; fuzzer
     522/522. Suite: the same 25 credential-bound failures as `main`.
 
+21. **A filtered aggregate's filter is planned as a WHERE; the key channel
+    falls back per merge (landed; handoff 2.1 step 4, pushed and consumer
+    channels).**
+    - **The filtered-aggregate rewrite, planned.** `PushFilteredAggregateInput`
+      turns `count(x ? p) >= 1` into a row WHERE `p` after planning, and
+      `UpgradeJoinOnGuards` then flips the joins `p` rejects (tpc_ds q73).
+      `consumer_proofs.group_filter` hands a group's parent `p`'s proofs
+      when every aggregate the group computes is NULL-ignoring over the same
+      filter and its consumers reject a group none of whose rows pass:
+      a NULL proof for SUM/AVG/MIN/MAX, and for a COUNT, which is 0 there,
+      a comparison 0 fails (`condition_utility.zero_rejections`; `>= 0`
+      and `is not null` keep the empty groups and the outer join). An
+      unfiltered aggregate beside it keeps every row. `filtered_aggregate`
+      moved beside it; the optimizer rule imports it.
+    - **A grouped merge reads an aggregate as a key.** `row_reads` dropped
+      every aggregate a grouped node reads, so a HAVING on the merge above
+      the group (the q73 shape) never reached it. A merge's group only
+      dedupes, and a partial it rolls up is still excluded (`rolled`).
+      q64 moves in the corpus: `cs_ui_sale > 2 * cs_ui_refund`, both
+      `sum(... ? cs.is_returned)`, plans the catalog returns INNER, as the
+      reference's own join is.
+    - **The key channel bars a merge, not the plan.** A merge whose
+      consumers stop rejecting its keys (`_failing_keys`), or every keyed
+      merge under a node that `_widened`, is barred from taking keys, and
+      the plan narrows again from the saved state; only when nothing keyed
+      is to blame does the whole channel fall back. With the extent-free
+      mask (`MergeNode` intersects `_extent_free_partials` with
+      `unfiltered_partials`, as the joined partials are), dimension-chain
+      seeds 258, 280 and 595 narrow; seed 582's airports merge is barred
+      alone (its two flips go back to the optimizer, as seam 20 measured),
+      and `test_cluster_key_lookup` falls from 50 flips to 26. Filters seed
+      133525 now keeps the keyed round with three merges barred, and one
+      consumer LEFT is left to the optimizer (2 flips; SQL byte-identical).
+
+    After, full suite under `-n 4` (`guard_census_plugin`): 92 flips
+    (external 51, pushed 22, planned 10, new CTE 9) against 125 on
+    `7120370` (external 80, pushed 26, planned 10, new CTE 9); distinct
+    116 to 83. Under xdist q73 records 3 flips (12 when the file runs
+    alone); it has none left either way. `tests/discovery/test_consumer_join_narrowing.py`
+    pins the narrowing at plan time (red on `main`), the zero-kept COUNT
+    and the unfiltered aggregate beside it by rows.
+
+    Gates, against `7120370`: corpus (204 statements) 1 moved (q64,
+    above); fuzzer 522/522. Suite: the same 25 credential-bound failures
+    as `main`, plus `test_rank_beside_partial_merge::test_a_rank_and_its_total_need_their_own_node`
+    under xdist, which fails alone on `main` too (it reads a window concept
+    an earlier test's query materializes).
+
 ## Gate used
 
 ```

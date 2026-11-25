@@ -16,6 +16,11 @@ keeps what all of its consumers reject. A column a node computes per row from
 its parent's (``x <- y is not null``) passes what a proof drawn through its
 lineage rejects on those (`computed_inputs`).
 
+A group whose every aggregate counts only the rows a filter passes
+(``count(x ? p)``) passes that filter's proofs on as a WHERE where its
+consumers reject a group that counted none (`group_filter`): the rows ``p``
+fails change no group that reaches them.
+
 A consumer's own join rejects too (`join_rejections`): a NULL never matches
 ``=``, so a parent row NULL on a column the consumer joins on, on a side the
 join does not preserve, reaches nothing above it."""
@@ -23,10 +28,16 @@ join does not preserve, reaches nothing above it."""
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from trilogy.core.enums import Derivation, JoinType
-from trilogy.core.models.build import BoolExpr, BuildConcept, BuildDatasource
+from trilogy.core.enums import Derivation, FunctionType, JoinType
+from trilogy.core.models.build import (
+    BoolExpr,
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildDatasource,
+    BuildFilterItem,
+)
 from trilogy.core.models.execute import (
     ConceptPair,
     Join,
@@ -41,6 +52,7 @@ from trilogy.core.processing.condition_utility import (
     gather_non_null_proofs,
     gather_or_groups,
     opaque_binding_addresses,
+    zero_rejections,
 )
 from trilogy.core.processing.grain_utility import non_null_proofs
 from trilogy.core.processing.join_resolution import (
@@ -62,17 +74,27 @@ from trilogy.core.processing.utility import (
 
 OrGroups = tuple[tuple[frozenset[str], ...], ...]
 
+NULL_IGNORING_AGGREGATES = {
+    FunctionType.AVG,
+    FunctionType.COUNT,
+    FunctionType.MAX,
+    FunctionType.MIN,
+    FunctionType.SUM,
+}
+
 
 @dataclass(frozen=True)
 class ConsumerProofs:
     """The harvests a merge reads its own WHERE into (`JoinProofs`), for the
     columns its consumers read off it alone; ``keys``, the columns a
-    consumer's join equality reads (`join_rejections`)."""
+    consumer's join equality reads (`join_rejections`); ``nonzero``, the
+    columns it rejects at 0 (`zero_rejections`)."""
 
     proofs: frozenset[str] = frozenset()
     side_proofs: frozenset[str] = frozenset()
     or_groups: OrGroups = ()
     keys: frozenset[str] = frozenset()
+    nonzero: frozenset[str] = frozenset()
 
     @classmethod
     def of(cls, condition: BoolExpr | None) -> ConsumerProofs:
@@ -83,10 +105,17 @@ class ConsumerProofs:
             frozenset(non_null_proofs(condition)),
             frozenset(gather_non_null_proofs(condition)),
             tuple(tuple(frozenset(d) for d in group) for group in groups),
+            nonzero=frozenset(zero_rejections(condition)),
         )
 
     def __bool__(self) -> bool:
-        return bool(self.proofs or self.side_proofs or self.or_groups or self.keys)
+        return bool(
+            self.proofs
+            or self.side_proofs
+            or self.or_groups
+            or self.keys
+            or self.nonzero
+        )
 
     def __or__(self, other: ConsumerProofs) -> ConsumerProofs:
         extra = tuple(g for g in other.or_groups if g not in self.or_groups)
@@ -95,6 +124,7 @@ class ConsumerProofs:
             self.side_proofs | other.side_proofs,
             self.or_groups + extra,
             self.keys | other.keys,
+            self.nonzero | other.nonzero,
         )
 
     def __and__(self, other: ConsumerProofs) -> ConsumerProofs:
@@ -103,6 +133,7 @@ class ConsumerProofs:
             self.side_proofs & other.side_proofs,
             tuple(g for g in self.or_groups if g in other.or_groups),
             self.keys & other.keys,
+            self.nonzero & other.nonzero,
         )
 
     def restrict(self, addresses: set[str]) -> ConsumerProofs:
@@ -113,6 +144,7 @@ class ConsumerProofs:
             self.side_proofs & addresses,
             tuple(g for g in groups if all(g)),
             self.keys & addresses,
+            self.nonzero & addresses,
         )
 
 
@@ -135,12 +167,13 @@ def _outer_joins(node: MergeNode) -> bool:
 
 def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     """Columns ``node`` reads off ``parent``'s rows and no other source; an
-    aggregate only where ``node`` does not group, and never a partial one the
-    parent still holds for a regroup to roll up.
+    aggregate only where ``node`` does not group or is a merge (whose group
+    only dedupes, so it reads the aggregate as a key), and never a partial one
+    the parent still holds for a regroup to roll up.
     A count ``node`` zero-fills is 0, not NULL, on the rows a join padded."""
     resolved = node.resolve()
     source = parent.resolve()
-    grouped = resolved.group_required
+    grouped = resolved.group_required and type(node) is not MergeNode
     rolled = {c.address for c in pending_rollups(source.rollup_concepts, source.grain)}
     return {
         c.address
@@ -175,6 +208,60 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
                 known.setdefault(arg.address, arg)
                 todo.append(arg.address)
     return out
+
+
+def filtered_aggregate(
+    concept: BuildConcept,
+) -> tuple[BuildConcept, BuildFilterItem] | None:
+    """The filtered argument of an aggregate over one (``count(x ? p)``)."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return None
+    if len(lineage.function.arguments) != 1:
+        return None
+    argument = lineage.function.arguments[0]
+    if not isinstance(argument, BuildConcept) or not isinstance(
+        argument.lineage, BuildFilterItem
+    ):
+        return None
+    if not isinstance(argument.lineage.content, BuildConcept):
+        return None
+    return argument, argument.lineage
+
+
+def _rejects_empty(concept: BuildConcept, rejected: ConsumerProofs) -> bool:
+    assert isinstance(concept.lineage, BuildAggregateWrapper)
+    if concept.lineage.function.operator == FunctionType.COUNT:
+        return concept.address in rejected.nonzero
+    # an aggregate is never a merged key read through a COALESCE
+    return concept.address in rejected.proofs | rejected.side_proofs
+
+
+def group_filter(node: StrategyNode, rejected: ConsumerProofs) -> BoolExpr | None:
+    """The filter every aggregate ``node`` computes reads its rows through,
+    when ``rejected`` drops a group none of whose rows passes it. A row the
+    filter fails adds nothing to a NULL-ignoring aggregate, and a group of
+    only such rows reaches no consumer, so the filter rejects as a WHERE."""
+    resolved = node.resolve()
+    if not resolved.group_required:
+        return None
+    computed = [
+        c for c in resolved.output_concepts if not resolved.source_map.get(c.address)
+    ]
+    matches = [filtered_aggregate(c) for c in computed]
+    if not computed or any(
+        match is None
+        or not isinstance(c.lineage, BuildAggregateWrapper)
+        or c.lineage.function.operator not in NULL_IGNORING_AGGREGATES
+        for c, match in zip(computed, matches)
+    ):
+        return None
+    filters = [match[1].where.conditional for match in matches if match]
+    if any(f != filters[0] for f in filters[1:]):
+        return None
+    if not any(_rejects_empty(c, rejected) for c in computed):
+        return None
+    return filters[0]
 
 
 def single_source_reads(node: StrategyNode) -> dict[str, str]:
@@ -282,9 +369,11 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     A consumer's join type is not fixed: re-resolved over a narrowed parent it
     may preserve a side it dropped before (a merge whose other side lost its
     padding keeps this side's NULL-keyed rows). So the join channel is checked
-    against the plan it built, and dropped wholesale if any consumer stopped
-    rejecting what a merge took from it, or if a re-resolved node keeps a
-    parent's rows it dropped before (`_widened`)."""
+    against the plan it built: a merge whose consumers stopped rejecting what
+    it took from them, or that sits under a re-resolved node keeping a
+    parent's rows it dropped before (`_widened`), is barred from the channel
+    and the plan narrowed again without it. If no keyed merge is to blame, the
+    channel is dropped wholesale."""
     nodes = _walk(root)
     order = _consumers_first(nodes)
     if order is None:
@@ -296,12 +385,18 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     ident_of = {id(node): ident for ident, group in by_ident.items() for node in group}
     saved = [_State.of(node) for node in nodes]
     kept = {id(node): _Kept.of(node) for node in nodes}
-    _narrow(nodes, order, by_ident, ident_of, True, saved)
-    if _keys_hold(order, by_ident, ident_of) and not _widened(nodes, kept):
-        return
-    for state in saved:
-        state.restore()
-    _narrow(nodes, order, by_ident, ident_of, False, saved)
+    barred: set[int] = set()
+    while True:
+        _narrow(nodes, order, by_ident, ident_of, barred, saved)
+        failing = _failing_keys(order, by_ident, ident_of) | _widened(nodes, kept)
+        if not failing:
+            return
+        for state in saved:
+            state.restore()
+        if failing <= barred:
+            break
+        barred |= failing
+    _narrow(nodes, order, by_ident, ident_of, None, saved)
 
 
 def _by_parent(node: StrategyNode, idents: set[str]) -> frozenset[int]:
@@ -338,16 +433,27 @@ class _Kept:
         )
 
 
-def _widened(nodes: list[StrategyNode], kept: dict[int, _Kept]) -> bool:
-    """A node whose joins now keep a parent's unmatched rows it dropped
-    before. A narrowed merge can stamp a key partial that it was not, and a
-    passthrough above re-resolves into a LEFT from a lookup that keeps the
-    rows the narrowing dropped. A wider type over rows that all matched
-    before keeps nothing new."""
-    return any(
-        _Kept.of(node).typed - kept[id(node)].typed - kept[id(node)].rows
-        for node in nodes
-    )
+def _widened(nodes: list[StrategyNode], kept: dict[int, _Kept]) -> set[int]:
+    """The keyed merges under a node whose joins now keep a parent's unmatched
+    rows it dropped before; ``{-1}`` if none is keyed. A narrowed merge can
+    stamp a key partial that it was not, and a passthrough above re-resolves
+    into a LEFT from a lookup that keeps the rows the narrowing dropped. A
+    wider type over rows that all matched before keeps nothing new."""
+    out: set[int] = set()
+    for node in nodes:
+        if _Kept.of(node).typed - kept[id(node)].typed - kept[id(node)].rows:
+            out |= _keyed_under(node) or {-1}
+    return out
+
+
+def _keyed_under(node: StrategyNode) -> set[int]:
+    return {
+        id(n)
+        for n in _walk(node)
+        if isinstance(n, MergeNode)
+        and n.consumer_proofs is not None
+        and n.consumer_proofs.keys
+    }
 
 
 def _narrow(
@@ -355,16 +461,17 @@ def _narrow(
     order: list[str],
     by_ident: dict[str, list[StrategyNode]],
     ident_of: dict[int, str],
-    keys: bool,
+    barred: set[int] | None,
     saved: list[_State],
 ) -> None:
-    """Narrow to a fixpoint. Consumers are read before the merges under them
+    """Narrow to a fixpoint; with ``barred`` None, on WHERE proofs alone,
+    else on join keys too, but for the merges it names. Consumers are read before the merges under them
     narrow, and a narrowing can make a consumer reject more: a key its other
     side no longer pads pairs on plain ``=``, which rejects the NULL a merge
     below pads it with."""
     for _ in range(len(nodes)):
         narrowed: set[int] = set()
-        _propagate(order, by_ident, ident_of, keys, narrowed)
+        _propagate(order, by_ident, ident_of, barred, narrowed)
         if not narrowed:
             return
         _rebuild(nodes, narrowed, saved)
@@ -404,28 +511,34 @@ def _propagate(
     order: list[str],
     by_ident: dict[str, list[StrategyNode]],
     ident_of: dict[int, str],
-    keys: bool,
+    barred: set[int] | None,
     narrowed: set[int] | None,
 ) -> dict[str, ConsumerProofs]:
-    """What every consumer of each relation rejects, consumers first. With
-    ``narrowed``, each outer-joining merge takes it and is re-resolved before
-    its own joins are read: narrowed, they reject more of its parents' rows."""
+    """What every consumer of each relation rejects, consumers first; join
+    keys only with ``barred`` given. With ``narrowed``, each outer-joining
+    merge takes it (keys only if not barred) and is re-resolved before its own
+    joins are read: narrowed, they reject more of its parents' rows."""
     received: dict[str, ConsumerProofs] = {}
     for ident in order:
         here = received.get(ident, ConsumerProofs())
         for node in by_ident[ident]:
             passed = _passes_rows(node)
+            take = (
+                replace(here, keys=frozenset())
+                if barred is None or id(node) in barred
+                else here
+            )
             if (
                 narrowed is not None
-                and here
+                and take
                 and passed
                 and isinstance(node, MergeNode)
                 and _outer_joins(node)
-                and (taken := node.consumer_proofs or ConsumerProofs()) != here | taken
+                and (taken := node.consumer_proofs or ConsumerProofs()) != take | taken
             ):
                 # a later round only adds: what the merge took before still
-                # holds, and `_keys_hold` checks the plan that results
-                node.consumer_proofs = here | taken
+                # holds, and `_failing_keys` checks the plan that results
+                node.consumer_proofs = take | taken
                 if node.unfiltered_partials is None:
                     node.unfiltered_partials = {
                         c.address for c in node.resolve().partial_concepts
@@ -439,8 +552,11 @@ def _propagate(
                 if pident == ident:
                     continue
                 reads = row_reads(node, parent) if passed else set()
-                given = forward.restrict(reads | computed_inputs(parent, reads))
-                if keys:
+                readable = reads | computed_inputs(parent, reads)
+                given = forward.restrict(readable)
+                if passed and (where := group_filter(node, forward)) is not None:
+                    given |= ConsumerProofs.of(where).restrict(readable)
+                if barred is not None:
                     given |= ConsumerProofs(
                         keys=frozenset(join_rejections(node, parent))
                     )
@@ -449,19 +565,22 @@ def _propagate(
     return received
 
 
-def _keys_hold(
+def _failing_keys(
     order: list[str],
     by_ident: dict[str, list[StrategyNode]],
     ident_of: dict[int, str],
-) -> bool:
-    """Every narrowed merge's consumers, as rebuilt, still reject its keys."""
-    received = _propagate(order, by_ident, ident_of, True, None)
-    return all(
-        node.consumer_proofs.keys <= received.get(ident, ConsumerProofs()).keys
+) -> set[int]:
+    """The narrowed merges whose consumers, as rebuilt, stopped rejecting a
+    key they took."""
+    received = _propagate(order, by_ident, ident_of, set(), None)
+    return {
+        id(node)
         for ident, group in by_ident.items()
         for node in group
-        if isinstance(node, MergeNode) and node.consumer_proofs is not None
-    )
+        if isinstance(node, MergeNode)
+        and node.consumer_proofs is not None
+        and not node.consumer_proofs.keys <= received.get(ident, ConsumerProofs()).keys
+    }
 
 
 def _nullable(node: StrategyNode) -> set[str]:
