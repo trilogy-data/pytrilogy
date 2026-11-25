@@ -436,3 +436,16 @@ def test_a_grouped_filter_reads_its_parents_aggregate_per_row():
     assert set(planned) - {JoinType.INNER} == {JoinType.FULL, JoinType.RIGHT_OUTER}
     sql = executor.generate_sql(query)[-1]
     assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
+
+
+def test_a_having_on_a_computed_value_narrows_through_its_lineage():
+    """`v0 < 2` rejects a NULL `v0`, computed above the keyless merge as
+    `coalesce(count, 0) / nullif(max - 5, 0)`: non-null, so is the maximum,
+    and the merge keeps only its side."""
+    query, expected = shape5(92)
+    executor, pristine = fresh("base")
+    executor.environment = deepcopy(pristine)
+    planned = [t for _, t in _planned(executor, query)]
+    assert JoinType.FULL not in planned, planned
+    sql = executor.generate_sql(query)[-1]
+    assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)

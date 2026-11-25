@@ -37,6 +37,8 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFilterItem,
+    BuildFunction,
+    BuildParenthetical,
 )
 from trilogy.core.models.execute import (
     ConceptPair,
@@ -49,6 +51,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
+    concepts_implied_non_null,
     gather_non_null_proofs,
     gather_or_groups,
     opaque_binding_addresses,
@@ -223,6 +226,38 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
                 known.setdefault(arg.address, arg)
                 todo.append(arg.address)
     return out
+
+
+def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[str]:
+    """Add what a proven value ``node`` computes per row proves of its
+    inputs: non-null, its NULL-strict arguments are too (``v <- c / nullif(m
+    - 5, 0)`` proves ``m``). The optimizer read these off the CTE that
+    renders the value (`_lineage_proofs`)."""
+    resolved = node.resolve()
+    known = {c.address: c for c in resolved.output_concepts}
+    out = set(addresses)
+    todo = [a for a in addresses if not resolved.source_map.get(a)]
+    while todo:
+        concept = known.get(todo.pop())
+        if concept is None or concept.derivation != Derivation.BASIC:
+            continue
+        lineage = concept.lineage
+        if isinstance(lineage, BuildFunction | BuildParenthetical):
+            for arg in lineage.concept_arguments:
+                known.setdefault(arg.address, arg)
+        for address in concepts_implied_non_null(lineage) - out:
+            out.add(address)
+            if not resolved.source_map.get(address):
+                todo.append(address)
+    return frozenset(out)
+
+
+def _through_lineage(node: StrategyNode, rejected: ConsumerProofs) -> ConsumerProofs:
+    return replace(
+        rejected,
+        proofs=lineage_proofs(node, rejected.proofs),
+        side_proofs=lineage_proofs(node, rejected.side_proofs),
+    )
 
 
 def filtered_aggregate(
@@ -604,7 +639,7 @@ def _propagate(
                 node.key_reads = single_source_reads(node) | (node.key_reads or {})
                 narrowed.add(id(node))
                 node.rebuild_cache()
-            forward = here | ConsumerProofs.of(node.conditions)
+            forward = _through_lineage(node, here | ConsumerProofs.of(node.conditions))
             for parent in dict.fromkeys(node.parents):
                 pident = ident_of[id(parent)]
                 if pident == ident:
