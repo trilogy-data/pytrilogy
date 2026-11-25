@@ -2981,7 +2981,14 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   queries) hold 14 wrong answers, 48 raises and 11 invalid statements; the
   round fixes 30 of them (10 wrong answers, 16 raises, 4 invalid) and breaks
   none, at 288 more joins over 132 queries and no lost summary read.
-  WIDE_PLACEHOLDER
+  Over all of 0-200,000 (400,000 queries) against the round's base, the
+  branch fixes 219 failing queries (51 wrong answers, 156 raises, 12 invalid)
+  and breaks none, at 2,785 more joins over 1,425 queries, 47 more summary
+  reads and none lost; 417 queries still fail.
+  - A FINAL dedups a merge that takes a shown property off rows at a key the
+    shown columns do not determine: `tree_form`'s grain is its `species`, so
+    rows at `(city, species)` read as unique at `city, tree_form`
+    (`rows_past_a_property_key`, 11995).
   - A window reads its rows before FINAL can gate them: its merge now knows
     a grouping parent's WHERE atoms as FINAL's does, so it no longer
     FULL-joins the ungated filter rows beside the gated aggregate

@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 200,000; the PR of each
-round holds its sweep totals. `filters` has OPEN_COUNT `OPEN` seeds and FAIL_COUNT failing
+round holds its sweep totals. `filters` has 24 `OPEN` seeds and 417 failing
 queries in 0-200,000 at 0.3.541 (area 4b),
 `windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
