@@ -962,13 +962,17 @@ class CTE:
             and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
-        # A filter is computed over predicate inputs its parents materialize,
-        # so only its content can hold an aggregate computed here.
+        # A predicate input a parent materializes is a plain column above;
+        # one folded into this CTE (`min(height) ? ...` collapsed into the
+        # `min`'s GROUP) is computed here like the content.
+        # An elided CASE renders the content alone.
         if c.derivation == Derivation.FILTER and isinstance(c.lineage, BuildFilterItem):
-            return any(
-                self._has_local_aggregate(x, rollup_addresses)
-                for x in c.lineage.content_concept_arguments
+            args = (
+                c.lineage.content_concept_arguments
+                if filter_case_elided(self, c.lineage)
+                else c.lineage.rendered_concept_arguments
             )
+            return any(self._has_local_aggregate(x, rollup_addresses) for x in args)
         if c.derivation == Derivation.BASIC and c.lineage:
             return any(
                 self._has_local_aggregate(x, rollup_addresses)

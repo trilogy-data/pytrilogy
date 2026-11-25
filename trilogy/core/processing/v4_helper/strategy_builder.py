@@ -6119,13 +6119,12 @@ def _final_dedup_targets(
     # node on a non-unique key: same predicate, both sides.
     if node_nulls_grouping_keys(node):
         return None
-    if (
-        check_if_group_required(
-            downstream_concepts=contract_outputs,
-            parents=[node.resolve()],
-            environment=environment,
-        ).required
-        is not True
+    if check_if_group_required(
+        downstream_concepts=contract_outputs,
+        parents=[node.resolve()],
+        environment=environment,
+    ).required is not True and not _merged_past_outputs(
+        node, contract_outputs, environment
     ):
         return None
     held = {o.address for o in node.output_concepts}
@@ -6141,6 +6140,31 @@ def _final_dedup_targets(
         if o.address in final_contract.output_addresses
         or any(output_covers(o, m) for m in by_pseudonym)
     ]
+
+
+def _merged_past_outputs(
+    node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """An ungrouped merge supplying a shown column off rows on a key the
+    outputs do not determine: a shown property's grain is its key, so rows at
+    `(city, species)` read as unique at `city, tree_form` though two species
+    share a form (`SelectGrain.rows_past_a_property_key`). A key a shown
+    derived value is keyed by is the select's own (`sum(amt) by customer`)."""
+    if not isinstance(node, MergeNode) or node.resolve().group_required:
+        return False
+    shown = {a for c in outputs for a in (c.address, *c.equivalent_addresses)}
+    keyed = {
+        k
+        for c in outputs
+        if c.derivation != Derivation.ROOT
+        for k in c.grain.components
+    }
+    closure = strict_fd_closure(environment, shown | keyed)
+    return any(
+        not _resolved_grain(parent) <= closure
+        for parent in node.parents
+        if shown & {o.address for o in parent.usable_outputs}
+    )
 
 
 def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:
@@ -8006,15 +8030,20 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         # parent applies the atom to its INPUT rows and its output claims
         # nothing (the FINAL still gates); an `is null` atom is satisfied
         # by the padding a preserving join adds, unless what it reads is
-        # defined on every row (a pinned value), where it is as exact.
+        # defined on every row (a pinned value), where it is as exact. A
+        # window reads its rows before FINAL can gate them, so its merge
+        # knows a grouping parent's atoms as FINAL's does
+        # (`Filters.window_reads_gated_rows`).
         keyspace = environment.span_scope.keyspace
         applied_atoms = _wrap_atoms(
             [
                 atom
                 for parent in parent_builds
-                if attrs[parent.group_id].derivation == Derivation.ROOT
+                if derivation == Derivation.WINDOW
+                or attrs[parent.group_id].derivation == Derivation.ROOT
                 for atom in attrs[parent.group_id].condition_atoms
-                if non_null_proofs(atom)
+                if derivation == Derivation.WINDOW
+                or non_null_proofs(atom)
                 or _reads_only_values_defined_everywhere(atom, keyspace)
             ]
         )
@@ -8469,9 +8498,16 @@ def _shown_filtered_column(
     a: GroupAttrs, attrs: dict[str, GroupAttrs], environment: BuildEnvironment
 ) -> bool:
     """Whether `a` computes a shown filtered value that is one of the select's
-    rows: a filtered column, or a filtered aggregate keyed by what the select
-    does not show (one keyed by shown keys pairs on them)."""
+    rows: a filtered column, or a filtered aggregate not keyed by every shown
+    key of its rows. One keyed by them pairs on them; one keyed by fewer
+    (`(count(tree_id) by tree_form) ? c` beside `city`) pairs with nothing
+    on the rest (`Filters.filtered_aggregate_reads_its_rows`)."""
     shown = _required_final_contract(attrs).output_addresses
+    row_keys = {
+        k
+        for k in set(a.grain_components) & shown
+        if environment.concepts[k].derivation != Derivation.FILTER
+    }
     lineages = [
         lineage
         for m in set(a.primary_members) & shown
@@ -8482,7 +8518,8 @@ def _shown_filtered_column(
             isinstance(content := lineage.content, BuildConcept)
             and content.is_aggregate
         )
-        or not pairing_keys(content.grain.components) <= shown
+        or not row_keys <= (keys := pairing_keys(content.grain.components))
+        or not keys <= shown
         for lineage in lineages
     )
 

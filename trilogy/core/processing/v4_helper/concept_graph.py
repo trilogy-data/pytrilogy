@@ -1714,16 +1714,28 @@ def _reaches_only_sets(
     attrs: dict[str, ConceptAttrs],
     src: str,
     shown: Collection[str],
-    has_sets: bool,
+    beside_sets: Collection[str],
     conditioned: Mapping[str, str] | None = None,
 ) -> bool:
     """A WHERE value no barrier of the statement's rows consumed: each reader
     is a set's, or (`conditioned`) a shown filter's condition's."""
     return all(
         attrs[succ].existence_only
-        or (not has_sets or not _reads_a_total(src, attrs))
+        or not _total_beside_a_set(src, attrs, beside_sets)
         and _feeds_only_sets(graph, edges, attrs, succ, shown, set(), conditioned)
         for succ in graph.successors(src)
+    )
+
+
+def _total_beside_a_set(
+    node: str, attrs: dict[str, ConceptAttrs], beside_sets: Collection[str]
+) -> bool:
+    """A `by *` total an atom reads beside a membership (`total > x or tag in
+    <set>`): backfilled onto the statement's rows, its scan finds no plan. In
+    an atom of its own it gates them (`Filters.total_gate_reaches_the_rows`)."""
+    return (
+        ALL_ROWS_ADDRESS in attrs[node].grain_components
+        and attrs[node].address in beside_sets
     )
 
 
@@ -1760,12 +1772,6 @@ def _shown_filter_contents(
         )
         and isinstance(lineage.content, BuildConcept)
     }
-
-
-def _reads_a_total(node: str, attrs: dict[str, ConceptAttrs]) -> bool:
-    """A `by *` total: backfilled beside a WHERE membership onto the
-    statement's rows, its scan finds no plan."""
-    return ALL_ROWS_ADDRESS in attrs[node].grain_components
 
 
 def _grain_off_its_readers(
@@ -2893,10 +2899,13 @@ def build_concept_graph(
     row_arg_addresses: set[str] = set()
     existence_arg_addresses: set[str] = set()
     existence_arg_pairs: list[tuple[str, str]] = []  # (existence_addr, row_addr)
+    beside_sets: set[str] = set()
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
             row_arg_addresses.update(atom_row_addrs)
+            if atom.existence_arguments:
+                beside_sets.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():
                 existence_arg_addresses.update(ec.address for ec in arg_group)
             existence_arg_pairs += _existence_row_pairs(atom, atom_row_addrs)
@@ -3036,7 +3045,7 @@ def build_concept_graph(
         src
         for src in eligible
         if _reaches_only_sets(
-            graph, edges, attrs, src, mandatory_blank_ids, bool(existence_arg_pairs)
+            graph, edges, attrs, src, mandatory_blank_ids, beside_sets
         )
     ]
     # reaching a shown filter only through its condition's aggregate, the
@@ -3052,7 +3061,7 @@ def build_concept_graph(
             attrs,
             src,
             mandatory_blank_ids,
-            bool(existence_arg_pairs),
+            beside_sets,
             conditioned,
         )
     }

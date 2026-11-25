@@ -641,4 +641,58 @@ theorem row_value_keeps_its_key :
       (trees.map (·.1)).eraseDups.length * (trees.map (·.2)).eraseDups.length = 6 := by
   decide
 
+/-! ## A window's rows, a filtered aggregate's rows, a gate beside a set (0.3.541)
+
+A window reads the statement's rows before FINAL could gate them, so its merge
+keeps only the side a WHERE gate filtered. A filtered aggregate keyed by fewer
+of the shown keys than its rows hold is a value of those rows, not a group of
+its own. A predicate reading an aggregate is no grouping key of the group that
+computes it. And a `by *` total in the WHERE beside a membership still gates
+the statement's rows. -/
+
+/-- `select city, tree_form, city ? city = 'B' as v0, sum(max(height) by city,
+tree_form, v0) over (order by city) as v2 where avg(height) by species > 6`:
+no species averages over 6, so there are no rows. The gate was hosted on the
+maximum; the window's merge FULL-joined it to the filter's four `(city,
+tree_form)` pairs, which never passed the gate, and showed all four
+(`window_reads_gated_rows`, 196634). Trees are `(pair, species average)`. -/
+theorem window_reads_gated_rows :
+    let trees : List (Nat × Nat) := [(0, 5), (0, 5), (0, 5), (1, 0), (2, 5), (3, 2)]
+    (trees.filter (·.2 > 6)).length = 0 ∧ (trees.map (·.1)).eraseDups.length = 4 := by
+  decide
+
+/-- `select city, tree_form, (count(tree_id) by tree_form) ? tree_form != 'x'
+as v0, max(height) by city as v1`: four `(city, tree_form)` pairs. The filter
+was read off the count by form alone, so nothing paired the forms with the
+cities and FINAL crossed two cities with three forms
+(`filtered_aggregate_reads_its_rows`, 190095). Trees are `(city, form)`. -/
+theorem filtered_aggregate_reads_its_rows :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 0), (0, 2), (1, 0), (1, 1)]
+    trees.eraseDups.length = 4 ∧
+      (trees.map (·.1)).eraseDups.length * (trees.map (·.2)).eraseDups.length = 6 := by
+  decide
+
+/-- `select upper(tree_form) as fc, tree_form ? min(height) by tree_form != 0
+as v0, city as v1`: `v0` is one value per form, so grouping by the form alone
+gives its groups. Folded into the minimum's group, `v0` was listed as a key
+beside the form, and its `min` sat in the GROUP BY
+(`predicate_aggregate_keys_no_group`, 196668). Trees are `(form, v0)`. -/
+theorem predicate_aggregate_keys_no_group :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 0), (2, 2), (0, 0), (1, 1)]
+    (trees.map (·.1)).eraseDups.length = trees.eraseDups.length := by
+  decide
+
+/-- `select height ? tag in (tag ? count(tree_id) by city >= 1) as v0 where
+max(height) by * <= max(height) by city and tag in (tag ? city = 'A')`: only
+B's tallest reaches the total, and both of B's trees carry one of A's tags, so
+the heights are 7 and 2. The total was kept off the statement's rows beside
+the membership, its only hosts were the set's, and the plan raised
+(`total_gate_reaches_the_rows`, 182211). Trees are `(city, height)`. -/
+theorem total_gate_reaches_the_rows :
+    let trees : List (Nat × Nat) := [(0, 3), (0, 0), (0, 5), (0, 0), (1, 7), (1, 2)]
+    let total := (trees.map (·.2)).foldl max 0
+    let top c := ((trees.filter (·.1 == c)).map (·.2)).foldl max 0
+    (trees.filter fun r => total ≤ top r.1).map (·.2) = [7, 2] := by
+  decide
+
 end Trilogy.Filters
