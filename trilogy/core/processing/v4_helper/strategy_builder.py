@@ -6148,11 +6148,18 @@ def _merged_past_outputs(
     """An ungrouped merge supplying a shown column off rows on a key the
     outputs do not determine: a shown property's grain is its key, so rows at
     `(city, species)` read as unique at `city, tree_form` though two species
-    share a form (`SelectGrain.rows_past_a_property_key`)."""
+    share a form (`SelectGrain.rows_past_a_property_key`). A key a shown
+    derived value is keyed by is the select's own (`sum(amt) by customer`)."""
     if not isinstance(node, MergeNode) or node.resolve().group_required:
         return False
     shown = {a for c in outputs for a in (c.address, *c.equivalent_addresses)}
-    closure = strict_fd_closure(environment, shown)
+    keyed = {
+        k
+        for c in outputs
+        if c.derivation != Derivation.ROOT
+        for k in c.grain.components
+    }
+    closure = strict_fd_closure(environment, shown | keyed)
     return any(
         not _resolved_grain(parent) <= closure
         for parent in node.parents
