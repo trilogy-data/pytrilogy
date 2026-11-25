@@ -2310,6 +2310,73 @@ election, not the padded fallback.
     rejects the padding; `tpc_ds_duckdb/aggregates` identical; fuzzer
     522/522. Suite: the same 25 credential-bound failures as `main`.
 
+25. **The planner's own WHERE reads what the optimizer read: a later
+    INNER after ordering, an exclusive partial, a passed-through flag
+    (landed; handoff 2.1 step 4, planned and pushed channels).**
+    - **Most of the census is the rule's own tests.** All 9 new-CTE flips
+      and 2 of the 4 external ones are `tests/optimization/test_join_upgrade.py`,
+      which builds CTEs by hand to test `UpgradeJoinOnGuards` itself; no
+      planner produces them. Of 30 flips on `67f6e02`, 19 were plans.
+    - **A later INNER narrows a FULL to RIGHT after the merge orders its
+      sources.** `narrow_joins_read_by_inner` ran a second time with
+      `inner_only`, which refused FULL to RIGHT: `compute_outer_null_status`
+      had already ordered the sources while both sides of the FULL were
+      padded, so a key shared with the left would be read off the left the
+      RIGHT now pads (`test_union_join_anchor_where_precedes_the_rowset_pairing`,
+      seam 14). The status is now taken after every narrowing, so the order
+      sees the final types and `inner_only` is deleted
+      (`test_multihop_nullable_fk_no_null_leak`: an INNER to the address on
+      the customer's `address_sk` keeps no padded customer row).
+    - **A partial column one side alone holds proves that side to a WHERE
+      the merge renders.** `_unprovable_addresses` refused every partial
+      binding, for the region-domain case: a value the domain carries is
+      partial on the solid stream, and a WHERE over it keeps the domain's
+      rows. That case is a column two datasets hold. One only the padded
+      side holds renders off it alone and is NULL on every row it pads,
+      partial or not, as the optimizer's `_blocked_partials` already read
+      it (`ret_plus <- ret + 1`, stamped partial beside the `~` keys of the
+      returns; the presence probes). `_opaque_addresses` applies to
+      `side_proofs` only. `branch_proofs`, a branch's own filter taken as
+      intent for the merge, keep the guard: a first cut without it planned
+      INNER under `item_name != 'B'` and dropped the unsold item's 0 count
+      (`test_unprojected_property_where_keeps_the_region_on_a_guest_model`,
+      caught by the full suite).
+    - **A flag proof reaches the node computing the flag through the merge
+      passing it.** `computed_inputs` looked one node down. `where
+      is_returned` sits above a merge that reads `is_returned` off a select
+      computing it from `ret_qty`; the proof drawn through the flag names
+      `ret_qty`, which the merge does not output, so the walk dropped it
+      there. It now follows a computed value a row-passing node reads off
+      one parent alone down to where it is computed (unmodelled regions,
+      both twins).
+    - **Measured, not landed: a merge's own WHERE through a value it
+      computes.** Handing the merge's own WHERE `lineage_proofs`' walk (the
+      optimizer's `_lineage_proofs`) fired 0 times over the full suite:
+      every proven value a merge reads is a column of one of its sources,
+      already computed below it.
+    - **Measured, not landed.** Keyed-class trees 4 and scoped join
+      expression keys 2: the optimizer pushes a merged-key or sibling
+      condition into one side and flips there (a FULL on `tree_id` under
+      `coalesce(tree_id) is not null`; the WHERE reaches the inlined
+      customers scan of a sibling merge). The fixpoint ungated-pushdown
+      flip is a test that turns pushdown's gate off on purpose.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 24 flips (pushed 10, new CTE 9, external 4, planned 1)
+    against 30 on `67f6e02` (pushed 12, new CTE 9, planned 5, external 4);
+    of plans, not `test_join_upgrade`'s hand-built CTEs, 19 to 13.
+    `test_multihop_not_null_preserved`, `test_null_rejection_laws` seed
+    16, the two presence probes and unmodelled regions 2 are now planned. Pinned at plan time (each red on `main`) by
+    `tests/discovery/test_planned_join_narrowing.py`.
+
+    Gates, against `67f6e02`: corpus (204 statements) 1 moved, tpc_ds q35:
+    `customer_current_demographics_sk` read off the demographics side of
+    the INNER join on it instead of the customer side, equal there (the
+    source order now sees the narrowed types); its row test passes.
+    `tpc_ds_duckdb/aggregates` covered by `test_agg_queries` in the suite.
+    Fuzzer 522/522. Suite: the same 25 credential-bound failures as
+    `main`.
+
 ## Gate used
 
 ```

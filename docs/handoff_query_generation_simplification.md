@@ -216,17 +216,32 @@ MULTISELECT align's merge takes what its HAVING rejects. Census, both
 trees on one machine: 53 flips to 30 (external 18 to 4, pushed 21 to 12;
 distinct 44 to 26). What is left:
 
-- 12 pushed flips: keyed-class trees 4, root partition 2, unmodelled
-  regions 2, scoped join expression keys 2, compositions seed 1481 1,
-  grain-pin padded species 1. Root partition and compositions 1481 are
-  sibling nodes the optimizer fuses into one CTE (three regroups of one
-  merge; two keyless merges over the same parents, one narrowed): the
-  planner's proof is the AND over siblings, which is right for them
-  apart. These need the siblings planned as one node first.
-- 4 external: `test_join_upgrade` 2 (hand-built CTEs that test the rule
-  itself) and filters seed 133525 2 (one consumer's LEFT stays for the
+Seam 25 took the planner's own WHERE where the optimizer still read more
+of it. A later INNER may narrow a FULL to RIGHT after the merge has ordered
+its sources, now that the source order is taken from the final join types
+(`inner_only` is deleted). A partial column only the padded side holds
+proves that side to a WHERE the merge renders, as the optimizer's
+`_blocked_partials` read it (a branch's own filter keeps the guard). And a
+flag proof follows the flag through a merge that passes it to the node
+computing it (`computed_inputs`). Census, both trees on one machine: 30
+flips to 24 (planned 5 to 1, pushed 12 to 10). What is left:
+
+- 11 are not plans: `tests/optimization/test_join_upgrade.py` builds CTEs
+  by hand to test the rule (9 new-CTE, 2 external). They go with the
+  rule's LEFT/RIGHT arms, not before.
+- 10 pushed flips: keyed-class trees 4, root partition 2, scoped join
+  expression keys 2, compositions seed 1481 1, grain-pin padded species
+  1. Root partition and compositions 1481 are sibling nodes the optimizer
+  fuses into one CTE (three regroups of one merge; two keyless merges
+  over the same parents, one narrowed): the planner's proof is the AND
+  over siblings, which is right for them apart. Keyed-class trees and the
+  scoped join expression keys rest on a merged-key or sibling WHERE the
+  optimizer pushes into one side first. These need the siblings planned
+  as one node, or the pushdown's placement planned, first.
+- 2 external: filters seed 133525 (one consumer's LEFT stays for the
   optimizer; SQL byte-identical to `main`; a pin does not reach it).
-- 5 planned and 9 new-CTE flips remain, unchanged.
+- 1 planned: `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`,
+  which ungates pushdown on purpose.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
