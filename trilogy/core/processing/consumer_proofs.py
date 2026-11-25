@@ -174,8 +174,21 @@ def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     the parent still holds for a regroup to roll up.
     A count ``node`` zero-fills is 0, not NULL, on the rows a join padded."""
     resolved = node.resolve()
-    source = parent.resolve()
     grouped = resolved.group_required and type(node) is not MergeNode
+    return _reads(node, parent, grouped)
+
+
+def where_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
+    """Columns ``node``'s own WHERE reads off ``parent``'s rows: before any
+    group, so an aggregate ``parent`` computed is a value of each row."""
+    if type(node) is GroupNode or node.conditions is None:
+        return set()
+    return _reads(node, parent, False)
+
+
+def _reads(node: StrategyNode, parent: StrategyNode, grouped: bool) -> set[str]:
+    resolved = node.resolve()
+    source = parent.resolve()
     rolled = {c.address for c in pending_rollups(source.rollup_concepts, source.grain)}
     return {
         c.address
@@ -599,6 +612,10 @@ def _propagate(
                 reads = row_reads(node, parent) if passed else set()
                 readable = reads | computed_inputs(parent, reads)
                 given = forward.restrict(readable)
+                if passed and (own := where_reads(node, parent)):
+                    given |= ConsumerProofs.of(node.conditions).restrict(
+                        own | computed_inputs(parent, own)
+                    )
                 if passed and (where := group_filter(node, forward)) is not None:
                     given |= ConsumerProofs.of(where).restrict(readable)
                 if barred is not None:

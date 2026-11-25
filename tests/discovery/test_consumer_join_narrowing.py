@@ -3,6 +3,9 @@ reject (handoff 2.1 step 4): a NULL never matches `=`, so a row padded on a
 column a consumer joins on reaches nothing above it. The optimizer's join
 upgrade made these after planning (`_inner_pair_rejections`)."""
 
+from copy import deepcopy
+
+from tests.discovery.test_oracle_windows_laws import fresh, normalize, shape5
 from trilogy import Dialects
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join, QueryDatasource
@@ -418,3 +421,18 @@ def test_a_reader_keeps_its_planned_join_over_a_narrowed_side():
         ("carrier0", "airport0", 2, 9),
         ("carrier1", "airport0", 2, 9),
     ]
+
+
+def test_a_grouped_filter_reads_its_parents_aggregate_per_row():
+    """`tag ? min(height) by tree_form > 3` filters the merge of the trees
+    with the per-form minimum before it groups by tag: its WHERE reads the
+    minimum on each merge row, so a row padded there is rejected, though the
+    filter groups. That merge keeps only the minimum's side; the one under
+    `avg(height) by tree_form is null` stays FULL."""
+    query, expected = shape5(20)
+    executor, pristine = fresh("summary")
+    executor.environment = deepcopy(pristine)
+    planned = [t for _, t in _planned(executor, query)]
+    assert set(planned) - {JoinType.INNER} == {JoinType.FULL, JoinType.RIGHT_OUTER}
+    sql = executor.generate_sql(query)[-1]
+    assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
