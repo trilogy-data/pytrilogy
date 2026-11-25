@@ -162,23 +162,32 @@ aircraft lookup, returning aircraft with no flight. `_widened` backs the
 join channel out when a re-resolved node's join types keep a parent's rows
 it dropped before and did not all match (`preserved_sources`). Flips fell
 from 101 to 82 on this run's base (pushed 52 to 36, consumer 30 to 28;
-distinct 80 to 64). What is left:
+distinct 80 to 64).
 
-- 36 pushed flips, 23 distinct. tpc_ds (13 per run: q73 12, q72 1) is
-  mostly the filtered-aggregate rewrite turning `count(x ? p) >= 1` into a
-  row WHERE, an optimizer rewrite and no join proof. The laws keep 8
-  (windows 3, expressions 3, compositions 1, spellings 1), the rest are
-  one to four per test. Each needs its rewrite planned first.
-- 28 consumer flips: `test_semi_join_pushdown` (10, CTEs the optimizer
-  builds), `test_dimension_chain_oracle_laws` (12, 258 and 280 among them,
-  backed out by `_widened`).
-- **Seeds 258 and 280 need the stamp, not the guard.** Masking the
-  extent-free partials with `unfiltered_partials`, as the joined partials
-  are, keeps the passthrough joinless and lets 258 narrow, but moves
-  dimension-chain seed 582: its airports merge then re-resolves an INNER
-  into a RIGHT that drops a key rejection, the join channel falls back,
-  and two joins go back to the optimizer. Taking them needs a fallback
-  that drops only the failing merges' keys, not the whole channel.
+Seam 21 took the filtered-aggregate rewrite and the dimension-chain
+fallback. A group whose every aggregate reads one filter (`count(x ? p)`,
+`sum(y ? p)`) passes `p`'s proofs to its parent as a WHERE where its
+consumers reject a group that counted none (`consumer_proofs.group_filter`;
+a COUNT is 0 there, so only a comparison 0 fails rejects it,
+`condition_utility.zero_rejections`). A grouped merge reads an aggregate
+off its parent as a key, so a HAVING on one reaches the group under it.
+The key channel now bars only the merges that fail `_failing_keys` or sit
+under a node that `_widened`, not the whole plan, and a narrowed merge's
+extent-free partials are masked to what it held before, as its joined
+partials are. Full suite census (`-n 4`): 125 flips to 92 (external 80 to
+51, pushed 26 to 22; distinct 116 to 83). What is left:
+
+- 22 pushed flips. tpc_ds q72's `inv.quantity_on_hand < cs.quantity`
+  (1), the laws (windows 3, expressions 3, compositions 1), keyed-class
+  trees 4, root partition 2, unmodelled regions 2, demo import 2, scoped
+  join expression keys 2; one to two elsewhere. Each needs its rewrite
+  planned first.
+- 51 external: `test_cluster_key_lookup` 26, `test_semi_join_pushdown` 10
+  (CTEs the optimizer builds), `test_dimension_chain_oracle_laws` 7
+  (seed 582's two are the merge the per-merge bar now drops, as the seam
+  20 note predicted; 250, 343, 541 remain), filters seed 133525 2 (the
+  keyed round now holds with three merges barred, and one consumer's LEFT
+  stays for the optimizer; SQL byte-identical to `main`).
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
