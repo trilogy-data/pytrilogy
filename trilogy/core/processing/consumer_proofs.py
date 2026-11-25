@@ -69,6 +69,8 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
+    JoinSequence,
+    join_sequence,
     joined_right_ids,
 )
 
@@ -369,11 +371,12 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     A consumer's join type is not fixed: re-resolved over a narrowed parent it
     may preserve a side it dropped before (a merge whose other side lost its
     padding keeps this side's NULL-keyed rows). So the join channel is checked
-    against the plan it built: a merge whose consumers stopped rejecting what
-    it took from them, or that sits under a re-resolved node keeping a
-    parent's rows it dropped before (`_widened`), is barred from the channel
-    and the plan narrowed again without it. If no keyed merge is to blame, the
-    channel is dropped wholesale."""
+    against the plan it built: where a merge's consumers stopped rejecting
+    what it took from them, or a re-resolved node keeps a parent's rows it
+    dropped before (`_widened`), each merge whose joins grew is held to the
+    types it planned (`_pin_join_types`) and the plan narrowed again. Where
+    none can be held, the merges to blame are barred from the channel; if no
+    keyed merge is to blame, the channel is dropped wholesale."""
     nodes = _walk(root)
     order = _consumers_first(nodes)
     if order is None:
@@ -385,14 +388,18 @@ def narrow_for_consumers(root: StrategyNode) -> None:
     ident_of = {id(node): ident for ident, group in by_ident.items() for node in group}
     saved = [_State.of(node) for node in nodes]
     kept = {id(node): _Kept.of(node) for node in nodes}
+    planned = {id(node): _join_sequence(node) for node in nodes}
     barred: set[int] = set()
     while True:
         _narrow(nodes, order, by_ident, ident_of, barred, saved)
+        grown = [n for n in nodes if _Kept.of(n).typed - kept[id(n)].typed]
         failing = _failing_keys(order, by_ident, ident_of) | _widened(nodes, kept)
         if not failing:
             return
         for state in saved:
             state.restore()
+        if _pin_join_types(grown, planned):
+            continue
         if failing <= barred:
             break
         barred |= failing
@@ -444,6 +451,41 @@ def _widened(nodes: list[StrategyNode], kept: dict[int, _Kept]) -> set[int]:
         if _Kept.of(node).typed - kept[id(node)].typed - kept[id(node)].rows:
             out |= _keyed_under(node) or {-1}
     return out
+
+
+def _join_sequence(node: StrategyNode) -> JoinSequence | None:
+    if not isinstance(node, MergeNode):
+        return None
+    parents = [p.resolve().identifier for p in node.parents]
+    return join_sequence(node.resolve().joins, parents)
+
+
+def _pin_join_types(
+    grown: list[StrategyNode], planned: dict[int, JoinSequence | None]
+) -> bool:
+    """Hold each merge whose joins now keep a side they dropped before to the
+    types it planned, where it still pairs its parents as it did then. A
+    parent's narrowing dropped only rows those types reject, so they return
+    the rows they did, and keep rejecting what the narrowing took: a reader
+    that re-typed itself off a parent's dropped padding (a key nullable on
+    one side alone now, `_nullable_join`) stops rejecting it. Whether any
+    merge took a pin it did not hold."""
+    out = False
+    for node in grown:
+        sequence = planned[id(node)]
+        if (
+            isinstance(node, MergeNode)
+            and sequence is not None
+            and node.planned_join_types is None
+            and _pairs(_join_sequence(node)) == _pairs(sequence)
+        ):
+            node.planned_join_types = sequence
+            out = True
+    return out
+
+
+def _pairs(sequence: JoinSequence | None) -> list[tuple[frozenset[int], int]] | None:
+    return None if sequence is None else [(left, right) for left, right, _ in sequence]
 
 
 def _keyed_under(node: StrategyNode) -> set[int]:

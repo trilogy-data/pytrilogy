@@ -173,6 +173,53 @@ def left_deep_joins(
     return out
 
 
+JoinSequence = tuple[tuple[frozenset[int], int, JoinType], ...]
+
+
+def join_sequence(
+    joins: Sequence[SourceJoin | UnnestJoin], parent_ids: Sequence[str]
+) -> JoinSequence | None:
+    """Each join's left and right parents by position, and its type; None if
+    a join reads a source that is no parent."""
+    position = {ident: i for i, ident in enumerate(parent_ids)}
+    out = []
+    for join in joins:
+        if not isinstance(join, Join):
+            continue
+        sides = [s.identifier for s in join_left_sources(join)] + [
+            join.right.identifier
+        ]
+        if any(ident not in position for ident in sides):
+            return None
+        left = frozenset(position[ident] for ident in sides[:-1])
+        out.append((left, position[sides[-1]], join.join_type))
+    return tuple(out)
+
+
+def _keeps(join_type: JoinType) -> tuple[bool, bool]:
+    """Whether the join keeps its right side's, and its left's, unmatched rows."""
+    return join_type in PADS_LEFT_JOIN_TYPES, join_type in PADS_RIGHT_JOIN_TYPES
+
+
+def keep_planned_join_types(
+    joins: Sequence[SourceJoin | UnnestJoin],
+    parent_ids: Sequence[str],
+    planned: JoinSequence,
+) -> None:
+    """Retype a join that now keeps a side's unmatched rows its planned type
+    dropped back to the planned type, where the joins pair the same parents
+    in the same order. A parent narrowed under it lost only rows the planned
+    type rejects, so the planned type returns the rows it did."""
+    current = join_sequence(joins, parent_ids)
+    if current is None or [c[:2] for c in current] != [p[:2] for p in planned]:
+        return
+    base = [join for join in joins if isinstance(join, Join)]
+    for join, (_, _, join_type) in zip(base, planned):
+        now, then = _keeps(join.join_type), _keeps(join_type)
+        if any(a and not b for a, b in zip(now, then)):
+            join.join_type = join_type
+
+
 def equivalent_addresses(concepts: Iterable[BuildConcept]) -> set[str]:
     """Every spelling (address and pseudonyms) of `concepts`."""
     return {

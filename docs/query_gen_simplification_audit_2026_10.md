@@ -2198,6 +2198,47 @@ election, not the padded fallback.
     equal under the INNER equality; their row tests pass. Fuzzer 522/522.
     Suite: the same 25 credential-bound failures as `main`.
 
+23. **A re-typed reader keeps its planned joins over a narrowed side
+    (landed; handoff 2.1 step 4, external channel).**
+    - **The gap.** Dimension-chain seed 541 (`select carrier_name,
+      airport_name, count(id) as n, max(seats) as mx`). The key channel
+      narrows the `max(seats)` side to INNER throughout, so its
+      `carrier_name` and `airport_name` are no longer padded. The root merge
+      pairing it with the count was not narrowed, but it re-resolves over
+      the narrowed parent: the key is now nullable on the count's side
+      alone, and `_nullable_join` preserves that side (INNER to RIGHT). The
+      RIGHT stops rejecting `airport_name`, so `_failing_keys` names the
+      count's merge and `_widened` all three keyed merges under the root;
+      all are barred and the optimizer flips their LEFTs. Seed 582 is the
+      same one level down, where the reader's rows all matched before:
+      `_widened` passed it and `_failing_keys` barred the merge under it.
+      Seam 22 read this as join generation reading partial marks; the
+      trace shows the reader's nullable marks.
+    - **The fix.** When a round would bar, each merge whose join types now
+      keep a side they dropped before is held to the types it planned
+      before any narrowing (`MergeNode.planned_join_types`, applied by
+      `utility.keep_planned_join_types` ahead of `narrow_join_types`), as
+      long as it pairs the same parents in the same order, and the plan is
+      narrowed again. A pin never widens a type, and narrowing still runs
+      on top of it. Only when no merge can be held does the channel bar
+      as before. The narrowing dropped only rows the planned types reject,
+      so they return the rows they did. With a key no longer nullable on
+      either side the null-safe pair renders plain `=`, equal there.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 53 flips (external 18, pushed 21, new CTE 9, planned 5)
+    against 59 on `5f24c2a` (external 24, pushed 21, new CTE 9, planned
+    5); distinct 46 to 40. `test_dimension_chain_oracle_laws` 6 to 0
+    (seeds 343, 541, 582). Pinned at plan time by
+    `test_consumer_join_narrowing::test_a_reader_keeps_its_planned_join_over_a_narrowed_side`
+    (red on `main`: LEFT OUTERs, same rows) and the `keep_planned_join_types`
+    unit tests in `tests/core/processing/test_grain_utility.py`.
+
+    Gates, against `5f24c2a`: corpus (204 statements) 0 moved;
+    `tpc_ds_duckdb/aggregates` identical; fuzzer 522/522. Suite: the same
+    26 failures as `main` (25 credential-bound, plus
+    `test_rank_beside_partial_merge` under xdist).
+
 ## Gate used
 
 ```

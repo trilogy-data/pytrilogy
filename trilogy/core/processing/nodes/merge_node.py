@@ -65,8 +65,10 @@ from trilogy.core.processing.nodes.base_node import (
 )
 from trilogy.core.processing.null_provenance import side_nullable
 from trilogy.core.processing.utility import (
+    JoinSequence,
     collect_applied_conditions,
     find_nullable_concepts,
+    keep_planned_join_types,
     left_deep_joins,
     padded_sources,
     row_applied_atoms,
@@ -455,6 +457,9 @@ class MergeNode(StrategyNode):
         # (`single_source_reads`): a consumer's join on one rejects that
         # source's padded rows
         self.key_reads: dict[str, str] | None = None
+        # the join types it planned before a parent narrowed, by the right
+        # parent's position (`consumer_proofs._pin_join_types`)
+        self.planned_join_types: JoinSequence | None = None
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -1068,6 +1073,12 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
         _cap_lookup_joins(joins, lookup_keys - row_keys)
+        if self.planned_join_types is not None:
+            keep_planned_join_types(
+                joins,
+                [p.resolve().identifier for p in self.parents],
+                self.planned_join_types,
+            )
         narrow_join_types(joins, join_proofs, final_datasets)
         # Per-datasource NULL-ability from the resolved join graph: orders
         # ``final_datasets`` so the preserved side wins ``resolve_concept_map``'s
