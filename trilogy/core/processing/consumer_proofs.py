@@ -576,7 +576,10 @@ def _propagate(
                 and passed
                 and isinstance(node, MergeNode)
                 and _outer_joins(node)
-                and (taken := node.consumer_proofs or ConsumerProofs()) != take | taken
+                and (
+                    (taken := node.consumer_proofs or ConsumerProofs()) != take | taken
+                    or _reads_changed(node, take)
+                )
             ):
                 # a later round only adds: what the merge took before still
                 # holds, and `_failing_keys` checks the plan that results
@@ -605,6 +608,14 @@ def _propagate(
                 prior = received.get(pident)
                 received[pident] = given if prior is None else prior & given
     return received
+
+
+def _reads_changed(node: MergeNode, take: ConsumerProofs) -> bool:
+    """Whether a key ``take`` rejects now renders off one source where it did
+    not when the merge last took: its own narrowing un-coalesced it, and a
+    single-source key proves its source present (`_keys_force`)."""
+    reads = node.key_reads or {}
+    return any(a not in reads for a in single_source_reads(node).keys() & take.keys)
 
 
 def _failing_keys(

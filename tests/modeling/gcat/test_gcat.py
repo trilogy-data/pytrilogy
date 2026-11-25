@@ -7,6 +7,8 @@ from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
 from trilogy.core.models.build import BuildDatasource, BuildGrain
 from trilogy.core.models.core import DataType
+from trilogy.core.models.execute import Join, QueryDatasource
+from trilogy.core.query_processor import get_query_datasources
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
 
@@ -1032,6 +1034,26 @@ SELECT
     _ = gcat_env.generate_sql(queries[-1])
 
     gcat_env.environment = base_env
+
+
+def _join_types(ds: QueryDatasource) -> list[JoinType]:
+    out = [j.join_type for j in ds.joins if isinstance(j, Join)]
+    for source in ds.datasources:
+        if isinstance(source, QueryDatasource):
+            out += _join_types(source)
+    return out
+
+
+def test_a_narrowed_merge_rereads_its_keys():
+    """The launch-year lookup merge narrows FULL to LEFT on the consumer's
+    join keys, after which it reads `launch_tag` off the launches alone; the
+    lookup is complete on it, so the merge is planned INNER."""
+    env = Environment(working_path=Path(__file__).parent)
+    _, statements = env.parse("""import fuel_dashboard2;
+WHERE era = 'Apollo'
+SELECT launch_date.year, vehicle.stage_no;""")
+    planned = _join_types(get_query_datasources(env, statements[-1]))
+    assert JoinType.LEFT_OUTER not in planned, planned
 
 
 def test_spacex_alias_behavior():

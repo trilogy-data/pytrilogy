@@ -697,6 +697,23 @@ def _stream_sources(
     ]
 
 
+def _paired_key_reads(
+    join: Join,
+    left_sources: list[GrainSource],
+    key_proofs: set[str],
+    key_sources: Mapping[str, str],
+) -> set[str]:
+    """The consumer-rejected keys the merge reads off a source this join
+    equates them on: non-null there, the row matches a side complete on the
+    key tuple, as a WHERE proof on the key does (`_side_forced`)."""
+    paired = {join.right.identifier}
+    if join.pairs:
+        paired |= {pair.node.identifier for pair in join.pairs}
+    else:
+        paired |= {source.identifier for source in left_sources}
+    return {a for a in key_proofs if key_sources.get(a) in paired}
+
+
 def downgrade_join_for_proofs(
     join: SourceJoin | UnnestJoin,
     proofs: set[str],
@@ -742,9 +759,10 @@ def downgrade_join_for_proofs(
     streamed = _stream_sources(join, final_datasets, stream)
     left_exclusive = _exclusive_addresses(streamed, final_datasets)
     right_exclusive = _exclusive_addresses([join.right], final_datasets)
+    keyed = proofs | _paired_key_reads(join, left_sources, key_proofs, key_sources)
     left_forced = (
         _side_forced(
-            proofs,
+            keyed,
             [],
             left_only,
             left_keys,
@@ -761,7 +779,7 @@ def downgrade_join_for_proofs(
     )
     right_forced = (
         _side_forced(
-            proofs,
+            keyed,
             [],
             right_only,
             right_keys,
