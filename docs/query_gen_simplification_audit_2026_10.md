@@ -1882,6 +1882,169 @@ election, not the padded fallback.
     only). Each asserts rows. Suite: the same credential-bound failures as
     `main`.
 
+17. **The planner narrows on a consumer's join through a key it reads off
+    one side (landed; the consumer channel of handoff 2.1 step 4, third
+    slice).** Seam 16 left 77 consumer flips, 46 of them in
+    `test_dimension_chain_oracle_laws`. `_keys_force` refused every join
+    key, on the ground that a key renders coalesced with the other side.
+    It does only where the merge reads it off more than one source: with
+    the flights binding `~tail_num` and the aircraft binding it complete,
+    `resolve_concept_map` never reads the partial binding, so the merge
+    renders `tail_num` off the aircraft alone. A padded aircraft row is
+    NULL there, and the aircraft lookup above, which joins on `tail_num`,
+    drops it.
+    - **What the merge read, when it took the proofs.**
+      `consumer_proofs.single_source_reads` records, as a merge takes its
+      consumers' proofs, the columns its resolve read off one source
+      (`MergeNode.key_reads`). An outer key paired with another address is
+      left out, since `CTE.outer_join_key_class` coalesces the pair. The
+      record is of the resolve the consumers' joins were read against, so
+      the rows it names are the rows they reject. `JoinProofs.key_sources`
+      carries it, and `_keys_force` forces the source a rejected key was
+      read off, join key or not.
+    - **Measured, not landed: plans whose nodes share a relation.**
+      `_consumers_first` gives up when a node reads another node of its
+      own relation (a joinless merge over the regroup it passes through):
+      521 of 38,877 compiles over discovery, TPC and the join matrix.
+      Skipping those edges lets the walk run. In dimension-chain seed 258
+      the root merge, re-resolved over the narrowed seats merge, then
+      widened its INNER on `id` to a RIGHT; it still rejects the narrowed
+      side, so `_keys_hold` passed it. The narrowed merge's extent-free
+      partial stamp also moved, which made a passthrough a domain join (one
+      more CTE) until it was masked like the joined partials. A check that
+      no source of any node becomes preserved catches the widening, but
+      also rejects the FULL+LEFT to FULL+RIGHT side flip seam 16 shipped in
+      `test_cluster_key_lookup` (its 50 flips went back to the optimizer).
+      All three were backed out; taking these plans needs a test that tells
+      a widening from a side flip.
+
+    After: 504 flips in 253 tests (pushed 434, consumer 49, planned 12, new
+    CTE 9) against 515 in 258 on `a154c09` on the same machine (pushed 426,
+    consumer 77, planned 11, new CTE 1). The pushed and new-CTE rises are
+    not plan changes: tpc_ds `test_queries` compiles some queries a varying
+    number of times (its SQL is unchanged), and `test_join_upgrade` runs
+    the rule on hand-built CTEs whose channel depends on the test before
+    it on the worker. Counted once per (test, CTE, join), flips fell from
+    304 to 284 and consumer flips from 72 to 44. Dimension chain is at 22
+    (46 before) and tpc_h adhoc07 at 0 (6).
+    `tests/discovery/test_consumer_join_narrowing.py` pins the key read off
+    one side (red on `main`).
+
+    Gates, against `a154c09`: corpus (208 statements) 0 moved; fuzzer
+    522/522. Suite SQL capture under `PYTHONHASHSEED=0` and xdist moved 848
+    tests, almost all column order; recaptured serially in both trees, 6
+    move. Four dimension-chain laws shrink by 5 to 19 characters: a
+    reader's null-safe pair on a key the narrowed merge no longer pads
+    becomes `=`, or a LEFT the optimizer kept is INNER. Filters seed 133525, base and summary, gains a CTE (8,637 to
+    9,704 characters): once a merge's LEFT to a `_wscope` regroup is INNER,
+    a HAVING-born `max <= sum` condition stays in a CTE of its own instead
+    of being pushed below the regroup. Both assert rows. Suite: the same
+    credential-bound failures as `main`.
+
+18. **A WHERE on a grouped merged key is planned on the aggregate's own
+    rows (landed; the unnest shape of handoff 2.1 step 4).** Seams 15 and
+    16 left 332 pushed flips in `test_relation_rollup_laws`, all one plan:
+    `select ecoregion_id, count(tree_id) where ecoregion_id = 1` under
+    `merge tree_eco_region into ecoregion_id`. The concept graph's
+    `_constrain_aggregates_by_merged_expansions` gives every D0 aggregate
+    the unnest as a lineage parent when the WHERE reads the key it is
+    merged into, so the WHERE filters the rows the unnest expands. An
+    aggregate grouped by that key already reads it per row, and its row
+    stream reaches it through the same unnest (trees, the lists, LEFT the
+    unnest INNER `eco`). The extra edge planned a second unnest of that
+    stream, joined it back LEFT on (key, `tree_id`), read the key as a
+    coalesce of both and put the WHERE above. No proof passes that: the
+    stream has a consumer under an unnest, and the coalesce reads two
+    sources. `PredicatePushdown` then pushed `ecoregion_id = 1` into the
+    stream and `UpgradeJoinOnGuards` made its LEFT an INNER.
+    - **The fix is the edge.** An aggregate with a lineage edge from the
+      merged key takes no edge from its unnest. The WHERE is placed on the
+      row stream, the merge narrows its LEFT on its own condition, and the
+      self-join is never planned.
+    - Every other D0 aggregate keeps the edge: one that does not read the
+      key (`select city, count(tree_id) where ecoregion_id = 1`) has no
+      other relation between the key and its rows.
+
+    After: 157 flips in 111 tests (pushed 87, consumer 49, planned 12, new
+    CTE 9) against 486 in 253 on `5dad39d` on the same machine (pushed
+    416). `test_relation_rollup_laws` has none left (332); tpc_ds
+    `test_queries` moved 12 to 15, its varying compile count. Distinct
+    flips 284 to 142. `test_a_where_on_the_grouped_merged_key_is_planned_on_its_rows`
+    pins the plan (24 cases, all red on `main`): no outer join at plan
+    time, one unnest.
+
+    Gates, against `5dad39d`: corpus (206 statements, with
+    `tpc_ds_duckdb/aggregates`) 0 moved; fuzzer 522/522. Suite SQL capture
+    under `PYTHONHASHSEED=0` and xdist, the moved tests recaptured serially
+    in both trees: only `test_relation_rollup_laws` moves, 152 statements,
+    none larger (628 CTEs to 456, 608 joins to 304, 195,064 characters to
+    122,318). Each asserts rows against the summary-free plan. Suite: the
+    same credential-bound failures as `main`.
+
+19. **The consumer walk reaches a fixpoint, through filter nodes and a
+    stream-kept FULL (landed; handoff 2.1 step 4, consumer and pushed
+    channels).** Seam 18 left 157 flips. Three gaps in
+    `consumer_proofs.narrow_for_consumers` and the INNER-chain rule held
+    53 of them:
+    - **A FilterNode passes rows.** `_passes_rows` let a proof through a
+      plain select, a merge and a non-grouping-set group, never a
+      FilterNode, though a FilterNode's condition is a WHERE over its
+      parent's rows exactly like a select's. A HAVING the planner turns
+      into a filter virtual (`having ra.n > 0` on a column the select does
+      not project, the filter laws' `_wscope` comparisons) sits on one over
+      the merge that pads the column, so the optimizer pushed it down and
+      flipped the join. The merge now takes it at plan time; the SQL is
+      the optimizer's, byte for byte, in the shapes sampled.
+    - **Narrowing repeats to a fixpoint.** Consumers are read before the
+      merges under them narrow, once. In dimension-chain seed 49 the
+      airports' merge narrows on the carrier lookup's join, which leaves
+      its `id` unpadded; re-resolved, its INNER on the per-flight seats
+      regroup pairs `id` with plain `=` instead of null-safe, which rejects
+      the seats merge's FULL padding. The first pass had read that pair
+      null-safe. `_narrow` now re-propagates until no merge takes more. A
+      later round only adds to what a merge took (each proof held of the
+      plan it was read off), keeps the first round's `unfiltered_partials`,
+      and `_keys_hold` checks the plan the last round built.
+    - **A FULL a later INNER reads may narrow to a LEFT after source
+      ordering.** Seam 14 barred `narrow_joins_read_by_inner` from any
+      narrowing but INNER once the merge has ordered its sources
+      (`inner_only`), since changing which side a FULL preserves left a
+      union join key reading the padded side
+      (`test_union_join_anchor_where_precedes_the_rowset_pairing`). That
+      failure is the RIGHT, which pads the stream the merge put first
+      (re-checked: allowing RIGHT fails it again, allowing LEFT does not).
+      A LEFT keeps the stream preserved: in dimension-chain seed 362 the
+      flights' INNER on the aircraft's `tail_num`, itself narrowed from a
+      LEFT by the carrier lookup, drops the models no aircraft has.
+
+    After: 104 flips in 63 tests (pushed 55, consumer 30, planned 10, new
+    CTE 9) against 157 in 111 on `af20c84` on the same machine (pushed 87,
+    consumer 49, planned 12, new CTE 9). Distinct flips 142 to 80. By
+    file: filters laws 14 to 2, windows laws 9 to 3, dimension chain 22 to
+    12, `test_merge_union_parity` 8 to 0, `test_existence_feeder_pushdown`
+    5 to 0, spellings 6 to 2, tpc_ds `test_queries` 12 distinct to 9 (q10,
+    q21 and q22 now planned; its per-run count rose 15 to 24 only as q73
+    and q58 were compiled more times). Three law seeds gained a flip
+    (compositions 1481, expressions 1371 and 187859, one each): the same
+    SQL, a join the census now credits to a pushed condition.
+    `tests/discovery/test_consumer_join_narrowing.py` pins both join
+    shapes at plan time (red on `main`): the FULL a stream INNER narrows,
+    and the second round.
+
+    Gates, against `af20c84`: corpus (206 statements, with
+    `tpc_ds_duckdb/aggregates`) 0 moved; fuzzer 522/522. Suite SQL
+    capture under `PYTHONHASHSEED=0` and xdist moved 937 tests, almost all
+    column order; the 927 planner ones recaptured serially in both trees
+    leave 14, all law or join-matrix tests asserting rows. Twelve shrink:
+    filters seed 133525 (base and summary) loses the CTE seam 17 cost it
+    (9,704 to 8,637 characters), the rest are 0 to 103 characters shorter
+    as a null-safe pair becomes `=` or a LEFT the optimizer kept is planned
+    INNER. Two grow by a read off the other side of an INNER at the same
+    CTE and join count: windows seed 744 (18 characters, the `tree_form`
+    key read off the row side) and `test_membership_feeders_do_not_chain`
+    (1, each `cid` read off its own scan instead of one copy). Suite: the
+    same 25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```

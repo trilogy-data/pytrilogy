@@ -2652,7 +2652,12 @@ def _constrain_aggregates_by_merged_expansions(
     """A WHERE on a key an `unnest` is merged into reads the element on the
     rows the unnest expands: the merge is the only relation between that key
     and those rows. An aggregate over them reads the expansion as a row
-    parent, so the WHERE filters its input rows rather than its output."""
+    parent, so the WHERE filters its input rows rather than its output.
+
+    An aggregate that already reads the key per row (grouped by it) has its
+    rows related to the key through that same unnest: a second expansion
+    beside it would be joined back onto those rows only to read the key
+    again."""
     for src, node in list(attrs.items()):
         if src not in graph or node.derivation != Derivation.UNNEST or node.label != "":
             continue
@@ -2671,6 +2676,7 @@ def _constrain_aggregates_by_merged_expansions(
                 and consumer.derivation == Derivation.AGGREGATE
                 and consumer.depth_label == DepthLabel.D0
                 and not graph.has_edge(src, dst)
+                and not any(graph.has_edge(key, dst) for key in merged)
             ):
                 add_edge(graph, edges, src, dst, EdgeKind.LINEAGE)
 
