@@ -175,19 +175,38 @@ The key channel now bars only the merges that fail `_failing_keys` or sit
 under a node that `_widened`, not the whole plan, and a narrowed merge's
 extent-free partials are masked to what it held before, as its joined
 partials are. Full suite census (`-n 4`): 125 flips to 92 (external 80 to
-51, pushed 26 to 22; distinct 116 to 83). What is left:
+51, pushed 26 to 22; distinct 116 to 83).
 
-- 22 pushed flips. tpc_ds q72's `inv.quantity_on_hand < cs.quantity`
+Seam 22 found the cluster-key flips were an ordering gap in the planner's
+own narrowing. `narrow_join_types` calls `downgrade_join_for_proofs` twice
+per join: on the merge's and its consumers' proofs, then on its branches'.
+It acted on a FULL only, so a consumer key that forced one side first
+(FULL to RIGHT) left the branch proof forcing the other side nothing to
+narrow; the RIGHT kept the lookup's rows, `_widened` barred the merge and
+the optimizer flipped the LEFT. It now narrows any outer join
+(`unpadded_join_type` already maps a LEFT/RIGHT whose padded side is forced
+to INNER). Census, both trees on one machine: 92 flips to 59 (external 51
+to 24, planned 10 to 5, pushed 22 to 21; distinct 44 to 38). What is left:
+
+- 21 pushed flips. tpc_ds q72's `inv.quantity_on_hand < cs.quantity`
   (1), the laws (windows 3, expressions 3, compositions 1), keyed-class
   trees 4, root partition 2, unmodelled regions 2, demo import 2, scoped
   join expression keys 2; one to two elsewhere. Each needs its rewrite
   planned first.
-- 51 external: `test_cluster_key_lookup` 26, `test_semi_join_pushdown` 10
-  (CTEs the optimizer builds), `test_dimension_chain_oracle_laws` 7
-  (seed 582's two are the merge the per-merge bar now drops, as the seam
-  20 note predicted; 250, 343, 541 remain), filters seed 133525 2 (the
-  keyed round now holds with three merges barred, and one consumer's LEFT
-  stays for the optimizer; SQL byte-identical to `main`).
+- 24 external: `test_semi_join_pushdown` 10 (CTEs the optimizer builds),
+  `test_dimension_chain_oracle_laws` 6 (343, 541, and 582's two; see
+  below), `test_join_upgrade` 2 (hand-built CTEs that test the rule
+  itself), filters seed 133525 2 (one consumer's LEFT stays for the
+  optimizer; SQL byte-identical to `main`).
+- Next lead, the dimension chain. In seed 541
+  (`select carrier_name, airport_name, count(id) as n, max(seats) as mx`)
+  the key channel narrows the airport/carrier merge under the count, and
+  the top merge pairing the count with `max(seats)` then comes out of
+  `generate_joins` already typed RIGHT OUTER (not narrowed into it), so
+  `_widened` bars all three keyed merges under it. Join generation reads
+  the narrowed parent's partial marks; this is the extent-free family of
+  seams 20 and 21, not narrowing order.
+- 5 planned and 9 new-CTE flips remain, unchanged.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
