@@ -6,7 +6,10 @@ the module's ``urlopen`` — so a command test covers request construction, auth
 headers, status handling, model validation, and rendering, rather than only the
 command body."""
 
+import base64
+import gzip
 import json
+import os
 import tomllib
 from datetime import UTC, datetime
 from http.client import IncompleteRead
@@ -230,8 +233,8 @@ class TestBundling:
         assert names == ["keep.preql"]
 
     def test_oversized_bundle_is_refused(self):
-        payload = {"files": [{"name": "big", "content": "x" * (9 * 1024 * 1024)}]}
-        with pytest.raises(CloudError, match="budget"):
+        payload = {"files": [{"name": "big", "content": _incompressible(12)}]}
+        with pytest.raises(CloudError, match="compressed, over the"):
             check_bundle_size(payload)
 
     def test_the_refusal_names_the_files_that_caused_it(self):
@@ -240,7 +243,7 @@ class TestBundling:
         and checking client-side is what keeps them available to report."""
         payload = {
             "files": [
-                {"name": "raw/dump.json", "content": "x" * (9 * 1024 * 1024)},
+                {"name": "raw/dump.json", "content": _incompressible(12)},
                 {"name": "model.preql", "content": "key id int;"},
             ]
         }
@@ -252,11 +255,37 @@ class TestBundling:
         """The check runs on job and workspace bodies alike, so it has to
         handle a payload shaped differently from a bundle."""
         with pytest.raises(CloudError, match="budget"):
-            check_bundle_size({"config": "x" * (9 * 1024 * 1024)})
+            check_bundle_size({"config": _incompressible(12)})
+
+    def test_a_bundle_over_budget_as_json_is_sent_compressed(self):
+        """Source text compresses several times over, so a tree past the
+        budget as JSON usually fits once gzipped; the platform measures what
+        was sent."""
+        payload = {"files": [{"name": "big.preql", "content": "x" * (12 << 20)}]}
+        encoded = check_bundle_size(payload)
+        assert encoded[:2] == cloud_mod.GZIP_MAGIC
+        assert json.loads(gzip.decompress(encoded)) == payload
+
+    def test_a_bundle_that_fits_is_never_compressed(self):
+        """Only a bundle no older server could take depends on gzip."""
+        payload = {"files": [{"name": "a.preql", "content": "x" * (7 << 20)}]}
+        assert check_bundle_size(payload) == json.dumps(payload).encode("utf-8")
+
+    def test_compression_cannot_stretch_past_the_decompressed_limit(self):
+        payload = {"files": [{"name": "huge.preql", "content": "x" * (25 << 20)}]}
+        with pytest.raises(CloudError) as exc:
+            check_bundle_size(payload)
+        assert "huge.preql" in str(exc.value)
+        assert f"{cloud_mod.MAX_DECOMPRESSED_BYTES:,}B budget" in str(exc.value)
 
     def test_encoded_bundle_is_returned_for_reuse(self):
         payload = {"files": []}
         assert check_bundle_size(payload) == json.dumps(payload).encode("utf-8")
+
+
+def _incompressible(mib: int) -> str:
+    """Text that gzip barely shrinks: base64 of random bytes."""
+    return base64.b64encode(os.urandom(mib << 20)).decode("ascii")[: mib << 20]
 
 
 class TestRewrites:
@@ -572,7 +601,25 @@ class TestHttpClient:
     def test_pre_encoded_bytes_are_sent_verbatim(self, cloud_api):
         raw = b'{"name": "spaced   out"}'
         CloudClient(cloud_api.url, "t").post("/orgs/acme/jobs", raw)
-        assert cloud_api.call_for("POST", "/orgs/acme/jobs").data == raw
+        call = cloud_api.call_for("POST", "/orgs/acme/jobs")
+        assert call.data == raw
+        assert "content-encoding" not in call.headers
+
+    def test_a_compressed_body_declares_its_encoding(self, cloud_api):
+        raw = gzip.compress(b'{"name": "big"}')
+        CloudClient(cloud_api.url, "t").post("/orgs/acme/jobs", raw)
+        call = cloud_api.call_for("POST", "/orgs/acme/jobs")
+        assert call.data == raw
+        assert call.headers["content-encoding"] == "gzip"
+        assert call.headers["content-type"] == "application/json"
+
+    def test_a_server_refusing_a_compressed_body_is_named(self, cloud_api):
+        """A server that predates compressed uploads reads gzip as bad JSON."""
+        cloud_api.fail("POST", "/orgs/acme/jobs", 400, "expected value")
+        with pytest.raises(CloudError, match="may not accept compressed uploads"):
+            CloudClient(cloud_api.url, "t").post(
+                "/orgs/acme/jobs", gzip.compress(b'{"name": "big"}')
+            )
 
     def test_a_401_points_at_the_login_command(self, cloud_api):
         cloud_api.fail("GET", "/auth/me", 401, "token expired")
@@ -5292,7 +5339,9 @@ class TestSyncReporting:
         """Exactly what a dry run is for. Skipping the check would let one pass
         cleanly and then fail the sync it was rehearsing."""
         root = self._repo(tmp_path)
-        (root / "etl" / "big.preql").write_text("x" * 5000, encoding="utf-8")
+        (root / "etl" / "big.preql").write_text(
+            _incompressible(1)[:5000], encoding="utf-8"
+        )
         monkeypatch.setattr(cloud_mod, "PUBSUB_MAX_BYTES", 1000)
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
         result = run_cloud("sync", str(root), "--dry-run")
@@ -5696,7 +5745,7 @@ operation = "refresh"
         directory.mkdir(parents=True)
         (directory / "trilogy.toml").write_text(self.TOML, encoding="utf-8")
         (directory / "model.preql").write_text("key id int;", encoding="utf-8")
-        (directory / "raw_dump.json").write_text("x" * (9 * 1024 * 1024), "utf-8")
+        (directory / "raw_dump.json").write_text(_incompressible(12), "utf-8")
         return root
 
     def _seed(self, api) -> None:
@@ -5747,7 +5796,7 @@ operation = "refresh"
             api.org,
             "data",
             "[cloud]\n",
-            [{"name": "raw_dump.json", "content": "x" * (9 * 1024 * 1024)}],
+            [{"name": "raw_dump.json", "content": _incompressible(12)}],
             "github.com/acme/models",
             dry_run,
         )
@@ -5770,3 +5819,26 @@ operation = "refresh"
         with pytest.raises(CloudError, match="budget"):
             self._ensure(logged_in, dry_run)
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/workspaces")
+
+    def test_a_tree_over_the_budget_as_json_is_sent_compressed(self, logged_in):
+        """What compression is for: a tree of source text past the budget as
+        JSON reaches the server, gzipped and declared as such."""
+        self._seed(logged_in)
+        logged_in.set(
+            "POST",
+            f"/orgs/{logged_in.org}/workspaces",
+            {"id": "ws-1", "org_id": "org-acme", "name": "data"},
+        )
+        files = [{"name": "raw/big.preql", "content": "select 1;\n" * (1 << 20)}]
+        _ensure_workspace(
+            CloudClient(logged_in.url, "tri_stored"),
+            logged_in.org,
+            "data",
+            "[cloud]\n",
+            files,
+            "github.com/acme/models",
+            False,
+        )
+        call = logged_in.call_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        assert call.headers["content-encoding"] == "gzip"
+        assert json.loads(gzip.decompress(call.data))["files"] == files
