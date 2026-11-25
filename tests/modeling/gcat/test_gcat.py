@@ -802,7 +802,6 @@ LIMIT 10
 def test_big_group_by(gcat_env: Executor):
 
     base = gcat_env
-    base.execute_raw_sql(ROOT / "setup.sql")
     queries = base.parse_text("""import fuel_dashboard;
         WHERE
         vehicle.stage_no in ('0', '1')
