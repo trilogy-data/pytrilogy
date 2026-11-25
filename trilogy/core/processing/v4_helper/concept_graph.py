@@ -1749,10 +1749,11 @@ def _barrier_at_gate_grain(
     pairs with on every key of the gate, so it filters them. The gate's grain
     is every aggregate its atom reads: `sum(x) by city - max(x) by city,
     species > 3` is decided per species, which a `by city` reader never meets
-    (`Filters.gate_grain_is_its_atoms`)."""
-    grain = (
-        attrs[src].grain_components | gate_grains.get(attrs[src].address, frozenset())
-    ) - {ALL_ROWS_ADDRESS}
+    (`Filters.gate_grain_is_its_atoms`). A total, or an atom beside a set,
+    keeps its own grain: widening those broke 4617, 48509 and six more."""
+    grain = attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+    if grain:
+        grain |= gate_grains.get(attrs[src].address, frozenset())
     return any(
         attrs[succ].derivation == Derivation.AGGREGATE
         and grain <= attrs[succ].grain_components
@@ -2913,14 +2914,15 @@ def build_concept_graph(
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
             row_arg_addresses.update(atom_row_addrs)
-            atom_grain = frozenset(
-                k
-                for c in atom.row_arguments
-                if c.is_aggregate and c.grain is not None
-                for k in c.grain.components
-            )
-            for address in atom_row_addrs:
-                gate_grains[address] |= atom_grain
+            if not atom.existence_arguments:
+                atom_grain = frozenset(
+                    k
+                    for c in atom.row_arguments
+                    if c.is_aggregate and c.grain is not None
+                    for k in c.grain.components
+                )
+                for address in atom_row_addrs:
+                    gate_grains[address] |= atom_grain
             if atom.existence_arguments:
                 beside_sets.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():

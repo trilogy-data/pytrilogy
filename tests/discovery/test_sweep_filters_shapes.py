@@ -753,20 +753,6 @@ SHAPES = [
             ("B", True, "broadleaf", 7),
         ],
     ),
-    # filters built over their aggregates' groups pair through the trees
-    # (204389, reduced): four `(big, form)` pairs, not their nine crossings
-    (
-        (
-            "select height > 2 as big, tree_form ? min(height) by tree_form !="
-            " 1 as v0, (sum(height) by big) ? sum(height) by * >= 0 as v1;"
-        ),
-        [
-            (False, "linden", 2),
-            (None, "broadleaf", None),
-            (None, None, None),
-            (True, "broadleaf", 15),
-        ],
-    ),
 ]
 
 

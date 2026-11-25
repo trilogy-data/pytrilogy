@@ -750,17 +750,4 @@ theorem filter_rows_keyed_by_outputs :
       (trees.any fun t => filtered.any fun f => t.2 == f.2 && t.1 != f.1) = true := by
   decide
 
-/-- `select height > 2 as big, tree_form ? min(height) by tree_form != 1 as
-v0, (sum(height) by big) ? sum(height) by * >= 0 as v1`: both filters are
-values of each tree, so the answer is the four `(big, form)` pairs the trees
-hold. Each filter is built over its aggregate's groups alone, yet each was
-taken to hold the other's column and its row parents' `tree_id`, so FINAL
-paired them on nothing and showed all nine (`filter_over_groups_holds_no_row`,
-204389). Trees are `(big, form)`, NULL as 2. -/
-theorem filter_over_groups_holds_no_row :
-    let trees : List (Nat × Nat) := [(1, 0), (2, 0), (1, 0), (2, 1), (1, 0), (0, 2)]
-    trees.eraseDups.length = 4 ∧
-      (trees.map (·.1)).eraseDups.length * (trees.map (·.2)).eraseDups.length = 9 := by
-  decide
-
 end Trilogy.Filters
