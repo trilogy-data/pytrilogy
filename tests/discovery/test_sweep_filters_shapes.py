@@ -703,6 +703,21 @@ SHAPES = [
         ),
         [(2,), (7,)],
     ),
+    # a FINAL taking `tree_form` off rows at `(city, species)` dedups them
+    # (11995)
+    (
+        (
+            "select city, tree_form, (max(height) by tree_form) ? tree_form in"
+            " (tree_form ? max(height) by tree_form - max(height) by city,"
+            " species < 1) as v0;"
+        ),
+        [
+            ("A", "broadleaf", 7),
+            ("A", None, None),
+            ("B", "broadleaf", 7),
+            ("B", "linden", 2),
+        ],
+    ),
 ]
 
 

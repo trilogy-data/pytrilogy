@@ -2199,3 +2199,23 @@ theorem hidden_key_repeats_property :
   decide
 
 end Trilogy.SelectGrain
+
+namespace Trilogy.SelectGrain
+
+/-! ## A merge supplying a property off its key's rows (0.3.541) -/
+
+/-- `select city, tree_form, (max(h) by tree_form) ? tree_form in (...)`: the
+FINAL took `city, tree_form` off the rows of `max(h) by city, species` and
+paired them with the filter's `(city, tree_form)` rows. The grain check read
+`tree_form` as its key `species`, so rows at `(city, species)` looked unique
+at the select's grain and broadleaf showed once per broadleaf species. Rows a
+side supplies on a key the outputs do not determine are deduplicated first
+(`hidden_key_repeats_property`, as a merge). -/
+theorem rows_past_a_property_key :
+    -- (city, species, tree_form): Acer and Quercus are broadleaf in A
+    let rows : List (Nat × Nat × Nat) := [(0, 0, 0), (0, 1, 0), (1, 0, 0)]
+    let shown := rows.map fun r => (r.1, r.2.2)
+    shown.length = 3 ∧ shown.eraseDups.length = 2 := by
+  decide
+
+end Trilogy.SelectGrain

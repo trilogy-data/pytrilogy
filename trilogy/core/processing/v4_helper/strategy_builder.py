@@ -6119,13 +6119,12 @@ def _final_dedup_targets(
     # node on a non-unique key: same predicate, both sides.
     if node_nulls_grouping_keys(node):
         return None
-    if (
-        check_if_group_required(
-            downstream_concepts=contract_outputs,
-            parents=[node.resolve()],
-            environment=environment,
-        ).required
-        is not True
+    if check_if_group_required(
+        downstream_concepts=contract_outputs,
+        parents=[node.resolve()],
+        environment=environment,
+    ).required is not True and not _merged_past_outputs(
+        node, contract_outputs, environment
     ):
         return None
     held = {o.address for o in node.output_concepts}
@@ -6141,6 +6140,24 @@ def _final_dedup_targets(
         if o.address in final_contract.output_addresses
         or any(output_covers(o, m) for m in by_pseudonym)
     ]
+
+
+def _merged_past_outputs(
+    node: StrategyNode, outputs: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """An ungrouped merge supplying a shown column off rows on a key the
+    outputs do not determine: a shown property's grain is its key, so rows at
+    `(city, species)` read as unique at `city, tree_form` though two species
+    share a form (`SelectGrain.rows_past_a_property_key`)."""
+    if not isinstance(node, MergeNode) or node.resolve().group_required:
+        return False
+    shown = {a for c in outputs for a in (c.address, *c.equivalent_addresses)}
+    closure = strict_fd_closure(environment, shown)
+    return any(
+        not _resolved_grain(parent) <= closure
+        for parent in node.parents
+        if shown & {o.address for o in parent.usable_outputs}
+    )
 
 
 def _reads_aggregate(concept: BuildConcept, seen: frozenset[str] = frozenset()) -> bool:
