@@ -145,27 +145,40 @@ plain `=`) never handed its rejection down: it now repeats to a fixpoint.
 And a merge that had ordered its sources could not narrow a FULL to the LEFT
 a later INNER on its stream proves (only the RIGHT that barred is unsound).
 Flips fell from 157 to 104 (pushed 87 to 55, consumer 49 to 30, planned 12
-to 10; distinct 142 to 80). What is left:
+to 10; distinct 142 to 80).
 
-- 55 pushed flips, 36 distinct. tpc_ds (24 per run, 9 distinct: q73 and
-  q58 are compiled a varying number of times) is mostly the
-  filtered-aggregate rewrite turning `count(x ? p) >= 1` into a row WHERE,
-  an optimizer rewrite and no join proof. The laws keep 9 (filters 2,
-  windows 3, expressions 3, compositions 1), the rest are one or two per
-  test. Each needs its rewrite planned first.
-- 30 consumer flips: `test_dimension_chain_oracle_laws` (12; seeds 258 and
-  280 are the shared-relation plans below), `test_semi_join_pushdown` (10,
-  CTEs the optimizer builds).
-- **Plans whose nodes share a relation are never narrowed.**
-  `consumer_proofs._consumers_first` gives up when a node reads another
-  node of its own relation (a joinless merge over the regroup it passes
-  through): 1.3% of compiles over discovery, TPC and the join matrix.
-  Skipping those edges was tried and backed out: in dimension-chain seed
-  258 a consumer re-resolved over the narrowed merge widened its INNER to a
-  RIGHT (still rejecting, so `_keys_hold` passed it), and a check that no
-  source becomes preserved also rejects the side flips seam 16 shipped in
-  `test_cluster_key_lookup`. It needs a test that tells a widening from a
-  side flip.
+Seam 20 opened the two places the walk still stopped. A proof drawn through
+a computed flag (`returned_orders <- order_number ? is_returned`, `is_returned
+<- _returned_order_number is not null`) names a column the node computing
+the flag reads but does not output; `computed_inputs` lets it through to the
+merge that pads it (tpc_ds q16, q94, q95). And a node reading another of its
+own relation (a joinless merge over the regroup it passes through) no longer
+stops the walk: both share what the relation's consumers reject (q58, q83,
+the return-date pins, filters seed 5331, the union-key HAVING semijoin, the
+subset join key sets). The case that backed this out before (dimension-chain
+seeds 258 and 280) is now caught: a narrowed merge stamps an extent-free key
+partial, and the joinless merge above re-resolves into a LEFT from the
+aircraft lookup, returning aircraft with no flight. `_widened` backs the
+join channel out when a re-resolved node's join types keep a parent's rows
+it dropped before and did not all match (`preserved_sources`). Flips fell
+from 101 to 82 on this run's base (pushed 52 to 36, consumer 30 to 28;
+distinct 80 to 64). What is left:
+
+- 36 pushed flips, 23 distinct. tpc_ds (13 per run: q73 12, q72 1) is
+  mostly the filtered-aggregate rewrite turning `count(x ? p) >= 1` into a
+  row WHERE, an optimizer rewrite and no join proof. The laws keep 8
+  (windows 3, expressions 3, compositions 1, spellings 1), the rest are
+  one to four per test. Each needs its rewrite planned first.
+- 28 consumer flips: `test_semi_join_pushdown` (10, CTEs the optimizer
+  builds), `test_dimension_chain_oracle_laws` (12, 258 and 280 among them,
+  backed out by `_widened`).
+- **Seeds 258 and 280 need the stamp, not the guard.** Masking the
+  extent-free partials with `unfiltered_partials`, as the joined partials
+  are, keeps the passthrough joinless and lets 258 narrow, but moves
+  dimension-chain seed 582: its airports merge then re-resolves an INNER
+  into a RIGHT that drops a key rejection, the join channel falls back,
+  and two joins go back to the optimizer. Taking them needs a fallback
+  that drops only the failing merges' keys, not the whole channel.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
