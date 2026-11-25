@@ -1282,6 +1282,33 @@ def _zero_default_proves(
     return {value.address}
 
 
+def _fails_at_zero(value: object, op: ComparisonOperator, rhs: object) -> set[str]:
+    while isinstance(value, BuildParenthetical):
+        value = value.content  # type: ignore[assignment]
+    if not isinstance(value, BuildConcept):
+        return set()
+    rhs_value = _literal_value(rhs)
+    if rhs_value is None or _eval_literal_comparison(0, op, rhs_value) is not False:
+        return set()
+    return {value.address}
+
+
+def zero_rejections(condition: BoolExpr) -> set[str]:
+    """Concepts a conjunct of ``condition`` compares to a literal 0 fails
+    (``n >= 1``): a COUNT over no rows is 0, not NULL, so only these reject
+    a group that counted none."""
+    out: set[str] = set()
+    for atom in decompose_condition(condition):
+        while isinstance(atom, BuildParenthetical):
+            atom = atom.content  # type: ignore[assignment]
+        if not isinstance(atom, BuildComparison):
+            continue
+        out |= _fails_at_zero(atom.left, atom.operator, atom.right)
+        if (flipped := _flip_op(atom.operator)) is not None:
+            out |= _fails_at_zero(atom.right, flipped, atom.left)
+    return out
+
+
 def _forced_true_proofs(value: object) -> set[str]:
     """Non-null proofs carried by ``<value> = True`` / ``IS True``.
 

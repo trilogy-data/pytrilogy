@@ -316,3 +316,63 @@ def test_a_narrowing_that_widens_a_consumer_is_backed_out():
         ("N1", "carrier0", 3),
         ("N2", "carrier0", 1),
     ]
+
+
+SALES = """
+key store_id int;
+property store_id.county string;
+datasource store (store_id: ~store_id, county) grain (store_id)
+query '''SELECT * FROM (VALUES (1, 'Orange'), (2, 'Bronx')) t(store_id, county)''';
+key customer_id int;
+property customer_id.name string;
+datasource customer (customer_id, name) grain (customer_id)
+query '''SELECT * FROM (VALUES (10, 'ann'), (11, 'bo'), (12, 'cy')) t(customer_id, name)''';
+key ticket int;
+key id int;
+datasource sale (id, ticket, customer_id, store_id) grain (id)
+query '''SELECT * FROM (VALUES (1, 1, 10, 1), (2, 1, 10, 3), (3, 2, 11, 2), (4, 3, 12, 3), (5, 4, 10, 1)) t(id, ticket, customer_id, store_id)''';
+auto orange <- count(id ? county = 'Orange') by ticket, customer_id;
+auto spend <- sum(store_id ? county = 'Orange') by ticket, customer_id;
+auto total <- count(id) by ticket, customer_id;
+"""
+
+
+def _sales():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(SALES)
+    return executor
+
+
+def _store_join(executor, query: str) -> list[JoinType]:
+    return [t for name, t in _planned(executor, query) if name.startswith("store")]
+
+
+def test_a_having_on_a_filtered_count_narrows_the_merge_under_its_group():
+    """A ticket none of whose sales is in an Orange store counts 0 and fails
+    `>= 1`, so a sale padded on its store adds to no ticket that survives."""
+    executor = _sales()
+    for query in [
+        "select name, ticket, orange having orange >= 1;",
+        "select name, ticket, spend having spend > 0;",
+        "select name, ticket, spend having spend is not null;",
+    ]:
+        assert _store_join(executor, query) == [JoinType.INNER], query
+        assert _rows(executor, query) == [("ann", 1, 1), ("ann", 4, 1)], query
+
+
+def test_a_count_kept_at_zero_keeps_the_merge_outer():
+    executor = _sales()
+    query = "select name, ticket, orange having orange >= 0;"
+    assert _store_join(executor, query) == [JoinType.LEFT_OUTER]
+    assert _rows(executor, query) == [
+        ("ann", 1, 1),
+        ("ann", 4, 1),
+        ("bo", 2, 0),
+        ("cy", 3, 0),
+    ]
+
+
+def test_an_unfiltered_aggregate_beside_keeps_every_row():
+    executor = _sales()
+    query = "select name, ticket, orange, total having orange >= 1;"
+    assert _rows(executor, query) == [("ann", 1, 1, 2), ("ann", 4, 1, 1)]
