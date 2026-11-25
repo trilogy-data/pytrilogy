@@ -356,6 +356,11 @@ def test_a_join_pairing_other_parents_keeps_its_type():
     assert join.join_type == JoinType.RIGHT_OUTER
 
 
+def test_a_join_reading_no_parent_has_no_sequence():
+    join, datasets = _directional(JoinType.INNER)
+    assert join_sequence([join], [datasets[0].identifier]) is None
+
+
 def _scan(columns, datasource, grain, source_type=SourceType.SELECT):
     return QueryDatasource(
         input_concepts=columns,
