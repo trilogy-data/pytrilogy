@@ -47,10 +47,10 @@ from trilogy.core.processing.condition_utility import (
     opaque_binding_addresses,
 )
 from trilogy.core.processing.join_resolution import (
+    OUTER_JOIN_TYPES,
     complete_key_domain,
     deep_extent_free_carried,
     deep_extent_free_spans,
-    OUTER_JOIN_TYPES,
     held_region_spans,
     preserved_sources,
 )
