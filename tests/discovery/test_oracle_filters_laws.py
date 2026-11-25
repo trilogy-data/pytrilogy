@@ -342,10 +342,13 @@ FOUND_SEEDS = [
     841, 1097, 8474, 8880, 9884, 12376, 14427, 17527, 19214, 59678, 72714,
     180857, 182211, 182890, 183022, 183175, 183197, 186629, 190095, 191380,
     191590, 194381, 196634, 196668, 198475, 198644, 198735,
+    # 0.3.542: a gate's grain is its atom's, a peel skips a set, a filter's
+    # rows are keyed by its outputs, a filter over groups holds no row
+    12294, 190661, 201221, 201879, 204389,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
-# what the planner raises or DuckDB rejects, or None for wrong rows. 9683,
-# 9919 and 12294 raised on main and return wrong rows; the last ones
+# what the planner raises or DuckDB rejects, or None for wrong rows. 9683
+# and 9919 raised on main and return wrong rows; the last ones
 # were right on main.
 OPEN: dict[tuple[int, str], str | None] = {
     (349, "base"): "maximum recursion",
@@ -370,8 +373,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (8790, "summary"): "keyless join",
     (10955, "base"): "maximum recursion",
     (10955, "summary"): "maximum recursion",
-    (12294, "base"): None,
-    (12294, "summary"): None,
     (12425, "base"): "renders no column",
     (12425, "summary"): "renders no column",
     (12695, "base"): "maximum recursion",
