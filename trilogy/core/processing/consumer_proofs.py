@@ -7,14 +7,18 @@ the filter down (`UpgradeJoinOnGuards`); here the planner hands each merge
 what every one of its consumers rejects.
 
 A proof passes a node only where rows pass it unchanged: a plain select or
-filter, a merge, or a group that is not a grouping-set pass. Through a
-grouping only a key passes, never an aggregate: a rejected key's group holds
-only the rows with that key NULL, while dropping a padded row changes the
-aggregates of the group it joined. A window, unnest, limit, union or rowset boundary stops it.
+filter, a merge (a MULTISELECT align's included), or a group that is not a
+grouping-set pass. Through a grouping only a key passes, never an aggregate: a
+rejected key's group holds only the rows with that key NULL, while dropping a
+padded row changes the aggregates of the group it joined. A node's own WHERE
+reads its parent's rows before any group, so it rejects on an aggregate the
+parent computed too (`where_reads`). A window, unnest, limit, union or rowset
+boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
 keeps what all of its consumers reject. A column a node computes per row from
 its parent's (``x <- y is not null``) passes what a proof drawn through its
-lineage rejects on those (`computed_inputs`).
+lineage rejects on those (`computed_inputs`); a proof on a value the node
+computes itself reaches its NULL-strict inputs (`lineage_proofs`).
 
 A group whose every aggregate counts only the rows a filter passes
 (``count(x ? p)``) passes that filter's proofs on as a WHERE where its
@@ -37,6 +41,8 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFilterItem,
+    BuildFunction,
+    BuildParenthetical,
 )
 from trilogy.core.models.execute import (
     ConceptPair,
@@ -49,6 +55,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
+    concepts_implied_non_null,
     gather_non_null_proofs,
     gather_or_groups,
     opaque_binding_addresses,
@@ -153,11 +160,10 @@ class ConsumerProofs:
 def _passes_rows(node: StrategyNode) -> bool:
     if node.limit is not None:
         return False
-    if type(node) is MergeNode:
-        return node.node_joins is None
     if type(node) is GroupNode:
         return node.grouping_pass() is None
-    return type(node) in (SelectNode, FilterNode)
+    # a MULTISELECT align's merge too: its HAVING reads the aligned rows
+    return type(node) in (MergeNode, SelectNode, FilterNode)
 
 
 def _outer_joins(node: MergeNode) -> bool:
@@ -174,8 +180,21 @@ def row_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
     the parent still holds for a regroup to roll up.
     A count ``node`` zero-fills is 0, not NULL, on the rows a join padded."""
     resolved = node.resolve()
-    source = parent.resolve()
     grouped = resolved.group_required and type(node) is not MergeNode
+    return _reads(node, parent, grouped)
+
+
+def where_reads(node: StrategyNode, parent: StrategyNode) -> set[str]:
+    """Columns ``node``'s own WHERE reads off ``parent``'s rows: before any
+    group, so an aggregate ``parent`` computed is a value of each row."""
+    if type(node) is GroupNode or node.conditions is None:
+        return set()
+    return _reads(node, parent, False)
+
+
+def _reads(node: StrategyNode, parent: StrategyNode, grouped: bool) -> set[str]:
+    resolved = node.resolve()
+    source = parent.resolve()
     rolled = {c.address for c in pending_rollups(source.rollup_concepts, source.grain)}
     return {
         c.address
@@ -210,6 +229,52 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
                 known.setdefault(arg.address, arg)
                 todo.append(arg.address)
     return out
+
+
+def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[str]:
+    """Add what a proven value ``node`` computes per row proves of its
+    inputs: non-null, its NULL-strict arguments are too (``v <- c / nullif(m
+    - 5, 0)`` proves ``m``). The optimizer read these off the CTE that
+    renders the value (`_lineage_proofs`)."""
+    resolved = node.resolve()
+    known = {c.address: c for c in resolved.output_concepts}
+    out = set(addresses)
+    todo = [a for a in addresses if not resolved.source_map.get(a)]
+    while todo:
+        concept = known.get(todo.pop())
+        if concept is None or concept.derivation != Derivation.BASIC:
+            continue
+        lineage = concept.lineage
+        if _evaluated_at_a_grain(lineage):
+            continue
+        if isinstance(lineage, BuildFunction | BuildParenthetical):
+            for arg in lineage.concept_arguments:
+                known.setdefault(arg.address, arg)
+        for address in concepts_implied_non_null(lineage) - out:
+            out.add(address)
+            if not resolved.source_map.get(address):
+                todo.append(address)
+    return frozenset(out)
+
+
+def _evaluated_at_a_grain(value: object) -> bool:
+    """A grouped or pinned value is read at its anchors' grain, not off the
+    row computing it: its anchor is not this row's column."""
+    if isinstance(value, BuildParenthetical):
+        return _evaluated_at_a_grain(value.content)
+    if not isinstance(value, BuildFunction):
+        return False
+    if value.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN):
+        return True
+    return any(_evaluated_at_a_grain(arg) for arg in value.arguments)
+
+
+def _through_lineage(node: StrategyNode, rejected: ConsumerProofs) -> ConsumerProofs:
+    return replace(
+        rejected,
+        proofs=lineage_proofs(node, rejected.proofs),
+        side_proofs=lineage_proofs(node, rejected.side_proofs),
+    )
 
 
 def filtered_aggregate(
@@ -576,7 +641,10 @@ def _propagate(
                 and passed
                 and isinstance(node, MergeNode)
                 and _outer_joins(node)
-                and (taken := node.consumer_proofs or ConsumerProofs()) != take | taken
+                and (
+                    (taken := node.consumer_proofs or ConsumerProofs()) != take | taken
+                    or _reads_changed(node, take)
+                )
             ):
                 # a later round only adds: what the merge took before still
                 # holds, and `_failing_keys` checks the plan that results
@@ -588,7 +656,7 @@ def _propagate(
                 node.key_reads = single_source_reads(node) | (node.key_reads or {})
                 narrowed.add(id(node))
                 node.rebuild_cache()
-            forward = here | ConsumerProofs.of(node.conditions)
+            forward = _through_lineage(node, here | ConsumerProofs.of(node.conditions))
             for parent in dict.fromkeys(node.parents):
                 pident = ident_of[id(parent)]
                 if pident == ident:
@@ -596,6 +664,10 @@ def _propagate(
                 reads = row_reads(node, parent) if passed else set()
                 readable = reads | computed_inputs(parent, reads)
                 given = forward.restrict(readable)
+                if passed and (own := where_reads(node, parent)):
+                    given |= ConsumerProofs.of(node.conditions).restrict(
+                        own | computed_inputs(parent, own)
+                    )
                 if passed and (where := group_filter(node, forward)) is not None:
                     given |= ConsumerProofs.of(where).restrict(readable)
                 if barred is not None:
@@ -605,6 +677,14 @@ def _propagate(
                 prior = received.get(pident)
                 received[pident] = given if prior is None else prior & given
     return received
+
+
+def _reads_changed(node: MergeNode, take: ConsumerProofs) -> bool:
+    """Whether a key ``take`` rejects now renders off one source where it did
+    not when the merge last took: its own narrowing un-coalesced it, and a
+    single-source key proves its source present (`_keys_force`)."""
+    reads = node.key_reads or {}
+    return any(a not in reads for a in single_source_reads(node).keys() & take.keys)
 
 
 def _failing_keys(

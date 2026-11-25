@@ -200,19 +200,32 @@ whose joins grew to the types it planned (`MergeNode.planned_join_types`,
 `utility.keep_planned_join_types`) and narrows again, barring only where no
 merge can be held: the narrowing dropped only rows those types reject.
 Census, both trees on one machine: 59 flips to 53 (external 24 to 18;
-distinct 46 to 40); dimension chain 6 to 0. What is left:
+distinct 46 to 40); dimension chain 6 to 0.
 
-- 21 pushed flips. tpc_ds q72's `inv.quantity_on_hand < cs.quantity`
-  (1), the laws (windows 3, expressions 3, compositions 1), keyed-class
-  trees 4, root partition 2, unmodelled regions 2, demo import 2, scoped
-  join expression keys 2; one to two elsewhere. Each needs its rewrite
-  planned first.
-- 18 external: `test_semi_join_pushdown` 10 (CTEs the optimizer builds),
-  `test_join_upgrade` 2 (hand-built CTEs that test the rule itself),
-  filters seed 133525 2 (one consumer's LEFT stays for the optimizer; SQL
-  byte-identical to `main`; a pin does not reach it), two-namespace import
-  2, gcat 1, spellings 1. The last three are the next leads: small plans,
-  not yet traced.
+Seam 24 took four gaps the optimizer still covered. A consumer's join
+equality on a key the merge reads off one source forces the other side
+where that side holds the key completely, as a WHERE proof on the key
+tuple does (`_paired_key_reads`; only a key paired with itself: a subset
+join's `b.r_key = a.l_key` says nothing of `l_key`'s values). A merge
+re-takes its key reads when its own narrowing un-coalesces a key
+(`_reads_changed`). A filter's own WHERE reads its parent's aggregate per
+row, though the filter groups (`where_reads`). A proof on a value a node
+computes reaches its NULL-strict inputs (`lineage_proofs`), but not
+through a grouped or pinned value, read at its anchors' grain. And a
+MULTISELECT align's merge takes what its HAVING rejects. Census, both
+trees on one machine: 53 flips to 30 (external 18 to 4, pushed 21 to 12;
+distinct 44 to 26). What is left:
+
+- 12 pushed flips: keyed-class trees 4, root partition 2, unmodelled
+  regions 2, scoped join expression keys 2, compositions seed 1481 1,
+  grain-pin padded species 1. Root partition and compositions 1481 are
+  sibling nodes the optimizer fuses into one CTE (three regroups of one
+  merge; two keyless merges over the same parents, one narrowed): the
+  planner's proof is the AND over siblings, which is right for them
+  apart. These need the siblings planned as one node first.
+- 4 external: `test_join_upgrade` 2 (hand-built CTEs that test the rule
+  itself) and filters seed 133525 2 (one consumer's LEFT stays for the
+  optimizer; SQL byte-identical to `main`; a pin does not reach it).
 - 5 planned and 9 new-CTE flips remain, unchanged.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the

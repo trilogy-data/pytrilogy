@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.enums import JoinType
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import Join, QueryDatasource
+from trilogy.core.query_processor import get_query_datasources
 
 FILES = {
     "etl.preql": "key data_updated_through datetime;\n",
@@ -88,3 +91,25 @@ def test_two_namespace_import_merge_where_plans(models: Path, outputs: str):
     assert [(r[0], r[1], float(r[2]), r[3], r[4]) for r in rows] == [
         ("1957-001", "S", -80.6, "NASA", "#7FB7FF")
     ]
+
+
+def _join_types(ds: QueryDatasource) -> list[JoinType]:
+    out = [j.join_type for j in ds.joins if isinstance(j, Join)]
+    for source in ds.datasources:
+        if isinstance(source, QueryDatasource):
+            out += _join_types(source)
+    return out
+
+
+def test_a_consumer_key_read_off_one_side_plans_the_lookup_inner(models: Path):
+    """The root joins the flag's merge on `_launch_code`, which that merge
+    reads off the launches alone: a launch with no flag row is NULL nowhere
+    the root reads, but the flag side is complete on the key, so every
+    launch matches and the merge is planned INNER."""
+    env = Environment(working_path=models)
+    _, statements = env.parse(
+        "import launch;\nwhere success_flag is not null\n"
+        "select id, success_flag, site.longitude, org.e_name, state.color;"
+    )
+    planned = _join_types(get_query_datasources(env, statements[-1]))
+    assert JoinType.LEFT_OUTER not in planned, planned

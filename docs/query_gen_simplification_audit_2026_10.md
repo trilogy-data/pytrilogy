@@ -2239,6 +2239,77 @@ election, not the padded fallback.
     26 failures as `main` (25 credential-bound, plus
     `test_rank_beside_partial_merge` under xdist).
 
+24. **The consumer walk reads what the optimizer read: complete keys,
+    per-row WHEREs, lineage, aligns (landed; handoff 2.1 step 4, external
+    and pushed channels).**
+    - **A consumer's key forces the side complete on it.** The key channel
+      (`_keys_force`) forced only the source a key renders off. A WHERE
+      proof on the key tuple also forces the other side, complete on it,
+      since a non-null value has a match there (`_side_forced`), and the
+      optimizer's `proves_key` does the same for a consumer's equality.
+      `_paired_key_reads` feeds the tuple arm the consumer-rejected keys
+      the merge reads off a source this join equates them on, per side,
+      only where the pair equates a concept with itself and the side holds
+      it completely. The first cut took any paired key and broke 24 suite
+      tests: a subset join (`b.r_key = a.l_key`) holds `b` complete on
+      `r_key`, not on `l_key`'s values (join matrix subset cells, derived
+      key domains, unmodelled regions). Two-namespace import 2 and
+      `test_semi_join_pushdown` 10 are now planned.
+    - **A narrowed merge re-reads its keys.** `_propagate` re-took a merge
+      only when its proofs changed, so `key_reads` stayed as first read:
+      gcat's launch-year merge narrowed FULL to LEFT on its consumer's key,
+      after which `launch_tag` renders off the launches alone, and nothing
+      read it again. `_reads_changed` re-takes when a rejected key comes to
+      render off one source (gcat 1, spellings seed 900 1).
+    - **A filter's own WHERE reads its parent's aggregate per row.**
+      `row_reads` drops every aggregate a grouped node reads, right for a
+      consumer's rejection of a regrouped value. A FilterNode folding into
+      its group still applies its WHERE before grouping: `min(height) by
+      tree_form > 3` rejects each parent row whose minimum the merge
+      padded. `where_reads` passes the node's own conditions on those
+      columns (windows seed 20).
+    - **A proof reaches a computed value's NULL-strict inputs.** `v0 < 2`
+      over `v0 <- coalesce(count, 0) / nullif(max - 5, 0)` rejects a NULL
+      maximum; the walk stopped at `v0`, which no parent supplies.
+      `lineage_proofs` follows the BASIC lineages a node computes, as the
+      optimizer's `_lineage_proofs` does inline. Not through `GROUP` or
+      `GRAIN_PIN`: a pinned value is read at its anchors' grain, and
+      `grain_pin(case ..., species)` proved `species` and dropped the
+      padded `ash` (`test_pinned_filter_on_padded_species`). Windows seed
+      92, expressions 3, tpc_ds q72 1. It also plans three joins the
+      optimizer never flipped, since their WHERE sits a CTE above the join
+      where no external proof reached: tpc_h adhoc04 (`return_ratio >
+      0.5`), tpc_ds q75 (`curr_cnt / prev_cnt < 0.9`) and the q04 agent
+      candidate (its HAVING rejects all four arms through their aliases).
+      Rows identical on the tpc_ds data for both tpc_ds statements.
+    - **An align's merge takes its HAVING.** `_passes_rows` refused a merge
+      with explicit `node_joins`, so a MULTISELECT HAVING never reached the
+      align's FULL (demo merge 2). A HAVING reads the aligned rows; arm-local
+      evidence still does not narrow it (`MergeNode._join_proofs`).
+    - **Measured, not landed: sibling nodes the optimizer fuses.** Root
+      partition `attribute_filter` (three regroups of one FULL merge, one
+      read by the WHERE) and compositions seed 1481 (two keyless merges over
+      the same parents, only the `v2` one rejected) are flipped only after
+      the optimizer merges the siblings into one CTE. The walk ANDs over
+      the siblings, which is right while they are apart.
+
+    After, full suite under `-n 6` (`guard_census_plugin`), both trees on
+    one machine: 30 flips (pushed 12, new CTE 9, planned 5, external 4)
+    against 53 on `5728405` (pushed 21, external 18, new CTE 9, planned
+    5); distinct 44 to 26. Pinned at plan time (each red on `main`):
+    `test_consumer_join_narrowing::test_a_grouped_filter_reads_its_parents_aggregate_per_row`,
+    `::test_a_having_on_a_computed_value_narrows_through_its_lineage`,
+    `::test_a_having_over_an_align_narrows_it`,
+    `test_two_namespace_import_merge_hidden_output::test_a_consumer_key_read_off_one_side_plans_the_lookup_inner`,
+    `test_gcat::test_a_narrowed_merge_rereads_its_keys`, and the two
+    consumer-key `downgrade_join_for_proofs` unit tests in
+    `tests/core/processing/test_grain_utility.py`.
+
+    Gates, against `5728405`: corpus (204 statements) 3 moved, the three
+    joins above, each a LEFT or FULL to INNER under a WHERE or HAVING that
+    rejects the padding; `tpc_ds_duckdb/aggregates` identical; fuzzer
+    522/522. Suite: the same 25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```

@@ -3,6 +3,9 @@ reject (handoff 2.1 step 4): a NULL never matches `=`, so a row padded on a
 column a consumer joins on reaches nothing above it. The optimizer's join
 upgrade made these after planning (`_inner_pair_rejections`)."""
 
+from copy import deepcopy
+
+from tests.discovery.test_oracle_windows_laws import fresh, normalize, shape5
 from trilogy import Dialects
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join, QueryDatasource
@@ -417,4 +420,49 @@ def test_a_reader_keeps_its_planned_join_over_a_narrowed_side():
     assert _rows(executor, query) == [
         ("carrier0", "airport0", 2, 9),
         ("carrier1", "airport0", 2, 9),
+    ]
+
+
+def test_a_grouped_filter_reads_its_parents_aggregate_per_row():
+    """`tag ? min(height) by tree_form > 3` filters the merge of the trees
+    with the per-form minimum before it groups by tag: its WHERE reads the
+    minimum on each merge row, so a row padded there is rejected, though the
+    filter groups. That merge keeps only the minimum's side; the one under
+    `avg(height) by tree_form is null` stays FULL."""
+    query, expected = shape5(20)
+    executor, pristine = fresh("summary")
+    executor.environment = deepcopy(pristine)
+    planned = [t for _, t in _planned(executor, query)]
+    assert set(planned) - {JoinType.INNER} == {JoinType.FULL, JoinType.RIGHT_OUTER}
+    sql = executor.generate_sql(query)[-1]
+    assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
+
+
+def test_a_having_on_a_computed_value_narrows_through_its_lineage():
+    """`v0 < 2` rejects a NULL `v0`, computed above the keyless merge as
+    `coalesce(count, 0) / nullif(max - 5, 0)`: non-null, so is the maximum,
+    and the merge keeps only its side."""
+    query, expected = shape5(92)
+    executor, pristine = fresh("base")
+    executor.environment = deepcopy(pristine)
+    planned = [t for _, t in _planned(executor, query)]
+    assert JoinType.FULL not in planned, planned
+    sql = executor.generate_sql(query)[-1]
+    assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
+
+
+def test_a_having_over_an_align_narrows_it():
+    """The align's FULL keeps each arm's rows the other lacks, and its HAVING
+    rejects both: an arm's padded row is NULL on `n` or `model_name`."""
+    executor = _executor("aircraft_id")
+    query = """select tail_num as t1, count(id) -> n
+merge select tail_num as t2, model_name
+align t: t1, t2
+having n > 0 and model_name is not null;"""
+    planned = _planned(executor, query)
+    assert [t for name, t in planned if "grouped_by" in name] == [JoinType.INNER]
+    assert _rows(executor, query) == [
+        ("N0", "N0", 2, "N0", "E175"),
+        ("N1", "N1", 1, "N1", "A320"),
+        ("N2", "N2", 1, "N2", "A320"),
     ]

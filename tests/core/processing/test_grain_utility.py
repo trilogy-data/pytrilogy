@@ -328,6 +328,26 @@ def test_a_directional_join_whose_kept_side_is_forced_stays_outer():
         assert join.join_type == join_type
 
 
+def test_a_consumer_key_read_off_one_side_forces_the_side_complete_on_it():
+    """A consumer's join drops a row NULL on the key the merge rendered off
+    the left alone, and a non-null key has a match on a right complete on it."""
+    join, datasets = _directional(JoinType.LEFT_OUTER)
+    downgrade_join_for_proofs(
+        join,
+        set(),
+        datasets,
+        key_proofs={"test.k"},
+        key_sources={"test.k": datasets[0].identifier},
+    )
+    assert join.join_type == JoinType.INNER
+
+
+def test_a_consumer_key_read_coalesced_forces_no_side():
+    join, datasets = _directional(JoinType.LEFT_OUTER)
+    downgrade_join_for_proofs(join, set(), datasets, key_proofs={"test.k"})
+    assert join.join_type == JoinType.LEFT_OUTER
+
+
 def test_a_join_keeps_its_planned_type_where_it_now_keeps_more():
     """A RIGHT planned INNER returns to INNER; a LEFT planned FULL keeps the
     LEFT, which keeps nothing the FULL did not."""
