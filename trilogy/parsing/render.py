@@ -963,9 +963,11 @@ class Renderer:
                 return f"file [{paths}]"
             if arg.write_location:
                 return f"file `{arg.location}`:`{arg.write_location}`"
-            if arg.source_name:
-                return f"file `{arg.location}#{arg.source_name}`"
-            return f"file `{arg.location}`"
+            fragment = f"#{arg.source_name}" if arg.source_name else ""
+            if arg.script_args:
+                values = ", ".join(self.to_string(a) for a in arg.script_args)
+                return f"file `{arg.location}{fragment}` args ({values})"
+            return f"file `{arg.location}{fragment}`"
         # Anything not a bare IDENTIFIER (hyphens, ``-``/``*``/``:``, spaces)
         # only parses back as a backtick-quoted QUOTED_ADDRESS.
         if arg.quoted or not _BARE_IDENTIFIER.fullmatch(arg.location):

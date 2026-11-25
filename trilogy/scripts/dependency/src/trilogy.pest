@@ -118,7 +118,9 @@ address_argument  = { (IDENTIFIER ~ ":=")? ~ (string_lit | bool_lit | float_lit 
 query   = { ^"query" ~ MULTILINE_STRING }
 file_path_list = { "[" ~ (F_FILE_PATH | FILE_PATH) ~ ("," ~ (F_FILE_PATH | FILE_PATH))* ~ ","? ~ "]" }
 file_const_ref = { IDENTIFIER }
-file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH | EXEC_PATH | file_path_list | file_const_ref) }
+file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH | EXEC_PATH | file_path_list | file_const_ref) ~ file_args? }
+file_args = { ^"args" ~ "(" ~ _file_arg ~ ("," ~ _file_arg)* ~ ","? ~ ")" }
+_file_arg = _{ string_lit | float_lit | int_lit }
 
 STATE                    = @{ ^"state" }
 datasource_status_clause = { STATE ~ DATASOURCE_STATUS }

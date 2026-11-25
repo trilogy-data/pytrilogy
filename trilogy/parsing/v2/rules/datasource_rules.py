@@ -115,6 +115,7 @@ class File:
         exists: bool = True,
         additional_paths: list[str] | None = None,
         source_name: str | None = None,
+        script_args: list[str] | None = None,
     ):
         self.path = path
         self.write_path = write_path
@@ -122,11 +123,17 @@ class File:
         self.exists = exists
         self.additional_paths = additional_paths or []
         self.source_name = source_name
+        self.script_args = script_args or []
 
 
 @dataclass
 class FilePathList:
     paths: list[str]
+
+
+@dataclass
+class FileArgs:
+    values: list[str]
 
 
 @dataclass
@@ -381,6 +388,14 @@ def file_path_list_node(
     return FilePathList(paths=[str(a) for a in args])
 
 
+def file_args_node(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> FileArgs:
+    return FileArgs(values=[str(a) for a in hydrated_children(node, hydrate)])
+
+
 def file_const_ref_node(
     node: SyntaxNode,
     context: RuleContext,
@@ -498,8 +513,13 @@ def file_node(
     hydrate: HydrateFunction,
 ) -> File:
     args = hydrated_children(node, hydrate)
+    script_args: list[str] = []
+    if isinstance(args[-1], FileArgs):
+        script_args = args.pop().values
 
     # Array form: file [ `a.parquet`, `b.parquet`, ... ]
+    if script_args and isinstance(args[0], (FilePathList, FileConstRef)):
+        raise fail(node, "`args (...)` applies to a single program, not a file list")
     if len(args) == 1 and isinstance(args[0], FilePathList):
         if not args[0].paths:
             raise fail(node, "file [...] requires at least one path")
@@ -532,12 +552,17 @@ def file_node(
             f"`#{source_name}` names a source of a program; "
             f"a {suffix} file has no sources to choose from",
         )
+    if script_args and not addr_type.is_program:
+        raise fail(
+            node, f"`args (...)` passes arguments to a program, not a {suffix} file"
+        )
     return File(
         path=read_base,
         write_path=write_base,
         type=addr_type,
         exists=exists,
         source_name=source_name,
+        script_args=script_args,
     )
 
 
@@ -936,6 +961,7 @@ def datasource_node(
                 exists=val.exists,
                 additional_locations=list(val.additional_paths),
                 source_name=val.source_name,
+                script_args=list(val.script_args),
             )
         elif isinstance(val, WhereClause):
             where = val
@@ -1227,6 +1253,7 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.FILE: file_node,
     SyntaxNodeKind.FILE_PATH_LIST: file_path_list_node,
     SyntaxNodeKind.FILE_CONST_REF: file_const_ref_node,
+    SyntaxNodeKind.FILE_ARGS: file_args_node,
     SyntaxNodeKind.DATASOURCE: datasource_node,
     SyntaxNodeKind.WHOLE_GRAIN_CLAUSE: whole_grain_clause,
     SyntaxNodeKind.RAW_COLUMN_ASSIGNMENT: raw_column_assignment,
