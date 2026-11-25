@@ -2151,6 +2151,53 @@ election, not the padded fallback.
     under xdist, which fails alone on `main` too (it reads a window concept
     an earlier test's query materializes).
 
+22. **A directional join narrows on a forced side, as a FULL does
+    (landed; handoff 2.1 step 4, external and planned channels).**
+    - **The gap.** `narrow_join_types` narrows each join twice with
+      `downgrade_join_for_proofs`: first on the merge's own and its
+      consumers' proofs (WHERE and key channel), then on its branches'
+      proofs (`branch_proofs`). Both acted on a FULL only. In
+      `test_cluster_key_lookup` the snap-reason merge FULL joins two tree
+      branches and FULL joins the cluster lookup. Without the key channel
+      the branch proof (the city filter) forces the stream: LEFT. With it,
+      the consumers' `cluster_id` forces the lookup first, FULL to RIGHT,
+      and the branch call skipped the RIGHT. The RIGHT keeps lookup rows
+      the plan dropped before, `_widened` barred the merge, and the
+      optimizer flipped the LEFT on the consumers' INNER on `cluster_id`.
+    - **The fix.** `downgrade_join_for_proofs` narrows any outer join;
+      `unpadded_join_type` already maps a LEFT/RIGHT whose padded side is
+      forced to INNER and leaves the kept side's proof inert. A side's
+      forcing is a fact about the surviving rows, not about the join's
+      current type, so it composes whichever call ran first.
+    - **Also moved.** The five `union join` rowset flips
+      (`test_duckdb_rowset`, FULL to RIGHT on `year = 2001`, the planned
+      channel) are now made by the planner; their SQL is byte-identical.
+      Dimension-chain seed 250 narrows.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 59 flips (external 24, pushed 21, new CTE 9, planned 5)
+    against 92 on `3908a40` (external 51, pushed 22, new CTE 9, planned
+    10); distinct 44 to 38. `test_cluster_key_lookup` 26 to 0,
+    `test_duckdb_rowset` 6 to 0, dimension chain 7 to 6. Pinned at plan
+    time by `test_cluster_key_lookup::test_the_cluster_lookup_is_planned_inner`
+    and by the two `downgrade_join_for_proofs` unit tests in
+    `tests/core/processing/test_grain_utility.py` (red on `main`).
+
+    Measured, not landed: dimension-chain seed 541. The key channel
+    narrows the airport/carrier merge under the count, and the top merge
+    pairing the count with `max(seats)` is generated RIGHT OUTER
+    (`generate_joins`, before any narrowing), so `_widened` bars all three
+    keyed merges under it. That is join generation reading the narrowed
+    parent's partial marks, the extent-free family of seams 20 and 21.
+
+    Gates, against `3908a40`: corpus (204 statements) 7 moved, all tpc_ds
+    (q01, q05, q24, q54, q59, q62, q80), same CTE and join counts and
+    types: a key once read off the fact side of a join the optimizer
+    flipped is now read off the dimension side of one planned INNER
+    (`S_STORE_SK` for `SR_STORE_SK`, `D_DATE_SK` for `WS_SHIP_DATE_SK`),
+    equal under the INNER equality; their row tests pass. Fuzzer 522/522.
+    Suite: the same 25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```

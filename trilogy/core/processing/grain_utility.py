@@ -47,6 +47,7 @@ from trilogy.core.processing.condition_utility import (
     opaque_binding_addresses,
 )
 from trilogy.core.processing.join_resolution import (
+    OUTER_JOIN_TYPES,
     complete_key_domain,
     deep_extent_free_carried,
     deep_extent_free_spans,
@@ -726,7 +727,7 @@ def downgrade_join_for_proofs(
     or_groups = or_groups or []
     key_proofs = key_proofs or set()
     key_sources = key_sources or {}
-    if join.join_type != JoinType.FULL or not (
+    if join.join_type not in OUTER_JOIN_TYPES or not (
         proofs or side_proofs or or_groups or key_proofs
     ):
         return

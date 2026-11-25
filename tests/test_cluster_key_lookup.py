@@ -23,6 +23,9 @@ from itertools import combinations
 import pytest
 
 from tests.helpers.rows import executor_for, fetch_rows, normalize_numbers
+from trilogy.core.enums import JoinType
+from trilogy.core.models.execute import Join, QueryDatasource
+from trilogy.core.query_processor import get_query_datasources
 from trilogy.executor import Executor
 
 TEMPLATE = """
@@ -264,6 +267,30 @@ def test_issue_query_publishes_each_tree_with_its_cluster(fixed: Executor):
 def test_cluster_values_match_rows(fixed: Executor, columns: list[str], city):
     rows = fetch_rows(fixed, query(columns, city))
     assert normalize_numbers(rows) == expected(TREES, MODS, SNAPS, columns, city)
+
+
+def _directional_joins(ds: QueryDatasource) -> list[str]:
+    out = [
+        join.right.identifier
+        for join in ds.joins
+        if isinstance(join, Join)
+        and join.join_type in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+    ]
+    for source in ds.datasources:
+        if isinstance(source, QueryDatasource):
+            out += _directional_joins(source)
+    return out
+
+
+def test_the_cluster_lookup_is_planned_inner(fixed: Executor):
+    """The snap-reason merge FULL joins two tree branches, the city filter
+    forcing the stream, and LEFT joins the cluster lookup its consumers join
+    on `cluster_id`: both sides are forced, so the planner joins it INNER
+    rather than leaving the LEFT to the optimizer."""
+    env = fixed.environment
+    _, statements = env.parse(query(COLUMNS[:2] + COLUMNS[3:], "X"))
+    outer = _directional_joins(get_query_datasources(env, statements[-1]))
+    assert all(name.startswith("mods") for name in outer), outer
 
 
 @pytest.mark.parametrize("columns", [["merged_sources"], ["latitude"]])
