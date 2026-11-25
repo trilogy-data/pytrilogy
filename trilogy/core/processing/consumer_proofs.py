@@ -245,6 +245,8 @@ def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[s
         if concept is None or concept.derivation != Derivation.BASIC:
             continue
         lineage = concept.lineage
+        if _evaluated_at_a_grain(lineage):
+            continue
         if isinstance(lineage, BuildFunction | BuildParenthetical):
             for arg in lineage.concept_arguments:
                 known.setdefault(arg.address, arg)
@@ -253,6 +255,18 @@ def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[s
             if not resolved.source_map.get(address):
                 todo.append(address)
     return frozenset(out)
+
+
+def _evaluated_at_a_grain(value: object) -> bool:
+    """A grouped or pinned value is read at its anchors' grain, not off the
+    row computing it: its anchor is not this row's column."""
+    if isinstance(value, BuildParenthetical):
+        return _evaluated_at_a_grain(value.content)
+    if not isinstance(value, BuildFunction):
+        return False
+    if value.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN):
+        return True
+    return any(_evaluated_at_a_grain(arg) for arg in value.arguments)
 
 
 def _through_lineage(node: StrategyNode, rejected: ConsumerProofs) -> ConsumerProofs:

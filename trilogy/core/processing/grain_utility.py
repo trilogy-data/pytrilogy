@@ -699,19 +699,25 @@ def _stream_sources(
 
 def _paired_key_reads(
     join: Join,
+    side: list[GrainSource],
     left_sources: list[GrainSource],
     key_proofs: set[str],
     key_sources: Mapping[str, str],
 ) -> set[str]:
-    """The consumer-rejected keys the merge reads off a source this join
-    equates them on: non-null there, the row matches a side complete on the
-    key tuple, as a WHERE proof on the key does (`_side_forced`)."""
-    paired = {join.right.identifier}
+    """The consumer-rejected keys that force ``side`` as a WHERE proof on the
+    key tuple does (`_side_forced`): read off a source this join equates on
+    the key, NULL nowhere else; the same concept on both sides (a declared
+    pairing such as a subset join holds no domain in common); and complete
+    on ``side``, so a non-null value has a match there."""
     if join.pairs:
-        paired |= {pair.node.identifier for pair in join.pairs}
+        same = {p.left.address for p in join.pairs if p.left.address == p.right.address}
+        readers = {pair.node.identifier for pair in join.pairs}
     else:
-        paired |= {source.identifier for source in left_sources}
-    return {a for a in key_proofs if key_sources.get(a) in paired}
+        same = {concept.address for concept in join.concepts or []}
+        readers = {source.identifier for source in left_sources}
+    readers.add(join.right.identifier)
+    partial = set().union(*(_partial_addresses(source) for source in side))
+    return {a for a in (key_proofs & same) - partial if key_sources.get(a) in readers}
 
 
 def downgrade_join_for_proofs(
@@ -759,10 +765,15 @@ def downgrade_join_for_proofs(
     streamed = _stream_sources(join, final_datasets, stream)
     left_exclusive = _exclusive_addresses(streamed, final_datasets)
     right_exclusive = _exclusive_addresses([join.right], final_datasets)
-    keyed = proofs | _paired_key_reads(join, left_sources, key_proofs, key_sources)
+    left_keyed = proofs | _paired_key_reads(
+        join, streamed, left_sources, key_proofs, key_sources
+    )
+    right_keyed = proofs | _paired_key_reads(
+        join, [join.right], left_sources, key_proofs, key_sources
+    )
     left_forced = (
         _side_forced(
-            keyed,
+            left_keyed,
             [],
             left_only,
             left_keys,
@@ -779,7 +790,7 @@ def downgrade_join_for_proofs(
     )
     right_forced = (
         _side_forced(
-            keyed,
+            right_keyed,
             [],
             right_only,
             right_keys,
