@@ -376,3 +376,45 @@ def test_an_unfiltered_aggregate_beside_keeps_every_row():
     executor = _sales()
     query = "select name, ticket, orange, total having orange >= 1;"
     assert _rows(executor, query) == [("ann", 1, 1, 2), ("ann", 4, 1, 1)]
+
+
+PAIRED = """
+key model_code string;
+property model_code.seats int;
+datasource aircraft_model (model_code, seats) grain (model_code)
+query '''SELECT * FROM (VALUES ('M0', 7), ('M1', 9)) t(model_code, seats)''';
+key aircraft_id int;
+unique property aircraft_id.tail_num string;
+key carrier_code string;
+property carrier_code.carrier_name string;
+datasource carrier (carrier_code, carrier_name) grain (carrier_code)
+query '''SELECT * FROM (VALUES ('C0', 'carrier0'), ('C1', 'carrier1')) t(carrier_code, carrier_name)''';
+key airport_id int;
+property airport_id.airport_code string;
+property airport_id.airport_name string;
+datasource airport (airport_id, airport_code, airport_name) grain (airport_id)
+query '''SELECT * FROM (VALUES (0, 'P0', 'airport0'), (1, 'P1', 'airport1')) t(airport_id, airport_code, airport_name)''';
+key id int;
+datasource flight (id, tail_num: ~tail_num, carrier_code, airport_code: ~airport_code)
+grain (id)
+query '''SELECT * FROM (VALUES (0, 'N0', 'C0', 'P0'), (1, 'N1', 'C1', 'P0'), (2, 'N3', 'C0', 'P0'), (3, 'N2', 'C1', 'P0')) t(id, tail_num, carrier_code, airport_code)''';
+datasource aircraft (aircraft_id, tail_num, model_code) grain (tail_num)
+query '''SELECT * FROM (VALUES (0, 'N0', 'M1'), (1, 'N1', 'M0'), (2, 'N2', 'M1'), (3, 'N3', 'M0')) t(aircraft_id, tail_num, model_code)''';
+"""
+
+
+def test_a_reader_keeps_its_planned_join_over_a_narrowed_side():
+    """The key channel narrows the seats' side, so its `carrier_name` is no
+    longer padded: alone, the merge pairing it with the count would re-type
+    to keep the count's NULL group, stop rejecting `airport_name` and bar
+    every narrowing under it. It keeps the INNER it planned instead, which
+    returns the rows it did: the narrowing dropped only rows it rejects."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(PAIRED)
+    query = "select carrier_name, airport_name, count(id) as n, max(seats) as mx;"
+    planned = [t for _, t in _planned(executor, query)]
+    assert set(planned) == {JoinType.INNER}, planned
+    assert _rows(executor, query) == [
+        ("carrier0", "airport0", 2, 9),
+        ("carrier1", "airport0", 2, 9),
+    ]

@@ -43,6 +43,7 @@ from trilogy.core.processing.grain_utility import (
     stacks_duplicate_rows,
     unique_at_declared_grain,
 )
+from trilogy.core.processing.utility import join_sequence, keep_planned_join_types
 
 
 def test_anti_join_preserves_retained_side_grain():
@@ -325,6 +326,34 @@ def test_a_directional_join_whose_kept_side_is_forced_stays_outer():
         join, datasets = _directional(join_type)
         downgrade_join_for_proofs(join, {proof}, datasets)
         assert join.join_type == join_type
+
+
+def test_a_join_keeps_its_planned_type_where_it_now_keeps_more():
+    """A RIGHT planned INNER returns to INNER; a LEFT planned FULL keeps the
+    LEFT, which keeps nothing the FULL did not."""
+    for now, planned, kept in (
+        (JoinType.RIGHT_OUTER, JoinType.INNER, JoinType.INNER),
+        (JoinType.RIGHT_OUTER, JoinType.LEFT_OUTER, JoinType.LEFT_OUTER),
+        (JoinType.LEFT_OUTER, JoinType.FULL, JoinType.LEFT_OUTER),
+    ):
+        join, datasets = _directional(planned)
+        ids = [d.identifier for d in datasets]
+        sequence = join_sequence([join], ids)
+        assert sequence is not None
+        join.join_type = now
+        keep_planned_join_types([join], ids, sequence)
+        assert join.join_type == kept, (now, planned)
+
+
+def test_a_join_pairing_other_parents_keeps_its_type():
+    join, datasets = _directional(JoinType.INNER)
+    sequence = join_sequence([join], [d.identifier for d in datasets])
+    assert sequence is not None
+    join.join_type = JoinType.RIGHT_OUTER
+    keep_planned_join_types(
+        [join], [d.identifier for d in reversed(datasets)], sequence
+    )
+    assert join.join_type == JoinType.RIGHT_OUTER
 
 
 def _scan(columns, datasource, grain, source_type=SourceType.SELECT):
