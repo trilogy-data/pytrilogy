@@ -1,0 +1,77 @@
+"""Outer joins the planner narrows itself that only the optimizer's join
+upgrade narrowed before (handoff 2.1 step 4): read off the planned
+`QueryDatasource`, before any optimizer phase runs."""
+
+from tests.engine.test_unmodelled_regions import (
+    TWO_FACT_JOIN_DERIVED,
+    TWO_FACT_JOIN_MATERIALIZED,
+)
+from tests.optimization.test_multihop_not_null_preserved import NULLABLE_FK_MODEL
+from tests.optimization.test_null_rejection_laws import SPLIT
+from trilogy import Dialects, Environment
+from trilogy.core.enums import JoinType
+from trilogy.core.models.execute import Join, QueryDatasource
+from trilogy.core.query_processor import get_query_datasources
+
+
+def _join_types(ds: QueryDatasource) -> list[tuple[str, JoinType]]:
+    out = [
+        (join.right.identifier, join.join_type)
+        for join in ds.joins
+        if isinstance(join, Join)
+    ]
+    for source in ds.datasources:
+        if isinstance(source, QueryDatasource):
+            out += _join_types(source)
+    return out
+
+
+def _env(model: str) -> Environment:
+    env = Environment()
+    env.parse(model)
+    return env
+
+
+def _joins(model: str, query: str) -> list[tuple[str, JoinType]]:
+    env = _env(model)
+    _, statements = env.parse(query)
+    return _join_types(get_query_datasources(env, statements[-1]))
+
+
+def _planned(model: str, query: str) -> set[JoinType]:
+    return {jt for _, jt in _joins(model, query)}
+
+
+def test_a_later_inner_narrows_a_full_to_right_after_the_merge_orders_sources():
+    planned = _planned(
+        NULLABLE_FK_MODEL,
+        "select state, count(sale_id) as n where address_sk is not null;",
+    )
+    assert JoinType.FULL not in planned
+    assert JoinType.RIGHT_OUTER in planned
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(NULLABLE_FK_MODEL))
+        .execute_query(
+            "select state, count(sale_id) as n where address_sk is not null"
+            " order by state;"
+        )
+        .fetchall()
+    )
+    assert rows == [("CA", 1), ("NY", 1)]
+
+
+def test_a_where_on_a_partial_column_one_side_alone_holds_narrows_it():
+    assert _planned(SPLIT, "where ret_plus < 2 select order_id, item_id;") == {
+        JoinType.INNER
+    }
+
+
+def test_a_flag_proof_reaches_through_the_merge_passing_the_flag():
+    for model in (TWO_FACT_JOIN_DERIVED, TWO_FACT_JOIN_MATERIALIZED):
+        planned = _joins(
+            model, "select reason_class, count(ticket) as n where is_returned;"
+        )
+        sales_returns = [
+            jt for right, jt in planned if right.startswith("returns_at_local_item_sk")
+        ]
+        assert sales_returns and set(sales_returns) == {JoinType.INNER}, planned

@@ -433,6 +433,16 @@ def _partial_lookup_keys(sources: list[GrainSource], keys: set[str]) -> set[str]
     return out
 
 
+def _opaque_addresses(sources: list[GrainSource]) -> set[str]:
+    """A CASE/raw binding is non-null even on a padded row. A partial one
+    still proves its side to a WHERE this merge renders (``side_proofs``),
+    where no other dataset holds it: it renders off that side alone, so it
+    is NULL on every row the side padded. A branch's own filter
+    (``branch_proofs``) says nothing of a partial value the merge's other
+    rows lack."""
+    return {a for source in sources for a in opaque_binding_addresses(source)}
+
+
 def _unprovable_addresses(sources: list[GrainSource]) -> set[str]:
     """Addresses a non-null proof cannot force a side through: partial
     bindings (the value may genuinely be absent from this side) and opaque
@@ -786,6 +796,9 @@ def downgrade_join_for_proofs(
             set(),
             _unprovable_addresses(streamed),
         )
+        or _side_forced(
+            side_proofs, or_groups, left_exclusive, set(), _opaque_addresses(streamed)
+        )
         or _keys_force(key_proofs, join, streamed, final_datasets, key_sources)
     )
     right_forced = (
@@ -798,6 +811,13 @@ def downgrade_join_for_proofs(
         )
         or _side_forced(
             side_proofs | proofs, or_groups, right_exclusive, set(), right_unprovable
+        )
+        or _side_forced(
+            side_proofs,
+            or_groups,
+            right_exclusive,
+            set(),
+            _opaque_addresses([join.right]),
         )
         or _keys_force(key_proofs, join, [join.right], final_datasets, key_sources)
     )
@@ -833,14 +853,24 @@ def downgrade_directional_join_for_proofs(
     if join.join_type == JoinType.RIGHT_OUTER:
         padded_sources = _stream_sources(join, final_datasets, stream)
         padded_only |= _exclusive_addresses(padded_sources, final_datasets)
-    if _side_forced(
-        proofs,
-        or_groups,
-        padded_only,
-        padded_keys,
-        _unprovable_addresses(padded_sources),
-    ) or _keys_force(
-        key_proofs, join, padded_sources, final_datasets, key_sources or {}
+    if (
+        _side_forced(
+            proofs,
+            or_groups,
+            padded_only,
+            padded_keys,
+            _unprovable_addresses(padded_sources),
+        )
+        or _side_forced(
+            proofs,
+            or_groups,
+            _exclusive_addresses(padded_sources, final_datasets),
+            set(),
+            _opaque_addresses(padded_sources),
+        )
+        or _keys_force(
+            key_proofs, join, padded_sources, final_datasets, key_sources or {}
+        )
     ):
         join.join_type = JoinType.INNER
 
@@ -1109,7 +1139,7 @@ def narrow_directional_join_types(
             proofs.key_proofs,
             proofs.key_sources,
         )
-    narrow_joins_read_by_inner(joins, inner_only=True)
+    narrow_joins_read_by_inner(joins)
 
 
 def _pair_source_id(pair: ConceptPair) -> str:
@@ -1136,15 +1166,12 @@ def _inner_rejected_sources(join: SourceJoin) -> set[str]:
     return out
 
 
-def narrow_joins_read_by_inner(
-    joins: list[SourceJoin | UnnestJoin], inner_only: bool = False
-) -> None:
+def narrow_joins_read_by_inner(joins: list[SourceJoin | UnnestJoin]) -> None:
     """An outer join whose padded side a later INNER equality reads keeps no
     padded row: the NULL key matches nothing there. Narrowing one join to
-    INNER can prove an earlier one, so this runs to a fixpoint. Once the
-    merge has ordered its sources by padding, ``inner_only`` keeps a FULL
-    from preserving only its right side: the stream it put first may hold a
-    key the merge reads, which a RIGHT would pad."""
+    INNER can prove an earlier one, so this runs to a fixpoint. It may leave
+    a FULL preserving only its right side: the merge orders its sources by
+    padding after every narrowing, so no key is read off the side it pads."""
     changed = True
     while changed:
         changed = False
@@ -1155,8 +1182,6 @@ def narrow_joins_read_by_inner(
                 bool(stream & rejected),
                 join.right.identifier in rejected,
             )
-            if inner_only and new not in (JoinType.INNER, JoinType.LEFT_OUTER):
-                new = join.join_type
             if new != join.join_type:
                 join.join_type = new
                 changed = True
