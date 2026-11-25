@@ -115,6 +115,7 @@ operator.
 from __future__ import annotations
 
 import fnmatch
+import gzip
 import hmac
 import json
 import os
@@ -205,9 +206,19 @@ RETRYABLE_STATUSES = frozenset({429, 502, 503, 504})
 RETRYABLE_METHODS = frozenset({"GET", "PUT", "PATCH", "DELETE"})
 
 # PubSub caps a published message at 10MB and the job's files ride inside one;
-# same margin as trilogy-cloud's bundler so the two agree on what fits.
+# same margin as trilogy-cloud's bundler so the two agree on what fits. The
+# platform measures both a request body and a queued job against this budget
+# *as sent*, so a bundle compressed with gzip is measured compressed.
 PUBSUB_MAX_BYTES = 10 * 1024 * 1024
 SAFETY_MARGIN = 0.80
+
+# The platform's limit on a request body once decompressed. Bounds how far
+# compression can stretch the budget above.
+MAX_DECOMPRESSED_BYTES = 24 * 1024 * 1024
+
+# The first two bytes of every gzip stream. JSON never starts with 0x1f, which
+# is how `CloudClient.request` knows a pre-encoded body is compressed.
+GZIP_MAGIC = b"\x1f\x8b"
 
 DEFAULT_INCLUDE = ("*.preql", "*.py", "*.sql", "*.toml", "*.json", "*.csv")
 DEFAULT_EXCLUDE = (
@@ -704,6 +715,9 @@ class CloudClient:
             headers["Authorization"] = f"Bearer {self.token}"
         if data is not None:
             headers["Content-Type"] = "application/json"
+        compressed = data is not None and data[:2] == GZIP_MAGIC
+        if compressed:
+            headers["Content-Encoding"] = "gzip"
         timeout = self.timeout if timeout is None else timeout
         attempts = max(1, self.attempts) if method in RETRYABLE_METHODS else 1
         pause = RETRY_BACKOFF_SECONDS
@@ -721,7 +735,9 @@ class CloudClient:
                     # An earlier attempt landed; only its answer was lost.
                     return None
                 if exc.code not in RETRYABLE_STATUSES or attempt >= attempts:
-                    raise self._http_error(method, path, exc, attempt) from exc
+                    raise self._http_error(
+                        method, path, exc, attempt, compressed
+                    ) from exc
                 wait = _retry_after(exc) or pause
                 failure = f"{exc.code} {exc.reason}"
             except (URLError, TimeoutError, ConnectionError, IncompleteRead) as exc:
@@ -751,11 +767,20 @@ class CloudClient:
             raise CloudError(f"{method} {path}: response was not JSON") from exc
 
     def _http_error(
-        self, method: str, path: str, exc: HTTPError, attempt: int
+        self,
+        method: str,
+        path: str,
+        exc: HTTPError,
+        attempt: int,
+        compressed: bool = False,
     ) -> CloudError:
         detail = exc.read().decode("utf-8", errors="replace").strip()
         hint = ""
-        if exc.code == 401:
+        if compressed and exc.code in (400, 415, 422):
+            # A server that predates compressed uploads reads the gzip bytes
+            # as malformed JSON.
+            hint = " (the server may not accept compressed uploads)"
+        elif exc.code == 401:
             # `cloud login` is useless advice on a runner that got its
             # token from the environment.
             if self.token and self.token == os.environ.get(ENV_TOKEN):
@@ -1135,31 +1160,51 @@ def _largest_files(payload: dict, limit: int = 5) -> list[tuple[str, int]]:
 def check_bundle_size(payload: dict) -> bytes:
     """The encoded payload, refused if it is too large to send.
 
-    Returns the bytes, so the caller sends exactly what was measured.
+    Returns the bytes, so the caller sends exactly what was measured: JSON when
+    it fits the budget, gzip-compressed JSON when only compression makes it
+    fit. A bundle that fits uncompressed is sent exactly as before, so only a
+    bundle no server could have taken depends on one that accepts gzip.
 
     The budget matches the platform's own limit on both a request body and a
-    queued job. Checking it here rather than letting the server answer 413
-    means the error can name the files that caused it.
+    queued job, both measured as sent. Checking it here rather than letting
+    the server answer 413 means the error can name the files that caused it.
     """
     encoded = json.dumps(payload).encode("utf-8")
     budget = int(PUBSUB_MAX_BYTES * SAFETY_MARGIN)
-    if len(encoded) > budget:
-        # Usually a few large data files among many small scripts, so list
-        # them: "narrow --include" is not actionable without the names.
-        biggest = _largest_files(payload)
-        detail = ""
-        if biggest:
-            listed = ", ".join(f"{name} ({size:,}B)" for name, size in biggest)
-            detail = f" Largest: {listed}."
-        # Don't name where the budget comes from: the caller cannot see or
-        # change it. The size and the file names are what they can act on.
-        raise CloudError(
-            f"Bundle is {len(encoded):,}B, over the {budget:,}B budget."
-            f"{detail} Narrow --include, add --exclude, or split the project. "
-            "Consider loading data files to an object store and referencing "
-            "them in script rather than bundling."
+    if len(encoded) <= budget:
+        return encoded
+    if len(encoded) > MAX_DECOMPRESSED_BYTES:
+        raise _oversized_bundle(
+            payload,
+            f"Bundle is {len(encoded):,}B, over the "
+            f"{MAX_DECOMPRESSED_BYTES:,}B budget.",
         )
-    return encoded
+    # mtime=0: the same bundle compresses to the same bytes.
+    compressed = gzip.compress(encoded, compresslevel=6, mtime=0)
+    if len(compressed) > budget:
+        raise _oversized_bundle(
+            payload,
+            f"Bundle is {len(encoded):,}B, {len(compressed):,}B "
+            f"compressed, over the {budget:,}B budget.",
+        )
+    return compressed
+
+
+def _oversized_bundle(payload: dict, measured: str) -> CloudError:
+    # Usually a few large data files among many small scripts, so list
+    # them: "narrow --include" is not actionable without the names.
+    biggest = _largest_files(payload)
+    detail = ""
+    if biggest:
+        listed = ", ".join(f"{name} ({size:,}B)" for name, size in biggest)
+        detail = f" Largest: {listed}."
+    # Don't name where the budget comes from: the caller cannot see or
+    # change it. The size and the file names are what they can act on.
+    return CloudError(
+        f"{measured}{detail} Narrow --include, add --exclude, or split the "
+        "project. Consider loading data files to an object store and "
+        "referencing them in script rather than bundling."
+    )
 
 
 # ============================================================================
