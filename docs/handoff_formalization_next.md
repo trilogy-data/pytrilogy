@@ -18,7 +18,7 @@ History lives elsewhere, so this file stays short:
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
 group key of aggregates and windows, in a HAVING) to 220,000; the PR of each
-round holds its sweep totals. `filters` has 23 `OPEN` seeds (area 4b),
+round holds its sweep totals. `filters` has 24 `OPEN` seeds (area 4b),
 `windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -678,9 +678,8 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   B's Acer), and adding `count(tree_id)` returns the per-row reading (`(A,
   NULL, 1)`), so a count changes the keys' rows. The generator stays off
   these (`Filters.filtered_value_off_its_keys_splits`).
-- **9683 raised on main and returns wrong rows**: a WHERE aggregate
+- **9683, 12294 raised on main and return wrong rows**: a WHERE aggregate
   reaches the set's inner aggregate and not the statement's rows (below).
-  12294 is right at 0.3.542.
 - **Where a WHERE aggregate is hosted beside a filtered column** is the lead
   with the most behind it (9683, 12294, 2922, and 92 `cannot be related`
   raises). 0.3.531 backfills the gate onto the outputs when its only
@@ -767,6 +766,19 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     not null)) as v0, (count(tree_id) by city, tree_form) ? city in ('B') as
     v1 where (tag in (tag ? min(height) by city, species = 10) or
     min(height) by city, tree_form is null)`.
+  - Totals at keys: widening a WHERE value to its atom's grain
+    (`gate_grain_is_its_atoms`) also fixed 12294, 25230, 78425 and 91969
+    (`min(height) by city, tree_form - max(height) by * < 0`), but widening
+    a `by *` total broke 48509, 51668 and five more right on main, with the
+    same atom shape: what tells them apart is in the select, not the WHERE.
+    An atom reading a set is not widened either (4617).
+  - 204389: `select height > 2 as big, tree_form ? min(height) by tree_form
+    != 1 as v0, (sum(height) by big) ? sum(height) by * >= 0 as v1` pairs
+    the two filters on nothing (nine rows for four). Each filter is built
+    over its aggregate's groups, yet is taken to hold the other's column and
+    `tree_id`. Dropping those from its identity fixed it and broke 99325,
+    118586, 131528, 167037 and 188314: there the filter's row parent carries
+    a WHERE gate's key FINAL needs.
   - 208906 lost its summary read on the branch (no extra scans): the peel a
     set now skips (`peel_skips_a_set`) was what let the summary cover it.
   - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
