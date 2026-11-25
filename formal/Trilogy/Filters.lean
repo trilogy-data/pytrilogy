@@ -695,4 +695,72 @@ theorem total_gate_reaches_the_rows :
     (trees.filter fun r => total ≤ top r.1).map (·.2) = [7, 2] := by
   decide
 
+/-! ## A gate's grain is its atom's (0.3.542)
+
+A WHERE atom reading aggregates at two grains is decided at their union: an
+aggregate reading one of its values at that value's grain meets the rows
+only on that value's keys, so it filters the rows the atom kept no more than
+any other reader does. -/
+
+/-- `select city, city ? city in (city ? sum(height) by city > 0 and height >
+2) as v2 where sum(height) by city - max(height) by city, species > 3`: the
+WHERE keeps A's Acer (8 - 3) and B's Tilia (9 - 2), and only the Acer is over
+2, so the set is A alone. The gate was taken as met by the set's `by city`
+sum, which reads the gate's `by city` value at its own grain, and the set's
+`height > 2` read every row: B's Acer put B in the set
+(`gate_grain_is_its_atoms`, 190661). Trees are `(city, species, height)`. -/
+theorem gate_grain_is_its_atoms :
+    let trees : List (Nat × Nat × Nat) := [(0, 0, 3), (0, 1, 5), (1, 0, 7), (1, 2, 2)]
+    let total c := ((trees.filter (·.1 == c)).map (·.2.2)).foldl (· + ·) 0
+    let top c s :=
+      ((trees.filter fun r => r.1 == c && r.2.1 == s).map (·.2.2)).foldl max 0
+    let kept := trees.filter fun r => total r.1 > top r.1 r.2.1 + 3
+    ((kept.filter (·.2.2 > 2)).map (·.1)).eraseDups = [0] ∧
+      ((trees.filter (·.2.2 > 2)).map (·.1)).eraseDups = [0, 1] := by
+  decide
+
+/-- `select species, tree_form, tag ? tag in (tag ? min(height) by species is
+not null) as v0 where tree_form is null`: the WHERE keeps the Ulmus alone,
+which is unmeasured, so the set is empty and `v0` is NULL. The form was
+peeled onto a scan of the species joined back at FINAL, which filters the
+shown rows; the set is a subselect, which no join reaches, and it read the
+Acers' tag `x` (`peel_skips_a_set`, 201221). Trees are `(species, tag,
+measured)`. -/
+theorem peel_skips_a_set :
+    let trees : List (Nat × Nat × Bool) :=
+      [(0, 0, true), (0, 1, false), (1, 0, true), (2, 0, false), (0, 1, true), (3, 0, true)]
+    let measured (rows : List (Nat × Nat × Bool)) s := rows.any fun r => r.1 == s && r.2.2
+    let set (rows : List (Nat × Nat × Bool)) :=
+      ((rows.filter fun r => measured rows r.1).map (·.2.1)).eraseDups
+    let kept := trees.filter (·.1 == 2)
+    set kept = [] ∧ set trees = [0, 1] := by
+  decide
+
+/-- `select city, height > 2 as big, tree_form ? species in (species ? height
+is null) as v0, max(height) by city as v1` on the summary: the filter's grain
+is `species`, but it outputs `city` too, so its rows are one per `(city,
+species)`. FINAL paired them with the trees on `species` alone and took
+`city` off the filter: A's Acer met B's, and B showed a broadleaf beside A's
+maximum (`filter_rows_keyed_by_outputs`, 201879). Trees are `(city,
+species)`. -/
+theorem filter_rows_keyed_by_outputs :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let filtered := trees.eraseDups
+    filtered.length = 5 ∧
+      (trees.any fun t => filtered.any fun f => t.2 == f.2 && t.1 != f.1) = true := by
+  decide
+
+/-- `select height > 2 as big, tree_form ? min(height) by tree_form != 1 as
+v0, (sum(height) by big) ? sum(height) by * >= 0 as v1`: both filters are
+values of each tree, so the answer is the four `(big, form)` pairs the trees
+hold. Each filter is built over its aggregate's groups alone, yet each was
+taken to hold the other's column and its row parents' `tree_id`, so FINAL
+paired them on nothing and showed all nine (`filter_over_groups_holds_no_row`,
+204389). Trees are `(big, form)`, NULL as 2. -/
+theorem filter_over_groups_holds_no_row :
+    let trees : List (Nat × Nat) := [(1, 0), (2, 0), (1, 0), (2, 1), (1, 0), (0, 2)]
+    trees.eraseDups.length = 4 ∧
+      (trees.map (·.1)).eraseDups.length * (trees.map (·.2)).eraseDups.length = 9 := by
+  decide
+
 end Trilogy.Filters

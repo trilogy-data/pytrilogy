@@ -474,6 +474,23 @@ def _feeds_only_sets(
     return reached
 
 
+def _select_sets(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> bool:
+    """A set written in the select (`tag ? tag in (tag ? c)`), which reads the
+    rows the WHERE kept."""
+    return any(
+        concept_attrs[n].label == ""
+        and any(
+            edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
+            for succ in concept_graph.successors(n)
+        )
+        for n in concept_graph.nodes
+    )
+
+
 def _finest_determining_key(
     determiners: list[str], environment: BuildEnvironment
 ) -> str | None:
@@ -1051,6 +1068,7 @@ def _split_root_dimension_clusters(
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
     condition_roots: set[str],
+    select_sets: bool = False,
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets, so wide dims
@@ -1171,6 +1189,10 @@ def _split_root_dimension_clusters(
             # fact rows feeding the aggregate, but a peeled column carries its
             # filter to a post-aggregate dim join.
             finest = _entity_key(addr, frozenset(candidates), environment)
+            # a set the select reads is a subselect over the kept rows: no
+            # join on the peel's key reaches it (`Filters.peel_skips_a_set`)
+            if addr in pre_aggregate_filter_args and select_sets:
+                continue
             if addr in pre_aggregate_filter_args and not all(
                 _preaggregate_filter_allows_dimension_member(
                     mate,
@@ -1360,6 +1382,7 @@ def partition_root_demand(
         # a scan-filtered root reads the WHERE on its own scan, as a
         # condition stage's roots do
         condition_roots | {n for n, a in concept_attrs.items() if a.scan_filtered},
+        _select_sets(concept_graph, concept_edges, concept_attrs),
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     roots_by_stage = {

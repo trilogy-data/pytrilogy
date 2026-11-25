@@ -18,6 +18,7 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildFilterItem,
     BuildRowsetItem,
     get_concept_row_arguments,
 )
@@ -626,6 +627,8 @@ def _from_row_parents(
     ):
         return frozenset()
     parents = _group_parents(group_graph, attrs, gid)
+    if _over_grouped_parents(attrs, gid, parents, environment):
+        return frozenset()
     passed = frozenset().union(
         *(
             attrs[parent].output_concepts
@@ -644,6 +647,40 @@ def _from_row_parents(
     ):
         return passed
     return passed & _determined(group.grain_components, environment)
+
+
+def _over_grouped_parents(
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    parents: Sequence[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A filter whose grouped parents output every column it reads, a shown
+    key of its grain included, is built over them alone: its row parents pass
+    it nothing (`tree_form ? min(height) by tree_form != 1` holds no tree)
+    (`Filters.filter_over_groups_holds_no_row`)."""
+    group = attrs[gid]
+    if group.derivation != Derivation.FILTER:
+        return False
+    grouped = [p for p in parents if attrs[p].derivation in GROUPING_DERIVATIONS]
+    if not grouped or len(grouped) == len(parents):
+        return False
+    contract = attrs[FINAL_NODE_ID].final_contract if FINAL_NODE_ID in attrs else None
+    shown = contract.output_addresses if contract is not None else frozenset()
+    read = {
+        c.address
+        for m in group.primary_members
+        if (concept := environment.concepts.get(m)) is not None
+        and concept.lineage is not None
+        for c in concept.lineage.concept_arguments
+    } | {
+        k
+        for k in set(group.grain_components) & shown
+        if (c := environment.concepts.get(k)) is not None
+        and c.derivation != Derivation.FILTER
+    }
+    supplied = frozenset().union(*(attrs[p].output_concepts for p in grouped))
+    return bool(read) and read <= supplied
 
 
 def _read_only_by_final(
@@ -993,6 +1030,64 @@ def _filtered_row_keys(
     return contracted.get(gid, frozenset())
 
 
+def _foreign_filters(
+    group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """The filtered columns a filter claims by the select's grain but neither
+    computes nor reads: it holds no column of theirs."""
+    if group.derivation != Derivation.FILTER:
+        return frozenset()
+    return frozenset(
+        k
+        for k in keys - set(group.output_concepts)
+        if (c := environment.concepts.get(k)) is not None
+        and c.derivation == Derivation.FILTER
+    )
+
+
+def _identity_past_filters(
+    group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """A filter built over groups is identified by the keys it holds, not by
+    the select's filtered columns its grain names: another's it holds no column of, and its
+    own is a value of its content's keys where it holds them
+    (`Filters.filtered_key_identifies_no_row`)."""
+    rest = keys - _foreign_filters(group, keys, environment)
+    held = pairing_keys(rest)
+    return frozenset(
+        k
+        for k in rest
+        if not (
+            k in group.output_concepts
+            and isinstance(
+                lineage := getattr(environment.concepts.get(k), "lineage", None),
+                BuildFilterItem,
+            )
+            and isinstance(content := lineage.content, BuildConcept)
+            and content.grain is not None
+            and (grain := pairing_keys(content.grain.components))
+            and grain <= held - {k}
+        )
+    )
+
+
+def _filter_output_keys(
+    group: GroupAttrs, environment: BuildEnvironment
+) -> frozenset[str]:
+    """A filter's rows are one per value of each key it outputs, its grain's
+    or not: `city` beside `tree_form ? species in <set>` at `species` keeps
+    one row per city (`Filters.filter_rows_keyed_by_outputs`)."""
+    if group.derivation != Derivation.FILTER:
+        return frozenset()
+    return frozenset(
+        a
+        for a in group.output_concepts
+        if (c := environment.concepts.get(a)) is not None
+        and c.purpose == Purpose.KEY
+        and c.derivation == Derivation.ROOT
+    )
+
+
 def _looked_up_keys(
     keys: frozenset[str],
     identity: frozenset[str],
@@ -1103,7 +1198,18 @@ def plan_final_join(
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()
         )
+        | _filter_output_keys(attrs[gid], environment)
         for gid in contributors
+    }
+    identity = {
+        gid: (
+            _identity_past_filters(attrs[gid], keys, environment)
+            if _over_grouped_parents(
+                attrs, gid, _group_parents(group_graph, attrs, gid), environment
+            )
+            else keys
+        )
+        for gid, keys in identity.items()
     }
     members = environment.all_scoped_join_group_members()
     carries: dict[str, frozenset[str]] = {}

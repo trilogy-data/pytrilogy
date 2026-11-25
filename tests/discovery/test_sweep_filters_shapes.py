@@ -718,6 +718,55 @@ SHAPES = [
             ("B", "linden", 2),
         ],
     ),
+    # a gate's grain is every aggregate its atom reads (190661, reduced): the
+    # WHERE keeps a1, a2 and b2, and only a1 is over 2
+    (
+        (
+            "select city, city ? city in (city ? sum(height) by city > 0 and"
+            " height > 2) as v2 where sum(height) by city - max(height) by"
+            " city, species > 3;"
+        ),
+        [("A", "A"), ("B", None)],
+    ),
+    # a WHERE column a select's set reads past stays on the rows (201221,
+    # reduced): the WHERE keeps the unmeasured Ulmus alone, so the set is empty
+    (
+        (
+            "select species, tree_form, tag ? tag in (tag ? min(height) by"
+            " species is not null) as v0 where tree_form is null;"
+        ),
+        [("Ulmus", None, None)],
+    ),
+    # a filter's rows are keyed by the keys it outputs (201879, reduced): no
+    # tree of B's is broadleaf beside A's maximum
+    (
+        (
+            "select city, height > 2 as big, tree_form ? species in (species ?"
+            " height is null) as v0, max(height) by city as v1;"
+        ),
+        [
+            ("A", None, "broadleaf", 5),
+            ("A", None, None, 5),
+            ("A", True, "broadleaf", 5),
+            ("A", True, None, 5),
+            ("B", False, None, 7),
+            ("B", True, "broadleaf", 7),
+        ],
+    ),
+    # filters built over their aggregates' groups pair through the trees
+    # (204389, reduced): four `(big, form)` pairs, not their nine crossings
+    (
+        (
+            "select height > 2 as big, tree_form ? min(height) by tree_form !="
+            " 1 as v0, (sum(height) by big) ? sum(height) by * >= 0 as v1;"
+        ),
+        [
+            (False, "linden", 2),
+            (None, "broadleaf", None),
+            (None, None, None),
+            (True, "broadleaf", 15),
+        ],
+    ),
 ]
 
 

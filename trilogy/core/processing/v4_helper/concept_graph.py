@@ -1740,11 +1740,19 @@ def _total_beside_a_set(
 
 
 def _barrier_at_gate_grain(
-    graph: nx.DiGraph, attrs: dict[str, ConceptAttrs], src: str
+    graph: nx.DiGraph,
+    attrs: dict[str, ConceptAttrs],
+    src: str,
+    gate_grains: Mapping[str, frozenset[str]],
 ) -> bool:
-    """An aggregate reading a WHERE value at the value's own grain meets the
-    rows it pairs with on every key of the gate, so it filters them."""
-    grain = attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+    """An aggregate reading a WHERE value at the gate's grain meets the rows it
+    pairs with on every key of the gate, so it filters them. The gate's grain
+    is every aggregate its atom reads: `sum(x) by city - max(x) by city,
+    species > 3` is decided per species, which a `by city` reader never meets
+    (`Filters.gate_grain_is_its_atoms`)."""
+    grain = (
+        attrs[src].grain_components | gate_grains.get(attrs[src].address, frozenset())
+    ) - {ALL_ROWS_ADDRESS}
     return any(
         attrs[succ].derivation == Derivation.AGGREGATE
         and grain <= attrs[succ].grain_components
@@ -2900,10 +2908,19 @@ def build_concept_graph(
     existence_arg_addresses: set[str] = set()
     existence_arg_pairs: list[tuple[str, str]] = []  # (existence_addr, row_addr)
     beside_sets: set[str] = set()
+    gate_grains: dict[str, frozenset[str]] = defaultdict(frozenset)
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
             row_arg_addresses.update(atom_row_addrs)
+            atom_grain = frozenset(
+                k
+                for c in atom.row_arguments
+                if c.is_aggregate and c.grain is not None
+                for k in c.grain.components
+            )
+            for address in atom_row_addrs:
+                gate_grains[address] |= atom_grain
             if atom.existence_arguments:
                 beside_sets.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():
@@ -3054,7 +3071,7 @@ def build_concept_graph(
         src
         for src in eligible
         if src not in backfill
-        and not _barrier_at_gate_grain(graph, attrs, src)
+        and not _barrier_at_gate_grain(graph, attrs, src, gate_grains)
         and _reaches_only_sets(
             graph,
             edges,
