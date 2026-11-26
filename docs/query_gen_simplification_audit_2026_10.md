@@ -2459,9 +2459,14 @@ election, not the padded fallback.
 
     Gates, against `cee3bb2`: corpus (204 statements) 0 moved; fuzzer
     522/522. Suite capture (`sqlcap`, about 54,300 statements): the keyed
-    class trees, plus column order and INNER-equated key reads that move
-    between runs of one tree. Suite: the same 25 credential-bound failures
-    as `main`.
+    class trees, and 3 statements (filters seed 10457 summary, spellings
+    seed 9938 base and summary) whose INNER join to the `max(height) by
+    tree_form` CTE reads `tree_form` off the regroup by (city, species,
+    tree_form) instead of the row scan it is INNER-joined to on (city,
+    species): one value on every row, join types unchanged, row oracles
+    green. The other moves (column order) recur between runs of one tree
+    and are not in a serial A/B of the same files. Suite: the same 25
+    credential-bound failures as `main`.
 
 ## Gate used
 
