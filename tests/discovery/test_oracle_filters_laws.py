@@ -352,6 +352,9 @@ FOUND_SEEDS = [
     7232, 7739, 8532, 13411, 17742, 39289, 220239, 220357, 222515, 223645,
     225376, 225484, 226656, 227645, 228850, 230300, 231659, 234391, 236083,
     239495, 239635, 239791,
+    # 0.3.543: a dedup shows the all-rows marker a parent hid (130215 broke
+    # under the first all-rows fix)
+    130215,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. 9683,

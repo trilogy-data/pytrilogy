@@ -793,6 +793,22 @@ SHAPES = [
         ),
         [("x", "Acer"), ("x", "Quercus"), ("x", "Ulmus"), ("y", "Acer")],
     ),
+    # a dedup under a row count reads the all-rows marker its scan hides
+    # (130215, raised on the summary model): no tree's height passes either gate
+    (
+        (
+            "select city, species, height ? sum(height) by city, species <="
+            " count(tree_id) by city, species as v0, height ? (species != 'Tilia'"
+            " and city in (city ? count(tree_id) by * = 3)) as v1 where"
+            " min(height) by city, species >= count_distinct(tag) by *;"
+        ),
+        [
+            ("A", "Acer", None, None),
+            ("A", "Quercus", None, None),
+            ("B", "Acer", None, None),
+            ("B", "Tilia", None, None),
+        ],
+    ),
 ]
 
 

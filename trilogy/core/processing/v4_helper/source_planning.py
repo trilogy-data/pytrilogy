@@ -401,17 +401,19 @@ def _concepts_with_grain_keys(
         # axis where the final merge already pairs the arms).
         if is_join_key_group(concept.address, environment):
             continue
-        # the all-rows marker is no key: its grain is the select's, which may
-        # name columns no scan holds (`Filters.all_rows_marker_is_no_key`)
-        if concept.address == ALL_ROWS_ADDRESS:
-            continue
         if (
             concept.address in aggregate_axes
             or concept.canonical_address in axis_values
         ):
             continue
+        all_rows = concept.address == ALL_ROWS_ADDRESS
         for address in concept.grain.components:
             if address not in environment.concepts:
+                continue
+            # the all-rows marker's grain is the select's: only its scanned
+            # columns are keys, not the ones it computes
+            # (`Filters.all_rows_marker_is_no_key`)
+            if all_rows and environment.concepts[address].derivation != Derivation.ROOT:
                 continue
             if keys_are_affordances and address not in requested_addresses:
                 continue

@@ -8300,6 +8300,16 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             if concept_match is not None and concept_match.address not in matched_addrs:
                 matched_addrs.add(concept_match.address)
                 normalize_concepts.append(concept_match)
+        # a constant a parent hides (the all-rows marker) is free to show
+        for parent in parents:
+            shown = {
+                c.address
+                for c in normalize_concepts
+                if c.derivation == Derivation.CONSTANT
+            } & parent.hidden_concepts
+            if shown:
+                parent.hidden_concepts -= shown
+                parent.rebuild_cache()
         if normalize_concepts:
             # a parent claiming the input grain is still not unique on it
             repeats_element = any(
