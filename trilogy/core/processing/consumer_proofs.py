@@ -210,9 +210,10 @@ def _reads(node: StrategyNode, parent: StrategyNode, grouped: bool) -> set[str]:
 
 
 def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
-    """Columns ``node`` reads to compute a per-row value in ``reads``. A
-    consumer's proof drawn through that value's lineage (``x = true`` over
-    ``x <- y is not null``) names them, and holds of the rows they come from."""
+    """Columns ``node`` reads to compute a per-row value in ``reads``, or that
+    the parent it passes such a value through alone does. A consumer's proof
+    drawn through that value's lineage (``x = true`` over ``x <- y is not
+    null``) names them, and holds of the rows they come from."""
     resolved = node.resolve()
     known = {c.address: c for c in resolved.output_concepts}
     out: set[str] = set()
@@ -228,6 +229,14 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
             if not resolved.source_map.get(arg.address):
                 known.setdefault(arg.address, arg)
                 todo.append(arg.address)
+    computed = {
+        a for a in reads if (c := known.get(a)) and c.derivation == Derivation.BASIC
+    }
+    if not computed or not _passes_rows(node):
+        return out
+    for parent in dict.fromkeys(node.parents):
+        if passed := computed & row_reads(node, parent):
+            out |= computed_inputs(parent, passed)
     return out
 
 

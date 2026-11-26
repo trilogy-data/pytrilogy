@@ -1080,15 +1080,15 @@ class MergeNode(StrategyNode):
                 self.planned_join_types,
             )
         narrow_join_types(joins, join_proofs, final_datasets)
-        # Per-datasource NULL-ability from the resolved join graph: orders
-        # ``final_datasets`` so the preserved side wins ``resolve_concept_map``'s
-        # first pass, and prunes NULL-able-side pairs from JOIN ON when a
-        # preserved alternative exists. Both reduce redundant ``coalesce``.
-        null_status = compute_outer_null_status(joins)
         prune_outer_join_pairs(joins)
         narrow_directional_join_types(joins, join_proofs, final_datasets)
         restore_unpadded_joins(joins)
         narrow_keyless_joins(joins, self._gate_sources(final_datasets))
+        # Per-datasource NULL-ability from the final join types: orders
+        # ``final_datasets`` so the preserved side wins ``resolve_concept_map``'s
+        # first pass, which reduces redundant ``coalesce``. Taken after every
+        # narrowing, so a FULL narrowed to RIGHT reads no key off its left.
+        null_status = compute_outer_null_status(joins)
         # FULL JOINs only: both sides may be NULL, so source_map needs every
         # input supplying the address. For LEFT/RIGHT the preserved-side
         # ordering above suffices.
