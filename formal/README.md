@@ -2980,7 +2980,6 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 - **`filters` to 240,000** (0.3.543). On main seeds 220,000-240,000 (40,000
   queries) hold 6 wrong answers, 35 raises and 3 invalid statements; the
   round fixes 32 of them (4 wrong answers, 28 raises) and breaks none.
-  FULLRANGE
   - The all-rows marker `gen_root`'s fallback reads the trees with carries
     the select's grain; expanded as grain keys it demanded a filter no scan
     holds, and every statement with a set over a `by *` total beside a WHERE
