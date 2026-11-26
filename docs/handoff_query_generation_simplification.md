@@ -243,9 +243,10 @@ shared key is never claimed per side). The key-tuple arm only claims that
 a side complete on the key has a match for a non-null value, which `k is
 not null` proves as `k = 5` does; the directional arm already read it off
 the full harvest, and the optimizer's `proves_key` too. The FULL arm now
-does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`:
-21 flips to 15 (pushed 7 to 3; external 4 to 2, filters seed 133525 not
-flipping on either tree, in isolation or under xdist). What is left:
+does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`,
+both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
+133525 flipped on neither tree this time, nor in isolation: its two
+external flips (seam 26's count of 21) depend on run order. What is left:
 
 - 11 are not plans: `tests/optimization/test_join_upgrade.py` builds CTEs
   by hand to test the rule (9 new-CTE, 2 external). They go with the
@@ -269,6 +270,8 @@ flipping on either tree, in isolation or under xdist). What is left:
   hand-built CTEs.
 - 1 planned: `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`,
   which ungates pushdown on purpose.
+- Filters seed 133525 (2 external) when the run order makes it flip; SQL
+  byte-identical to `main` when it does.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
