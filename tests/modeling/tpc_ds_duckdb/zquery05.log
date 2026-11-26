@@ -64,7 +64,7 @@ WHERE
 ),
 busy as (
 SELECT
-    \"macho\".\"s_channel\" as \"___entity_rows_arm_0_u_channel\",
+    \"kaput\".\"s_channel\" as \"___entity_rows_arm_0_u_channel\",
     \"macho\".\"s_channel_dim_text_id\" as \"___entity_rows_arm_0_u_entity\",
     cast(sum(\"kaput\".\"s_ext_sales_price\") as numeric(15,2)) as \"___entity_rows_arm_0_u_sales\",
     cast(sum(\"kaput\".\"s_net_profit\") as numeric(15,2)) as \"___entity_rows_arm_0_u_profit\"
@@ -164,7 +164,7 @@ WHERE
 ),
 vacuous as (
 SELECT
-    \"cheerful\".\"s_channel\" as \"___entity_rows_arm_1_u_channel\",
+    \"abundant\".\"s_channel\" as \"___entity_rows_arm_1_u_channel\",
     \"cheerful\".\"s_return_channel_dim_text_id\" as \"___entity_rows_arm_1_u_entity\",
     cast((0 - sum(\"abundant\".\"s_return_net_loss\")) as numeric(15,2)) as \"___entity_rows_arm_1_u_profit\",
     cast(sum(\"abundant\".\"s_return_amount\") as numeric(15,2)) as \"___entity_rows_arm_1_u_returns\"

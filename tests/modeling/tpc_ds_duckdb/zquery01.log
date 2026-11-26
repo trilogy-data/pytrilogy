@@ -1,5 +1,5 @@
 query_id = "01"
-gen_length = 1394
+gen_length = 1390
 preql_size = 419
 comp_size = 689
 generated_sql = """
@@ -7,8 +7,8 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"ss_return_store_store\".\"S_STORE_SK\" as \"ss_return_store_sk\",
     \"ss_store_returns\".\"SR_CUSTOMER_SK\" as \"ss_return_customer_sk\",
+    \"ss_store_returns\".\"SR_STORE_SK\" as \"ss_return_store_sk\",
     sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"total_returns\"
 FROM
     \"memory\".\"store_returns\" as \"ss_store_returns\"

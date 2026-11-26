@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 3655
+gen_length = 3643
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
@@ -34,7 +34,7 @@ GROUP BY
     1),
 sparkling as (
 SELECT
-    \"ss_customer_customers\".\"C_CUSTOMER_SK\" as \"ss_customer_sk\",
+    \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_sk\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -43,7 +43,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_current_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and exists (select 1 from cooperative where cooperative.\"my_customers_my_cust_id\" is not distinct from \"ss_customer_customers\".\"C_CUSTOMER_SK\")
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and exists (select 1 from cooperative where cooperative.\"my_customers_my_cust_id\" is not distinct from \"ss_store_sales\".\"SS_CUSTOMER_SK\")
 ),
 abhorrent as (
 SELECT
