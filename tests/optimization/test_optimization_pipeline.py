@@ -20,7 +20,6 @@ FLAGS = {
     "push_filtered_aggregate_input",
     "push_filtered_count_into_join",
     "push_semi_join_into_aggregate",
-    "upgrade_condition_joins",
     "upgrade_outer_key_set_equivalence",
     "simplify_null_safe_joins",
     "strip_redundant_not_null",
@@ -106,37 +105,19 @@ def test_pipeline_runs_datasource_inlining_before_join_hoist():
 
 
 def test_pipeline_orders_union_dim_pushdown_after_initial_pushdown():
-    with _optimization_flags(
-        predicate_pushdown=True,
-        upgrade_condition_joins=True,
-        union_dim_pushdown=True,
-    ):
+    with _optimization_flags(predicate_pushdown=True, union_dim_pushdown=True):
         plan = build_optimization_rule_plan()
 
     by_name = {phase.name: phase for phase in plan}
     assert list(by_name) == [
         "predicate_pushdown.initial",
-        "upgrade_join_on_guards.early",
         "union_dim_pushdown",
         "predicate_pushdown.remove",
         "collapse_single_parent.passthrough_after_pushdown",
-        "upgrade_join_on_guards.final",
-        "predicate_pushdown.after_final_upgrade",
-        "predicate_pushdown.remove.after_join_upgrades",
-        "prune_preserved_join_keys",
     ]
-    assert by_name["union_dim_pushdown"].depends_on == (
-        "predicate_pushdown.initial",
-        "upgrade_join_on_guards.early",
-    )
+    assert by_name["union_dim_pushdown"].depends_on == ("predicate_pushdown.initial",)
     assert by_name["predicate_pushdown.remove"].depends_on == (
         "predicate_pushdown.initial",
-    )
-    assert by_name["predicate_pushdown.after_final_upgrade"].depends_on == (
-        "upgrade_join_on_guards.final",
-    )
-    assert by_name["predicate_pushdown.after_final_upgrade"].refires_after == (
-        "upgrade_join_on_guards.final",
     )
 
 
@@ -160,7 +141,6 @@ def test_pipeline_merges_group_by_once_before_pushdown():
 
 def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
     with _optimization_flags(
-        upgrade_condition_joins=True,
         upgrade_outer_key_set_equivalence=True,
         order_inner_joins_first=True,
     ):
@@ -170,7 +150,6 @@ def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
     assert names[-2:] == ["prune_preserved_join_keys", "order_inner_joins_first"]
     by_name = {phase.name: phase for phase in plan}
     assert by_name["order_inner_joins_first"].depends_on == (
-        "upgrade_join_on_guards.final",
         "upgrade_outer_key_set_equivalence",
     )
 

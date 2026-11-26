@@ -18,7 +18,8 @@ counterexample showing the guard is needed.
   (`later_full_pads_inner_key`). Judging the WHERE by the nullability that
   very WHERE narrowed would strip the only thing keeping `x` non-null
   (`own_filter_strip_unsound`).
-- `full_to_left`, `left_to_inner`: `UpgradeJoinOnGuards` makes an outer join
+- `full_to_left`, `left_to_inner`: the planner's join narrowing
+  (`grain_utility.downgrade_join_for_proofs`) makes an outer join
   stricter when the WHERE fails on every row the stricter join drops. A
   disjunction forces a side when every disjunct proves some column of that
   side, not necessarily the same one (`or_forces_side`); one disjunct with
@@ -219,7 +220,7 @@ theorem own_filter_strip_unsound :
     (∀ j ∈ narrowed, j.view 0 ≠ none) ∧ narrowed.length = 0 ∧ (keepB (fun _ => true) js).length = 1 := by
   decide
 
-/-! ## `UpgradeJoinOnGuards` -/
+/-! ## Join narrowing (`grain_utility.downgrade_join_for_proofs`) -/
 
 /-- The FULL join's right-only rows are padded on the left. -/
 theorem rightOnly_left_padded (on : Row → Row → Bool) (L R : List Row) :

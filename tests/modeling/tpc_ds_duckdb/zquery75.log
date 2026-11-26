@@ -1,5 +1,5 @@
 query_id = "75"
-gen_length = 7498
+gen_length = 7177
 preql_size = 1517
 comp_size = 2947
 generated_sql = """
@@ -120,19 +120,19 @@ friendly as (
 SELECT
     \"abhorrent\".\"curr_curr_amt\" as \"curr_curr_amt\",
     \"abhorrent\".\"curr_curr_cnt\" as \"curr_curr_cnt\",
+    \"abhorrent\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"abhorrent\".\"curr_i_category_id\" as \"curr_i_category_id\",
+    \"abhorrent\".\"curr_i_class_id\" as \"curr_i_class_id\",
+    \"abhorrent\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
+    \"juicy\".\"prev_i_brand_id\" as \"prev_i_brand_id\",
+    \"juicy\".\"prev_i_category_id\" as \"prev_i_category_id\",
+    \"juicy\".\"prev_i_class_id\" as \"prev_i_class_id\",
+    \"juicy\".\"prev_i_manufact_id\" as \"prev_i_manufact_id\",
     \"juicy\".\"prev_prev_amt\" as \"prev_prev_amt\",
-    \"juicy\".\"prev_prev_cnt\" as \"prev_prev_cnt\",
-    coalesce(\"abhorrent\".\"curr_i_brand_id\",\"juicy\".\"prev_i_brand_id\") as \"curr_i_brand_id\",
-    coalesce(\"abhorrent\".\"curr_i_brand_id\",\"juicy\".\"prev_i_brand_id\") as \"prev_i_brand_id\",
-    coalesce(\"abhorrent\".\"curr_i_category_id\",\"juicy\".\"prev_i_category_id\") as \"curr_i_category_id\",
-    coalesce(\"abhorrent\".\"curr_i_category_id\",\"juicy\".\"prev_i_category_id\") as \"prev_i_category_id\",
-    coalesce(\"abhorrent\".\"curr_i_class_id\",\"juicy\".\"prev_i_class_id\") as \"curr_i_class_id\",
-    coalesce(\"abhorrent\".\"curr_i_class_id\",\"juicy\".\"prev_i_class_id\") as \"prev_i_class_id\",
-    coalesce(\"abhorrent\".\"curr_i_manufact_id\",\"juicy\".\"prev_i_manufact_id\") as \"curr_i_manufact_id\",
-    coalesce(\"abhorrent\".\"curr_i_manufact_id\",\"juicy\".\"prev_i_manufact_id\") as \"prev_i_manufact_id\"
+    \"juicy\".\"prev_prev_cnt\" as \"prev_prev_cnt\"
 FROM
     \"abhorrent\"
-    LEFT OUTER JOIN \"juicy\" on \"abhorrent\".\"curr_i_brand_id\" is not distinct from \"juicy\".\"prev_i_brand_id\" AND \"abhorrent\".\"curr_i_category_id\" is not distinct from \"juicy\".\"prev_i_category_id\" AND \"abhorrent\".\"curr_i_class_id\" is not distinct from \"juicy\".\"prev_i_class_id\" AND \"abhorrent\".\"curr_i_manufact_id\" is not distinct from \"juicy\".\"prev_i_manufact_id\")
+    INNER JOIN \"juicy\" on \"abhorrent\".\"curr_i_brand_id\" is not distinct from \"juicy\".\"prev_i_brand_id\" AND \"abhorrent\".\"curr_i_category_id\" is not distinct from \"juicy\".\"prev_i_category_id\" AND \"abhorrent\".\"curr_i_class_id\" is not distinct from \"juicy\".\"prev_i_class_id\" AND \"abhorrent\".\"curr_i_manufact_id\" is not distinct from \"juicy\".\"prev_i_manufact_id\")
 SELECT
     2001 as \"prev_year\",
     2002 as \"year_\",

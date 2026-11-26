@@ -10,7 +10,7 @@ TPC-H q13 shape (reference: customer LEFT JOIN orders ON ... AND comment NOT LIK
 
 The first-class `not like` was treated as a plain null-propagating predicate, so
 the disjoint-pushdown lifted it into a WHERE above the partial-FK OUTER join (and
-UpgradeJoinOnGuards downgraded LEFT→INNER), dropping customer 3. The fix suppresses
+the WHERE narrowed LEFT→INNER), dropping customer 3. The fix suppresses
 that pushdown when the group key is only partially covered by the filter content's
 source, falling back to the null-safe CASE-WHEN aggregate form that preserves
 zero-match entities — matching the equivalent `not (x like y)` form.

@@ -1,5 +1,5 @@
 query_id = "35"
-gen_length = 8919
+gen_length = 8944
 preql_size = 2381
 comp_size = 1745
 generated_sql = """
@@ -41,12 +41,12 @@ GROUP BY
 protective as (
 SELECT
     \"customer_current_address_customer_address\".\"CA_STATE\" as \"customer_current_address_state\",
+    \"customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\" as \"customer_current_demographics_sk\",
     \"customer_current_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"customer_current_demographics_college_dependent_count\",
     \"customer_current_demographics_customer_demographics\".\"CD_DEP_COUNT\" as \"customer_current_demographics_dependent_count\",
     \"customer_current_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\" as \"customer_current_demographics_employed_dependent_count\",
     \"customer_current_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_current_demographics_gender\",
     \"customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_current_demographics_marital_status\",
-    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" as \"customer_current_demographics_sk\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"

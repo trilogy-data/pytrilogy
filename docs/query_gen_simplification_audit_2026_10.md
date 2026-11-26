@@ -2515,6 +2515,44 @@ election, not the padded fallback.
     data to one would pin it there too. Suite: the same 25
     credential-bound failures as `main`.
 
+29. **`UpgradeJoinOnGuards` is deleted (landed; handoff 2.1 step 4 closed
+    but for the key-set rules).**
+    - **What went.** The rule (`join_upgrade.py`, about 460 lines: the
+      per-CTE `_downgrade`, the consumer channel `_external_forced_map`,
+      `_lineage_proofs`, `_blocked_partials`), its early (`left_only`) and
+      final phases, and the `upgrade_condition_joins` flag. Its one other
+      export, `prune_preserved_join_keys`, moved to `preserved_join_keys.py`.
+      The pushdown phases that existed for it went too:
+      `predicate_pushdown.after_final_upgrade` (a refire once the final pass
+      had made a consumer's join INNER) and
+      `predicate_pushdown.remove.after_join_upgrades`, with the
+      `_defers_to_join_upgrade` hold that kept a redundant WHERE atom on a
+      CTE with an outer join so the rule could read it. That atom is now
+      removed by the first remove pass, and the plan's fixpoint reruns
+      pushdown when a later phase changes something.
+    - **What it still flipped.** Seam 28's census left 14 flips: 11 in
+      hand-built CTE tests of the rule itself (deleted with it), the 2 of
+      `test_window_expression_join` and the ungated-pushdown test. The
+      window test's flip lands on the final merge only after the optimizer
+      inlines the customers scan into it and pushes `customers.region is
+      not null` there; generated alone, `main` renders that FULL as well.
+      Both keep their rows; the FULL stays.
+    - **`SimplifyNullSafeJoins`, re-measured.** It still changes a join in
+      89 tests, so it stays.
+
+    Gates, against `33753c9`: corpus (204 statements) 0 moved. Suite capture
+    (`sqlcap`, `-n 4`): 1,533 tests moved, 1,389 by column or ON-pair order
+    alone. A rerun of the three largest files on each tree shows that order
+    is run-dependent (`main` against itself moves 1,041 of their tests
+    between runs, and of the 176 cross-tree moves the 19 beyond line order
+    reverse direction between runs). What is deterministic: the 3 statements
+    above narrow less; `keyed_class_beside_trees` (6) and others drop a
+    redundant `tree_id is not null` the deferral kept; the union-dim
+    pushdown merged-fact tests plan one join fewer; the predrop-chain cells
+    render the same SQL with and without the remaining join flag. Every
+    moved test's rows pass. Suite: the same 25 credential-bound failures as
+    `main`.
+
 ## Gate used
 
 ```

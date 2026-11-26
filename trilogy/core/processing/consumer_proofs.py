@@ -2,9 +2,8 @@
 
 A WHERE or HAVING the planner places on a node above a merge rejects the
 merge's padded rows just as the merge's own WHERE would, wherever it reads a
-column the merge supplies alone. The optimizer found these only after pushing
-the filter down (`UpgradeJoinOnGuards`); here the planner hands each merge
-what every one of its consumers rejects.
+column the merge supplies alone, so the planner hands each merge what every
+one of its consumers rejects.
 
 A proof passes a node only where rows pass it unchanged: a plain select or
 filter, a merge (a MULTISELECT align's included), or a group that is not a
@@ -244,8 +243,7 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
 def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[str]:
     """Add what a proven value ``node`` computes per row proves of its
     inputs: non-null, its NULL-strict arguments are too (``v <- c / nullif(m
-    - 5, 0)`` proves ``m``). The optimizer read these off the CTE that
-    renders the value (`_lineage_proofs`)."""
+    - 5, 0)`` proves ``m``)."""
     resolved = node.resolve()
     known = {c.address: c for c in resolved.output_concepts}
     out = set(addresses)

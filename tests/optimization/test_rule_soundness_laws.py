@@ -91,7 +91,6 @@ FLAGS = ["returned", "small"]
 
 RULES = [
     "strip_redundant_not_null",
-    "upgrade_condition_joins",
     "upgrade_outer_key_set_equivalence",
     "predicate_pushdown",
     "datasource_inlining",

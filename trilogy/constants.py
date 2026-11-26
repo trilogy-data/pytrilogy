@@ -65,7 +65,6 @@ class Optimizations:
     push_filtered_aggregate_input: bool = True
     push_filtered_count_into_join: bool = True
     push_semi_join_into_aggregate: bool = True
-    upgrade_condition_joins: bool = True
     upgrade_outer_key_set_equivalence: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
