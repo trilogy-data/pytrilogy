@@ -265,6 +265,13 @@ PADDED_SPECIES = (
             "select species where city = 'A' and bucket = 'Same' order by species;",
             [("oak",), ("pine",)],
         ),
+        (
+            (
+                "select upper(species) as s where city = 'A' and species = 'ash'"
+                " and bucket = 'Other';"
+            ),
+            [("ASH",)],
+        ),
     ],
 )
 def test_pinned_filter_on_padded_species(query: str, expected: list[tuple]):

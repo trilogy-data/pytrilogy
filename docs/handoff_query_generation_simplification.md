@@ -246,28 +246,32 @@ the full harvest, and the optimizer's `proves_key` too. The FULL arm now
 does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`,
 both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
 133525 flipped on neither tree this time, nor in isolation: its two
-external flips (seam 26's count of 21) depend on run order. What is left:
+external flips (seam 26's count of 21) depend on run order.
+
+Seam 28 settled the grain-pin question: a pinned value is NULL off its
+anchors' rows, as a property is without its key, so the planner reads
+`grain_pin(expr, anchors)` as NULL-strict on its anchors, as the optimizer
+always did (`consumer_proofs._evaluated_at_a_grain`). What had blocked it
+was a wrong-results bug on `main`, not the pin: a key-tuple proof forced
+any side that binds the key partially but for a lookup keyed by it, so an
+unnest side (a species with an empty array has no row there) was INNER
+joined under `species != 'oak'`, dropping another species' trees. The arm
+now forces only a side holding every key value (`_partial_keys`). Census:
+15 flips to 14 (pushed 3 to 2). What is left:
 
 - 11 are not plans: `tests/optimization/test_join_upgrade.py` builds CTEs
   by hand to test the rule (9 new-CTE, 2 external). They go with the
-  rule's LEFT/RIGHT arms, not before.
-- 3 pushed flips: scoped join expression keys 2, grain-pin merged
-  species 1. The scoped join's flip (`test_window_expression_join`) is not
-  a NULL rejection: the final RIGHT JOIN keeps an `uneven` row only where
-  its `customers_rnk` is a customer's rank, and a row padded on the
-  customers side carries a rank no customer has. The optimizer reaches it
-  by pushing `customers.region is not null` onto the customers scan it
-  inlines into the sibling merge; planning it needs a value-domain proof
-  (the consumer's join matches only values its complete side holds), which
-  the consumer walk does not have. The grain-pin flip proves the pin's anchor
-  (`tree_id`) through `grain_pin(case ..., tree_id)`, which the optimizer
-  reads as NULL-strict (`NULL_STRICT_FUNCTIONS`) while it renders as
-  `(case ...)`, never reading the anchor; the planner refuses the same
-  proof on purpose (`lineage_proofs`, seam 24). Settle whether a pin is
-  NULL on a NULL anchor before planning it. The same proof is the only
-  early (`left_only`) flip the fuzzer makes (2, the merged-axis pin
-  cases); over the suite the early pass flips only `test_join_upgrade`'s
-  hand-built CTEs.
+  rule's LEFT/RIGHT arms, not before. Over the suite the early
+  (`left_only`) pass flips only these.
+- 2 pushed flips, scoped join expression keys
+  (`test_window_expression_join`). Not a NULL rejection: the final RIGHT
+  JOIN keeps an `uneven` row only where its `customers_rnk` is a
+  customer's rank, and a row padded on the customers side carries a rank
+  no customer has. The optimizer reaches it by pushing `customers.region
+  is not null` onto the customers scan it inlines into the sibling merge;
+  planning it needs a value-domain proof (the consumer's join matches
+  only values its complete side holds), which the consumer walk does not
+  have.
 - 1 planned: `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`,
   which ungates pushdown on purpose.
 - Filters seed 133525 (2 external) when the run order makes it flip; SQL

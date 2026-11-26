@@ -420,17 +420,11 @@ def _partial_addresses(source: GrainSource) -> set[str]:
     return {concept.address for concept in source.partial_concepts}
 
 
-def _partial_lookup_keys(sources: list[GrainSource], keys: set[str]) -> set[str]:
-    """The `~` keys of a side that is a lookup keyed by them (notes by
-    customer): the members it lacks are the other side's own rows, not
-    extension rows, so a non-null key proves no match there."""
-    out: set[str] = set()
-    for source in sources:
-        grain = set(source.grain.components)
-        partial = keys & _partial_addresses(source)
-        if partial and grain and grain <= keys:
-            out |= partial
-    return out
+def _partial_keys(sources: list[GrainSource], keys: set[str]) -> set[str]:
+    """The keys a side binds partially (a `~` scan, an unnest dropping empty
+    arrays): it lacks values the other side holds, so a non-null key proves
+    no match there (`Rewrite.key_proof_keeps_lookup_gap`)."""
+    return {k for source in sources for k in keys & _partial_addresses(source)}
 
 
 def _opaque_addresses(sources: list[GrainSource]) -> set[str]:
@@ -749,10 +743,8 @@ def downgrade_join_for_proofs(
     whose proof holds is kept, both forced is INNER. A side-only column
     bound partially or opaquely proves nothing (``_unprovable_addresses``):
     a value the region domain carries is partial on the solid stream, and a
-    WHERE over it keeps the domain's rows. The key tuple still forces a
-    side through a `~` key: a span the plan does not extend has no
-    extension row to keep. A `~` lookup keyed by the span is not forced:
-    the rows it lacks are the other side's (`Rewrite.key_proof_keeps_lookup_gap`).
+    WHERE over it keeps the domain's rows. The key tuple forces a side only
+    where it binds every key completely (`_partial_keys`).
 
     ``side_proofs`` and ``or_groups`` are the full harvest (``IS NOT NULL``
     included). They prove a side only through a column no other dataset of
@@ -791,7 +783,7 @@ def downgrade_join_for_proofs(
             [],
             left_only,
             left_keys,
-            _partial_lookup_keys(left_sources, left_keys),
+            _partial_keys(left_sources, left_keys),
         )
         or _side_forced(
             side_proofs | proofs,
@@ -804,7 +796,7 @@ def downgrade_join_for_proofs(
             side_proofs, or_groups, left_exclusive, set(), _opaque_addresses(streamed)
         )
         or _key_tuple_forced(
-            side_proofs, left_keys, _partial_lookup_keys(left_sources, left_keys)
+            side_proofs, left_keys, _partial_keys(left_sources, left_keys)
         )
         or _keys_force(key_proofs, join, streamed, final_datasets, key_sources)
     )
@@ -814,7 +806,7 @@ def downgrade_join_for_proofs(
             [],
             right_only,
             right_keys,
-            _partial_lookup_keys([join.right], right_keys),
+            _partial_keys([join.right], right_keys),
         )
         or _side_forced(
             side_proofs | proofs, or_groups, right_exclusive, set(), right_unprovable
@@ -827,7 +819,7 @@ def downgrade_join_for_proofs(
             _opaque_addresses([join.right]),
         )
         or _key_tuple_forced(
-            side_proofs, right_keys, _partial_lookup_keys([join.right], right_keys)
+            side_proofs, right_keys, _partial_keys([join.right], right_keys)
         )
         or _keys_force(key_proofs, join, [join.right], final_datasets, key_sources)
     )
