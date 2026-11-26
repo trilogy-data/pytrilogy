@@ -881,14 +881,15 @@ def _reads_host_beside_rows(
 def _content_hosted(
     bucket: GroupBucket, chosen: tuple[str, ...], scope: "_PlacementScope"
 ) -> bool:
-    """Every filtered value's content is a host's own aggregate (`(sum(x) by
-    fc) ? ...` over a host by `fc`): the filter's rows are that host's groups,
-    which passed the atom."""
+    """Every filtered value's content is a host's own aggregate or key
+    (`(sum(x) by fc) ? ...` or `fc ? ...` over a host by `fc`): the filter's
+    rows are that host's groups, which passed the atom
+    (`Filters.hosted_key_passed_gate`)."""
     hosted = {
         m
         for h in chosen
         if h in scope.buckets and _emits_group_by(h, scope.buckets)
-        for m in scope.buckets[h].primary_members
+        for m in (*scope.buckets[h].primary_members, *scope.buckets[h].grain_components)
     }
     contents = [
         lineage.content

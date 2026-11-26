@@ -750,4 +750,75 @@ theorem filter_rows_keyed_by_outputs :
       (trees.any fun t => filtered.any fun f => t.2 == f.2 && t.1 != f.1) = true := by
   decide
 
+/-! ## A gate that holds on NULL, restated over padding (0.3.543)
+
+An atom that holds on an absent group (`sum(height) by tree_form is null`)
+passes wherever a join pads the side it reads its value off: the padded row
+looks like a group that has no rows. So a side that applied such an atom is
+the population, and a filter read off the host's own groups needs no
+restatement. -/
+
+/-- `select species, (sum(height) by species) ? species = 'Acer' as v0, tag ?
+(species in (species ? max(height) by city > 3) or city = 'Z') as v1 where
+sum(height) by tree_form is null`: only the formless Ulmus is unmeasured, so
+it alone is kept. FINAL restated the gate on the tags, reading its value off
+the gated species joined RIGHT: every other species was padded there, read
+NULL, and passed (`padding_passes_a_restated_gate`, 226656). Groups are
+`(species, sum)`. -/
+theorem padding_passes_a_restated_gate :
+    let groups : List (Nat × Option Nat) := [(0, some 10), (1, some 5), (2, none), (3, some 2)]
+    let kept := groups.filter (·.2.isNone)
+    let padded k := (kept.lookup k).join
+    kept.map (·.1) = [2] ∧
+      (groups.filter fun g => (padded g.1).isNone).map (·.1) = [0, 1, 2, 3] := by
+  decide
+
+/-- `select city, tree_form, city ? not (city in (city ? height is not null))
+as v0, (count(tree_id) by city, tree_form) ? city in ('B') as v1 where (tag in
+(<empty set>) or min(height) by city, tree_form is null)`: both filters are
+read off the gated `(city, tree_form)` groups, so their rows passed the gate.
+Taking `v0`'s content `city` for a row column, FINAL restated the gate over a
+FULL join with the trees and kept every padded group
+(`hosted_key_passed_gate`, 217166). Groups are `(city, form, min)`. -/
+theorem hosted_key_passed_gate :
+    let groups : List (Nat × Nat × Option Nat) :=
+      [(0, 0, some 3), (0, 1, none), (1, 0, some 7), (1, 2, some 2)]
+    let kept := groups.filter (·.2.2.isNone)
+    let shown := kept.map fun g => (g.1, g.2.1)
+    (shown.filter fun k => (kept.find? fun g => (g.1, g.2.1) == k).isSome) = [(0, 1)] ∧
+      (groups.filter fun g =>
+        ((kept.find? fun h => h.1 == g.1 && h.2.1 == g.2.1).bind (·.2.2)).isNone).length = 4 := by
+  decide
+
+/-- `select coalesce(tree_form, 'none') as form0, city ? count(tree_id) by
+city > 5 or city in (city ? max(height) by species < 4) as v0`: the set is
+both cities, so each tree shows its own form and city. The filter was read
+off the count by city alone and the form off a scan of the species, which
+share no column: FINAL joined them on nothing and crossed every form with
+every city. Paired on the form's input `species` they meet per tree
+(`derived_key_pairs_on_its_inputs`, 222515). Trees are `(city, species)`;
+species 0 and 1 are broadleaf, 2 has no form, 3 is linden. -/
+theorem derived_key_pairs_on_its_inputs :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let form (s : Nat) : Nat := if s ≤ 1 then 0 else if s == 2 then 1 else 2
+    let paired := (trees.map fun t => (form t.2, t.1)).eraseDups
+    let forms := (trees.map (form ·.2)).eraseDups
+    let cities := (trees.map (·.1)).eraseDups
+    paired.length = 4 ∧ (forms.flatMap fun f => cities.map (f, ·)).length = 6 := by
+  decide
+
+/-- `select tag, species ? species in (species ? sum(height) by * >= 8) as v0
+where min(height) by * < count(tree_id) by city`: the trees are read with the
+all-rows marker and the gates deferred. The marker's grain is the select's,
+`(tag, v0)`; expanded as grain keys, it demanded `v0`, a filter no scan holds,
+so the one scan holding every other column covered nothing and the statement
+raised (`all_rows_marker_is_no_key`, 225484 and 11 more). Columns are `city,
+height, species, tag, tree_id` (0-4) and `v0` (9). -/
+theorem all_rows_marker_is_no_key :
+    let scan : List Nat := [0, 1, 2, 3, 4]
+    let request : List Nat := [0, 1, 2, 3, 4]
+    let marker : List Nat := [3, 9]
+    request.all scan.contains = true ∧ (request ++ marker).all scan.contains = false := by
+  decide
+
 end Trilogy.Filters

@@ -753,6 +753,46 @@ SHAPES = [
             ("B", True, "broadleaf", 7),
         ],
     ),
+    # a filter over the gate's own groups passed it (217166, reduced): only
+    # A's formless Ulmus has no height, and the set of tags is empty
+    (
+        (
+            "select city, tree_form, city ? not (city in (city ? height is not"
+            " null)) as v0, (count(tree_id) by city, tree_form) ? city in ('B')"
+            " as v1 where (tag in (tag ? min(height) by city, species = 10) or"
+            " min(height) by city, tree_form is null);"
+        ),
+        [("A", None, "A", None)],
+    ),
+    # a derived key pairs a filter on its inputs (222515, reduced): Tilia's max
+    # is under 4, so only B's trees show their city
+    (
+        (
+            "select coalesce(tree_form, 'none') as form0, city ? count(tree_id) by"
+            " city > 5 or city in (city ? max(height) by species < 4) as v0;"
+        ),
+        [("broadleaf", "B"), ("broadleaf", None), ("linden", "B"), ("none", None)],
+    ),
+    # a gate that holds on NULL passes no padding (226656, reduced): the
+    # unmeasured Ulmus alone sums to NULL
+    (
+        (
+            "select species, (sum(height) by species) ? species = 'Acer' as v0,"
+            " tag ? (species in (species ? max(height) by city > 3) or city ="
+            " 'Z') as v1 where sum(height) by tree_form is null;"
+        ),
+        [("Ulmus", None, None)],
+    ),
+    # the all-rows marker demands no select column of the scan (225484,
+    # reduced, raised `Could not resolve connections`): only A has more trees
+    # than the shortest height, and its heights sum to 8
+    (
+        (
+            "select tag, species ? species in (species ? sum(height) by * >= 8)"
+            " as v0 where min(height) by * < count(tree_id) by city;"
+        ),
+        [("x", "Acer"), ("x", "Quercus"), ("x", "Ulmus"), ("y", "Acer")],
+    ),
 ]
 
 

@@ -778,14 +778,21 @@ class MergeNode(StrategyNode):
         # their deliberate preservation.
         filtered_ids: set[str] = set()
         if self.preexisting_conditions is not None:
+            from trilogy.core.processing.v4_helper.condition_placement import (
+                holds_on_absent_group,
+            )
+
             rendered = (
                 list(decompose_condition(self.conditions)) if self.conditions else []
             )
+            # a rendered atom that holds on an absent group passes a side's
+            # padding: the side that applied it is the population too
+            # (`Filters.padding_passes_a_restated_gate`)
             request_atoms = [
                 atom
                 for atom in decompose_condition(self.preexisting_conditions)
                 if not any(atom == r for r in rendered)
-            ]
+            ] + [atom for atom in rendered if holds_on_absent_group(atom)]
             for source in final_datasets:
                 applied = row_applied_atoms(source)
                 if any(any(atom == a for a in applied) for atom in request_atoms):

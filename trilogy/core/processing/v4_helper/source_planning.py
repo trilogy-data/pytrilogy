@@ -14,7 +14,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.constants import parent_axis_keys
+from trilogy.core.constants import ALL_ROWS_ADDRESS, parent_axis_keys
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -400,6 +400,10 @@ def _concepts_with_grain_keys(
         # request and force the other arm into its cover (a second assembly
         # axis where the final merge already pairs the arms).
         if is_join_key_group(concept.address, environment):
+            continue
+        # the all-rows marker is no key: its grain is the select's, which may
+        # name columns no scan holds (`Filters.all_rows_marker_is_no_key`)
+        if concept.address == ALL_ROWS_ADDRESS:
             continue
         if (
             concept.address in aggregate_axes
