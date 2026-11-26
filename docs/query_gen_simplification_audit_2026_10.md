@@ -2377,6 +2377,52 @@ election, not the padded fallback.
     Fuzzer 522/522. Suite: the same 25 credential-bound failures as
     `main`.
 
+26. **A relation's sibling nodes are one row set to the consumer walk
+    (landed; handoff 2.1 step 4, pushed channel).**
+    - **Siblings the optimizer fuses were ANDed apart.** Nodes sharing a
+      relation identifier render as one CTE: the identifier fixes their
+      datasources, grain, group keys and condition, and `CTE.__add__`
+      fuses only copies of one grain and condition. A consumer rejecting a
+      column any of them reads rejects the relation's row, and the parent
+      rows under it. `_propagate` ANDed what each sibling passed a shared
+      parent, so a WHERE read off one sibling alone never reached the
+      merge: root partition `attribute_filter` (three regroups of one FULL
+      merge, `state = 'ca'` read off one) and compositions seed 1481 (two
+      keyless merges over the same parents). The optimizer flipped those
+      only once it had fused the siblings into one CTE. Siblings that all
+      pass rows now OR their reads of a parent, then AND with the other
+      relations reading it. Seam 24 measured this as needing the siblings
+      planned as one node; the walk only had to read them as one.
+    - **Measured, not landed: the grain-pin flip.** `bucket = 'Same'` over
+      `bucket <- grain_pin(case ..., tree_id)` proves `tree_id` to the
+      optimizer, since `GRAIN_PIN` is in `NULL_STRICT_FUNCTIONS` ("a value
+      pinned to its anchors exists on their rows only"), and the FULL to
+      the enrichment flips to LEFT. The pin renders as `(case ...)` and
+      never reads its anchor, so on a row whose anchor is NULL the value
+      is computed anyway; the planner refuses the proof (`lineage_proofs`,
+      seam 24). Which is right is a semantics question (is a pinned value
+      NULL off its anchor's rows?), not a narrowing one. The same proof is
+      the only early (`left_only`) flip over the fuzzer (2, the merged-axis
+      pin cases); over the suite the early pass flips only
+      `test_join_upgrade`'s hand-built CTEs.
+    - **Measured, not landed.** Keyed-class trees 4: the planner hands the
+      final FULL `tree_id` as a side proof only (a FULL key renders
+      coalesced), and the optimizer flips it after collapsing the WHERE's
+      select into the merge and narrowing the merge under it first.
+      Scoped join expression keys 2: the consumer's
+      `customers.region is not null` reaches a sibling merge only through
+      the customers scan the optimizer inlines into it. Both need the
+      pushdown's placement planned.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 21 flips (pushed 7, new CTE 9, external 4, planned 1)
+    against 24 on `95e7548` (pushed 10). Pinned at plan time (red on
+    `main`) by `test_planned_join_narrowing::test_a_where_read_off_one_of_a_relations_sibling_nodes_narrows_its_parent`.
+
+    Gates, against `95e7548`: corpus, every file under the four globs
+    (383 files, 208 statements), 0 moved; fuzzer 522/522. Suite: the same
+    25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```
