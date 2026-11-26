@@ -15,7 +15,8 @@ reads its parent's rows before any group, so it rejects on an aggregate the
 parent computed too (`where_reads`). A window, unnest, limit, union or rowset
 boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
-keeps what all of its consumers reject. A column a node computes per row from
+keeps what all of its consumers reject, and passes a parent what any of its
+nodes reads off it. A column a node computes per row from
 its parent's (``x <- y is not null``) passes what a proof drawn through its
 lineage rejects on those (`computed_inputs`); a proof on a value the node
 computes itself reaches its NULL-strict inputs (`lineage_proofs`).
