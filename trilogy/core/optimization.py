@@ -313,7 +313,7 @@ class _Phase:
     reason: str = ""
 
 
-JOIN_UPGRADES = ("upgrade_join_on_guards.final", "upgrade_outer_key_set_equivalence")
+JOIN_UPGRADES = ("upgrade_join_on_guards", "upgrade_outer_key_set_equivalence")
 
 
 def _pushdown(c: _PlanContext) -> OptimizationRule:
@@ -358,21 +358,11 @@ _PHASES: tuple[_Phase, ...] = (
         ),
     ),
     _Phase(
-        "upgrade_join_on_guards.early",
-        lambda o: o.upgrade_condition_joins,
-        lambda c: UpgradeJoinOnGuards(left_only=True),
-        depends_on=("predicate_pushdown.initial",),
-        reason=(
-            "makes guarded dim joins INNER before union dim pushdown "
-            "tries to match them"
-        ),
-    ),
-    _Phase(
         "union_dim_pushdown",
         lambda o: o.union_dim_pushdown,
         lambda c: UnionDimPushdown(),
-        depends_on=("predicate_pushdown.initial", "upgrade_join_on_guards.early"),
-        reason="matches settled consumer predicates and INNER dim joins",
+        depends_on=("predicate_pushdown.initial",),
+        reason="matches settled consumer predicates",
     ),
     _Phase(
         "predicate_pushdown.remove",
@@ -414,7 +404,7 @@ _PHASES: tuple[_Phase, ...] = (
         ),
     ),
     _Phase(
-        "upgrade_join_on_guards.final",
+        "upgrade_join_on_guards",
         lambda o: o.upgrade_condition_joins,
         lambda c: UpgradeJoinOnGuards(),
         depends_on=("predicate_pushdown.remove",),
@@ -424,8 +414,8 @@ _PHASES: tuple[_Phase, ...] = (
         "predicate_pushdown.after_final_upgrade",
         lambda o: o.predicate_pushdown and o.upgrade_condition_joins,
         _pushdown,
-        depends_on=("upgrade_join_on_guards.final",),
-        refires_after=("upgrade_join_on_guards.final",),
+        depends_on=("upgrade_join_on_guards",),
+        refires_after=("upgrade_join_on_guards",),
         reason=(
             "HAVING-into-group push is blocked while a consumer "
             "outer-joins the group (nullable parent); rerun once the "
@@ -450,7 +440,7 @@ _PHASES: tuple[_Phase, ...] = (
         "upgrade_outer_key_set_equivalence",
         lambda o: o.upgrade_outer_key_set_equivalence,
         lambda c: UpgradeOuterFromKeySetEquivalence(domain_graph=c.domain_graph),
-        depends_on=("upgrade_join_on_guards.final",),
+        depends_on=("upgrade_join_on_guards",),
         reason=(
             "needs upstream filters in their final position so the "
             "accumulated-filter signatures on each side are stable"

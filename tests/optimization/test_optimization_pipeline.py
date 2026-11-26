@@ -116,27 +116,23 @@ def test_pipeline_orders_union_dim_pushdown_after_initial_pushdown():
     by_name = {phase.name: phase for phase in plan}
     assert list(by_name) == [
         "predicate_pushdown.initial",
-        "upgrade_join_on_guards.early",
         "union_dim_pushdown",
         "predicate_pushdown.remove",
         "collapse_single_parent.passthrough_after_pushdown",
-        "upgrade_join_on_guards.final",
+        "upgrade_join_on_guards",
         "predicate_pushdown.after_final_upgrade",
         "predicate_pushdown.remove.after_join_upgrades",
         "prune_preserved_join_keys",
     ]
-    assert by_name["union_dim_pushdown"].depends_on == (
-        "predicate_pushdown.initial",
-        "upgrade_join_on_guards.early",
-    )
+    assert by_name["union_dim_pushdown"].depends_on == ("predicate_pushdown.initial",)
     assert by_name["predicate_pushdown.remove"].depends_on == (
         "predicate_pushdown.initial",
     )
     assert by_name["predicate_pushdown.after_final_upgrade"].depends_on == (
-        "upgrade_join_on_guards.final",
+        "upgrade_join_on_guards",
     )
     assert by_name["predicate_pushdown.after_final_upgrade"].refires_after == (
-        "upgrade_join_on_guards.final",
+        "upgrade_join_on_guards",
     )
 
 
@@ -170,7 +166,7 @@ def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
     assert names[-2:] == ["prune_preserved_join_keys", "order_inner_joins_first"]
     by_name = {phase.name: phase for phase in plan}
     assert by_name["order_inner_joins_first"].depends_on == (
-        "upgrade_join_on_guards.final",
+        "upgrade_join_on_guards",
         "upgrade_outer_key_set_equivalence",
     )
 

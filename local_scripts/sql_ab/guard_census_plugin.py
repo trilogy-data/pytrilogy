@@ -4,11 +4,10 @@ channel it needs.
     GUARD_CENSUS=/tmp/guard.jsonl PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p guard_census_plugin tests ...
 
-Each flip is decided again twice: without the consumer proofs
-(`_external_forced_map`), and without them on the CTE's condition as planned
-(before any optimizer phase ran). `channel` is the weakest that still flips:
-`planned` (the CTE's own planned WHERE), `pushed` (a WHERE the optimizer put
-there) or `external` (a consumer's rejection).
+Each flip is decided again on the CTE's condition as planned (before any
+optimizer phase ran). `channel` is `planned` when that alone flips it (the
+planner should have), `pushed` when it needs a WHERE the optimizer put there,
+and `new_cte` for a CTE the optimizer built.
 """
 
 from __future__ import annotations
@@ -60,13 +59,11 @@ def pytest_configure(config) -> None:
     def counterfactual(self, cte, inverse_map, condition) -> list:
         before = _types(cte)
         saved_cond = cte.condition
-        self._external_proofs = lambda *_: set()
         try:
             cte.condition = condition
             original(self, cte, inverse_map)
             return _types(cte)
         finally:
-            del self._external_proofs
             cte.condition = saved_cond
             _restore(cte, before)
 
@@ -74,7 +71,6 @@ def pytest_configure(config) -> None:
         if not isinstance(cte, CTE):
             return original(self, cte, inverse_map)
         before = _types(cte)
-        no_ext = counterfactual(self, cte, inverse_map, cte.condition)
         planned_known = id(cte) in _planned
         planned = (
             counterfactual(self, cte, inverse_map, _planned[id(cte)])
@@ -88,16 +84,13 @@ def pytest_configure(config) -> None:
                 continue
             if planned is not None and planned[idx] == a:
                 channel = "planned"
-            elif no_ext[idx] == a:
-                channel = "pushed" if planned_known else "new_cte"
             else:
-                channel = "external"
+                channel = "pushed" if planned_known else "new_cte"
             with open(path, "a") as fh:
                 fh.write(
                     json.dumps(
                         {
                             "test": _current[0],
-                            "left_only": self.left_only,
                             "cte": cte.name,
                             "right": cte.joins[idx].right.name,
                             "from": b.value,

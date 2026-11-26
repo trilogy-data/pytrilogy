@@ -995,13 +995,6 @@ def test_column_reads_skip_a_source_outside_the_from_scope():
     assert cte.column_reads(key) == [(key, "a")]
 
 
-def test_a_coalesced_key_carries_no_rejection_to_one_producer():
-    from trilogy.core.optimizations.join_upgrade import _renders_exclusively_from
-
-    cte, left, _ = _outer_key_cte()
-    assert not _renders_exclusively_from(cte, left.address, {"a"})
-
-
 def test_filtered_count_reader_follows_column_reads():
     from trilogy.core.optimizations.filtered_aggregate import _reads_source
 

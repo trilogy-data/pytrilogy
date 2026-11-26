@@ -1,9 +1,10 @@
 # Query-generation simplification: remaining work
 
 What is left of the 2026-08 simplification audit. Everything that landed has
-been removed from this file; the git history is the record of that. Three items
-remain (2.3(b), 2.1 step 4, 2.7); the grouping-set TVF (4) is done but for a
-short list of pinned readers. A set of verdicts exists to stop them being re-opened.
+been removed from this file; the git history is the record of that. Two items
+remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 is down to the
+one optimizer pass the house rules keep (seam 28), and the grouping-set TVF (4)
+is done but for a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -103,7 +104,8 @@ it present. 1,080 flips remain, 12 of them planned (5 are `union join` FULLs
 the planner may not re-side once the merge has ordered its sources).
 
 The others rested on conditions the optimizer itself pushed and on
-cross-CTE consumer proofs (`join_upgrade._external_forced_map`). Both are a
+cross-CTE consumer proofs (`join_upgrade._external_forced_map`, deleted in
+seam 28). Both are a
 WHERE or HAVING the planner placed above the merge, so the planner now
 reads them too (seam 15): `consumer_proofs.narrow_for_consumers` hands each
 merge what all of its consumers reject on columns read off it alone, through
@@ -246,37 +248,37 @@ the full harvest, and the optimizer's `proves_key` too. The FULL arm now
 does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`,
 both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
 133525 flipped on neither tree this time, nor in isolation: its two
-external flips (seam 26's count of 21) depend on run order. What is left:
+external flips (seam 26's count of 21) depend on run order.
 
-- 11 are not plans: `tests/optimization/test_join_upgrade.py` builds CTEs
-  by hand to test the rule (9 new-CTE, 2 external). They go with the
-  rule's LEFT/RIGHT arms, not before.
-- 3 pushed flips: scoped join expression keys 2, grain-pin merged
-  species 1. The scoped join's flip (`test_window_expression_join`) is not
-  a NULL rejection: the final RIGHT JOIN keeps an `uneven` row only where
-  its `customers_rnk` is a customer's rank, and a row padded on the
-  customers side carries a rank no customer has. The optimizer reaches it
-  by pushing `customers.region is not null` onto the customers scan it
-  inlines into the sibling merge; planning it needs a value-domain proof
-  (the consumer's join matches only values its complete side holds), which
-  the consumer walk does not have. The grain-pin flip proves the pin's anchor
-  (`tree_id`) through `grain_pin(case ..., tree_id)`, which the optimizer
-  reads as NULL-strict (`NULL_STRICT_FUNCTIONS`) while it renders as
-  `(case ...)`, never reading the anchor; the planner refuses the same
-  proof on purpose (`lineage_proofs`, seam 24). Settle whether a pin is
-  NULL on a NULL anchor before planning it. The same proof is the only
-  early (`left_only`) flip the fuzzer makes (2, the merged-axis pin
-  cases); over the suite the early pass flips only `test_join_upgrade`'s
-  hand-built CTEs.
-- 1 planned: `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`,
-  which ungates pushdown on purpose.
-- Filters seed 133525 (2 external) when the run order makes it flip; SQL
-  byte-identical to `main` when it does.
+Seam 28 measured the rule end to end instead of by flip: with
+`UpgradeJoinOnGuards` turned off, the suite (about 54,300 statements, `-n 4`
+and then serially for every move) changes two plans, and the corpus none.
+Both still return the same rows. A flip is not a plan change: the grain-pin
+flip, for one, is redone by later phases, and the SQL is byte-identical
+without it. The two that move:
 
-So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
-BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay
-until those are planned. Re-run the census
-(`local_scripts/sql_ab/guard_census_plugin.py`) before deleting any of them.
+- `test_scoped_join_expression_keys::test_window_expression_join` (both
+  parsers) keeps `customers FULL JOIN ... WHERE customers.reg is not null`.
+  That WHERE is in the CTE only because pushdown put it there, by inlining the
+  customers scan into the sibling merge. A rewrite on pushed state is what
+  this rule is for. Planning it would need a value-domain proof (the
+  consumer's join matches only values its complete side holds), which the
+  consumer walk does not have.
+- `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
+  pushdown on purpose.
+
+So the channels the planner now owns are deleted: the cross-CTE consumer
+proofs (`_external_forced_map` and its helpers; `consumer_proofs` plans
+them) and the early `left_only` pass before `UnionDimPushdown`. Over the
+suite each fired only on `test_join_upgrade`'s hand-built CTEs (the early
+pass also fired on 2 fuzzer grain-pin cases, whose SQL is unchanged without
+it). What is left is one pass, `upgrade_join_on_guards`, on a CTE's own
+WHERE once pushdown has run: post-multi-node state, which the house rules
+leave to the optimizer. Delete it only if pushdown's placement is ever
+planned. Before that, confirm with the census
+(`local_scripts/sql_ab/guard_census_plugin.py`, now `planned` / `pushed` /
+`new_cte`) and an A/B of the whole suite with the rule turned off, since
+a flip count overstates what the rule moves.
 
 The same holds for `UpgradeOuterFromKeySetEquivalence` (seam 2 of
 `docs/query_gen_simplification_audit_2026_10.md`): 87 firings over the
@@ -383,7 +385,7 @@ them.
   `_interpose_limit_node`, the `condition_utility` predicates, `validate_stack`,
   `select_merge_node`'s `covered_conditions` retry; OPTIMIZED `JoinHoist`,
   `_push_having_into_group_parent`, `UnionDimPushdown`, `_narrow_directionally`,
-  `_external_forced_map`, `OrderInnerJoinsFirst`, `StripRedundantNotNull`,
+  `OrderInnerJoinsFirst`, `StripRedundantNotNull`,
   `_optimization_visit_order`, `lower_full_joins` (MySQL only); RENDER
   `_canonical_render_siblings`, `_aggregate_collapse_safe`,
   `_render_expression_membership_exists`, `_constant_output_group_by_fallback`,
