@@ -774,19 +774,35 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     402 gained.
   - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
     213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
-- **Left after 0.3.543** (seeds 220,000-240,000, each failing on main too):
-  - 217347 (from 200,000-220,000): `select city, species, tree_form,
-    tree_form ? species in (species ? min(height) by tree_form > 8) as v0,
-    avg(min(height)) over (partition by v0) as v1 where count_distinct(tag)
-    by city, tree_form >= 2` returns every tree. The gate is placed on the
-    `(city, species)` aggregate and the root, but the `v0` filter is built off
-    the ungated trees, and its only FINAL partner is the window grouped by
-    `v0`. Without the window FINAL joins the gated aggregate INNER on `(city,
-    species)`, which hides it. Re-applying at FINAL cannot work: FINAL holds
-    no value of the gate. Build the filter off the gated rows.
-  - 235307 (wrong); raises 225740 (recursion, base), 225806 and 237588
-    (keyless joins), 230844 (recursion); invalid 228836 (duplicate CTE
-    alias) and 237225 (nested aggregates on the summary).
+- **Left after 0.3.544** (seeds 240,000-260,000 and older; each fails on
+  main too):
+  - 217347: `select city, species, tree_form, tree_form ? species in (species
+    ? min(height) by tree_form > 8) as v0, avg(min(height)) over (partition
+    by v0) as v1 where count_distinct(tag) by city, tree_form >= 2` returns
+    every tree. The `v0` filter reads the raw rows, and the set it reads is
+    planned standalone (its aggregate reads the WHERE-kept rows), so in the
+    statement's group graph nothing links `v0` to the gated host: neither
+    `_unfiltered_filter_streams` nor a FINAL restatement (FINAL holds no
+    value of the gate) can reach it. With `height > 8` in place of the
+    set's aggregate it is right. Build the filter off the gated rows.
+  - A filter whose condition reads an aggregate is no bridge FINAL widens:
+    `select species, city ? avg(height) by city > 1 as v0, sum(height) by
+    tree_form as v1, count(tree_id) as v2` raises a keyless join (248230;
+    with `city = 'A'` it plans). The filter's node outputs only `city, v0`
+    though it carries `species`, so `_root_lookups` finds no `tree_form` for
+    it. Adding its carries there elects it as the bridge, but FINAL passes
+    only the cover's two aggregates through `_carry_planned_keys`, so the
+    filter is never widened and the join stays keyless.
+  - A derived key needs a pair bridge: `select height > 2 as big, (sum(height)
+    by big) ? min(height) by * != 5 as v0, tree_form ? count(tree_id) by * >
+    8 as v1` raises a keyless join (245208): the `by big` filter and the
+    species-grained one share no column, and only the row stream and the
+    `big` scan together hold both keys. With `city` in place of `big` it
+    plans.
+  - Raises 255107 (keyless join), 259271 (`renders no column`), 225806 and
+    237588 (keyless joins); invalid 240270 and 228836 (a CTE alias read for a
+    column it lacks), 240373, 237225 (nested aggregates on the summary),
+    243768 and 250022 (a column outside the GROUP BY on the summary).
   - A derived key off a peel (`_peeled_key_inputs`) pairs a filter on its
     inputs' keys. 83978, 141488, 146267 and 175744, the older peel leads, are
     still wrong: their key comes off a peel the WHERE gates.
