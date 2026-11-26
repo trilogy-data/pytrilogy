@@ -2980,11 +2980,16 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
 - **`filters` to 240,000** (0.3.543). On main seeds 220,000-240,000 (40,000
   queries) hold 6 wrong answers, 35 raises and 3 invalid statements; the
   round fixes 32 of them (4 wrong answers, 28 raises) and breaks none.
-  - The all-rows marker `gen_root`'s fallback reads the trees with carries
-    the select's grain; expanded as grain keys it demanded a filter no scan
-    holds, and every statement with a set over a `by *` total beside a WHERE
-    gate raised (`all_rows_marker_is_no_key`, 225484 and 11 more; `OPEN`
-    7232, 7739, 13411, 17742, 8532, 39289).
+  Over the full range 0-240,000 (480,000 queries) it fixes 182 (91 seeds):
+  wrong answers 88 to 80, raises 362 to 188, none broken and no summary read
+  lost; joins +1,713 (0.09%), 1,615 of them on statements that failed before
+  and +98 on ones that already passed.
+  - The all-rows marker carries the select's grain; expanded as grain keys
+    it demanded the select's computed columns, which no scan holds, and every
+    statement with a set over a `by *` total beside a WHERE gate raised
+    (`all_rows_marker_is_no_key`, 225484 and 11 more; `OPEN` 7232, 7739,
+    13411, 17742, 8532, 39289). Only its scanned columns expand now, and a
+    dedup under a row count shows the marker a parent hid (130215).
   - A side that applied a gate holding on NULL is the population: FINAL read
     `sum(height) by tree_form is null` off a padded side and passed it
     (`padding_passes_a_restated_gate`, 226656).
