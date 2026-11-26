@@ -781,6 +781,8 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     a WHERE gate's key FINAL needs.
   - 208906 lost its summary read on the branch (no extra scans): the peel a
     set now skips (`peel_skips_a_set`) was what let the summary cover it.
+    So did 7011, 19935, 51558, 53696, 61983 and 161167 over 0-220,000, against
+    402 gained.
   - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
     213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
 - Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main

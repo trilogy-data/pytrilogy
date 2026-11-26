@@ -2977,6 +2977,23 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (47078). 25496 is main's stray WHERE row beside a window, which a limit
     used to hide. 129123 in full still pairs on one column: the filter cannot
     expose its grain keys.
+- **`filters` to 220,000** (0.3.542). On main seeds 200,000-220,000 (40,000
+  queries) hold 12 wrong answers, 26 raises and 1 invalid statement. Over
+  0-220,000 (440,000 queries) the round fixes 13 wrong answers (8 seeds) and
+  breaks none, at 147 fewer joins, 34 fewer scans, 402 more summary reads
+  and 7 lost (none with an extra scan); 443 queries still fail.
+  - A WHERE atom over aggregates at two grains is decided at their union, so
+    a value read at its own grain is backfilled onto the rows
+    (`gate_grain_is_its_atoms`, 190661). A `by *` total,
+    or an atom beside a set, keeps its own grain: widening those fixed 12294,
+    25230, 78425 and 91969 but broke 4617, 48509 and six more.
+  - A WHERE column stays on the rows a select's set reads; a peel joined at
+    FINAL reaches no subselect (`peel_skips_a_set`, 201221).
+  - A filter's rows are one per key it outputs, so it pairs on all of them,
+    not only its grain's (`filter_rows_keyed_by_outputs`, 201879).
+  - 38645, 60455, 70281, 95097 and 97681, wrong on main, answer right too.
+  - Not fixed: 204389 (two filters paired on nothing; treating a filter over
+    its aggregate's groups as rowless broke five seeds), 198442, 217166.
 - **`filters` to 200,000** (0.3.541). On main seeds 180,000-200,000 (40,000
   queries) hold 14 wrong answers, 48 raises and 11 invalid statements; the
   round fixes 30 of them (10 wrong answers, 16 raises, 4 invalid) and breaks
