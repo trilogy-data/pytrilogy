@@ -2468,7 +2468,54 @@ election, not the padded fallback.
     and are not in a serial A/B of the same files. Suite: the same 25
     credential-bound failures as `main`.
 
-28. **The optimizer's consumer channel and early pass are deleted (landed;
+28. **A pinned value is NULL-strict on its anchors; a key proof forces no
+    partial side (landed; handoff 2.1 step 4, pushed channel).**
+    - **The semantics, settled.** A pinned value has no value off its
+      anchors' rows, as a property has none without its key: grain
+      pinning defines a value keyed on the select's keys. The optimizer
+      read `GRAIN_PIN` as NULL-strict all along (`NULL_STRICT_FUNCTIONS`);
+      the planner now does too (`_evaluated_at_a_grain` stops only at
+      `GROUP`). The merged-species `bucket = 'Same'` FULL is planned LEFT.
+    - **The wrong-results bug it had hit.** Seam 24 refused the proof
+      because it dropped `ash` (`test_pinned_filter_on_padded_species`).
+      The pin was not the cause. `downgrade_join_for_proofs` and its
+      directional twin force a side through the key tuple unless
+      `_partial_lookup_keys` names the key, and that named only a side
+      whose grain the keys cover (notes by customer). An unnest binds its
+      parent's key partially at a wider grain: a species with an empty
+      array has no row. So `species = 'ash'`, or `species != 'oak'`,
+      forced the unnested side and the LEFT became INNER: on `main`,
+      `select city, ecoregion_id, count(tree_id) where species != 'oak'`
+      drops the city-B tree of `ash` that the unfiltered query returns as
+      `('B', NULL, 1)`. `Rewrite.key_proof_keeps_lookup_gap` already
+      states the rule for any side lacking key values; `_partial_keys`
+      now applies it to every partial key binding. Nothing in the suite
+      pinned the wider forcing (full suite green with it removed).
+    - **Not done: the render.** A pin still renders as `(expr)`, never
+      reading its anchors, so a row whose anchor is NULL shows the
+      computed value where the semantics say NULL. Guarding it with its
+      anchors (`case when anchor is not null then expr end`) rewrites
+      every pinned value's SQL and needs its own A/B.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 14 flips (new CTE 9, external 2, pushed 2, planned 1)
+    against 15 on `73b3199` (pushed 3). Pinned (each red on `73b3199`):
+    `test_key_proof_partial_side::test_a_key_where_keeps_the_rows_an_unnest_lacks`
+    (both merge spellings), the `species = 'ash'` case of
+    `test_pinned_filter_on_padded_species`, and
+    `test_planned_join_narrowing::test_a_pinned_value_proves_its_anchor`.
+
+    Gates, against `73b3199`: corpus (204 statements) 0 moved; fuzzer
+    522/522. Suite capture (`sqlcap`): about 260 statements moved, almost
+    all `test_relation_rollup_laws` and `test_summary_cover_laws`, plus
+    `test_merge_bridge_filter_only_axis` (2) and the merged-species pin.
+    Each is an INNER becoming LEFT onto an unnest side partial on the
+    key: the bug's shape. Their row oracles pass either way because
+    their data never holds an empty array; extending the relation laws'
+    data to one would pin it there too. Suite: the same 25
+    credential-bound failures as `main`.
+
+29. **The optimizer's consumer channel and early pass are deleted (landed;
     handoff 2.1 step 4).**
     - **Measured end to end, not by flip.** With `UpgradeJoinOnGuards`
       turned off entirely, a suite capture (`sqlcap`, `-n 4`, about 54,300

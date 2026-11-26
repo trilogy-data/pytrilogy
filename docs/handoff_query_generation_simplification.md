@@ -3,7 +3,7 @@
 What is left of the 2026-08 simplification audit. Everything that landed has
 been removed from this file; the git history is the record of that. Two items
 remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 is down to the
-one optimizer pass the house rules keep (seam 28), and the grouping-set TVF (4)
+one optimizer pass the house rules keep (seam 29), and the grouping-set TVF (4)
 is done but for a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
@@ -105,7 +105,7 @@ the planner may not re-side once the merge has ordered its sources).
 
 The others rested on conditions the optimizer itself pushed and on
 cross-CTE consumer proofs (`join_upgrade._external_forced_map`, deleted in
-seam 28). Both are a
+seam 29). Both are a
 WHERE or HAVING the planner placed above the merge, so the planner now
 reads them too (seam 15): `consumer_proofs.narrow_for_consumers` hands each
 merge what all of its consumers reject on columns read off it alone, through
@@ -250,7 +250,19 @@ both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
 133525 flipped on neither tree this time, nor in isolation: its two
 external flips (seam 26's count of 21) depend on run order.
 
-Seam 28 measured the rule end to end instead of by flip: with
+Seam 28 settled the grain-pin question: a pinned value is NULL off its
+anchors' rows, as a property is without its key, so the planner reads
+`grain_pin(expr, anchors)` as NULL-strict on its anchors, as the optimizer
+always did (`consumer_proofs._evaluated_at_a_grain`). What had blocked it
+was a wrong-results bug on `main`, not the pin: a key-tuple proof forced
+any side that binds the key partially but for a lookup keyed by it, so an
+unnest side (a species with an empty array has no row there) was INNER
+joined under `species != 'oak'`, dropping another species' trees. The arm
+now forces only a side holding every key value (`_partial_keys`). Census:
+15 flips to 14 (pushed 3 to 2).
+
+Seam 29 measured the rule end to end instead of by flip (on `73b3199`,
+re-gated after seam 28): with
 `UpgradeJoinOnGuards` turned off, the suite (about 54,300 statements, `-n 4`
 and then serially for every move) changes two plans, and the corpus none.
 Both still return the same rows. A flip is not a plan change: the grain-pin
