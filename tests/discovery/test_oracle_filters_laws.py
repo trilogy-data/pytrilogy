@@ -345,6 +345,25 @@ FOUND_SEEDS = [
     # 0.3.542: a gate's grain is its atom's, a peel skips a set, a filter's
     # rows are keyed by its outputs
     190661, 201221, 201879,
+    # 0.3.543: an all-rows marker is no key, a padded side that applied a
+    # NULL-holding gate is the population, a hosted key passed the gate, a
+    # derived key off a peel pairs on its inputs (8532 and 39289 were right
+    # on main and raised since 0.3.537)
+    7232, 7739, 8532, 13411, 17742, 39289, 220239, 220357, 222515, 223645,
+    225376, 225484, 226656, 227645, 228850, 230300, 231659, 234391, 236083,
+    239495, 239635, 239791,
+    # 0.3.543: a dedup shows the all-rows marker a parent hid (130215 broke
+    # under the first all-rows fix)
+    130215,
+    # 0.3.543: fixed across the full 0-240,000 A/B
+    20565, 23823, 26782, 29086, 32790, 34232, 35268, 40097, 42572, 43037,
+    43717, 51480, 56835, 61448, 61517, 62525, 71941, 78712, 80641, 80898,
+    83655, 86581, 89903, 92203, 95382, 96077, 97637, 98076, 99563, 113137,
+    117074, 119620, 123660, 123864, 124365, 125149, 126596, 127322, 132824,
+    133959, 135320, 135831, 136586, 140634, 144444, 149440, 149466, 152307,
+    152743, 156992, 163611, 165374, 172055, 173363, 173737, 184974, 185997,
+    187204, 190792, 195260, 198604, 204919, 208889, 211780, 213174, 213328,
+    213931, 216560, 217166,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. 9683,
@@ -365,10 +384,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (5381, "summary"): None,
     (6905, "base"): "keyless join",
     (6905, "summary"): "keyless join",
-    (7232, "base"): "Could not resolve connections",
-    (7232, "summary"): "Could not resolve connections",
-    (7739, "base"): "Could not resolve connections",
-    (7739, "summary"): "Could not resolve connections",
     (8790, "base"): "keyless join",
     (8790, "summary"): "keyless join",
     (10955, "base"): "maximum recursion",
@@ -379,19 +394,11 @@ OPEN: dict[tuple[int, str], str | None] = {
     (12425, "summary"): "renders no column",
     (12695, "base"): "maximum recursion",
     (12695, "summary"): "maximum recursion",
-    (13411, "base"): "Could not resolve connections",
-    (13411, "summary"): "Could not resolve connections",
     (14670, "summary"): "aggregate function calls cannot",
-    (17742, "base"): "Could not resolve connections",
-    (17742, "summary"): "Could not resolve connections",
     (18629, "base"): None,
     (18629, "summary"): None,
     (112517, "base"): None,
     # right on main, raised since 0.3.537 (area 4b)
-    (8532, "base"): "Could not resolve connections",
-    (8532, "summary"): "Could not resolve connections",
-    (39289, "base"): "Could not resolve connections",
-    (39289, "summary"): "Could not resolve connections",
     (91381, "base"): "keyless join",
     (91381, "summary"): "keyless join",
     # 0.3.538 fixed the other model only

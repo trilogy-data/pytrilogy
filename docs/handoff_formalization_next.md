@@ -13,12 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.542.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.543.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 220,000; the PR of each
-round holds its sweep totals. `filters` has 24 `OPEN` seeds (area 4b),
+group key of aggregates and windows, in a HAVING) to 240,000; the PR of each
+round holds its sweep totals. `filters` has 18 `OPEN` seeds (area 4b),
 `windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
@@ -649,16 +649,10 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   every set-only input from the cover fixed it and broke four seeds right
   on main (9515: a set's `by city, species` aggregate is the right source of
   the WHERE-kept pairs).
-- **A row scan beside a `by *` WHERE total finds no plan when a set reads a
-  total** (`Could not resolve connections`, 9 seeds of 80,000-100,000):
-  `select tag, city ? city in (city ? sum(height) by * <= 8) as v0 where
-  count(tree_id) by city < max(height) by *`. `gen_root`'s fallback asks the
-  network search for the trees with `__preql_internal.all_rows` and the
-  gates deferred; it answers with no plan, and it answers with one when the
-  set reads no total. The gate backfill skips a total an atom reads beside
-  a membership (`total > x or tag in <set>`) for this reason: 0.3.541 backfills
-  one in an atom of its own (six raises fixed), and backfilling the OR too
-  raised 182674, 185850 and 186115.
+- The gate backfill skips a total an atom reads beside a membership
+  (`total > x or tag in <set>`): backfilling the OR raised 182674, 185850 and
+  186115 with `Could not resolve connections`. 0.3.543 removed a cause of that
+  error (`all_rows_marker_is_no_key`), so retry the OR backfill.
 - **A set over nullable content keeps the filter's padding NULLs.** The set
   of `x ? c` is the values of the rows `c` passes, a NULL included where a
   passing row's `x` is NULL; matched by identity (`_null_free_set`). The set
@@ -761,11 +755,6 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     198529, 199618), a missing `_virt_agg_sum` column (192798).
 - **Left after 0.3.542** (seeds 200,000-220,000, each failing on main too:
   wrong 198442 above, 214126, 216029, 217166, 217347; 14 raises):
-  - 217166: a WHERE `tag in <set> or gate` beside two filtered columns.
-    Reduced: `select city, tree_form, city ? not (city in (city ? height is
-    not null)) as v0, (count(tree_id) by city, tree_form) ? city in ('B') as
-    v1 where (tag in (tag ? min(height) by city, species = 10) or
-    min(height) by city, tree_form is null)`.
   - Totals at keys: widening a WHERE value to its atom's grain
     (`gate_grain_is_its_atoms`) also fixed 12294, 25230, 78425 and 91969
     (`min(height) by city, tree_form - max(height) by * < 0`), but widening
@@ -785,6 +774,22 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     402 gained.
   - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
     213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
+- **Left after 0.3.543** (seeds 220,000-240,000, each failing on main too):
+  - 217347 (from 200,000-220,000): `select city, species, tree_form,
+    tree_form ? species in (species ? min(height) by tree_form > 8) as v0,
+    avg(min(height)) over (partition by v0) as v1 where count_distinct(tag)
+    by city, tree_form >= 2` returns every tree. The gate is placed on the
+    `(city, species)` aggregate and the root, but the `v0` filter is built off
+    the ungated trees, and its only FINAL partner is the window grouped by
+    `v0`. Without the window FINAL joins the gated aggregate INNER on `(city,
+    species)`, which hides it. Re-applying at FINAL cannot work: FINAL holds
+    no value of the gate. Build the filter off the gated rows.
+  - 235307 (wrong); raises 225740 (recursion, base), 225806 and 237588
+    (keyless joins), 230844 (recursion); invalid 228836 (duplicate CTE
+    alias) and 237225 (nested aggregates on the summary).
+  - A derived key off a peel (`_peeled_key_inputs`) pairs a filter on its
+    inputs' keys. 83978, 141488, 146267 and 175744, the older peel leads, are
+    still wrong: their key comes off a peel the WHERE gates.
 - Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main
   too (predicate pushdown read a column off a set feeder outside the FROM;
   fixed). It still renders two SQL texts by hash seed, both right: some

@@ -14,7 +14,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.constants import parent_axis_keys
+from trilogy.core.constants import ALL_ROWS_ADDRESS, parent_axis_keys
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -406,8 +406,14 @@ def _concepts_with_grain_keys(
             or concept.canonical_address in axis_values
         ):
             continue
+        all_rows = concept.address == ALL_ROWS_ADDRESS
         for address in concept.grain.components:
             if address not in environment.concepts:
+                continue
+            # the all-rows marker's grain is the select's: only its scanned
+            # columns are keys, not the ones it computes
+            # (`Filters.all_rows_marker_is_no_key`)
+            if all_rows and environment.concepts[address].derivation != Derivation.ROOT:
                 continue
             if keys_are_affordances and address not in requested_addresses:
                 continue
