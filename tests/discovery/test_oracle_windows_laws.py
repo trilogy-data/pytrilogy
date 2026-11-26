@@ -392,6 +392,8 @@ FOUND_SEEDS = [
     11457,
     # open until 0.3.538
     24973,
+    # open until 0.3.542
+    42711,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4):
 # what the planner raises or DuckDB rejects, or None for wrong rows
@@ -411,8 +413,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (34305, "base"): None,
     (34305, "summary"): None,
     (40037, "summary"): None,
-    (42711, "base"): None,
-    (42711, "summary"): None,
     (43504, "summary"): None,
     (47444, "summary"): None,
     (51466, "base"): None,

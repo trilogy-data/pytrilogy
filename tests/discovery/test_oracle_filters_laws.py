@@ -342,6 +342,9 @@ FOUND_SEEDS = [
     841, 1097, 8474, 8880, 9884, 12376, 14427, 17527, 19214, 59678, 72714,
     180857, 182211, 182890, 183022, 183175, 183197, 186629, 190095, 191380,
     191590, 194381, 196634, 196668, 198475, 198644, 198735,
+    # 0.3.542: a gate's grain is its atom's, a peel skips a set, a filter's
+    # rows are keyed by its outputs
+    190661, 201221, 201879,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. 9683,

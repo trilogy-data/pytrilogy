@@ -993,6 +993,23 @@ def _filtered_row_keys(
     return contracted.get(gid, frozenset())
 
 
+def _filter_output_keys(
+    group: GroupAttrs, environment: BuildEnvironment
+) -> frozenset[str]:
+    """A filter's rows are one per value of each key it outputs, its grain's
+    or not: `city` beside `tree_form ? species in <set>` at `species` keeps
+    one row per city (`Filters.filter_rows_keyed_by_outputs`)."""
+    if group.derivation != Derivation.FILTER:
+        return frozenset()
+    return frozenset(
+        a
+        for a in group.output_concepts
+        if (c := environment.concepts.get(a)) is not None
+        and c.purpose == Purpose.KEY
+        and c.derivation == Derivation.ROOT
+    )
+
+
 def _looked_up_keys(
     keys: frozenset[str],
     identity: frozenset[str],
@@ -1103,6 +1120,7 @@ def plan_final_join(
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()
         )
+        | _filter_output_keys(attrs[gid], environment)
         for gid in contributors
     }
     members = environment.all_scoped_join_group_members()

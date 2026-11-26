@@ -13,14 +13,13 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.541.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.542.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 200,000; the PR of each
-round holds its sweep totals. `filters` has 24 `OPEN` seeds and 417 failing
-queries in 0-200,000 at 0.3.541 (area 4b),
-`windows` 16 (area 4); `expressions` 8628 raises on the summary model on main
+group key of aggregates and windows, in a HAVING) to 220,000; the PR of each
+round holds its sweep totals. `filters` has 24 `OPEN` seeds (area 4b),
+`windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
 The `Oracle sweep` workflow re-sweeps the `first` and `spellings` range on
@@ -550,7 +549,7 @@ holds 25, a fifth of the first 12,000's yield per seed, so 0.3.531 wrote the
   60,000 seeds). So the semijoin still restates such a WHERE, wrongly where
   the gate is not decided per whole group (51466, 54409; `where height > 2
   and count(tree_id) by species >= 3 having tag = 'y'` returns nothing).
-- Wrong rows: 34305, 42711, 18040; summary only 40037, 43504, 47444
+- Wrong rows: 34305, 18040 (42711 is right at 0.3.542); summary only 40037, 43504, 47444
   (a re-sum fans out beside a window or a `by` denominator). Raises: 28981
   (11457 is right at 0.3.537).
 - Two parents of one group with no pairing render as a cross join; the
@@ -754,17 +753,38 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     sum(count(tree_id) by city, tree_form, v0) over (partition by v0) as v1
     where sum(height) by species = 0` (the answer is empty). Ranking by every
     WHERE atom is the candidate fix; it touches every cover, so sweep it alone.
-  - 190661: the set's row half reads ungated rows (the first lead above):
-    `select city, city ? city in (city ? sum(height) by city > 0 and height >
-    2) as v2 where sum(height) by city - max(height) by city, species > 3`
-    shows B (B's kept tree is 2 tall). The set's filter joins the gated sum
-    to the raw scan for `height > 2`.
   - Raises: keyless joins (184369, 184759, 185251, 194927, 199620), `Could not
     resolve connections` (184974, 185997, 187204, 190792, 195260, 198604),
     recursion (191855, 197547, 199349), `renders no column` (183765),
     `Missing source reference` (193049). Invalid on DuckDB: a CTE alias read
     for a column it lacks (197959), nested aggregates on the summary (183562,
     198529, 199618), a missing `_virt_agg_sum` column (192798).
+- **Left after 0.3.542** (seeds 200,000-220,000, each failing on main too:
+  wrong 198442 above, 214126, 216029, 217166, 217347; 14 raises):
+  - 217166: a WHERE `tag in <set> or gate` beside two filtered columns.
+    Reduced: `select city, tree_form, city ? not (city in (city ? height is
+    not null)) as v0, (count(tree_id) by city, tree_form) ? city in ('B') as
+    v1 where (tag in (tag ? min(height) by city, species = 10) or
+    min(height) by city, tree_form is null)`.
+  - Totals at keys: widening a WHERE value to its atom's grain
+    (`gate_grain_is_its_atoms`) also fixed 12294, 25230, 78425 and 91969
+    (`min(height) by city, tree_form - max(height) by * < 0`), but widening
+    a `by *` total broke 48509, 51668 and five more right on main, with the
+    same atom shape: what tells them apart is in the select, not the WHERE.
+    An atom reading a set is not widened either (4617).
+  - 204389: `select height > 2 as big, tree_form ? min(height) by tree_form
+    != 1 as v0, (sum(height) by big) ? sum(height) by * >= 0 as v1` pairs
+    the two filters on nothing (nine rows for four). Each filter is built
+    over its aggregate's groups, yet is taken to hold the other's column and
+    `tree_id`. Dropping those from its identity fixed it and broke 99325,
+    118586, 131528, 167037 and 188314: there the filter's row parent carries
+    a WHERE gate's key FINAL needs.
+  - 208906 lost its summary read on the branch (no extra scans): the peel a
+    set now skips (`peel_skips_a_set`) was what let the summary cover it.
+    So did 7011, 19935, 51558, 53696, 61983 and 161167 over 0-220,000, against
+    402 gained.
+  - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
+    213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
 - Hash order: seed 14276 planned right or wrong by `PYTHONHASHSEED`, on main
   too (predicate pushdown read a column off a set feeder outside the FROM;
   fixed). It still renders two SQL texts by hash seed, both right: some
