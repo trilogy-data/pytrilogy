@@ -15,7 +15,8 @@ reads its parent's rows before any group, so it rejects on an aggregate the
 parent computed too (`where_reads`). A window, unnest, limit, union or rowset
 boundary stops it.
 Nodes that render as one relation and every consumer of it count as one: it
-keeps what all of its consumers reject. A column a node computes per row from
+keeps what all of its consumers reject, and passes a parent what any of its
+nodes reads off it. A column a node computes per row from
 its parent's (``x <- y is not null``) passes what a proof drawn through its
 lineage rejects on those (`computed_inputs`); a proof on a value the node
 computes itself reaches its NULL-strict inputs (`lineage_proofs`).
@@ -637,7 +638,13 @@ def _propagate(
     received: dict[str, ConsumerProofs] = {}
     for ident in order:
         here = received.get(ident, ConsumerProofs())
-        for node in by_ident[ident]:
+        siblings = by_ident[ident]
+        # nodes of one relation render as one CTE over one row set
+        # (`CTE.__add__`): a row any of them reads a rejected column of is
+        # the relation's row, so their reads of a parent combine
+        one_rowset = all(_passes_rows(node) for node in siblings)
+        gives: dict[str, ConsumerProofs] = {}
+        for node in siblings:
             passed = _passes_rows(node)
             take = (
                 replace(here, keys=frozenset())
@@ -683,8 +690,13 @@ def _propagate(
                     given |= ConsumerProofs(
                         keys=frozenset(join_rejections(node, parent))
                     )
-                prior = received.get(pident)
-                received[pident] = given if prior is None else prior & given
+                prior = gives.get(pident)
+                if prior is not None:
+                    given = prior | given if one_rowset else prior & given
+                gives[pident] = given
+        for pident, given in gives.items():
+            prior = received.get(pident)
+            received[pident] = given if prior is None else prior & given
     return received
 
 

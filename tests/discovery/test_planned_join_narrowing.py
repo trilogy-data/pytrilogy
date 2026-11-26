@@ -2,6 +2,12 @@
 upgrade narrowed before (handoff 2.1 step 4): read off the planned
 `QueryDatasource`, before any optimizer phase runs."""
 
+from decimal import Decimal
+
+from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_MODEL
+from tests.core.processing.test_keyed_class_beside_trees import _statement
+from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
+from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
 from tests.engine.test_unmodelled_regions import (
     TWO_FACT_JOIN_DERIVED,
     TWO_FACT_JOIN_MATERIALIZED,
@@ -75,3 +81,24 @@ def test_a_flag_proof_reaches_through_the_merge_passing_the_flag():
             jt for right, jt in planned if right.startswith("returns_at_local_item_sk")
         ]
         assert sales_returns and set(sales_returns) == {JoinType.INNER}, planned
+
+
+def test_a_where_read_off_one_of_a_relations_sibling_nodes_narrows_its_parent():
+    query = _REV + " where r.rev > 4 and state = 'ca'" + _REV_KEYS
+    users = [jt for right, jt in _joins(ROOT_MODEL, query) if right.startswith("users")]
+    assert users and JoinType.FULL not in users, users
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(ROOT_MODEL))
+        .execute_query(query)
+        .fetchall()
+    )
+    assert [tuple(r) for r in rows] == [
+        (1, 1, "ca", "acme", Decimal("5.0")),
+        (1, 2, "ca", "zed", Decimal("7.0")),
+    ]
+
+
+def test_a_merged_key_is_not_null_proves_each_side_complete_on_it():
+    planned = _joins(TREES_MODEL, _statement(["predicted"], "having"))
+    trees = [jt for right, jt in planned if right.startswith("(enrichment")]
+    assert trees and JoinType.FULL not in trees, planned

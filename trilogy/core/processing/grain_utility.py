@@ -674,6 +674,10 @@ def _side_forced(
         return True
     if any(all(disjunct & provable for disjunct in group) for group in or_groups):
         return True
+    return _key_tuple_forced(proofs, keys, unprovable)
+
+
+def _key_tuple_forced(proofs: set[str], keys: set[str], unprovable: set[str]) -> bool:
     return bool(keys) and keys <= proofs and not keys & unprovable
 
 
@@ -799,6 +803,9 @@ def downgrade_join_for_proofs(
         or _side_forced(
             side_proofs, or_groups, left_exclusive, set(), _opaque_addresses(streamed)
         )
+        or _key_tuple_forced(
+            side_proofs, left_keys, _partial_lookup_keys(left_sources, left_keys)
+        )
         or _keys_force(key_proofs, join, streamed, final_datasets, key_sources)
     )
     right_forced = (
@@ -818,6 +825,9 @@ def downgrade_join_for_proofs(
             right_exclusive,
             set(),
             _opaque_addresses([join.right]),
+        )
+        or _key_tuple_forced(
+            side_proofs, right_keys, _partial_lookup_keys([join.right], right_keys)
         )
         or _keys_force(key_proofs, join, [join.right], final_datasets, key_sources)
     )

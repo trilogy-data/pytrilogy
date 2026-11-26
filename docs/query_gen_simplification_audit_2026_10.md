@@ -2377,6 +2377,97 @@ election, not the padded fallback.
     Fuzzer 522/522. Suite: the same 25 credential-bound failures as
     `main`.
 
+26. **A relation's sibling nodes are one row set to the consumer walk
+    (landed; handoff 2.1 step 4, pushed channel).**
+    - **Siblings the optimizer fuses were ANDed apart.** Nodes sharing a
+      relation identifier render as one CTE: the identifier fixes their
+      datasources, grain, group keys and condition, and `CTE.__add__`
+      fuses only copies of one grain and condition. A consumer rejecting a
+      column any of them reads rejects the relation's row, and the parent
+      rows under it. `_propagate` ANDed what each sibling passed a shared
+      parent, so a WHERE read off one sibling alone never reached the
+      merge: root partition `attribute_filter` (three regroups of one FULL
+      merge, `state = 'ca'` read off one) and compositions seed 1481 (two
+      keyless merges over the same parents). The optimizer flipped those
+      only once it had fused the siblings into one CTE. Siblings that all
+      pass rows now OR their reads of a parent, then AND with the other
+      relations reading it. Seam 24 measured this as needing the siblings
+      planned as one node; the walk only had to read them as one.
+    - **Measured, not landed: the grain-pin flip.** `bucket = 'Same'` over
+      `bucket <- grain_pin(case ..., tree_id)` proves `tree_id` to the
+      optimizer, since `GRAIN_PIN` is in `NULL_STRICT_FUNCTIONS` ("a value
+      pinned to its anchors exists on their rows only"), and the FULL to
+      the enrichment flips to LEFT. The pin renders as `(case ...)` and
+      never reads its anchor, so on a row whose anchor is NULL the value
+      is computed anyway; the planner refuses the proof (`lineage_proofs`,
+      seam 24). Which is right is a semantics question (is a pinned value
+      NULL off its anchor's rows?), not a narrowing one. The same proof is
+      the only early (`left_only`) flip over the fuzzer (2, the merged-axis
+      pin cases); over the suite the early pass flips only
+      `test_join_upgrade`'s hand-built CTEs.
+    - **Measured, not landed.** Keyed-class trees 4: the planner hands the
+      final FULL `tree_id` as a side proof only (a FULL key renders
+      coalesced), and the optimizer flips it after collapsing the WHERE's
+      select into the merge and narrowing the merge under it first.
+      Scoped join expression keys 2: the consumer's
+      `customers.region is not null` reaches a sibling merge only through
+      the customers scan the optimizer inlines into it. Both need the
+      pushdown's placement planned.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 21 flips (pushed 7, new CTE 9, external 4, planned 1)
+    against 24 on `95e7548` (pushed 10). Pinned at plan time (red on
+    `main`) by `test_planned_join_narrowing::test_a_where_read_off_one_of_a_relations_sibling_nodes_narrows_its_parent`.
+
+    Gates, against `95e7548`: corpus, every file under the four globs
+    (383 files, 208 statements), 0 moved; fuzzer 522/522. Suite: the same
+    25 credential-bound failures as `main`.
+
+27. **A merged key's IS NOT NULL proves each side complete on it (landed;
+    handoff 2.1 step 4, pushed channel).**
+    - **The FULL arm read the key tuple off half the harvest.** A HAVING
+      above the final merge (`select tree_id, predicted, --is_imagery,
+      --height_m having tree_id is not null and ...`, keyed-class trees)
+      hands the merge `tree_id is not null` on the FULL's coalesced key.
+      `non_null_proofs` skips `IS NOT NULL` so that a shared key is never
+      claimed non-null per side, and the key-tuple arm of
+      `downgrade_join_for_proofs` read only that set. The arm claims less
+      than that: a side complete on the key has a match for every non-null
+      value, and `k is not null` proves the key non-null as `k = 5` does.
+      `downgrade_directional_join_for_proofs` already read its key tuple
+      off the full harvest, and the optimizer's `proves_key` reads `direct`
+      the same way. The FULL arm now does too (`_key_tuple_forced` over
+      `side_proofs`), with the same `_partial_lookup_keys` guard. The final
+      FULL plans INNER, and the walk then hands `tree_id` to the merge under
+      it, now read off one side, which narrows FULL to RIGHT.
+    - **Measured, not landed: scoped join expression keys.** The 2 flips in
+      `test_window_expression_join` are not a NULL rejection. The final
+      `uneven RIGHT JOIN abundant on customers_rnk` keeps an `uneven` row
+      only where its rank is a customer's, and a row of `uneven` the
+      customers side padded carries a rank no customer has. The optimizer
+      gets there by pushing `customers.region is not null` onto the
+      customers scan it inlines into the sibling merge. Planning it needs
+      a value-domain proof (a consumer's join matches only values its
+      complete side holds), which the consumer walk does not carry.
+
+    After, full suite under `-n 4` (`guard_census_plugin`), both trees on
+    one machine: 15 flips (new CTE 9, pushed 3, external 2, planned 1)
+    against 19 on `cee3bb2` (pushed 7). Filters seed 133525 flipped on
+    neither tree in this run or in isolation (21 on `cee3bb2` in seam 26's
+    run). Pinned at plan time (red on `main`) by
+    `test_planned_join_narrowing::test_a_merged_key_is_not_null_proves_each_side_complete_on_it`.
+
+    Gates, against `cee3bb2`: corpus (204 statements) 0 moved; fuzzer
+    522/522. Suite capture (`sqlcap`, about 54,300 statements): the keyed
+    class trees, and 3 statements (filters seed 10457 summary, spellings
+    seed 9938 base and summary) whose INNER join to the `max(height) by
+    tree_form` CTE reads `tree_form` off the regroup by (city, species,
+    tree_form) instead of the row scan it is INNER-joined to on (city,
+    species): one value on every row, join types unchanged, row oracles
+    green. The other moves (column order) recur between runs of one tree
+    and are not in a serial A/B of the same files. Suite: the same 25
+    credential-bound failures as `main`.
+
 ## Gate used
 
 ```
