@@ -234,18 +234,32 @@ of a shared parent, so a WHERE read off one of three regroups of a FULL
 merge (root partition `attribute_filter`) or one of two keyless merges
 (compositions seed 1481) never reached the merge; siblings that all pass
 rows now OR their reads first. Census, both trees on one machine: 24 flips
-to 21 (pushed 10 to 7). What is left:
+to 21 (pushed 10 to 7).
+
+Seam 27 took the keyed-class trees. A HAVING above the final merge hands it
+`tree_id is not null` on the FULL's coalesced key, which the planner kept
+out of its key-tuple arm (`non_null_proofs` skips `IS NOT NULL`, so a
+shared key is never claimed per side). The key-tuple arm only claims that
+a side complete on the key has a match for a non-null value, which `k is
+not null` proves as `k = 5` does; the directional arm already read it off
+the full harvest, and the optimizer's `proves_key` too. The FULL arm now
+does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`,
+both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
+133525 flipped on neither tree this time, nor in isolation: its two
+external flips (seam 26's count of 21) depend on run order. What is left:
 
 - 11 are not plans: `tests/optimization/test_join_upgrade.py` builds CTEs
   by hand to test the rule (9 new-CTE, 2 external). They go with the
   rule's LEFT/RIGHT arms, not before.
-- 7 pushed flips: keyed-class trees 4, scoped join expression keys 2,
-  grain-pin merged species 1. The keyed-class trees and the scoped join
-  expression keys rest on a WHERE the optimizer pushes into one side
-  first: a FULL on a coalesced `tree_id` the planner hands only as a side
-  proof, and a consumer's `customers.region is not null` that reaches a
-  sibling merge's inlined customers scan. These need the pushdown's
-  placement planned. The grain-pin flip proves the pin's anchor
+- 3 pushed flips: scoped join expression keys 2, grain-pin merged
+  species 1. The scoped join's flip (`test_window_expression_join`) is not
+  a NULL rejection: the final RIGHT JOIN keeps an `uneven` row only where
+  its `customers_rnk` is a customer's rank, and a row padded on the
+  customers side carries a rank no customer has. The optimizer reaches it
+  by pushing `customers.region is not null` onto the customers scan it
+  inlines into the sibling merge; planning it needs a value-domain proof
+  (the consumer's join matches only values its complete side holds), which
+  the consumer walk does not have. The grain-pin flip proves the pin's anchor
   (`tree_id`) through `grain_pin(case ..., tree_id)`, which the optimizer
   reads as NULL-strict (`NULL_STRICT_FUNCTIONS`) while it renders as
   `(case ...)`, never reading the anchor; the planner refuses the same
@@ -254,10 +268,10 @@ to 21 (pushed 10 to 7). What is left:
   early (`left_only`) flip the fuzzer makes (2, the merged-axis pin
   cases); over the suite the early pass flips only `test_join_upgrade`'s
   hand-built CTEs.
-- 2 external: filters seed 133525 (one consumer's LEFT stays for the
-  optimizer; SQL byte-identical to `main`; a pin does not reach it).
 - 1 planned: `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`,
   which ungates pushdown on purpose.
+- Filters seed 133525 (2 external) when the run order makes it flip; SQL
+  byte-identical to `main` when it does.
 
 So `_downgrade_base_join`, the LEFT/RIGHT arms of `_downgrade` and the
 BaseJoin loop in `UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay

@@ -4,6 +4,8 @@ upgrade narrowed before (handoff 2.1 step 4): read off the planned
 
 from decimal import Decimal
 
+from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_MODEL
+from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
 from tests.engine.test_unmodelled_regions import (
@@ -94,3 +96,9 @@ def test_a_where_read_off_one_of_a_relations_sibling_nodes_narrows_its_parent():
         (1, 1, "ca", "acme", Decimal("5.0")),
         (1, 2, "ca", "zed", Decimal("7.0")),
     ]
+
+
+def test_a_merged_key_is_not_null_proves_each_side_complete_on_it():
+    planned = _joins(TREES_MODEL, _statement(["predicted"], "having"))
+    trees = [jt for right, jt in planned if right.startswith("(enrichment")]
+    assert trees and JoinType.FULL not in trees, planned
