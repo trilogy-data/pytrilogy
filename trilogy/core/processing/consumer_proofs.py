@@ -268,13 +268,15 @@ def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[s
 
 
 def _evaluated_at_a_grain(value: object) -> bool:
-    """A grouped or pinned value is read at its anchors' grain, not off the
-    row computing it: its anchor is not this row's column."""
+    """A grouped value is read at its anchors' grain, not off the row
+    computing it: its anchor is not this row's column. A pinned value is
+    (`grain_pin`): it has no value off its anchors' rows, as a property has
+    none without its key, so it is NULL-strict on them."""
     if isinstance(value, BuildParenthetical):
         return _evaluated_at_a_grain(value.content)
     if not isinstance(value, BuildFunction):
         return False
-    if value.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN):
+    if value.operator == FunctionType.GROUP:
         return True
     return any(_evaluated_at_a_grain(arg) for arg in value.arguments)
 

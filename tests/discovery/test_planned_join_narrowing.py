@@ -8,6 +8,8 @@ from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_M
 from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
+from tests.engine.test_grain_pin_unnest_merge_filter import MERGED_SPECIES
+from tests.engine.test_grain_pin_unnest_merge_filter import MODEL as PIN_MODEL
 from tests.engine.test_unmodelled_regions import (
     TWO_FACT_JOIN_DERIVED,
     TWO_FACT_JOIN_MATERIALIZED,
@@ -102,3 +104,11 @@ def test_a_merged_key_is_not_null_proves_each_side_complete_on_it():
     planned = _joins(TREES_MODEL, _statement(["predicted"], "having"))
     trees = [jt for right, jt in planned if right.startswith("(enrichment")]
     assert trees and JoinType.FULL not in trees, planned
+
+
+def test_a_pinned_value_proves_its_anchor():
+    planned = _planned(
+        PIN_MODEL + MERGED_SPECIES,
+        "select upper(species) as s, tree_id where bucket = 'Same' order by s;",
+    )
+    assert JoinType.FULL not in planned, planned
