@@ -3260,9 +3260,12 @@ def _one_read(
     if not (
         providers
         and (providers == others and same_rows(na, nb))
-        or providers & others
-        and _one_value_set(na, carries.concepts[(a, key)], providers)
-        and _one_value_set(nb, carries.concepts[(b, key)], others)
+        or providers
+        and others
+        and bool(
+            _one_value_set(na, carries.concepts[(a, key)])
+            & _one_value_set(nb, carries.concepts[(b, key)])
+        )
     ):
         return False
     nullable = [key in sides[side].nullables for side in (a, b)]
@@ -3279,15 +3282,41 @@ def _one_read(
     )
 
 
-def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]]:
+def _matched_kept(ds: QueryDatasource) -> set[str]:
+    """`preserved_sources` on join types and the planner's own matches
+    (`matched_left`/`matched_right`) alone: no partner is inferred from a
+    complete binding, which a `?` key does not promise."""
+    alive = {
+        sub.identifier
+        for sub in ds.datasources
+        if sub.identifier not in joined_right_ids(ds.joins)
+    }
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            alive = set()
+            continue
+        if not (join.matched_left or join.join_type in PADS_RIGHT_JOIN_TYPES):
+            alive = set()
+        if join.matched_right or join.join_type in PADS_LEFT_JOIN_TYPES:
+            alive.add(join.right.identifier)
+    return alive
+
+
+def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]] | None:
     """The leaf tables under `ds` binding `address`, grouped where an INNER
     join on it equates them: every row of the source holds one value of it
-    from each table of a group."""
+    from each table of a group. None when a join drops rows of one."""
     if not isinstance(ds, QueryDatasource):
         if any(c.address == address for c in ds.output_concepts):
             return [frozenset({ds.identifier})]
         return []
-    groups = [_equated_binders(sub, address) for sub in ds.datasources]
+    kept = _matched_kept(ds)
+    groups: list[list[frozenset[str]]] = []
+    for sub in ds.datasources:
+        found = _equated_binders(sub, address)
+        if found is None or found and sub.identifier not in kept:
+            return None
+        groups.append(found)
     slot = {sub.identifier: i for i, sub in enumerate(ds.datasources)}
     for join in ds.joins:
         if not isinstance(join, Join) or join.join_type != JoinType.INNER:
@@ -3306,13 +3335,12 @@ def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]]:
     return [group for found in groups for group in found]
 
 
-def _one_value_set(
-    ds: DataSource, concept: BuildConcept, providers: frozenset[str]
-) -> bool:
-    """Every table binding `concept` under `ds` is one of its `providers`,
-    and INNER joins on it equate them all: the source's values of it are any
-    one provider's that pass its filters."""
-    return _equated_binders(ds, concept.address) == [providers]
+def _one_value_set(ds: DataSource, concept: BuildConcept) -> frozenset[str]:
+    """The tables binding `concept` under `ds` when every row of each is still
+    in it and INNER joins on it equate them all: the source's values of it
+    are any one of theirs that pass its filters. Empty otherwise."""
+    groups = _equated_binders(ds, concept.address)
+    return groups[0] if groups is not None and len(groups) == 1 else frozenset()
 
 
 def _null_alike(key: str, a: SideFacts, b: SideFacts) -> bool:
