@@ -3551,9 +3551,7 @@ def _fold_covered_contributors(
             continue
         # ...on one survivor: split over two, its join is what pairs them
         # (`city` off one, `species` off another, met on a filtered value)
-        if not any(
-            shared <= {o.address for o in parents[j].output_concepts} for j in others
-        ):
+        if not any(shared <= visible[j] for j in others):
             continue
         # a survivor sharing none of its columns pairs with it on nothing
         # (a one-row total): its filter restricts no key of these rows
@@ -7339,7 +7337,14 @@ def _assemble_final_node(
     parents = _fold_constant_parents(parents, final_needed, folded)
     # the FINAL WHERE reads its filter-only args off these parents
     contracted = parents
-    reaches = {gid: cover.holds(gid) for gid in built}
+    reaches = {
+        gid: (
+            cover.holds(gid) & strict_fd_closure(environment, built_filters[gid])
+            if gid in built_filters
+            else cover.holds(gid)
+        )
+        for gid in built
+    }
     parents = _satisfy_parent_projection_contract(
         parents,
         [_final_parent_shaped(p, origin, attrs, projected) for p in parents],
