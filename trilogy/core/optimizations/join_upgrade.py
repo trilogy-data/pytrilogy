@@ -45,9 +45,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
-    SENSITIVE_DERIVATIONS,
     accumulated_left_ctes,
-    cte_source_keys,
     join_padded_ctes,
     output_addresses,
     seed_ctes,
@@ -310,215 +308,28 @@ def _add_inner_join_key_proofs(join: Join, idx: int, proofs: _ProofState) -> boo
     return changed
 
 
-def _through_grouping(cte: CTE, addresses: set[str]) -> set[str]:
-    """The `addresses` whose NULL isolates this CTE's padded rows: all of
-    them on a plain projection, only the group keys once it aggregates."""
-    if not cte.group_to_grain:
-        return addresses
-    return addresses & set(cte.grain.components) if cte.grain else set()
-
-
-def _sensitive_outputs(cte: CTE) -> bool:
-    return any(
-        c.derivation in SENSITIVE_DERIVATIONS for c in cte.source.output_concepts
-    )
-
-
-def _renders_exclusively_from(
-    consumer: CTE, address: str, producer_keys: set[str]
-) -> bool:
-    """The consumer renders ``address`` as a plain reference to one producer
-    column. A coalesced read masks a one-sided NULL, so it never carries a
-    rejection back to either producer."""
-    concept = consumer.get_concept(address)
-    reads = consumer.column_reads(concept) if concept else []
-    return len(reads) == 1 and reads[0][1] in producer_keys
-
-
-def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
-    """Producer output addresses a rendered equality in the consumer forces
-    non-null: a NULL key never matches plain ``=``, so the producer row
-    contributes nothing to the consumer. Only a side whose unmatched rows the
-    join DISCARDS is provable: both sides of an INNER, the right of a
-    LEFT_OUTER, the left of a RIGHT_OUTER; a preserved side's rows survive
-    unmatched, key NULL or not. Null-safe pairs match NULLs and prove
-    nothing; a multi-left-source group renders COALESCE on the left, which
-    still rejects a NULL right key but no individual left key."""
-    out: set[str] = set()
-    for join in consumer.joins or []:
-        if not isinstance(join, Join):
-            continue
-        harvest_right = join.join_type in (JoinType.INNER, JoinType.LEFT_OUTER)
-        harvest_left = join.join_type in (JoinType.INNER, JoinType.RIGHT_OUTER)
-        if not harvest_right and not harvest_left:
-            continue
-        for pairs in coalesced_key_groups(join.pairs or [], _cte_side):
-            if any(pair_matches_nulls(p, join.modifiers) for p in pairs):
-                continue
-            first = pairs[0]
-            if harvest_right and cte_source_keys(join.right) & producer_keys:
-                out.add(first.right.address)
-            left_ctes = {p.node.name for p in pairs}
-            if (
-                harvest_left
-                and len(left_ctes) == 1
-                and cte_source_keys(first.node) & producer_keys
-            ):
-                out.add(first.left.address)
-    return out
-
-
-def _external_forced_map(
-    ctes: list[CTE | UnionCTE],
-    inverse_map: dict[str, list[CTE | UnionCTE]],
-) -> dict[str, set[str]]:
-    """Per producer CTE, output addresses every consumer forces non-null in
-    any row it lets contribute to its own output: the cross-CTE extension of
-    the same-CTE WHERE proofs, for a null-rejecting filter that lives several
-    CTEs downstream of the outer join that pads the column.
-
-    Sound as a join-reduction proof at the producer because a producer row
-    NULL there is, at every consumption site, either dropped by the consumer's
-    WHERE/INNER equality or never matched at all, so emitting it is
-    output-invisible. Channels per consumer:
-
-    * its condition's non-null proofs, when the address renders as a plain
-      single-source reference to this producer (a COALESCE masks the NULL);
-    * rendered INNER-join equalities on the producer's columns;
-    * transitively, its own forced set for plain pass-through projections,
-      gated to group keys when the consumer aggregates (a NULL group key
-      isolates exactly the padded rows; an aggregate output does not).
-
-    A consumer that reads the producer existentially, a UnionCTE, or a
-    window-computing consumer is opaque and empties the producer's set: every
-    consumer must reject, or none may."""
-    forced: dict[str, set[str]] = {c.name: set() for c in ctes}
-    static: dict[tuple[str, str], set[str] | None] = {}
-    consumer_proofs: dict[str, set[str]] = {}
-    for producer in ctes:
-        if not isinstance(producer, CTE):
-            continue
-        producer_keys = cte_source_keys(producer)
-        outputs = output_addresses(producer)
-        for consumer in inverse_map.get(producer.name, []):
-            key = (consumer.name, producer.name)
-            if not isinstance(consumer, CTE):
-                static[key] = None
-                continue
-            existential = {
-                s for vals in consumer.existence_source_map.values() for s in vals
-            }
-            if existential & producer_keys:
-                static[key] = None
-                continue
-            contribution: set[str] = set()
-            if consumer.condition is not None and not _sensitive_outputs(consumer):
-                if consumer.name not in consumer_proofs:
-                    consumer_proofs[consumer.name] = gather_non_null_proofs(
-                        consumer.condition
-                    ) - zero_filled_reads(consumer, consumer.condition)
-                contribution |= {
-                    a
-                    for a in consumer_proofs[consumer.name]
-                    if _renders_exclusively_from(consumer, a, producer_keys)
-                }
-            contribution |= _inner_pair_rejections(consumer, producer_keys)
-            static[key] = contribution & outputs
-    while True:
-        changed = False
-        for producer in ctes:
-            if not isinstance(producer, CTE):
-                continue
-            consumers = inverse_map.get(producer.name, [])
-            if not consumers:
-                continue
-            producer_keys = cte_source_keys(producer)
-            outputs = output_addresses(producer)
-            new: set[str] | None = None
-            for consumer in consumers:
-                entry = static.get((consumer.name, producer.name))
-                if entry is None or not isinstance(consumer, CTE):
-                    new = set()
-                    break
-                transferred: set[str] = set()
-                upstream = forced.get(consumer.name, set())
-                if upstream and not _sensitive_outputs(consumer):
-                    transferred = {
-                        a
-                        for a in _through_grouping(consumer, upstream)
-                        if _renders_exclusively_from(consumer, a, producer_keys)
-                    }
-                contribution = (entry | transferred) & outputs
-                new = contribution if new is None else (new & contribution)
-                if not new:
-                    break
-            new = new or set()
-            if new != forced[producer.name]:
-                forced[producer.name] = new
-                changed = True
-        if not changed:
-            return forced
-
-
 class UpgradeJoinOnGuards(OptimizationRule):
     """Upgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
-    enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
+    CTE's own WHERE rejects the unmatched rows the OUTER join was preserving.
 
-    ``left_only=True`` is the early pass before UnionDimPushdown: it only
-    makes LEFT joins INNER, on the CTE's own WHERE, so the dim joins that
-    rule matches are INNER.
-    """
-
-    def __init__(self, left_only: bool = False) -> None:
-        super().__init__()
-        self.left_only = left_only
-        self._forced_key: int | None = None
-        self._forced: dict[str, set[str]] = {}
-
-    def _external_proofs(
-        self, cte: CTE, inverse_map: dict[str, list[CTE | UnionCTE]]
-    ) -> set[str]:
-        """Consumer-forced non-null addresses for this CTE, gated to addresses
-        whose rejection maps back onto raw join columns here: a plain
-        single-source projection (a COALESCE output is NULL only when every
-        side is), and a group key when this CTE aggregates (the NULL-keyed
-        group holds exactly the padded rows). Computed once per optimizer
-        sweep; the sweep loops to fixpoint, so upgrades this pass enables feed
-        the next."""
-        if self.left_only:
-            return set()
-        # A consumer's rejection applies post-limit; using it to drop rows
-        # inside a row-limited CTE changes which rows fill the limit. The
-        # CTE's own pre-limit condition remains a valid proof source.
-        if cte.limit is not None:
-            return set()
-        if self._forced_key != id(inverse_map):
-            nodes: dict[str, CTE | UnionCTE] = {cte.name: cte}
-            for consumers in inverse_map.values():
-                for consumer in consumers:
-                    nodes[consumer.name] = consumer
-                    for parent in consumer.dependency_nodes():
-                        nodes.setdefault(parent.name, parent)
-            self._forced = _external_forced_map(list(nodes.values()), inverse_map)
-            self._forced_key = id(inverse_map)
-        external = _through_grouping(cte, self._forced.get(cte.name, set()))
-        return {a for a in external if len(set(cte.source_map.get(a, ()))) == 1}
+    The planner narrows on every WHERE and join it places
+    (`consumer_proofs`, `grain_utility.downgrade_join_for_proofs`); this
+    reads only what the optimizer moved into a CTE after planning."""
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE):
             return False, None
-        upgradable = {JoinType.LEFT_OUTER} if self.left_only else set(OUTER_JOIN_TYPES)
         if not any(
-            isinstance(j, Join) and j.join_type in upgradable for j in cte.joins or []
+            isinstance(j, Join) and j.join_type in OUTER_JOIN_TYPES
+            for j in cte.joins or []
         ):
             return False, None
 
         direct_proofs = (
             gather_non_null_proofs(cte.condition) if cte.condition else set()
         )
-        direct_proofs = direct_proofs | self._external_proofs(cte, inverse_map)
         or_groups = gather_or_groups(cte.condition) if cte.condition else []
         # `count = 0` over a COUNT this CTE coalesces to 0 on the padded rows
         # accepts those rows: it proves nothing about the side that padded them
@@ -551,7 +362,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
                     )
 
             for idx, join in enumerate(cte.joins or []):
-                if not isinstance(join, Join) or join.join_type not in upgradable:
+                if not isinstance(join, Join) or join.join_type not in OUTER_JOIN_TYPES:
                     continue
                 target = _downgrade(cte, idx, join, proofs)
                 if target == join.join_type:
