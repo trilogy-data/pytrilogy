@@ -8300,6 +8300,16 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             if concept_match is not None and concept_match.address not in matched_addrs:
                 matched_addrs.add(concept_match.address)
                 normalize_concepts.append(concept_match)
+        # a constant a parent hides (the all-rows marker) is free to show
+        for parent in parents:
+            shown = {
+                c.address
+                for c in normalize_concepts
+                if c.derivation == Derivation.CONSTANT
+            } & parent.hidden_concepts
+            if shown:
+                parent.hidden_concepts -= shown
+                parent.rebuild_cache()
         if normalize_concepts:
             # a parent claiming the input grain is still not unique on it
             repeats_element = any(
@@ -8524,6 +8534,33 @@ def _shown_filtered_column(
     )
 
 
+def _peeled_key_inputs(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    keys: set[str],
+    environment: BuildEnvironment,
+) -> set[str]:
+    """The keys of a derived key's inputs, where the key is computed off a
+    dimension peel: FINAL pairs a filter with it there on them, the peel
+    holding nothing else of the filter's rows
+    (`Filters.derived_key_pairs_on_its_inputs`)."""
+    peeled = {
+        k
+        for gid, a in attrs.items()
+        if a.derivation == Derivation.BASIC
+        and (preds := list(group_graph.predecessors(gid)))
+        and all(attrs[p].dim_keys for p in preds if p in attrs)
+        for k in set(a.primary_members) & keys
+    }
+    return {
+        key
+        for k in peeled
+        if (lineage := environment.concepts[k].lineage) is not None
+        for arg in lineage.concept_arguments
+        for key in (arg.keys or {arg.address})
+    }
+
+
 def _group_needed(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -8628,6 +8665,7 @@ def _group_needed(
             if environment.concepts[k].derivation != Derivation.FILTER
             and build_fd_determines_all(environment, grain_keys, {k})
         }
+        needed |= _peeled_key_inputs(group_graph, attrs, grain_keys, environment)
     # a shown filter's rows meet FINAL's WHERE gate on the gate's grain: one
     # key short, the gate keeps the rows it rejected on another
     # (`SelectGrain.gate_paired_short_of_its_grain`)

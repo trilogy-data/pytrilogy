@@ -1,9 +1,10 @@
 # Query-generation simplification: remaining work
 
 What is left of the 2026-08 simplification audit. Everything that landed has
-been removed from this file; the git history is the record of that. 2.1 step 4
-landed but for the two optimizer join rules it lists; 2.3(b) and 2.7 remain, and the
-grouping-set TVF (4) is done but for a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
+been removed from this file; the git history is the record of that. Two items
+remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 landed but for the
+two optimizer join rules it lists, and the grouping-set TVF (4) is done but for
+a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -88,20 +89,24 @@ Detail: seam 11 of `docs/query_gen_simplification_audit_2026_10.md`.
 
 ## 2. 2.1 step 4: the planner owns WHERE-driven join narrowing (landed)
 
-`UpgradeJoinOnGuards` is deleted (seam 29 of
-`docs/query_gen_simplification_audit_2026_10.md`; seams 14 to 28 are the
-path there). The planner narrows every outer join a WHERE, HAVING or
-consumer join rejects the padding of (`grain_utility.downgrade_join_for_proofs`,
-`consumer_proofs.narrow_for_consumers`). With it went its two phases, the
-pushdown refire after it, the `after_join_upgrades` deferral of atom removal
-and the `upgrade_condition_joins` flag. Two plans narrow less without it, and
-both keep the same rows:
+`UpgradeJoinOnGuards` is deleted: seam 29 of
+`docs/query_gen_simplification_audit_2026_10.md` took its consumer channel
+and early pass, seam 30 its last pass (on a CTE's own WHERE once pushdown
+has run); seams 14 to 28 are the path there. The planner narrows every outer
+join a WHERE, HAVING or consumer join rejects the padding of
+(`grain_utility.downgrade_join_for_proofs`,
+`consumer_proofs.narrow_for_consumers`). With the last pass went the pushdown
+refire after it, the `after_join_upgrades` deferral of atom removal and the
+`upgrade_condition_joins` flag. Two plans narrow less, both with the same
+rows:
 
-- `test_window_expression_join` (both parsers): the final merge's FULL stays
-  FULL where the optimizer narrowed it to LEFT after pushing `customers.region
-  is not null` onto the customers scan it inlines there. The proof exists
-  only after the optimizer reshapes the merge; the plan has no node that
-  holds it (and in isolation `main` renders the FULL too).
+- `test_window_expression_join` (both parsers) keeps `customers FULL JOIN
+  ... WHERE customers.reg is not null`. That WHERE is there only because
+  pushdown inlined the customers scan into the sibling merge; planning it
+  needs a value-domain proof (the consumer's join matches only values its
+  complete side holds), which the consumer walk does not have. Seam 29 kept
+  the last pass for this plan as post-multi-node state; seam 30 trades the
+  one narrowing for the rule, its phases and the deferral.
 - `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
   pushdown on purpose.
 
@@ -113,8 +118,8 @@ What is left of 2.1:
   deleted. Each branch kept names the plans or the test that move without it,
   so do not re-ablate them without a new premise. Its vetoes were not
   ablated, since turning one off makes the rule narrow more.
-- `SimplifyNullSafeJoins` (`null_safe_join.py`), re-measured after seam 29:
-  it still changes a join in 89 tests (mostly the filters, spellings and
+- `SimplifyNullSafeJoins` (`null_safe_join.py`), re-measured in seam 30: it
+  still changes a join in 89 tests (mostly the filters, spellings and
   compositions oracle laws and the dimension chain), so it stays. Its
   premise was stale `NULLABLE` modifiers from join types that change after
   planning; with the guard rule gone only the key-set rule changes them, so

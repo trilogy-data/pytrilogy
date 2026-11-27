@@ -361,7 +361,7 @@ _PHASES: tuple[_Phase, ...] = (
         lambda o: o.union_dim_pushdown,
         lambda c: UnionDimPushdown(),
         depends_on=("predicate_pushdown.initial",),
-        reason="matches settled consumer predicates and INNER dim joins",
+        reason="matches settled consumer predicates",
     ),
     _Phase(
         "predicate_pushdown.remove",

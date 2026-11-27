@@ -2515,12 +2515,54 @@ election, not the padded fallback.
     data to one would pin it there too. Suite: the same 25
     credential-bound failures as `main`.
 
-29. **`UpgradeJoinOnGuards` is deleted (landed; handoff 2.1 step 4 closed
+29. **The optimizer's consumer channel and early pass are deleted (landed;
+    handoff 2.1 step 4).**
+    - **Measured end to end, not by flip.** With `UpgradeJoinOnGuards`
+      turned off entirely, a suite capture (`sqlcap`, `-n 4`, about 54,300
+      statements, against `73b3199`) moved 861 tests. All but 69 were column
+      or GROUP BY order. A serial A/B of those 69 left 2 plans:
+      `test_window_expression_join` (both parsers, a FULL kept beside a
+      pushed `customers.reg is not null`) and
+      `test_ungated_pushdown_cycles`. Everything else was ephemeral ports or
+      run-order capture variance. The corpus (206 statements) moved 0. The
+      tests that failed were the 8 hand-built ones in `test_join_upgrade.py`
+      and `test_rank_beside_partial_merge::test_a_rank_and_its_total_need_their_own_node`,
+      a shared-fixture ordering failure (`StopIteration` reading the
+      environment) that passes serially with the rule off. The census's 15
+      flips overstate the rule: the grain-pin flip seam 26 measured is redone
+      by later phases, and its statement is byte-identical without it.
+    - **Deleted:** the cross-CTE consumer proofs (`_external_forced_map`,
+      `_external_proofs`, `_inner_pair_rejections`,
+      `_renders_exclusively_from`, `_through_grouping`, `_sensitive_outputs`)
+      and the early `left_only` pass before `UnionDimPushdown` (the phase
+      `upgrade_join_on_guards.early`; the final phase is now
+      `upgrade_join_on_guards`). `consumer_proofs` plans the former
+      (seams 15 to 27). Over the suite the latter flipped only hand-built
+      CTEs, and over the fuzzer only the 2 merged-axis pin cases, whose SQL
+      the final pass and later phases leave unchanged. The 5
+      `test_cross_cte_null_rejection_*` tests and
+      `test_a_coalesced_key_carries_no_rejection_to_one_producer` go with the
+      channel. The two `left_only` tests run the single pass.
+    - **Kept: the pass on a CTE's own WHERE.** The scoped-join flip reads a
+      WHERE that pushdown put on the customers scan it inlined into the merge.
+      That is post-multi-node state, the optimizer's by the house rules.
+      Planning it needs a value-domain proof the consumer walk does not
+      carry.
+
+    After, against `73b3199`: suite capture 1,030 moved before filtering;
+    the 87 left after filtering for line order were re-run serially in
+    both trees, and 5 still moved, all noise (ephemeral HTTP ports in
+    `test_unbuilt_sources`, the ingest test's varying statement count).
+    0 plans moved. Corpus 0 moved; fuzzer 522/522. Suite: the same 25
+    credential-bound failures as `main`.
+
+30. **`UpgradeJoinOnGuards` is deleted (landed; handoff 2.1 step 4 closed
     but for the key-set rules).**
-    - **What went.** The rule (`join_upgrade.py`, about 460 lines: the
-      per-CTE `_downgrade`, the consumer channel `_external_forced_map`,
-      `_lineage_proofs`, `_blocked_partials`), its early (`left_only`) and
-      final phases, and the `upgrade_condition_joins` flag. Its one other
+    - **What went.** The pass seam 29 kept (`join_upgrade.py`: the per-CTE
+      `_downgrade`, `_lineage_proofs`, `_blocked_partials`), its phase, and
+      the `upgrade_condition_joins` flag. Seam 29 kept it for the scoped-join
+      plan below, as post-multi-node state; this trades that one narrowing
+      for the rule and the code that existed only for it. Its one other
       export, `prune_preserved_join_keys`, moved to `preserved_join_keys.py`.
       The pushdown phases that existed for it went too:
       `predicate_pushdown.after_final_upgrade` (a refire once the final pass
@@ -2530,17 +2572,16 @@ election, not the padded fallback.
       CTE with an outer join so the rule could read it. That atom is now
       removed by the first remove pass, and the plan's fixpoint reruns
       pushdown when a later phase changes something.
-    - **What it still flipped.** Seam 28's census left 14 flips: 11 in
-      hand-built CTE tests of the rule itself (deleted with it), the 2 of
-      `test_window_expression_join` and the ungated-pushdown test. The
-      window test's flip lands on the final merge only after the optimizer
-      inlines the customers scan into it and pushes `customers.region is
-      not null` there; generated alone, `main` renders that FULL as well.
-      Both keep their rows; the FULL stays.
+    - **What it still moved.** The two plans seam 29 measured:
+      `test_window_expression_join` (both parsers) keeps its FULL beside
+      the pushed `customers.reg is not null`, and the ungated-pushdown test.
+      Both keep their rows. The rule's remaining hand-built tests go with
+      it.
     - **`SimplifyNullSafeJoins`, re-measured.** It still changes a join in
       89 tests, so it stays.
 
-    Gates, against `33753c9`: corpus (204 statements) 0 moved. Suite capture
+    Gates, against `33753c9` (seam 28; seam 29 moved no plan, so they hold
+    against it): corpus (204 statements) 0 moved. Suite capture
     (`sqlcap`, `-n 4`): 1,533 tests moved, 1,389 by column or ON-pair order
     alone. A rerun of the three largest files on each tree shows that order
     is run-dependent (`main` against itself moves 1,041 of their tests
