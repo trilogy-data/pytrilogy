@@ -835,6 +835,35 @@ SHAPES = [
             ("B", "Tilia", "Tilia", 2),
         ],
     ),
+    # ...and a navigation reads the same rows: Quercus is A's last species
+    (
+        (
+            "select city, species, species ? avg(height) by * is not null as v0,"
+            " lag(species) over (partition by city order by species) as v2"
+            " where max(height) by city, tree_form != 1;"
+        ),
+        [
+            ("A", "Acer", "Acer", None),
+            ("A", "Quercus", "Quercus", "Acer"),
+            ("B", "Acer", "Acer", None),
+            ("B", "Tilia", "Tilia", "Acer"),
+        ],
+    ),
+    # an aggregating window is no host of the gate (right on main too): A's
+    # largest kept species is Quercus
+    (
+        (
+            "select city, species, species ? avg(height) by * is not null as v0,"
+            " max(species) over (partition by city) as v2"
+            " where max(height) by city, tree_form != 1;"
+        ),
+        [
+            ("A", "Acer", "Acer", "Quercus"),
+            ("A", "Quercus", "Quercus", "Quercus"),
+            ("B", "Acer", "Acer", "Tilia"),
+            ("B", "Tilia", "Tilia", "Tilia"),
+        ],
+    ),
     # two windows' partitions pair on the select's grain (257753, reduced):
     # B has no Ulmus
     (

@@ -812,6 +812,13 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     237588 (keyless joins); invalid 240270 and 228836 (a CTE alias read for a
     column it lacks), 240373, 237225 (nested aggregates on the summary),
     243768 and 250022 (a column outside the GROUP BY on the summary).
+  - A window over an aggregate is not gated: `select city, species, species
+    ? avg(height) by * is not null as v0, sum(count(tree_id)) over
+    (partition by city) as v2 where max(height) by city, tree_form != 1`
+    keeps the formless Ulmus row the WHERE drops, on main too.
+    `_window_over_rows` admits only windows reading row values; the
+    aggregate the window reads is gated, but the window's own row stream
+    (the select's groups) is not.
   - A derived key off a peel (`_peeled_key_inputs`) pairs a filter on its
     inputs' keys. 83978, 141488, 146267 and 175744, the older peel leads, are
     still wrong: their key comes off a peel the WHERE gates.
