@@ -1157,11 +1157,19 @@ def plan_final_join(
                 ),
                 environment,
             )
-            # a grouped side carries a sibling's key its own keys determine
-            # (`species` of `tree_id`) and the keys it shares do not
+            # a grouped side carries a grouped sibling's key its own keys
+            # determine (`species` of `tree_id`) and the keys it shares do not
             if attrs[gid].derivation in GROUPING_DERIVATIONS:
+                grouped_keys = frozenset(
+                    k
+                    for o in contributors
+                    if o != gid and attrs[o].derivation in GROUPING_DERIVATIONS
+                    for k in identity[o]
+                    if (c := environment.concepts.get(k)) is not None
+                    and c.derivation in _ROW_STREAMS
+                )
                 siblings |= (
-                    sibling_keys & strict_fd_closure(environment, identity[gid])
+                    grouped_keys & strict_fd_closure(environment, identity[gid])
                 ) - strict_fd_closure(environment, identity[gid] & sibling_keys)
         else:
             siblings = sibling_keys
