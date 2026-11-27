@@ -575,17 +575,29 @@ def _window_over_rows(gid: str, scope: "_PlacementScope") -> bool:
         for g in scope.main_lineage
     ):
         return False
-    for address in bucket.primary_members:
-        concept = scope.environment.concepts.get(address)
-        lineage = concept.lineage if concept is not None else None
-        if not isinstance(
-            lineage, (BuildNavigationWindowItem, BuildNumberingWindowItem)
-        ):
-            return False
-        read = [*lineage.concept_arguments, *(o.expr for o in lineage.order_by)]
-        if any(isinstance(c, BuildConcept) and c.is_aggregate for c in read):
-            return False
-    return True
+    concepts = scope.environment.concepts
+    return all(_numbers_rows(concepts.get(a)) for a in bucket.primary_members)
+
+
+def _numbers_rows(concept: BuildConcept | None) -> bool:
+    lineage = concept.lineage if concept is not None else None
+    return isinstance(
+        lineage, (BuildNavigationWindowItem, BuildNumberingWindowItem)
+    ) and not any(
+        isinstance(c, BuildConcept) and c.is_aggregate
+        for c in [*lineage.concept_arguments, *(o.expr for o in lineage.order_by)]
+    )
+
+
+def _window_reads(concept: BuildConcept | None) -> set[str]:
+    lineage = concept.lineage if concept is not None else None
+    if isinstance(lineage, BuildNavigationWindowItem):
+        return {lineage.content.address}
+    return (
+        {c.address for c in lineage.arguments}
+        if isinstance(lineage, BuildNumberingWindowItem)
+        else set()
+    )
 
 
 def _windowed_arguments(
@@ -594,17 +606,8 @@ def _windowed_arguments(
     """The values a window's members read along its rows (`lag(max(height))
     over fc` reads the groups by `fc`); none for a numbering of the rows
     themselves (`row_number()`)."""
-    out: set[str] = set()
-    for address in bucket.primary_members:
-        concept = environment.concepts.get(address)
-        lineage = concept.lineage if concept is not None else None
-        if isinstance(lineage, BuildNavigationWindowItem):
-            out.add(lineage.content.address)
-        elif isinstance(lineage, BuildNumberingWindowItem) and lineage.arguments:
-            out |= {c.address for c in lineage.arguments}
-        else:
-            return None
-    return out or None
+    reads = [_window_reads(environment.concepts.get(a)) for a in bucket.primary_members]
+    return set().union(*reads) if reads and all(reads) else None
 
 
 def _rows_filtered_by(

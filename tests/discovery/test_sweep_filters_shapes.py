@@ -849,13 +849,13 @@ SHAPES = [
             ("B", "Tilia", "Tilia", "Acer"),
         ],
     ),
-    # an aggregating window is no host of the gate (right on main too): A's
-    # largest kept species is Quercus
+    # an aggregating window is no host of the gate (right on main too): the
+    # Ulmus has no minimum either, so A's largest kept species is Quercus
     (
         (
             "select city, species, species ? avg(height) by * is not null as v0,"
             " max(species) over (partition by city) as v2"
-            " where max(height) by city, tree_form != 1;"
+            " where min(height) by city, tree_form > 0;"
         ),
         [
             ("A", "Acer", "Acer", "Quercus"),
