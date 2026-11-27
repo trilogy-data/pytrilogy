@@ -97,18 +97,14 @@ join a WHERE, HAVING or consumer join rejects the padding of
 (`grain_utility.downgrade_join_for_proofs`,
 `consumer_proofs.narrow_for_consumers`). With the last pass went the pushdown
 refire after it, the `after_join_upgrades` deferral of atom removal and the
-`upgrade_condition_joins` flag. Two plans narrow less, both with the same
-rows:
-
-- `test_window_expression_join` (both parsers) keeps `customers FULL JOIN
-  ... WHERE customers.reg is not null`. That WHERE is there only because
-  pushdown inlined the customers scan into the sibling merge; planning it
-  needs a value-domain proof (the consumer's join matches only values its
-  complete side holds), which the consumer walk does not have. Seam 29 kept
-  the last pass for this plan as post-multi-node state; seam 30 trades the
-  one narrowing for the rule, its phases and the deferral.
-- `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
-  pushdown on purpose.
+`upgrade_condition_joins` flag. The one plan only the last pass narrowed,
+`test_window_expression_join`, is planned by a value-domain proof (seam 31):
+a consumer whose join matches only a concept's own values hands the merge
+that key (`consumer_proofs.domain_rejections`), and the merge forces a side
+that carries every value of it where it pairs another concept merged into it
+(`grain_utility.force_domain_sides`). Nothing else narrows less but
+`test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
+pushdown on purpose.
 
 What is left of 2.1:
 

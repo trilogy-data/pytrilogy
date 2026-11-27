@@ -2575,8 +2575,8 @@ election, not the padded fallback.
     - **What it still moved.** The two plans seam 29 measured:
       `test_window_expression_join` (both parsers) keeps its FULL beside
       the pushed `customers.reg is not null`, and the ungated-pushdown test.
-      Both keep their rows. The rule's remaining hand-built tests go with
-      it.
+      Both keep their rows; seam 31 plans the first. The rule's remaining
+      hand-built tests go with it.
     - **`SimplifyNullSafeJoins`, re-measured.** It still changes a join in
       89 tests, so it stays.
 
@@ -2593,6 +2593,41 @@ election, not the padded fallback.
     render the same SQL with and without the remaining join flag. Every
     moved test's rows pass. Suite: the same 25 credential-bound failures as
     `main`.
+
+31. **A consumer matching only a concept's own values narrows a merge padded
+    on its complete side (landed; plans the one narrowing seam 30 lost).**
+    - **The shape.** `test_window_expression_join`: a merge FULL-joins the
+      customers scan to the orders' ranks on `customers.rnk =
+      _virt_window_rank` (a union join merges the window rank into the
+      rank). The final join keeps that merge's rows only where their rank
+      matches `abundant`'s, and every rank `abundant` carries is a
+      customer's. A row padded on customers carries a rank the customers
+      scan lacks, and the scan holds every customer rank, so the final join
+      never matches it: the merge may be LEFT, customers preserved. Seam 29
+      read this as a pushed WHERE the planner could not see; the WHERE only
+      narrows the final join to the RIGHT that drops the merge's unmatched
+      rows. Without it the final join is FULL and the rows stay, correctly.
+    - **The proof.** `consumer_proofs.domain_rejections` hands a parent the
+      keys a consumer's equality reads, on a side whose unmatched rows the
+      join drops, where the other side carries only values a datasource
+      binds to that concept (`own_values`: a scan of it, or a coalesce over
+      sources equated on it or its pseudonyms with one no join pads). The
+      merge takes them as `JoinProofs.domain_keys`, and
+      `grain_utility.force_domain_sides` forces a side, when the join pairs
+      the concept off it with another concept and it carries every value of
+      it (`complete_key_domain`; the left only when it is the whole stream).
+      `_failing_keys` checks the channel as it checks `keys`.
+
+    Pinned (red on the seam 30 head):
+    `test_scoped_join_expression_keys::test_a_consumer_matching_only_customer_ranks_narrows_the_rank_merge`.
+    Gates, against the seam 30 head (`fe8e4c9`): corpus (204 statements) 0
+    moved; fuzzer 522/522. Suite capture (`sqlcap`, `-n 4`): 119 tests
+    moved, 103 by column order alone; of the rest, the 2 parsers of
+    `test_window_expression_join` lose a FULL and the others are the
+    README's run-order tests (`test_unbuilt_sources` ports, the CLI and
+    ingest statement counts, coalesce order in
+    `test_rank_beside_partial_merge`). Suite: the same 25 credential-bound
+    failures as `main`.
 
 ## Gate used
 

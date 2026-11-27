@@ -19,6 +19,8 @@ from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.enums import JoinType
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import Join, QueryDatasource
+from trilogy.core.query_processor import get_query_datasources
 from trilogy.parsing.common import VIRTUAL_CONCEPT_PREFIX
 from trilogy.parsing.parse_engine_v2 import parse_text
 from trilogy.parsing.v2.model import HydrationError
@@ -192,6 +194,42 @@ def test_window_expression_join(models: Path, backend: ParserBackend) -> None:
         "union join rank orders.oid order by orders.amt desc = customers.rnk ORDER BY orders.amt desc;",
     )
     assert rows == [("east", 30.0), ("west", 20.0)]
+
+
+RANK_JOIN = (
+    "import orders as orders;\nimport customers as customers;\n"
+    "{where}SELECT customers.region, orders.amt\n"
+    "union join rank orders.oid order by orders.amt desc = customers.rnk;"
+)
+
+
+def _planned_full_joins(models: Path, query: str) -> int:
+    env = _seeded_executor(models).environment
+    _, statements = env.parse(query)
+    pending = [get_query_datasources(env, statements[-1])]
+    seen: set[str] = set()
+    count = 0
+    while pending:
+        ds = pending.pop()
+        if ds.identifier in seen:
+            continue
+        seen.add(ds.identifier)
+        count += sum(
+            1 for j in ds.joins if isinstance(j, Join) and j.join_type == JoinType.FULL
+        )
+        pending += [d for d in ds.datasources if isinstance(d, QueryDatasource)]
+    return count
+
+
+def test_a_consumer_matching_only_customer_ranks_narrows_the_rank_merge(
+    models: Path,
+) -> None:
+    # The WHERE narrows the final join to keep only customers' ranks; the
+    # merge pairing each customer with the orders' ranks pads customers onto
+    # a rank no customer has, which that join never matches.
+    narrowed = RANK_JOIN.format(where="WHERE customers.region is not null\n")
+    assert _planned_full_joins(models, narrowed) == 1
+    assert _planned_full_joins(models, RANK_JOIN.format(where="")) > 1
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

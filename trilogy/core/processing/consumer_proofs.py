@@ -104,6 +104,7 @@ class ConsumerProofs:
     or_groups: OrGroups = ()
     keys: frozenset[str] = frozenset()
     nonzero: frozenset[str] = frozenset()
+    domains: frozenset[str] = frozenset()
 
     @classmethod
     def of(cls, condition: BoolExpr | None) -> ConsumerProofs:
@@ -124,6 +125,7 @@ class ConsumerProofs:
             or self.or_groups
             or self.keys
             or self.nonzero
+            or self.domains
         )
 
     def __or__(self, other: ConsumerProofs) -> ConsumerProofs:
@@ -134,6 +136,7 @@ class ConsumerProofs:
             self.or_groups + extra,
             self.keys | other.keys,
             self.nonzero | other.nonzero,
+            self.domains | other.domains,
         )
 
     def __and__(self, other: ConsumerProofs) -> ConsumerProofs:
@@ -143,6 +146,7 @@ class ConsumerProofs:
             tuple(g for g in self.or_groups if g in other.or_groups),
             self.keys & other.keys,
             self.nonzero & other.nonzero,
+            self.domains & other.domains,
         )
 
     def restrict(self, addresses: set[str]) -> ConsumerProofs:
@@ -154,6 +158,7 @@ class ConsumerProofs:
             tuple(g for g in groups if all(g)),
             self.keys & addresses,
             self.nonzero & addresses,
+            self.domains & addresses,
         )
 
 
@@ -398,6 +403,86 @@ def join_rejections(node: StrategyNode, parent: StrategyNode) -> set[str]:
     return (out - opaque) & {c.address for c in source.output_concepts}
 
 
+def _unpadded_sources(ds: QueryDatasource) -> set[str]:
+    """Identifiers of the sources no join of ``ds`` NULL-pads: each output
+    row carries one of their rows."""
+    right_ids = joined_right_ids(ds.joins)
+    present = {d.identifier for d in ds.datasources if d.identifier not in right_ids}
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            return set()
+        if join.join_type in PADS_LEFT_JOIN_TYPES:
+            present = set()
+        if join.join_type not in PADS_RIGHT_JOIN_TYPES:
+            present.add(join.right.identifier)
+    return present
+
+
+def own_values(ds: QueryDatasource | BuildDatasource, address: str) -> bool:
+    """Every value ``ds`` renders for ``address`` is one a datasource binds
+    to that concept: read off a scan of it, or coalesced over sources that
+    match one never padded on it, so a padded partner adds no value of its
+    own (`domain_rejections`)."""
+    if isinstance(ds, BuildDatasource):
+        return any(c.address == address for c in ds.output_concepts)
+    found = ds.source_map.get(address) or set()
+    sources = [s for s in found if isinstance(s, (QueryDatasource, BuildDatasource))]
+    if len(sources) != len(found) or not sources:
+        return False
+    if len(sources) == 1:
+        return own_values(sources[0], address)
+    anchors = [s for s in sources if s.identifier in _unpadded_sources(ds)]
+    names = {address} | {
+        p
+        for a in anchors
+        for c in a.output_concepts
+        if c.address == address
+        for p in c.pseudonyms
+    }
+    ids = {s.identifier for s in sources}
+    equated: set[str] = set()
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            continue
+        for pair in join.pairs or []:
+            if pair.left.address in names and pair.right.address in names:
+                equated |= {pair.node.identifier, join.right.identifier}
+    anchors = [a for a in anchors if a.identifier in equated]
+    return (
+        bool(anchors)
+        and ids <= equated
+        and all(own_values(a, address) for a in anchors)
+    )
+
+
+def domain_rejections(node: StrategyNode, parent: StrategyNode) -> set[str]:
+    """Keys of ``parent`` an equality in ``node``'s joins matches only to
+    values a datasource binds to that concept, on a side whose unmatched rows
+    the join drops: a ``parent`` row whose key is some other value (a merged
+    key's value its complete side lacks) reaches nothing above ``node``."""
+    source = parent.resolve()
+    ident = source.identifier
+    out: set[str] = set()
+    for raw in node.resolve().joins:
+        if not isinstance(raw, Join):
+            continue
+        join = raw.bound_keys()
+        right = join.join_type in (JoinType.INNER, JoinType.LEFT_OUTER)
+        left = join.join_type in (JoinType.INNER, JoinType.RIGHT_OUTER)
+        for pair in join.pairs or []:
+            if pair.left.address != pair.right.address or pair_matches_nulls(
+                pair, join.modifiers
+            ):
+                continue
+            on_right = right and join.right.identifier == ident
+            if on_right and own_values(pair.node, pair.left.address):
+                out.add(pair.right.address)
+            on_left = left and pair.node.identifier == ident
+            if on_left and own_values(join.right, pair.right.address):
+                out.add(pair.left.address)
+    return out & {c.address for c in source.output_concepts}
+
+
 def _walk(root: StrategyNode) -> list[StrategyNode]:
     """Every node once, each after all of its parents."""
     order: list[StrategyNode] = []
@@ -569,7 +654,7 @@ def _keyed_under(node: StrategyNode) -> set[int]:
         for n in _walk(node)
         if isinstance(n, MergeNode)
         and n.consumer_proofs is not None
-        and n.consumer_proofs.keys
+        and (n.consumer_proofs.keys or n.consumer_proofs.domains)
     }
 
 
@@ -647,7 +732,7 @@ def _propagate(
         for node in siblings:
             passed = _passes_rows(node)
             take = (
-                replace(here, keys=frozenset())
+                replace(here, keys=frozenset(), domains=frozenset())
                 if barred is None or id(node) in barred
                 else here
             )
@@ -688,7 +773,8 @@ def _propagate(
                     given |= ConsumerProofs.of(where).restrict(readable)
                 if barred is not None:
                     given |= ConsumerProofs(
-                        keys=frozenset(join_rejections(node, parent))
+                        keys=frozenset(join_rejections(node, parent)),
+                        domains=frozenset(domain_rejections(node, parent)),
                     )
                 prior = gives.get(pident)
                 if prior is not None:
@@ -716,14 +802,16 @@ def _failing_keys(
     """The narrowed merges whose consumers, as rebuilt, stopped rejecting a
     key they took."""
     received = _propagate(order, by_ident, ident_of, set(), None)
-    return {
-        id(node)
-        for ident, group in by_ident.items()
-        for node in group
-        if isinstance(node, MergeNode)
-        and node.consumer_proofs is not None
-        and not node.consumer_proofs.keys <= received.get(ident, ConsumerProofs()).keys
-    }
+    out: set[int] = set()
+    for ident, group in by_ident.items():
+        now = received.get(ident, ConsumerProofs())
+        for node in group:
+            took = node.consumer_proofs if isinstance(node, MergeNode) else None
+            if took is not None and not (
+                took.keys <= now.keys and took.domains <= now.domains
+            ):
+                out.add(id(node))
+    return out
 
 
 def _nullable(node: StrategyNode) -> set[str]:
