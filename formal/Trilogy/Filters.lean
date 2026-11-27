@@ -998,4 +998,21 @@ theorem filter_derives_its_row_keys :
       (forms.flatMap fun f => values.map fun v => (f, v)).length = 6 := by
   decide
 
+/-- `select city, species, tree_form, (max(height) by tree_form) ? tree_form
+in (<set>) as v0, min(height) by tree_form as v1, sum(height) as v2 where
+not (tree_form in (tree_form ? max(height) by city is null))`: five `(city,
+species)` rows. FINAL looked `tree_form` up off the WHERE set's stream, whose
+rows its gate kept: no city's maximum is NULL, so it held none and the join
+dropped every row. A filter supplies its own value, never a row column it
+passes through (`lookup_reads_ungated_rows`, 244567; 177741, 219659).
+Species are Acer 0, Quercus 1, Ulmus 2, Tilia 3. -/
+theorem lookup_reads_ungated_rows :
+    let rows : List (Nat × Nat) := [(0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let forms : List (Nat × Nat) := [(0, 0), (1, 0), (2, 2), (3, 1)]
+    let gated : List (Nat × Nat) := forms.filter fun _ => false
+    let look (t : List (Nat × Nat)) := rows.flatMap fun r =>
+      (t.filter (·.1 == r.2)).map fun f => (r.1, r.2, f.2)
+    (look forms).length = 5 ∧ look gated = [] := by
+  decide
+
 end Trilogy.Filters

@@ -3054,6 +3054,7 @@ def _project_planned_keys(
     environment: BuildEnvironment,
     producers: Sequence[StrategyNode] = (),
     source: Callable[[list[BuildConcept]], StrategyNode | None] | None = None,
+    gated: Collection[int] = (),
 ) -> list[StrategyNode]:
     """Hand each parent the planned keys widening in place could not. One its
     outputs render is projected over it: the plan pairs `min(x) by row_key`
@@ -3061,7 +3062,9 @@ def _project_planned_keys(
     not render (`cluster_id`, computed off other aggregates) is looked up from
     a built producer keyed within the parent's outputs; with none, from a
     scan `source` plans of the key beside its own keys the parent holds
-    (`tree_form` by `species` beside a summary's rows by `species`)."""
+    (`tree_form` by `species` beside a summary's rows by `species`). A `gated`
+    producer's rows are those a condition kept: it supplies derived keys, never
+    a row column it passes through."""
     out: list[StrategyNode] = []
     authored = environment.all_scoped_join_group_members()
     for parent in parents:
@@ -3099,7 +3102,17 @@ def _project_planned_keys(
             and c.address not in authored
             and c.derivation != Derivation.ROWSET
             and (
-                lookup := _key_lookup(c, parent, determined, producers, environment)
+                lookup := _key_lookup(
+                    c,
+                    parent,
+                    determined,
+                    [
+                        p
+                        for p in producers
+                        if c.derivation != Derivation.ROOT or id(p) not in gated
+                    ],
+                    environment,
+                )
                 or _sourced_lookup(
                     c,
                     parent,
@@ -7413,6 +7426,10 @@ def _assemble_final_node(
     # a planned key no widening reaches (a derived `cell` the per-tree step's
     # rows determine) is looked up from the step computing it: left unheld,
     # the sides pair on whatever else they share (#977)
+    # a filter's rows are those its condition kept (`Filters.lookup_reads_ungated_rows`)
+    gated = {
+        id(n) for g, n in built.items() if attrs[g].derivation == Derivation.FILTER
+    }
     parents = _project_planned_keys(
         parents,
         origin,
@@ -7424,6 +7441,7 @@ def _assemble_final_node(
                 outputs=outputs, environment=environment, graph=graph, history=history
             )
         ),
+        gated,
     )
     parents = [_rows_once(p, plan, origin, environment) for p in parents]
     side_cols = partial(
@@ -7474,6 +7492,7 @@ def _assemble_final_node(
                     history=history,
                 )
             ),
+            gated,
         )
     )
     parents = _pair_inside_padding_streams(
