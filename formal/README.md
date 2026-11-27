@@ -2977,6 +2977,27 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (47078). 25496 is main's stray WHERE row beside a window, which a limit
     used to hide. 129123 in full still pairs on one column: the filter cannot
     expose its grain keys.
+- **`filters` to 260,000** (0.3.544). On main seeds 240,000-260,000 (40,000
+  queries) hold 4 wrong answers, 14 raises and 5 invalid statements; the
+  round fixes 11 of them (4 wrong answers, 7 raises). Over the full range
+  0-260,000 (520,000 queries) it fixes 106 (56 seeds): wrong answers 84 to
+  66, raises 202 to 116, invalid 38 to 36, none broken; summary reads +970
+  (7 lost, none with an extra scan); joins +444, +576 on statements that
+  failed before and -132 on ones that already passed.
+  - A WHERE atom's `by *` total beside a value its condition reads goes with
+    it onto a set's rows (`gate_takes_its_total`, 235307).
+  - A window numbering the rows by row values is gated like an aggregate
+    reading them (`window_counts_ungated_rows`, 240133), unless the atom reads
+    a set (240967) or the window sits at the grain of the select's
+    aggregates, where it numbers groups (187656).
+  - FINAL pairs its bridges on the select's grain: two windows partitioned by
+    `(city, tag)` and `(tag, v1)` met on `tag` alone
+    (`partitions_pair_on_the_select_grain`, 257753).
+  - Two sets each read by a select column claimed the other's reader as a
+    key and the planner recursed (`sets_key_no_readers`, 256563, the 5 `OPEN`
+    recursion seeds and 40 more). Asked of a set no select column reads, it
+    joined on no key in 202 queries, which a 4,000-seed slice did not show.
+  - Not fixed: 217347, 240270, and a filter bridge FINAL never widens (248230).
 - **`filters` to 240,000** (0.3.543). On main seeds 220,000-240,000 (40,000
   queries) hold 6 wrong answers, 35 raises and 3 invalid statements; the
   round fixes 32 of them (4 wrong answers, 28 raises) and breaks none.
