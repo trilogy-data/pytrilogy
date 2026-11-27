@@ -3405,6 +3405,21 @@ def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
     return conditions, opaque
 
 
+def _iter_row_nodes(root: StrategyNode) -> Iterator[StrategyNode]:
+    """`root` and every node its rows come from: a membership's set feeders are
+    read by subselect, so a filter under one restricts the set, not these rows
+    (`Filters.set_gate_restricts_no_row`)."""
+    seen: set[int] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        yield node
+        stack.extend(_row_source_parents(node))
+
+
 def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> bool:
     """Every row restriction `node` applies, a sibling applies too, so
     dropping it from the merge removes no rows."""
@@ -3413,9 +3428,12 @@ def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> b
         return False
     if not conditions:
         return True
-    sibling_conditions: list[BoolExpr] = []
-    for sibling in siblings:
-        sibling_conditions.extend(_subtree_restrictions(sibling)[0])
+    sibling_conditions = [
+        current.conditions
+        for sibling in siblings
+        for current in _iter_row_nodes(sibling)
+        if current.conditions is not None
+    ]
     return all(
         any(condition_implies(other, condition) for other in sibling_conditions)
         for condition in conditions
