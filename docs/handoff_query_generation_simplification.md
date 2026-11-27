@@ -99,10 +99,9 @@ join a WHERE, HAVING or consumer join rejects the padding of
 refire after it, the `after_join_upgrades` deferral of atom removal and the
 `upgrade_condition_joins` flag. The one plan only the last pass narrowed,
 `test_window_expression_join`, is planned by a value-domain proof (seam 31):
-a consumer whose join matches only a concept's own values hands the merge
-that key (`consumer_proofs.domain_rejections`), and the merge forces a side
-that carries every value of it where it pairs another concept merged into it
-(`grain_utility.force_domain_sides`). Nothing else narrows less but
+a consumer key held to the concept's own values (`ConsumerProofs.keys`,
+`join_rejections`) lets the merge force a side that carries every value of
+the concept (`grain_utility.force_domain_sides`). Nothing else narrows less but
 `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
 pushdown on purpose.
 

@@ -719,8 +719,8 @@ class MergeNode(StrategyNode):
             proofs |= consumer.proofs
             side_proofs |= consumer.side_proofs
             or_groups += [[set(d) for d in group] for group in consumer.or_groups]
-            key_proofs = set(consumer.keys - zero)
-            domain_keys = set(consumer.domains)
+            key_proofs = set(consumer.keys) - zero
+            domain_keys = {k for k, own in consumer.keys.items() if own} - zero
             key_sources = {
                 a: s for a, s in (self.key_reads or {}).items() if a in key_proofs
             }

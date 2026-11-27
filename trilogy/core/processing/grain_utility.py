@@ -1083,29 +1083,25 @@ def _equated_by(
 def force_domain_sides(
     join: SourceJoin | UnnestJoin, domain_keys: set[str], stream: frozenset[str]
 ) -> None:
-    """A consumer matches ``domain_keys`` only to values a datasource binds to
-    the concept (`consumer_proofs.domain_rejections`). Where this join pairs
-    that concept off a side carrying every value of it with another concept
-    merged into it, a row padded on that side holds a merged value the side
-    lacks, so no value of the concept: no consumer matches it."""
-    if not isinstance(join, Join) or not domain_keys or not join.pairs:
+    """A consumer matches ``domain_keys`` only to the concept's own values
+    (`consumer_proofs.join_rejections`). A row this join pads on a side
+    carrying every value of the concept holds a key that side lacks (another
+    concept's value it was paired with) or NULL, and no consumer matches it.
+    Only a join on that one key: a row a composite key leaves unmatched may
+    hold a value of each key the side has."""
+    if not isinstance(join, Join) or not domain_keys or len(join.pairs or []) != 1:
         return
     from trilogy.core.processing.join_resolution import complete_key_domain
 
-    left_forced = right_forced = False
-    for pair in join.pairs:
-        if pair.left.address == pair.right.address:
-            continue
-        if (
-            pair.left.address in domain_keys
-            and stream == {pair.node.identifier}
-            and complete_key_domain(pair.node, pair.left.address)
-        ):
-            left_forced = True
-        if pair.right.address in domain_keys and complete_key_domain(
-            join.right, pair.right.address
-        ):
-            right_forced = True
+    pair = join.pairs[0]
+    left_forced = (
+        pair.left.address in domain_keys
+        and stream == {pair.node.identifier}
+        and complete_key_domain(pair.node, pair.left.address)
+    )
+    right_forced = pair.right.address in domain_keys and complete_key_domain(
+        join.right, pair.right.address
+    )
     join.join_type = unpadded_join_type(join.join_type, left_forced, right_forced)
 
 

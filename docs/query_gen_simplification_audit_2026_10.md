@@ -2607,27 +2607,41 @@ election, not the padded fallback.
       read this as a pushed WHERE the planner could not see; the WHERE only
       narrows the final join to the RIGHT that drops the merge's unmatched
       rows. Without it the final join is FULL and the rows stay, correctly.
-    - **The proof.** `consumer_proofs.domain_rejections` hands a parent the
-      keys a consumer's equality reads, on a side whose unmatched rows the
-      join drops, where the other side carries only values a datasource
-      binds to that concept (`own_values`: a scan of it, or a coalesce over
-      sources equated on it or its pseudonyms with one no join pads). The
-      merge takes them as `JoinProofs.domain_keys`, and
-      `grain_utility.force_domain_sides` forces a side, when the join pairs
-      the concept off it with another concept and it carries every value of
-      it (`complete_key_domain`; the left only when it is the whole stream).
-      `_failing_keys` checks the channel as it checks `keys`.
+    - **The proof.** It is the key channel's own fact, made stricter. A
+      consumer's equality that drops a side's unmatched rows already tells
+      the merge under it that a NULL key reaches nothing (`keys`); where the
+      other side holds only the concept's own values, no value outside the
+      concept does either, and NULL is in no domain. So `ConsumerProofs.keys`
+      maps each rejected key to whether it is held to its own values
+      (`join_rejections`, `own_values`: a scan of the concept, or a coalesce
+      over sources the join equates on its key class,
+      `DomainGraph.canonical`, with one no join pads). It inherits the
+      channel's exclusions (null-safe pairs, opaque bindings, a coalesced
+      left), and `|`, `&` and `_failing_keys` (`covers`) treat the stricter
+      reading as the stronger. The merge takes the own-value keys as
+      `JoinProofs.domain_keys`, and `grain_utility.force_domain_sides`
+      forces a side that carries every value of the concept
+      (`complete_key_domain`, relation-level, so a filtered or limited side
+      does not count; the left only when it is the whole stream): a row
+      padded there holds a value it lacks, or NULL.
+    - **Only a join on that one key.** A row a composite key leaves
+      unmatched can hold a value of each key the side has: the multi-leg
+      scoped join tests (`test_multileg_sql_parity_via_not_null`, all three
+      walks) returned no rows when the proof forced the anchor's side of
+      the `(ticket, item, customer)` union join. A first cut required the
+      pair to join two different concepts instead: that kept those tests
+      green but excludes no composite join of different concepts, and is
+      not the condition the proof needs. `force_domain_sides` now takes a
+      single-pair join, of any two concepts.
 
     Pinned (red on the seam 30 head):
     `test_scoped_join_expression_keys::test_a_consumer_matching_only_customer_ranks_narrows_the_rank_merge`.
     Gates, against the seam 30 head (`fe8e4c9`): corpus (204 statements) 0
-    moved; fuzzer 522/522. Suite capture (`sqlcap`, `-n 4`): 119 tests
-    moved, 103 by column order alone; of the rest, the 2 parsers of
-    `test_window_expression_join` lose a FULL and the others are the
-    README's run-order tests (`test_unbuilt_sources` ports, the CLI and
-    ingest statement counts, coalesce order in
-    `test_rank_beside_partial_merge`). Suite: the same 25 credential-bound
-    failures as `main`.
+    moved; fuzzer 522/522. Suite capture (`sqlcap`, `-n 4`): join types
+    change in the 2 parsers of `test_window_expression_join` alone (a FULL
+    becomes LEFT); the other moves are column and ON-pair order, which this
+    suite's law tests reverse between runs of one tree, and the README's
+    run-order tests. Suite: the same 25 credential-bound failures as `main`.
 
 ## Gate used
 
