@@ -2695,13 +2695,42 @@ election, not the padded fallback.
       common and the same filters (`_same_filters`) hold one value set. That
       replaces `same_rows` and provider equality where they fail. The NULL
       half of `_one_read` is unchanged.
+    - **Only a table every row of which is kept by proof.** A first cut
+      took the providers as given. `key_providers` keeps a lookup
+      LEFT-joined from a complete binding (`_partners_every_right_row`),
+      which a `?` key does not promise. `test_multi_fact_nullable_fk_extent`
+      (`?gid` on both facts) then lost the members only one fact covers.
+      `_equated_binders` keeps a table only through a join type that
+      preserves it or a match the planner proved (`matched_left`,
+      `matched_right`; `_matched_kept`).
     - **What it moves.** Of the 82 firings, 8 are planned now (the
       `spellings[71]` and `compositions[21]` pairs, `filters[66376]`,
       `windows[5596]`) and none are new. Every join type in the 72 firing
       tests is as before. The planned INNERs reorder some CTEs.
+    - **It narrows more than the optimizer did.** Over the suite capture
+      (49,197 tests both runs reached), 166 joins in 153 tests are
+      narrower and none are wider (`test_trilogy::test_parallel_failure` is
+      known noise). They are almost all oracle laws (filters 35, spellings
+      25, rollup resolution 19, dimension chain, sweep, expressions 11
+      each), plus `test_shared_attribute_aggregate_matrix` (4), thelook (2)
+      and `test_nullability::test_statement_grains`. That last one is the
+      shape: products LEFT JOIN orders grouped by manufacturer, FULL-joined
+      to products grouped by manufacturer, is planned INNER. Both read every
+      product, so neither has a member the other lacks, NULL group included
+      (the pair stays null-safe). The optimizer left it FULL. Every one of
+      the 153 passes its rows.
+      `test_consumer_join_narrowing::test_a_grouped_filter_reads_its_parents_aggregate_per_row`
+      pinned the old planned FULL and RIGHT (the optimizer narrowed both to
+      INNER in the SQL), and now asserts the INNERs.
 
     Pinned (red on `main`):
     `test_planned_join_narrowing::test_twin_aggregates_of_one_stream_through_an_equating_join`.
+    Unit rows: `tests/core/processing/test_equated_binders.py`.
+
+    Gates, against `35c8b79`: corpus (204 statements) 0 moved; fuzzer
+    522/522. Suite capture as above; no test changes outcome but
+    environment-bound ones (DuckDB extensions, credentials, a Rust binary).
+    CI green.
 
     **What is left (the lead).** 74 firings in 66 tests: 53 equivalence
     upgrades (35 LEFT, 18 FULL), 17 directional, 4 rule B. The equivalence
