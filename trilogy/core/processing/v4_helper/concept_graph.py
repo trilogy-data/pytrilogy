@@ -1791,14 +1791,17 @@ def _grain_off_its_readers(
     as f`: the set's grain names `f`). The column reads the set, so it is no
     key of it: planned standalone at that grain, the set would ask for the
     column that asks for it (`Filters.value_is_no_finer_than_its_reader`).
-    Nor is a column reading another set: planned at it, that set asks for this
-    one's reader in turn (`Filters.sets_key_no_readers`, 256563)."""
-    readers = {
-        address
+    Beside that reader, neither is a column reading another set: planned at it,
+    that set asks for this one's reader in turn (`Filters.sets_key_no_readers`,
+    256563)."""
+    sets_read = {
+        address: lineage_existence_parts(reader)[0]
         for address in grain
         if (reader := environment.concepts.get(address)) is not None
-        and lineage_existence_parts(reader)[0]
     }
+    readers = {a for a, sets in sets_read.items() if concept.address in sets}
+    if readers:
+        readers |= {a for a, sets in sets_read.items() if sets}
     return grain - readers if readers else grain
 
 

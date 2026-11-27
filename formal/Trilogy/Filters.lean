@@ -879,8 +879,10 @@ reads S2 (0 feeds 2, 1 feeds 3). Both sets claim the select's grain, `v0, v1`.
 Taking out of each only its own reader keeps `v0` a key of S2 and `v1` one of
 S1, and the four have no build order: planned standalone, each set asked for
 the other's reader and the planner recursed (`sets_key_no_readers`, 256563
-and the `OPEN` seeds 349, 667, 3730, 10955, 12695). Nodes are S1, S2, `v0`,
-`v1` (0-3). -/
+and the `OPEN` seeds 349, 667, 3730, 10955, 12695). The cycle needs the set's
+own reader in the grain: a set no select column reads (one in the WHERE) keeps
+the others as keys, and dropping them there joined its rows on no key (3343
+and 200 more). Nodes are S1, S2, `v0`, `v1` (0-3). -/
 theorem sets_key_no_readers :
     let lineage : List (Nat × Nat) := [(0, 2), (1, 3)]
     buildable lineage [0, 1, 2, 3] 4 = true ∧

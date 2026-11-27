@@ -561,14 +561,22 @@ def _aggregated_arguments(
     return out
 
 
-def _window_over_rows(bucket: GroupBucket, environment: BuildEnvironment) -> bool:
+def _window_over_rows(gid: str, scope: "_PlacementScope") -> bool:
     """A window numbering rows by row values (`row_number() over (partition by
-    city order by species)`): one over an aggregate reads its groups, which
-    the aggregate's own placement gates."""
-    if bucket.derivation != Derivation.WINDOW:
+    city order by species)`): one over an aggregate, or at the grain of the
+    select's own aggregates, numbers groups, which the aggregate's placement
+    gates (187656)."""
+    buckets = scope.buckets
+    bucket = buckets[gid]
+    if bucket.derivation != Derivation.WINDOW or any(
+        _emits_group_by(g, buckets)
+        and buckets[g].depth_label == bucket.depth_label
+        and buckets[g].grain_components == bucket.grain_components
+        for g in scope.main_lineage
+    ):
         return False
     for address in bucket.primary_members:
-        concept = environment.concepts.get(address)
+        concept = scope.environment.concepts.get(address)
         lineage = concept.lineage if concept is not None else None
         if not isinstance(
             lineage, (BuildNavigationWindowItem, BuildNumberingWindowItem)
@@ -677,7 +685,7 @@ def _hosts_reading_unfiltered_rows(
         and (
             buckets[gid].derivation in _EMITS_GROUP_BY
             or windows
-            and _window_over_rows(buckets[gid], scope.environment)
+            and _window_over_rows(gid, scope)
         )
     ]
     hosts = tuple(chosen)
@@ -2075,7 +2083,10 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         elif outer_hosts:
             chosen_groups = _choose_groups(outer_hosts, host_graph, main_lineage)
     chosen_groups += _hosts_reading_unfiltered_rows(
-        chosen_groups, unbarred, scope, windows=not any(atom.existence_arguments)
+        chosen_groups,
+        unbarred,
+        scope,
+        windows=not any(atom.existence_arguments),
     )
     out = [
         ConditionPlacement(

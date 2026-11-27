@@ -13,11 +13,11 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.543.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.544.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 240,000; the PR of each
+group key of aggregates and windows, in a HAVING) to 260,000; the PR of each
 round holds its sweep totals. `filters` has 18 `OPEN` seeds (area 4b),
 `windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
@@ -727,7 +727,7 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
   wrong, 43 raises, 6 invalid of 40,000): windows over filtered keys
   (162928, 174664); the derived key off a peel (175744); nested-aggregate
   statements DuckDB rejects (162190, 164009, 172828, 178097); recursion
-  (161496, 171031, 177584); `cannot be related` and `Could not resolve
+  (161496, 171031, 177584; fixed in 0.3.544); `cannot be related` and `Could not resolve
   connections` (163611, 165374, 172055, 173363, 173737). 18629 needs a
   filtered aggregate's step deduped as a lookup: 0.3.540 dedups a filtered
   step only when its filtered column is a pairing key
@@ -749,7 +749,7 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     WHERE atom is the candidate fix; it touches every cover, so sweep it alone.
   - Raises: keyless joins (184369, 184759, 185251, 194927, 199620), `Could not
     resolve connections` (184974, 185997, 187204, 190792, 195260, 198604),
-    recursion (191855, 197547, 199349), `renders no column` (183765),
+    recursion (191855, 197547, 199349; fixed in 0.3.544), `renders no column` (183765),
     `Missing source reference` (193049). Invalid on DuckDB: a CTE alias read
     for a column it lacks (197959), nested aggregates on the summary (183562,
     198529, 199618), a missing `_virt_agg_sum` column (192798).
@@ -776,6 +776,15 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
 - **Left after 0.3.544** (seeds 240,000-260,000 and older; each fails on
   main too):
+  - Sweep the whole range before trusting a slice. Taking every set reader
+    out of a set's grain (`sets_key_no_readers`) fixed the recursions and
+    broke nothing in 240,000-244,000, but over 0-260,000 it broke 202 seeds
+    (a set in the WHERE beside a filtered select column, which keeps that
+    column as a key: 3343); a window gated like an aggregate broke 187656
+    (`row_number() over tree_form` beside aggregates by `tree_form` numbers
+    groups). Both are narrowed: other readers leave a set's grain only beside
+    its own reader, and a window at the grain of the select's aggregates is
+    no host.
   - 217347: `select city, species, tree_form, tree_form ? species in (species
     ? min(height) by tree_form > 8) as v0, avg(min(height)) over (partition
     by v0) as v1 where count_distinct(tag) by city, tree_form >= 2` returns
