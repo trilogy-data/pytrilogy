@@ -805,8 +805,11 @@ def _uncovered_exposing_output_contributor(
         keys -= _filters_the_keys_decide(keys, environment)
         # a filter stream shown beside the host never passed the atom: at the
         # select grain and read by FINAL alone, its rows are FINAL's (a
-        # regrouped or windowed one's are not)
-        shown_unfiltered = any(
+        # regrouped or windowed one's are not), which hold the row values the
+        # atom reads (`tag` of a set gate is no column of them)
+        shown_unfiltered = {
+            c.address for c in atom.row_arguments if not c.is_aggregate
+        } <= mandatory_addrs and any(
             set(buckets[gid].grain_components) <= mandatory_addrs
             and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
             for gid in unfiltered

@@ -297,15 +297,13 @@ def _single_row_value(concept: BuildConcept) -> bool:
     ) <= {ALL_ROWS_ADDRESS}
 
 
-def _where_atoms(
-    attrs: dict[str, GroupAttrs], groups: Collection[str], absent_only: bool
-) -> list:
+def _where_atoms(attrs: dict[str, GroupAttrs], groups: Collection[str]) -> list:
     seen: list = []
     for gid in groups:
         if _scope_and_phase(attrs[gid].label)[1] == "condition":
             continue
         for atom in attrs[gid].condition_atoms:
-            if atom not in seen and (not absent_only or args_holding_on_absent(atom)):
+            if atom not in seen:
                 seen.append(atom)
     return seen
 
@@ -349,11 +347,7 @@ def elect_cover(
     row_atoms = _row_atoms(attrs, groups)
     suppliers = _sole_suppliers(exposed, groups, mandatory_list)
 
-    where_atoms = _where_atoms(attrs, groups, absent_only=True)
-    # a filter stream at the select grain shows its rows as FINAL's: it ranks
-    # behind a group whose rows passed every WHERE atom
-    # (`Filters.cover_reads_gated_rows`)
-    all_atoms = _where_atoms(attrs, groups, absent_only=False)
+    where_atoms = _where_atoms(attrs, groups)
     # a FINAL re-applying an atom that holds on an absent group reads no output
     # off a group producing that atom's arguments: joined as a side, its rows
     # meet the select's padded and pass
@@ -368,7 +362,6 @@ def elect_cover(
         )
 
     memos: list[dict[str, bool]] = [{} for _ in where_atoms]
-    all_memos: list[dict[str, bool]] = [{} for _ in all_atoms]
     selected = {c.address for c in mandatory_list}
 
     def only_sets_read(gid: str) -> bool:
@@ -378,16 +371,9 @@ def elect_cover(
         )
 
     def rows_filtered(gid: str) -> bool:
-        at_select_grain = attrs[gid].derivation == Derivation.FILTER and set(
-            attrs[gid].grain_components
-        ) <= selected
         return all(
             _rows_pass(gid, atom, group_graph, group_edges, attrs, memo)
-            for atom, memo in (
-                zip(all_atoms, all_memos)
-                if at_select_grain
-                else zip(where_atoms, memos)
-            )
+            for atom, memo in zip(where_atoms, memos)
         )
 
     def skips_row_atoms(gid: str) -> bool:

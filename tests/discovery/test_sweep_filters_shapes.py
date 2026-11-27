@@ -1035,6 +1035,45 @@ SHAPES = [
         ),
         [("b", None)],
     ),
+    # a grouped side carries a sibling's key its own keys determine (`species`
+    # of `tree_id`), else two aggregates meet on nothing (44547, 70364)
+    (
+        (
+            "select tree_id, (count(tree_id) by city, species) ? species = 'Acer'"
+            " as v0, sum(height) by species as v1, count_distinct(tag) as v2 where"
+            " tree_id in (tree_id ? count(tree_id) by tree_form > 10);"
+        ),
+        [],
+    ),
+    (
+        (
+            "select tree_id, species ? min(height) by species <= 5 or species in"
+            " (species ? max(height) by tree_form <= 1) as v0, city ? city in (city"
+            " ? city in ('B')) as v1, sum(height ? tree_form in (tree_form ?"
+            " count(tree_id) by city != 3)) as v2, sum(min(height) by tree_id, v0,"
+            " v1) over (partition by v0, v1) as v3 having v0 is null;"
+        ),
+        [("a4", None, None, None, None)],
+    ),
+    # FINAL re-applies a WHERE only on row values its rows hold: `tag` of a
+    # set gate is none (50346, a keyless join)
+    (
+        (
+            "select city ? max(height) by city < 1 as v0 where (min(height) by * > 3"
+            " or tag in (tag ? city = 'B'));"
+        ),
+        [],
+    ),
+    # the cover prefers rows that passed every WHERE atom (16847)
+    (
+        (
+            "select species, tag, tree_form ? tree_form in (tree_form ? min(height)"
+            " by city, tree_form < max(height) by species) as v0,"
+            " count_distinct(tag) by tree_form as v1 where max(height) by city -"
+            " min(height) by species > 2;"
+        ),
+        [("Acer", "y", None, 1), ("Tilia", "x", None, 1)],
+    ),
 ]
 
 
