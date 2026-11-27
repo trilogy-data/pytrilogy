@@ -427,13 +427,13 @@ def test_a_grouped_filter_reads_its_parents_aggregate_per_row():
     """`tag ? min(height) by tree_form > 3` filters the merge of the trees
     with the per-form minimum before it groups by tag: its WHERE reads the
     minimum on each merge row, so a row padded there is rejected, though the
-    filter groups. That merge keeps only the minimum's side; the one under
-    `avg(height) by tree_form is null` stays FULL."""
+    filter groups. Both per-form aggregates group the trees' own rows, so
+    each merge of them with the trees is planned INNER (seam 33)."""
     query, expected = shape5(20)
     executor, pristine = fresh("summary")
     executor.environment = deepcopy(pristine)
     planned = [t for _, t in _planned(executor, query)]
-    assert set(planned) - {JoinType.INNER} == {JoinType.FULL, JoinType.RIGHT_OUTER}
+    assert set(planned) == {JoinType.INNER}, planned
     sql = executor.generate_sql(query)[-1]
     assert normalize(executor.execute_raw_sql(sql).fetchall()) == normalize(expected)
 

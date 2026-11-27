@@ -8,6 +8,7 @@ from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_M
 from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
+from tests.discovery.test_oracle_sweep_laws import BASE as SWEEP_MODEL
 from tests.engine.test_grain_pin_unnest_merge_filter import MERGED_SPECIES
 from tests.engine.test_grain_pin_unnest_merge_filter import MODEL as PIN_MODEL
 from tests.engine.test_unmodelled_regions import (
@@ -110,5 +111,17 @@ def test_a_pinned_value_proves_its_anchor():
     planned = _planned(
         PIN_MODEL + MERGED_SPECIES,
         "select upper(species) as s, tree_id where bucket = 'Same' order by s;",
+    )
+    assert JoinType.FULL not in planned, planned
+
+
+def test_twin_aggregates_of_one_stream_through_an_equating_join():
+    planned = _planned(
+        SWEEP_MODEL,
+        "select city, tree_form, sum(max(height) by city, species) as v0, "
+        "sum(height ? (city = 'A' and city in ('B'))) as v1, "
+        "min(height ? (sum(height) by city - max(height) by tree_form < 0 "
+        "and sum(height) by city = count_distinct(tag) by species)) as v2 "
+        "where not (height is not null) having tree_form = 'linden';",
     )
     assert JoinType.FULL not in planned, planned

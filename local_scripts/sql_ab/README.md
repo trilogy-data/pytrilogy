@@ -135,6 +135,15 @@ by proof set names the class a plan-time proof would have to take over.
 UPGRADE_CENSUS=/tmp/up.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p upgrade_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
 ```
 
+`null_safe_census_plugin.py` does the same for `SimplifyNullSafeJoins`: every
+key it strips the null-safe form from, the `proven_non_null` layer that proved
+it on each side, and whether the planner already had the proof (the planned
+merge's own condition, and the type it planned the join).
+
+```bash
+NULL_SAFE_CENSUS=/tmp/ns.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p null_safe_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```
+
 ## Region census
 
 `domain_kind_plugin.py` records, per test, each region domain the planner

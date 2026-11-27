@@ -3,7 +3,7 @@
 What is left of the 2026-08 simplification audit. Everything that landed has
 been removed from this file; the git history is the record of that. Two items
 remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 landed but for the
-two optimizer join rules it lists, and the grouping-set TVF (4) is done but for
+key-set join rule and the grain-pin render it lists, and the grouping-set TVF (4) is done but for
 a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
@@ -107,22 +107,30 @@ pushdown on purpose.
 
 What is left of 2.1:
 
-- `UpgradeOuterFromKeySetEquivalence` (seam 2 of the audit): 87 firings over
-  the whole suite, and its proof branches were ablated one by one (eleventh
-  slice). The nine the planner's `complete_key_domain` already proves are
-  deleted. Each branch kept names the plans or the test that move without it,
-  so do not re-ablate them without a new premise. Its vetoes were not
-  ablated, since turning one off makes the rule narrow more.
-- `SimplifyNullSafeJoins` (`null_safe_join.py`), re-measured in seam 30: it
-  still changes a join in 89 tests (mostly the filters, spellings and
-  compositions oracle laws and the dimension chain), so it stays. Its
-  premise was stale `NULLABLE` modifiers from join types that change after
-  planning; with the guard rule gone only the key-set rule changes them, so
-  the next measure is which of the 89 a planned modifier would cover.
+- `UpgradeOuterFromKeySetEquivalence` (seam 2 of the audit): its proof
+  branches were ablated one by one (eleventh slice), and each branch kept
+  names the plans or the test that move without it, so do not re-ablate them
+  without a new premise. Its vetoes were not ablated, since turning one off
+  makes the rule narrow more. Re-measured after seam 31 (seam 33): 82
+  firings in 72 tests outside the tpc-ds and tpc-h files (which need the
+  DuckDB extensions), 61 of them the equivalence upgrade. Seam 33 plans 8
+  (twin aggregates of one stream through an INNER join on the key). The
+  rest are the lead: see seam 33's "What is left".
+- `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
+  post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
+  from join types that change after planning, does not hold: of the 112 keys
+  it strips (82 tests), 2 sit on a join planned FULL; on 7 the planned
+  merge's own WHERE held the proof. The rest read a WHERE that predicate
+  pushdown or a parent collapse put on a CTE after planning. Do not move it
+  into the planner.
 - The grain-pin render (seam 28): a pin renders as a bare `(expr)`, so a row
   whose anchor is NULL shows the computed value where the semantics say
   NULL. Guarding it with its anchors (`case when anchor is not null then
-  expr end`) rewrites every pinned value's SQL and needs its own A/B.
+  expr end`) rewrites every pinned value's SQL and needs its own A/B. The
+  guard as written is also wrong for an anchor that is NULL as a value (a
+  `?` key's NULL group), which it would blank too: it needs the padding
+  NULL told apart from the value NULL, which a CASE on the anchor cannot do.
+  Decide the semantics first.
 
 ## 3. 2.7 symmetric coverage (optional, 0 firings today)
 

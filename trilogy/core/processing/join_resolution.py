@@ -3252,10 +3252,21 @@ def _one_read(
     null-safely, and only where no span pads it for one side alone; a
     grouping set's subtotal NULL is no row of the stream."""
     na, nb = carries.nodes[a], carries.nodes[b]
-    if key in sides[a].rollup_padded | sides[b].rollup_padded or not same_rows(na, nb):
+    if key in sides[a].rollup_padded | sides[b].rollup_padded or not _same_filters(
+        na, nb
+    ):
         return False
-    providers = carries.providers(a, key)
-    if not providers or providers != carries.providers(b, key):
+    providers, others = carries.providers(a, key), carries.providers(b, key)
+    if not (
+        providers
+        and (providers == others and same_rows(na, nb))
+        or providers
+        and others
+        and bool(
+            _one_value_set(na, carries.concepts[(a, key)])
+            & _one_value_set(nb, carries.concepts[(b, key)])
+        )
+    ):
         return False
     nullable = [key in sides[side].nullables for side in (a, b)]
     if not any(nullable):
@@ -3269,6 +3280,67 @@ def _one_read(
             )
         )
     )
+
+
+def _matched_kept(ds: QueryDatasource) -> set[str]:
+    """`preserved_sources` on join types and the planner's own matches
+    (`matched_left`/`matched_right`) alone: no partner is inferred from a
+    complete binding, which a `?` key does not promise."""
+    alive = {
+        sub.identifier
+        for sub in ds.datasources
+        if sub.identifier not in joined_right_ids(ds.joins)
+    }
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            alive = set()
+            continue
+        if not (join.matched_left or join.join_type in PADS_RIGHT_JOIN_TYPES):
+            alive = set()
+        if join.matched_right or join.join_type in PADS_LEFT_JOIN_TYPES:
+            alive.add(join.right.identifier)
+    return alive
+
+
+def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]] | None:
+    """The leaf tables under `ds` binding `address`, grouped where an INNER
+    join on it equates them: every row of the source holds one value of it
+    from each table of a group. None when a join drops rows of one."""
+    if not isinstance(ds, QueryDatasource):
+        if any(c.address == address for c in ds.output_concepts):
+            return [frozenset({ds.identifier})]
+        return []
+    kept = _matched_kept(ds)
+    groups: list[list[frozenset[str]]] = []
+    for sub in ds.datasources:
+        found = _equated_binders(sub, address)
+        if found is None or found and sub.identifier not in kept:
+            return None
+        groups.append(found)
+    slot = {sub.identifier: i for i, sub in enumerate(ds.datasources)}
+    for join in ds.joins:
+        if not isinstance(join, Join) or join.join_type != JoinType.INNER:
+            continue
+        for pair in join.pairs:
+            if pair.left.address != address or pair.right.address != address:
+                continue
+            left = slot.get(pair.node.identifier)
+            right = slot.get(join.right.identifier)
+            if left is None or right is None or left == right:
+                continue
+            if len(groups[left]) == 1 and len(groups[right]) == 1:
+                groups[left] = [groups[left][0] | groups[right][0]]
+                groups[right] = []
+                slot = {k: left if v == right else v for k, v in slot.items()}
+    return [group for found in groups for group in found]
+
+
+def _one_value_set(ds: DataSource, concept: BuildConcept) -> frozenset[str]:
+    """The tables binding `concept` under `ds` when every row of each is still
+    in it and INNER joins on it equate them all: the source's values of it
+    are any one of theirs that pass its filters. Empty otherwise."""
+    groups = _equated_binders(ds, concept.address)
+    return groups[0] if groups is not None and len(groups) == 1 else frozenset()
 
 
 def _null_alike(key: str, a: SideFacts, b: SideFacts) -> bool:
