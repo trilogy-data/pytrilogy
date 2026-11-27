@@ -30,6 +30,8 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
     BuildConditional,
     BuildFilterItem,
+    BuildNavigationWindowItem,
+    BuildNumberingWindowItem,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
@@ -559,6 +561,55 @@ def _aggregated_arguments(
     return out
 
 
+def _window_over_rows(gid: str, scope: "_PlacementScope") -> bool:
+    """A window numbering rows by row values (`row_number() over (partition by
+    city order by species)`): one over an aggregate, or at the grain of the
+    select's own aggregates, numbers groups, which the aggregate's placement
+    gates (187656)."""
+    buckets = scope.buckets
+    bucket = buckets[gid]
+    if bucket.derivation != Derivation.WINDOW or any(
+        _emits_group_by(g, buckets)
+        and buckets[g].depth_label == bucket.depth_label
+        and buckets[g].grain_components == bucket.grain_components
+        for g in scope.main_lineage
+    ):
+        return False
+    concepts = scope.environment.concepts
+    return all(_numbers_rows(concepts.get(a)) for a in bucket.primary_members)
+
+
+def _numbers_rows(concept: BuildConcept | None) -> bool:
+    lineage = concept.lineage if concept is not None else None
+    return isinstance(
+        lineage, (BuildNavigationWindowItem, BuildNumberingWindowItem)
+    ) and not any(
+        isinstance(c, BuildConcept) and c.is_aggregate
+        for c in [*lineage.concept_arguments, *(o.expr for o in lineage.order_by)]
+    )
+
+
+def _window_reads(concept: BuildConcept | None) -> set[str]:
+    lineage = concept.lineage if concept is not None else None
+    if isinstance(lineage, BuildNavigationWindowItem):
+        return {lineage.content.address}
+    return (
+        {c.address for c in lineage.arguments}
+        if isinstance(lineage, BuildNumberingWindowItem)
+        else set()
+    )
+
+
+def _windowed_arguments(
+    bucket: GroupBucket, environment: BuildEnvironment
+) -> set[str] | None:
+    """The values a window's members read along its rows (`lag(max(height))
+    over fc` reads the groups by `fc`); none for a numbering of the rows
+    themselves (`row_number()`)."""
+    reads = [_window_reads(environment.concepts.get(a)) for a in bucket.primary_members]
+    return set().union(*reads) if reads and all(reads) else None
+
+
 def _rows_filtered_by(
     gid: str, chosen: tuple[str, ...], scope: "_PlacementScope", memo: dict[str, bool]
 ) -> bool:
@@ -576,7 +627,11 @@ def _rows_filtered_by(
     arguments = (
         _aggregated_arguments(bucket, scope.environment)
         if bucket.derivation in _EMITS_GROUP_BY
-        else None
+        else (
+            _windowed_arguments(bucket, scope.environment)
+            if bucket.derivation == Derivation.WINDOW
+            else None
+        )
     )
     feeding = (
         [p for p in preds if arguments & set(buckets[p].primary_members)]
@@ -607,14 +662,19 @@ def _rows_filtered_by(
 
 
 def _hosts_reading_unfiltered_rows(
-    chosen: tuple[str, ...], candidates: list[str], scope: "_PlacementScope"
+    chosen: tuple[str, ...],
+    candidates: list[str],
+    scope: "_PlacementScope",
+    windows: bool = False,
 ) -> tuple[str, ...]:
     """Aggregates below a GROUP BY host that read rows the host never filtered.
 
     A host's aggregate value joined beside another row stream (a filtered
     aggregate's condition `sum(x) by *` beside the root rows it is evaluated on)
     filters only the rows that value is computed from; the consumer aggregates
-    the other stream, so it hosts the atom itself."""
+    the other stream, so it hosts the atom itself. So does a window numbering
+    that stream (`windows`; `Filters.window_counts_ungated_rows`), unless the
+    atom reads a set, which a window's input filter cannot render (240967)."""
     buckets = scope.buckets
     host_graph = scope.host_graph
     if not any(_emits_group_by(gid, buckets) for gid in chosen):
@@ -625,7 +685,11 @@ def _hosts_reading_unfiltered_rows(
         for gid in candidates
         if gid in below
         and gid in scope.main_lineage
-        and buckets[gid].derivation in _EMITS_GROUP_BY
+        and (
+            buckets[gid].derivation in _EMITS_GROUP_BY
+            or windows
+            and _window_over_rows(gid, scope)
+        )
     ]
     hosts = tuple(chosen)
     # an added host filters only what reads through it: re-check the rest
@@ -2021,7 +2085,12 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
             chosen_groups = outer_chosen
         elif outer_hosts:
             chosen_groups = _choose_groups(outer_hosts, host_graph, main_lineage)
-    chosen_groups += _hosts_reading_unfiltered_rows(chosen_groups, unbarred, scope)
+    chosen_groups += _hosts_reading_unfiltered_rows(
+        chosen_groups,
+        unbarred,
+        scope,
+        windows=not any(atom.existence_arguments),
+    )
     out = [
         ConditionPlacement(
             atom=atom,

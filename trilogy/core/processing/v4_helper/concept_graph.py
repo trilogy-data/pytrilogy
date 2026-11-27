@@ -1790,13 +1790,18 @@ def _grain_off_its_readers(
     filtered column it gates among it (`select tree_id, city ? city in (<set>)
     as f`: the set's grain names `f`). The column reads the set, so it is no
     key of it: planned standalone at that grain, the set would ask for the
-    column that asks for it (`Filters.value_is_no_finer_than_its_reader`)."""
-    readers = {
-        address
+    column that asks for it (`Filters.value_is_no_finer_than_its_reader`).
+    Beside that reader, neither is a column reading another set: planned at it,
+    that set asks for this one's reader in turn (`Filters.sets_key_no_readers`,
+    256563)."""
+    sets_read = {
+        address: lineage_existence_parts(reader)[0]
         for address in grain
         if (reader := environment.concepts.get(address)) is not None
-        and concept.address in lineage_existence_parts(reader)[0]
     }
+    readers = {a for a, sets in sets_read.items() if concept.address in sets}
+    if readers:
+        readers |= {a for a, sets in sets_read.items() if sets}
     return grain - readers if readers else grain
 
 
@@ -2910,6 +2915,7 @@ def build_concept_graph(
     existence_arg_pairs: list[tuple[str, str]] = []  # (existence_addr, row_addr)
     beside_sets: set[str] = set()
     gate_grains: dict[str, frozenset[str]] = defaultdict(frozenset)
+    gate_peers: dict[str, set[str]] = defaultdict(set)
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
@@ -2923,6 +2929,7 @@ def build_concept_graph(
                 )
                 for address in atom_row_addrs:
                     gate_grains[address] |= atom_grain
+                    gate_peers[address] |= set(atom_row_addrs) - {address}
             if atom.existence_arguments:
                 beside_sets.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():
@@ -3074,6 +3081,25 @@ def build_concept_graph(
         for src in eligible
         if src not in backfill
         and not _barrier_at_gate_grain(graph, attrs, src, gate_grains)
+        and _reaches_only_sets(
+            graph,
+            edges,
+            attrs,
+            src,
+            mandatory_blank_ids,
+            beside_sets,
+            conditioned,
+        )
+    }
+    # an atom gates the filter's rows with all its values: a total beside one
+    # its condition reads goes with it (`Filters.gate_takes_its_total`)
+    held = {attrs[src].address for src in through_condition}
+    through_condition |= {
+        src
+        for src in eligible
+        if src not in backfill
+        and not attrs[src].grain_components - {ALL_ROWS_ADDRESS}
+        and gate_peers[attrs[src].address] & held
         and _reaches_only_sets(
             graph,
             edges,

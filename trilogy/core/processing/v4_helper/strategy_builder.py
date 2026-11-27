@@ -7198,6 +7198,7 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
+        reader_grain=pairing_keys(final_contract.required_grain),
     )
     bridges = bridged.extras
     extras = _final_extra_sides(

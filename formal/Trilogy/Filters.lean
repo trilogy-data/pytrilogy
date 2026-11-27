@@ -821,4 +821,71 @@ theorem all_rows_marker_is_no_key :
     request.all scan.contains = true ∧ (request ++ marker).all scan.contains = false := by
   decide
 
+/-- `select ..., sum(height ? tag in (tag ? height between 3 and 7 and
+sum(height) by tree_form != 3)) as v2 where count_distinct(tag) by * >
+count_distinct(tag) by city, tree_form`: the WHERE keeps the groups with
+fewer tags than the two in all, so A's broadleaf trees go, and the set is the
+kept trees' tags between 3 and 7, B's Acer's `y`. Planned alone, the set took
+the gate's per-group count onto its rows and left the total it is compared
+with on the aggregate: the atom stayed there, the set read A's Acer and took
+`x` too (`gate_takes_its_total`, 235307). Trees are `(city, form, height,
+tag)`, 0 for no height. -/
+theorem gate_takes_its_total :
+    let trees : List (Nat × Nat × Nat × Nat) :=
+      [(0, 0, 3, 0), (0, 0, 0, 1), (0, 0, 5, 0), (0, 2, 0, 0), (1, 0, 7, 1), (1, 1, 2, 0)]
+    let tags (rows : List (Nat × Nat × Nat × Nat)) := (rows.map (·.2.2.2)).eraseDups.length
+    let group (r : Nat × Nat × Nat × Nat) := trees.filter fun t => t.1 == r.1 && t.2.1 == r.2.1
+    let kept := trees.filter fun r => tags trees > tags (group r)
+    let formSum (f : Nat) := ((kept.filter (·.2.1 == f)).map (·.2.2.1)).foldl (· + ·) 0
+    let set (rows : List (Nat × Nat × Nat × Nat)) :=
+      ((rows.filter fun r => 3 ≤ r.2.2.1 && r.2.2.1 ≤ 7 && formSum r.2.1 != 3).map
+        (·.2.2.2)).eraseDups
+    set kept = [1] ∧ set trees = [0, 1] := by
+  decide
+
+/-- `select city, species, tree_form, species ? avg(height) by * is not null
+as v0, count_distinct(tag) by species as v1, row_number() over (partition by
+city order by species desc, ...) as v2 where max(height) by city, tree_form
+!= 1 and ...`: the WHERE drops A's formless Ulmus, whose maximum is NULL, so
+A numbers two species. The gate was hosted on the aggregates alone; the
+window read the filter's rows, which met the gate only through the total its
+condition reads, and numbered Ulmus too: A's Acer read 3
+(`window_counts_ungated_rows`, 240133). Rows are `(city, species, max)`, 0 for
+NULL. -/
+theorem window_counts_ungated_rows :
+    let rows : List (Nat × Nat × Nat) := [(0, 0, 3), (0, 1, 5), (0, 2, 0), (1, 0, 7), (1, 3, 2)]
+    let kept := rows.filter fun r => r.2.2 != 0 && r.2.2 != 1
+    (kept.filter (·.1 == 0)).length = 2 ∧ (rows.filter (·.1 == 0)).length = 3 := by
+  decide
+
+/-- `select city, tag, species ? species = 'Ulmus' as v1, min(max(height))
+over (partition by city, tag) as v2, min(sum(height)) over (partition by tag,
+v1) as v3`: five `(city, tag, v1)` groups. Each window was planned as a
+group by its partition, and FINAL paired the two on their one shared key,
+`tag`: B's `x` met A's Ulmus (`partitions_pair_on_the_select_grain`, 257753).
+Groups are `(city, tag, v1)`, 0 for NULL. -/
+theorem partitions_pair_on_the_select_grain :
+    let groups : List (Nat × Nat × Nat) := [(0, 0, 1), (0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0)]
+    let left := (groups.map fun g => (g.1, g.2.1)).eraseDups
+    let right := (groups.map fun g => (g.2.1, g.2.2)).eraseDups
+    let paired := left.flatMap fun l =>
+      (right.filter (·.1 == l.2)).map fun r => (l.1, l.2, r.2)
+    paired.length = 6 ∧ (paired.filter (! groups.contains ·)) = [(1, 0, 1)] := by
+  decide
+
+/-- `select tree_id ? species in (<S1>) as v0, city ? city in (<S2>) as v1
+where height > 2 and count(tree_id) by tree_form > 3`: `v0` reads S1 and `v1`
+reads S2 (0 feeds 2, 1 feeds 3). Both sets claim the select's grain, `v0, v1`.
+Taking out of each only its own reader keeps `v0` a key of S2 and `v1` one of
+S1, and the four have no build order: planned standalone, each set asked for
+the other's reader and the planner recursed (`sets_key_no_readers`, 256563
+and the `OPEN` seeds 349, 667, 3730, 10955, 12695). The cycle needs the set's
+own reader in the grain: a set no select column reads (one in the WHERE) keeps
+the others as keys, and dropping them there joined its rows on no key (3343
+and 200 more). Nodes are S1, S2, `v0`, `v1` (0-3). -/
+theorem sets_key_no_readers :
+    let lineage : List (Nat × Nat) := [(0, 2), (1, 3)]
+    buildable lineage [0, 1, 2, 3] 4 = true ∧
+      buildable ((2, 1) :: (3, 0) :: lineage) [0, 1, 2, 3] 4 = false := by decide
+
 end Trilogy.Filters

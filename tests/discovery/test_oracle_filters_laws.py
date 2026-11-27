@@ -364,18 +364,20 @@ FOUND_SEEDS = [
     152743, 156992, 163611, 165374, 172055, 173363, 173737, 184974, 185997,
     187204, 190792, 195260, 198604, 204919, 208889, 211780, 213174, 213328,
     213931, 216560, 217166,
+    # 0.3.544: a total goes with its gate, a window numbering rows is gated,
+    # FINAL pairs on the select's grain, sets beside their readers key none
+    # of them (the recursions)
+    349, 667, 3730, 10955, 12294, 12695, 20699, 25000, 25190, 25230, 27091,
+    34189, 34462, 35456, 39589, 41462, 45523, 47820, 54656, 66863, 70671,
+    78425, 80303, 91727, 91969, 94099, 94534, 111857, 117002, 119253, 126566,
+    126590, 127669, 129194, 135676, 137711, 142008, 147418, 151681, 159640,
+    161496, 171031, 177584, 191855, 197547, 199349, 207061, 225740, 230844,
+    235307, 240133, 240474, 241822, 254088, 256563, 257753,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
-# what the planner raises or DuckDB rejects, or None for wrong rows. 9683,
-# 9919 and 12294 raised on main and return wrong rows; the last ones
-# were right on main.
+# what the planner raises or DuckDB rejects, or None for wrong rows. The last
+# ones were right on main.
 OPEN: dict[tuple[int, str], str | None] = {
-    (349, "base"): "maximum recursion",
-    (349, "summary"): "maximum recursion",
-    (667, "base"): "maximum recursion",
-    (667, "summary"): "maximum recursion",
-    (3730, "base"): "maximum recursion",
-    (3730, "summary"): "maximum recursion",
     (3796, "base"): None,
     (3796, "summary"): None,
     (5172, "base"): "keyless join",
@@ -386,14 +388,8 @@ OPEN: dict[tuple[int, str], str | None] = {
     (6905, "summary"): "keyless join",
     (8790, "base"): "keyless join",
     (8790, "summary"): "keyless join",
-    (10955, "base"): "maximum recursion",
-    (10955, "summary"): "maximum recursion",
-    (12294, "base"): None,
-    (12294, "summary"): None,
     (12425, "base"): "renders no column",
     (12425, "summary"): "renders no column",
-    (12695, "base"): "maximum recursion",
-    (12695, "summary"): "maximum recursion",
     (14670, "summary"): "aggregate function calls cannot",
     (18629, "base"): None,
     (18629, "summary"): None,

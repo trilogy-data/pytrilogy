@@ -809,6 +809,88 @@ SHAPES = [
             ("B", "Tilia", None, None),
         ],
     ),
+    # a WHERE total goes with its atom's other value onto a set's rows
+    # (235307, reduced): the kept trees are A's Ulmus and both of B's, and
+    # only B's Acer stands between 3 and 7
+    (
+        (
+            "select tag ? tag in (tag ? height between 3 and 7 and sum(height)"
+            " by tree_form != 3) as v2 where count_distinct(tag) by * >"
+            " count_distinct(tag) by city, tree_form;"
+        ),
+        [("y",)],
+    ),
+    # a window reading a filter's rows is gated as an aggregate is (240133,
+    # reduced): the formless Ulmus has no maximum, so A numbers two species
+    (
+        (
+            "select city, species, species ? avg(height) by * is not null as v0,"
+            " row_number() over (partition by city order by species) as v2"
+            " where max(height) by city, tree_form != 1;"
+        ),
+        [
+            ("A", "Acer", "Acer", 1),
+            ("A", "Quercus", "Quercus", 2),
+            ("B", "Acer", "Acer", 1),
+            ("B", "Tilia", "Tilia", 2),
+        ],
+    ),
+    # ...and a navigation reads the same rows: Quercus is A's last species
+    (
+        (
+            "select city, species, species ? avg(height) by * is not null as v0,"
+            " lag(species) over (partition by city order by species) as v2"
+            " where max(height) by city, tree_form != 1;"
+        ),
+        [
+            ("A", "Acer", "Acer", None),
+            ("A", "Quercus", "Quercus", "Acer"),
+            ("B", "Acer", "Acer", None),
+            ("B", "Tilia", "Tilia", "Acer"),
+        ],
+    ),
+    # an aggregating window is no host of the gate (right on main too): the
+    # Ulmus has no minimum either, so A's largest kept species is Quercus
+    (
+        (
+            "select city, species, species ? avg(height) by * is not null as v0,"
+            " max(species) over (partition by city) as v2"
+            " where min(height) by city, tree_form > 0;"
+        ),
+        [
+            ("A", "Acer", "Acer", "Quercus"),
+            ("A", "Quercus", "Quercus", "Quercus"),
+            ("B", "Acer", "Acer", "Tilia"),
+            ("B", "Tilia", "Tilia", "Tilia"),
+        ],
+    ),
+    # two windows' partitions pair on the select's grain (257753, reduced):
+    # B has no Ulmus
+    (
+        (
+            "select city, tag, species ? species = 'Ulmus' as v1,"
+            " min(max(height)) over (partition by city, tag) as v2,"
+            " min(sum(height)) over (partition by tag, v1) as v3;"
+        ),
+        [
+            ("A", "x", "Ulmus", 5, None),
+            ("A", "x", None, 5, 2),
+            ("A", "y", None, None, 7),
+            ("B", "x", None, 2, 2),
+            ("B", "y", None, 7, 7),
+        ],
+    ),
+    # a set's grain names no column reading another set (256563, reduced,
+    # raised `maximum recursion`): the kept trees are a1, a3 and b1, B's is an
+    # Acer and none is a linden
+    (
+        (
+            "select tree_id ? species in (species ? city = 'B') as v0, city ?"
+            " city in (city ? tree_form = 'linden') as v1 where height > 2 and"
+            " count(tree_id) by tree_form > 3;"
+        ),
+        [("a1", None), ("b1", None), (None, None)],
+    ),
 ]
 
 
