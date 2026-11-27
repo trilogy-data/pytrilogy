@@ -3549,6 +3549,12 @@ def _fold_covered_contributors(
         shared = visible[idx] & set().union(*(visible[j] for j in others))
         if _resolved_grain(parent) != shared:
             continue
+        # ...on one survivor: split over two, its join is what pairs them
+        # (`city` off one, `species` off another, met on a filtered value)
+        if not any(
+            shared <= {o.address for o in parents[j].output_concepts} for j in others
+        ):
+            continue
         # a survivor sharing none of its columns pairs with it on nothing
         # (a one-row total): its filter restricts no key of these rows
         paired = [parents[j] for j in others if visible[j] & visible[idx]]
@@ -7208,6 +7214,12 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
+    # a filter holds what its node does, not the select grain it claims
+    built_filters = {
+        gid: frozenset(o.address for o in node.output_concepts)
+        for gid, node in built.items()
+        if gid in attrs and attrs[gid].derivation == Derivation.FILTER
+    }
     bridged = elect_bridges(
         group_graph,
         attrs,
@@ -7217,6 +7229,7 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         reader_grain=pairing_keys(final_contract.required_grain),
+        built=built_filters,
     )
     bridges = bridged.extras
     extras = _final_extra_sides(
@@ -7237,6 +7250,7 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         extras=bridges + extras.groups,
+        built=built_filters,
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}
@@ -8208,7 +8222,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     ):
         parents = [_filtered_rows(parents, injected, environment)]
         condition_for_generator = None
-    if derivation == Derivation.BASIC and len(parents) == 1:
+    if derivation in (Derivation.BASIC, Derivation.FILTER) and len(parents) == 1:
         parents = [
             _finish_read_partials(parents[0], outputs, primary_addrs, environment)
         ]

@@ -891,6 +891,88 @@ SHAPES = [
         ),
         [("a1", None), ("b1", None), (None, None)],
     ),
+    # a set's gate restricts no row of the filter it gates (269661, reduced):
+    # the WHERE keeps B's Tilia alone, whose minimum is 2
+    (
+        (
+            "select city, city ? city in (city ? species = 'Tilia') as v0,"
+            " sum(min(height)) over () as v1 where sum(height) by tree_form <= 2;"
+        ),
+        [("B", "B", 2)],
+    ),
+    # ...and FINAL reads the city off the rows that passed it (270862, reduced)
+    (
+        (
+            "select city, city ? city in (city ? sum(height) by city, tree_form >"
+            " 3) as v0, sum(min(height)) over () as v1 where sum(height) by"
+            " tree_form <= 2;"
+        ),
+        [("B", None, 2)],
+    ),
+    # a filtered key is no value its host's groups computed (260615, reduced):
+    # the WHERE drops A's Ulmus, and with it A's missing form
+    (
+        (
+            "select city, tree_form, city ? city in (city ? count(tree_id) by city"
+            " - min(height) by city, species = 3) as v0, sum(height) by city as v1"
+            " where sum(height) by city, species <= 8;"
+        ),
+        [
+            ("A", "broadleaf", None, 8),
+            ("B", "broadleaf", None, 9),
+            ("B", "linden", None, 9),
+        ],
+    ),
+    # a filter reads a stored partial once it is re-summed (294582, reduced,
+    # invalid SQL on the summary model): Acer's heights sum to 10
+    (
+        (
+            "select species, species ? sum(height) by species >= 8 as v0 where city"
+            " in (city ? height > 2);"
+        ),
+        [("Acer", "Acer"), ("Quercus", None), ("Tilia", None), ("Ulmus", None)],
+    ),
+    # a filter pairs on what its node holds (279431, reduced): the counts by
+    # form are 4 broadleaf, 1 linden and 1 formless
+    (
+        (
+            "select species, (sum(height) by tree_form) ? tree_form = 'linden' as"
+            " v0, max(height) as v1, count(tree_id) by tree_form as v2;"
+        ),
+        [
+            ("Acer", None, 7, 4),
+            ("Quercus", None, 5, 4),
+            ("Tilia", 2, 2, 1),
+            ("Ulmus", None, None, 1),
+        ],
+    ),
+    (
+        (
+            "select species, (count(tree_id) by tree_form) ? tree_form = 'broadleaf'"
+            " as v0, sum(height) as v1, max(height) by tree_form as v2;"
+        ),
+        [
+            ("Acer", 4, 10, 7),
+            ("Quercus", 4, 5, 7),
+            ("Tilia", None, 2, 2),
+            ("Ulmus", None, None, None),
+        ],
+    ),
+    # a side holding a grain split over two others is what pairs them
+    # (261790, reduced): A's sums average 4, B's 4.5
+    (
+        (
+            "select city, species, species ? min(height) by species = 8 as v0,"
+            " avg(sum(height)) over (partition by city, v0) as v1;"
+        ),
+        [
+            ("A", "Acer", None, 4),
+            ("A", "Quercus", None, 4),
+            ("A", "Ulmus", None, 4),
+            ("B", "Acer", None, 4.5),
+            ("B", "Tilia", None, 4.5),
+        ],
+    ),
 ]
 
 

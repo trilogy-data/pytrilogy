@@ -8,7 +8,7 @@ joins to satisfy it instead of re-deriving it from whatever the built parents
 happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import partial
@@ -1054,6 +1054,7 @@ def plan_final_join(
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
     extras: Sequence[str] = (),
+    built: Mapping[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The plan for merging `cover` (contributor -> the outputs it supplies).
     A `split` contributor is joined as several projections of its own rows,
@@ -1062,7 +1063,17 @@ def plan_final_join(
     each contributor to carry (a per-group merge's `preserve_keys`), each
     already narrowed to what that contributor can carry (`carryable`). `extras`
     join beside the cover supplying nothing (bridges, filter-argument
-    producers): they pair, but fix no grain and ask no ROOT to carry a key."""
+    producers): they pair, but fix no grain and ask no ROOT to carry a key.
+    `built` are the columns of the filters already built: a filter claims
+    the select's grain, and holds only what its node's columns determine."""
+    built = built or {}
+
+    def held_by(gid: str, *args: frozenset[str]) -> frozenset[str]:
+        held = _held(group_graph, attrs, gid, carry_demands, environment, *args)
+        if gid not in built:
+            return held
+        return held & strict_fd_closure(environment, built[gid])
+
     supplying = tuple(cover)
     contributors = supplying + tuple(g for g in extras if g not in cover)
     cover = {**cover, **{gid: [] for gid in contributors if gid not in cover}}
@@ -1116,7 +1127,7 @@ def plan_final_join(
         gid: identity[gid]
         | (
             (attrs[gid].grain_components | _filtered_row_keys(attrs, gid, contracted))
-            & _held(group_graph, attrs, gid, carry_demands, environment)
+            & held_by(gid)
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()
         )
@@ -1132,16 +1143,15 @@ def plan_final_join(
         )
         if gid not in supplying:
             siblings: frozenset[str] = frozenset()
-        elif _over_groups_only(group_graph, attrs, gid):
+        elif _over_groups_only(group_graph, attrs, gid) or (
+            attrs[gid].derivation in GROUPING_DERIVATIONS
+        ):
             siblings = _looked_up_keys(
                 sibling_keys,
                 identity[gid],
                 # a side already planned holds what it looks up
                 (
-                    carries.get(o)
-                    or _held(
-                        group_graph, attrs, o, carry_demands, environment, identity[o]
-                    )
+                    carries.get(o) or held_by(o, identity[o])
                     for o in contributors
                     if o != gid
                 ),
@@ -1149,9 +1159,11 @@ def plan_final_join(
             )
         else:
             siblings = sibling_keys
-        held = _held(
-            group_graph, attrs, gid, carry_demands, environment, identity[gid], siblings
-        )
+        held = held_by(gid, identity[gid], siblings)
+        # a group's rows look up a property of its keys (`tree_form` beside
+        # `species`) to pair with a sibling holding only the property
+        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+            held |= siblings
         # an extra row stream is joined as built: its input rows' columns are
         # no column of it (a filter at `tree_id` over rows holding `city`)
         if gid not in supplying and attrs[gid].derivation == Derivation.FILTER:
@@ -1260,6 +1272,7 @@ def elect_bridges(
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
     reader_grain: frozenset[str] = frozenset(),
+    built: Mapping[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The plan over `cover` with the groups outside it that join its islands
     as extras, in the order they join: each, planned beside the cover as a
@@ -1277,6 +1290,7 @@ def elect_bridges(
         authored,
         split,
         contracted,
+        built=built,
     )
     bridges: list[str] = []
     current = plan(extras=bridges)
