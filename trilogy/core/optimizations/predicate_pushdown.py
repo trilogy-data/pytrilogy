@@ -47,7 +47,6 @@ from trilogy.core.processing.condition_utility import (
     gather_windows,
     is_scalar_condition,
 )
-from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
 
 
@@ -912,9 +911,7 @@ class PredicatePushdown(OptimizationRule):
             )
             # Scalarity is parent-relative: a predicate on an aggregate-lineage
             # concept is scalar inside a parent that materializes that concept
-            # as a plain output column. Pushing it there prunes rows earlier
-            # and lets ``UpgradeJoinOnGuards`` see a null-rejecting predicate
-            # next to the producing outer join.
+            # as a plain output column. Pushing it there prunes rows earlier.
             for parent_cte in parents:
                 if candidate_has_existence and parent_cte.name in existence_feeders:
                     self.debug(
@@ -1005,21 +1002,6 @@ def _set_feeders(cte: CTE) -> set[str]:
     return feeders - rows
 
 
-def _defers_to_join_upgrade(cte: CTE) -> bool:
-    """Whether atom removal on `cte` should wait for join types to settle.
-
-    A pending OUTER join makes the WHERE load-bearing beyond row selection:
-    the join-upgrade phase after this one reads it to prove the NULL-padded
-    rows can never survive. Dropping a redundant atom is row-equivalent but
-    erases that proof, leaving the join outer. The post-upgrade instance of
-    the rule sweeps these up once the proofs have been consumed.
-    """
-    return any(
-        isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
-        for join in cte.joins or []
-    )
-
-
 @dataclass
 class _Removal:
     surviving: list
@@ -1027,9 +1009,7 @@ class _Removal:
     existence_only: list[str]
 
 
-def _pushdown_removal(
-    cte: CTE, condition, after_join_upgrades: bool
-) -> _Removal | None:
+def _pushdown_removal(cte: CTE, condition) -> _Removal | None:
     """What `PredicatePushdownRemove` does to `cte` under `condition`: the
     atoms its parents already enforce are dropped. None when it drops none."""
     parents = cte.dependency_nodes()
@@ -1055,8 +1035,6 @@ def _pushdown_removal(
     # Per-conjunct removal: even when the full condition is not covered,
     # an atom sourced entirely from parent CTEs and covered by every parent
     # that exposes its concepts is redundant.
-    if not after_join_upgrades and _defers_to_join_upgrade(cte):
-        return None
     existence_set = set(existence_only) | _set_feeders(cte)
     if (
         isinstance(condition, BuildConditional)
@@ -1086,37 +1064,24 @@ def _pushdown_removal(
     return _Removal(surviving, [])
 
 
-def _removes_atom(cte: CTE, atom, after_join_upgrades: bool) -> bool:
+@register_remover("predicate_pushdown.remove")
+def pushdown_remove_drops(cte: CTE, atom) -> bool:
     condition = (
         cte.condition
         if cte.condition is not None and atom in and_atoms(cte.condition)
         else append_condition(cte.condition, atom)
     )
-    removal = _pushdown_removal(cte, condition, after_join_upgrades)
+    removal = _pushdown_removal(cte, condition)
     return removal is not None and atom not in removal.surviving
 
 
-@register_remover("predicate_pushdown.remove")
-def pushdown_remove_drops(cte: CTE, atom) -> bool:
-    return _removes_atom(cte, atom, after_join_upgrades=False)
-
-
-@register_remover("predicate_pushdown.remove.after_join_upgrades")
-def pushdown_remove_after_upgrades_drops(cte: CTE, atom) -> bool:
-    return _removes_atom(cte, atom, after_join_upgrades=True)
-
-
 class PredicatePushdownRemove(OptimizationRule):
-    def __init__(self, *args, after_join_upgrades: bool = False, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.after_join_upgrades = after_join_upgrades
-
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, UnionCTE):
             return False, None
-        removal = _pushdown_removal(cte, cte.condition, self.after_join_upgrades)
+        removal = _pushdown_removal(cte, cte.condition)
         if removal is None:
             return False, None
         self.log(

@@ -1,4 +1,4 @@
-from tests.optimization.test_join_upgrade import _build_concept, _build_cte
+from tests.optimization.test_where_join_guards import _build_concept, _build_cte
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import ConceptPair, Join, UnnestJoin
 from trilogy.core.optimizations.value_set_join_upgrade import _lefts_alone_before

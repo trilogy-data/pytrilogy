@@ -6,7 +6,7 @@ restores only INTRINSIC (``?``) nullability. ``__add__`` omitted the field, so
 the copy produced when two same-identifier parent QDSs merge (``merge_node``
 ``_resolve``) lost it. Downstream ``get_modifiers`` then saw one nullable side
 and one not, rendered the merge key as a null-rejecting ``=``, and that licensed
-``join_upgrade`` to flip the shared scan's dimension join LEFT OUTER -> INNER.
+the join narrowing to flip the shared scan's dimension join LEFT OUTER -> INNER.
 
 Distilled from tpc-ds q47: the same monthly aggregate returned 53,194 rows
 without lag/lead and 50,537 with them, the 2,657 missing groups being exactly

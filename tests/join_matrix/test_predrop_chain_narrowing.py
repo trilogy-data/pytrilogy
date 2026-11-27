@@ -84,10 +84,7 @@ query '''select 1 kk, 1000 d union all select 2, 2000 union all select 3, 3000''
 merge k2 into k;
 """
 
-_JOIN_OPT_FLAGS = (
-    "upgrade_outer_key_set_equivalence",
-    "upgrade_condition_joins",
-)
+_JOIN_OPT_FLAGS = ("upgrade_outer_key_set_equivalence",)
 
 
 def _run(model: str, query: str, optimize: bool) -> list[tuple]:

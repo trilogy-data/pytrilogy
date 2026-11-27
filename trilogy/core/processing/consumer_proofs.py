@@ -2,9 +2,8 @@
 
 A WHERE or HAVING the planner places on a node above a merge rejects the
 merge's padded rows just as the merge's own WHERE would, wherever it reads a
-column the merge supplies alone. The optimizer found these only after pushing
-the filter down (`UpgradeJoinOnGuards`); here the planner hands each merge
-what every one of its consumers rejects.
+column the merge supplies alone, so the planner hands each merge what every
+one of its consumers rejects.
 
 A proof passes a node only where rows pass it unchanged: a plain select or
 filter, a merge (a MULTISELECT align's included), or a group that is not a
@@ -33,8 +32,10 @@ join does not preserve, reaches nothing above it."""
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 
+from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation, FunctionType, JoinType
 from trilogy.core.models.build import (
     BoolExpr,
@@ -97,13 +98,14 @@ NULL_IGNORING_AGGREGATES = {
 class ConsumerProofs:
     """The harvests a merge reads its own WHERE into (`JoinProofs`), for the
     columns its consumers read off it alone; ``keys``, the columns a
-    consumer's join equality reads (`join_rejections`); ``nonzero``, the
-    columns it rejects at 0 (`zero_rejections`)."""
+    consumer's join equality reads (`join_rejections`), each True where it
+    matches only the concept's own values; ``nonzero``, the columns it rejects
+    at 0 (`zero_rejections`)."""
 
     proofs: frozenset[str] = frozenset()
     side_proofs: frozenset[str] = frozenset()
     or_groups: OrGroups = ()
-    keys: frozenset[str] = frozenset()
+    keys: Mapping[str, bool] = field(default_factory=dict)
     nonzero: frozenset[str] = frozenset()
 
     @classmethod
@@ -133,7 +135,10 @@ class ConsumerProofs:
             self.proofs | other.proofs,
             self.side_proofs | other.side_proofs,
             self.or_groups + extra,
-            self.keys | other.keys,
+            {
+                k: self.keys.get(k, False) or other.keys.get(k, False)
+                for k in self.keys.keys() | other.keys.keys()
+            },
             self.nonzero | other.nonzero,
         )
 
@@ -142,7 +147,10 @@ class ConsumerProofs:
             self.proofs & other.proofs,
             self.side_proofs & other.side_proofs,
             tuple(g for g in self.or_groups if g in other.or_groups),
-            self.keys & other.keys,
+            {
+                k: self.keys[k] and other.keys[k]
+                for k in self.keys.keys() & other.keys.keys()
+            },
             self.nonzero & other.nonzero,
         )
 
@@ -153,8 +161,15 @@ class ConsumerProofs:
             self.proofs & addresses,
             self.side_proofs & addresses,
             tuple(g for g in groups if all(g)),
-            self.keys & addresses,
+            {k: own for k, own in self.keys.items() if k in addresses},
             self.nonzero & addresses,
+        )
+
+    def covers(self, other: ConsumerProofs) -> bool:
+        """Every key ``other`` rejects, this rejects at least as strictly."""
+        return all(
+            k in self.keys and (self.keys[k] or not own)
+            for k, own in other.keys.items()
         )
 
 
@@ -244,8 +259,7 @@ def computed_inputs(node: StrategyNode, reads: set[str]) -> set[str]:
 def lineage_proofs(node: StrategyNode, addresses: frozenset[str]) -> frozenset[str]:
     """Add what a proven value ``node`` computes per row proves of its
     inputs: non-null, its NULL-strict arguments are too (``v <- c / nullif(m
-    - 5, 0)`` proves ``m``). The optimizer read these off the CTE that
-    renders the value (`_lineage_proofs`)."""
+    - 5, 0)`` proves ``m``)."""
     resolved = node.resolve()
     known = {c.address: c for c in resolved.output_concepts}
     out = set(addresses)
@@ -373,17 +387,23 @@ def _pair_source(pair: ConceptPair) -> str:
     return pair.node.identifier
 
 
-def join_rejections(node: StrategyNode, parent: StrategyNode) -> set[str]:
+def join_rejections(node: StrategyNode, parent: StrategyNode) -> dict[str, bool]:
     """Columns of ``parent`` an equality in ``node``'s own joins reads on a
     side whose unmatched rows the join drops: both sides of an INNER, the
     right of a LEFT, the left of a RIGHT. A NULL never matches ``=``, so a
     parent row NULL there reaches nothing above ``node``. Null-safe pairs
     match NULLs, a coalesced left rejects no one side, and an opaque binding
-    is not NULL on the parent's padded rows."""
+    is not NULL on the parent's padded rows.
+
+    A key is True where the other side holds only the concept's own values
+    (`own_values`), so a ``parent`` row whose key is any other value (a merged
+    key's value its complete side lacks) reaches nothing above ``node``
+    either."""
     source = parent.resolve()
     ident = source.identifier
     opaque = opaque_binding_addresses(source)
-    out: set[str] = set()
+    graph = node.environment.domain_graph
+    out: dict[str, bool] = {}
     for raw in node.resolve().joins:
         if not isinstance(raw, Join):
             continue
@@ -393,11 +413,70 @@ def join_rejections(node: StrategyNode, parent: StrategyNode) -> set[str]:
         for pairs in coalesced_key_groups(join.pairs, _pair_source):
             if any(pair_matches_nulls(p, join.modifiers) for p in pairs):
                 continue
+            first = pairs[0]
+            same = first.left.address == first.right.address
             if right and join.right.identifier == ident:
-                out.add(pairs[0].right.address)
-            if left and len(pairs) == 1 and pairs[0].node.identifier == ident:
-                out.add(pairs[0].left.address)
-    return (out - opaque) & {c.address for c in source.output_concepts}
+                own = same and len(pairs) == 1
+                out[first.right.address] = own and own_values(
+                    first.node, first.left.address, graph
+                )
+            if left and len(pairs) == 1 and first.node.identifier == ident:
+                out[first.left.address] = same and own_values(
+                    join.right, first.right.address, graph
+                )
+    outputs = {c.address for c in source.output_concepts}
+    return {k: own for k, own in out.items() if k in outputs and k not in opaque}
+
+
+def _unpadded_sources(ds: QueryDatasource) -> set[str]:
+    """Identifiers of the sources no join of ``ds`` NULL-pads: each output
+    row carries one of their rows."""
+    right_ids = joined_right_ids(ds.joins)
+    present = {d.identifier for d in ds.datasources if d.identifier not in right_ids}
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            return set()
+        if join.join_type in PADS_LEFT_JOIN_TYPES:
+            present = set()
+        if join.join_type not in PADS_RIGHT_JOIN_TYPES:
+            present.add(join.right.identifier)
+    return present
+
+
+def own_values(
+    ds: QueryDatasource | BuildDatasource, address: str, graph: DomainGraph
+) -> bool:
+    """Every value ``ds`` renders for ``address`` is one a datasource binds to
+    that concept: read off a scan of it, or coalesced over sources equated on
+    its key class (`DomainGraph.canonical`) with one no join pads, so a
+    padded partner adds no value of its own."""
+    if isinstance(ds, BuildDatasource):
+        return any(c.address == address for c in ds.output_concepts)
+    found = ds.source_map.get(address) or set()
+    sources = [s for s in found if isinstance(s, (QueryDatasource, BuildDatasource))]
+    if len(sources) != len(found) or not sources:
+        return False
+    if len(sources) == 1:
+        return own_values(sources[0], address, graph)
+    key = graph.canonical(address)
+    equated: set[str] = set()
+    for join in ds.joins:
+        if not isinstance(join, Join):
+            continue
+        for pair in join.pairs or []:
+            if (
+                graph.canonical(pair.left.address)
+                == graph.canonical(pair.right.address)
+                == key
+            ):
+                equated |= {pair.node.identifier, join.right.identifier}
+    unpadded = _unpadded_sources(ds)
+    anchors = [s for s in sources if s.identifier in unpadded & equated]
+    return (
+        bool(anchors)
+        and {s.identifier for s in sources} <= equated
+        and all(own_values(a, address, graph) for a in anchors)
+    )
 
 
 def _walk(root: StrategyNode) -> list[StrategyNode]:
@@ -649,9 +728,7 @@ def _propagate(
         for node in siblings:
             passed = _passes_rows(node)
             take = (
-                replace(here, keys=frozenset())
-                if barred is None or id(node) in barred
-                else here
+                replace(here, keys={}) if barred is None or id(node) in barred else here
             )
             if (
                 narrowed is not None
@@ -689,9 +766,7 @@ def _propagate(
                 if passed and (where := group_filter(node, forward)) is not None:
                     given |= ConsumerProofs.of(where).restrict(readable)
                 if barred is not None:
-                    given |= ConsumerProofs(
-                        keys=frozenset(join_rejections(node, parent))
-                    )
+                    given |= ConsumerProofs(keys=join_rejections(node, parent))
                 prior = gives.get(pident)
                 if prior is not None:
                     given = prior | given if one_rowset else prior & given
@@ -707,7 +782,9 @@ def _reads_changed(node: MergeNode, take: ConsumerProofs) -> bool:
     not when the merge last took: its own narrowing un-coalesced it, and a
     single-source key proves its source present (`_keys_force`)."""
     reads = node.key_reads or {}
-    return any(a not in reads for a in single_source_reads(node).keys() & take.keys)
+    return any(
+        a not in reads for a in single_source_reads(node).keys() & take.keys.keys()
+    )
 
 
 def _failing_keys(
@@ -718,14 +795,14 @@ def _failing_keys(
     """The narrowed merges whose consumers, as rebuilt, stopped rejecting a
     key they took."""
     received = _propagate(order, by_ident, ident_of, set(), None)
-    return {
-        id(node)
-        for ident, group in by_ident.items()
-        for node in group
-        if isinstance(node, MergeNode)
-        and node.consumer_proofs is not None
-        and not node.consumer_proofs.keys <= received.get(ident, ConsumerProofs()).keys
-    }
+    out: set[int] = set()
+    for ident, group in by_ident.items():
+        now = received.get(ident, ConsumerProofs())
+        for node in group:
+            took = node.consumer_proofs if isinstance(node, MergeNode) else None
+            if took is not None and not now.covers(took):
+                out.add(id(node))
+    return out
 
 
 def _nullable(node: StrategyNode) -> set[str]:

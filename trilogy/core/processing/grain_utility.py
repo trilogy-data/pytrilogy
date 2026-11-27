@@ -476,6 +476,7 @@ class JoinProofs:
     key_sources: Mapping[str, str] = field(default_factory=dict)
     filtered_ids: set[str] = field(default_factory=set)
     coalescing_keys: set[str] = field(default_factory=set)
+    domain_keys: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -1079,6 +1080,31 @@ def _equated_by(
     )
 
 
+def force_domain_sides(
+    join: SourceJoin | UnnestJoin, domain_keys: set[str], stream: frozenset[str]
+) -> None:
+    """A consumer matches ``domain_keys`` only to the concept's own values
+    (`consumer_proofs.join_rejections`). A row this join pads on a side
+    carrying every value of the concept holds a key that side lacks (another
+    concept's value it was paired with) or NULL, and no consumer matches it.
+    Only a join on that one key: a row a composite key leaves unmatched may
+    hold a value of each key the side has."""
+    if not isinstance(join, Join) or not domain_keys or len(join.pairs or []) != 1:
+        return
+    from trilogy.core.processing.join_resolution import complete_key_domain
+
+    pair = join.pairs[0]
+    left_forced = (
+        pair.left.address in domain_keys
+        and stream == {pair.node.identifier}
+        and complete_key_domain(pair.node, pair.left.address)
+    )
+    right_forced = pair.right.address in domain_keys and complete_key_domain(
+        join.right, pair.right.address
+    )
+    join.join_type = unpadded_join_type(join.join_type, left_forced, right_forced)
+
+
 def narrow_join_types(
     joins: list[SourceJoin | UnnestJoin],
     proofs: JoinProofs,
@@ -1110,6 +1136,7 @@ def narrow_join_types(
             proofs.key_sources,
         )
         downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
+        force_domain_sides(join, proofs.domain_keys, stream)
         tighten_join_for_filtered_branch(
             join,
             proofs.filtered_ids,

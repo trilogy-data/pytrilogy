@@ -708,6 +708,7 @@ class MergeNode(StrategyNode):
         or_groups: list[list[set[str]]] = []
         key_proofs: set[str] = set()
         key_sources: dict[str, str] = {}
+        domain_keys: set[str] = set()
         if self.conditions:
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
@@ -718,7 +719,8 @@ class MergeNode(StrategyNode):
             proofs |= consumer.proofs
             side_proofs |= consumer.side_proofs
             or_groups += [[set(d) for d in group] for group in consumer.or_groups]
-            key_proofs = set(consumer.keys - zero)
+            key_proofs = set(consumer.keys) - zero
+            domain_keys = {k for k, own in consumer.keys.items() if own} - zero
             key_sources = {
                 a: s for a, s in (self.key_reads or {}).items() if a in key_proofs
             }
@@ -813,6 +815,7 @@ class MergeNode(StrategyNode):
             key_sources=key_sources,
             filtered_ids=filtered_ids,
             coalescing_keys=coalescing,
+            domain_keys=domain_keys,
         )
 
     def _group_decision(

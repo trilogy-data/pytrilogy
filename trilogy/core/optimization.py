@@ -27,7 +27,6 @@ from trilogy.core.optimizations import (
     SimplifyNullSafeJoins,
     StripRedundantNotNull,
     UnionDimPushdown,
-    UpgradeJoinOnGuards,
     UpgradeOuterFromKeySetEquivalence,
     optimization_log,
 )
@@ -43,7 +42,7 @@ from trilogy.core.optimizations.existence_having_fold import (
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
 from trilogy.core.optimizations.identity_group import DropIdentityGroup
-from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
+from trilogy.core.optimizations.preserved_join_keys import PrunePreservedJoinKeys
 from trilogy.core.optimizations.reuse_parent_lookup import ReuseParentLookup
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
@@ -313,7 +312,7 @@ class _Phase:
     reason: str = ""
 
 
-JOIN_UPGRADES = ("upgrade_join_on_guards", "upgrade_outer_key_set_equivalence")
+JOIN_UPGRADES = ("upgrade_outer_key_set_equivalence",)
 
 
 def _pushdown(c: _PlanContext) -> OptimizationRule:
@@ -404,43 +403,10 @@ _PHASES: tuple[_Phase, ...] = (
         ),
     ),
     _Phase(
-        "upgrade_join_on_guards",
-        lambda o: o.upgrade_condition_joins,
-        lambda c: UpgradeJoinOnGuards(),
-        depends_on=("predicate_pushdown.remove",),
-        reason="uses guards moved onto joining CTEs by predicate pushdown",
-    ),
-    _Phase(
-        "predicate_pushdown.after_final_upgrade",
-        lambda o: o.predicate_pushdown and o.upgrade_condition_joins,
-        _pushdown,
-        depends_on=("upgrade_join_on_guards",),
-        refires_after=("upgrade_join_on_guards",),
-        reason=(
-            "HAVING-into-group push is blocked while a consumer "
-            "outer-joins the group (nullable parent); rerun once the "
-            "final pass has upgraded CTE-to-CTE outer joins to INNER "
-            "so the relocation can fire"
-        ),
-    ),
-    _Phase(
-        "predicate_pushdown.remove.after_join_upgrades",
-        lambda o: o.predicate_pushdown and o.upgrade_condition_joins,
-        lambda c: PredicatePushdownRemove(after_join_upgrades=True),
-        depends_on=("predicate_pushdown.after_final_upgrade",),
-        refires_after=("predicate_pushdown.after_final_upgrade",),
-        reason=(
-            "the earlier remove pass runs before the final join "
-            "upgrade, so predicates relocated by "
-            "predicate_pushdown.after_final_upgrade keep a redundant "
-            "copy at their origin; strip those too"
-        ),
-    ),
-    _Phase(
         "upgrade_outer_key_set_equivalence",
         lambda o: o.upgrade_outer_key_set_equivalence,
         lambda c: UpgradeOuterFromKeySetEquivalence(domain_graph=c.domain_graph),
-        depends_on=("upgrade_join_on_guards",),
+        depends_on=("predicate_pushdown.remove",),
         reason=(
             "needs upstream filters in their final position so the "
             "accumulated-filter signatures on each side are stable"
@@ -448,8 +414,7 @@ _PHASES: tuple[_Phase, ...] = (
     ),
     _Phase(
         "inline_datasource.after_join_upgrades",
-        lambda o: o.datasource_inlining
-        and (o.upgrade_condition_joins or o.upgrade_outer_key_set_equivalence),
+        lambda o: o.datasource_inlining and o.upgrade_outer_key_set_equivalence,
         lambda c: InlineDatasource(raw_scope_only=True),
         depends_on=JOIN_UPGRADES,
         refires_after=JOIN_UPGRADES,
@@ -563,7 +528,7 @@ _PHASES: tuple[_Phase, ...] = (
     ),
     _Phase(
         "prune_preserved_join_keys",
-        lambda o: o.upgrade_condition_joins or o.upgrade_outer_key_set_equivalence,
+        lambda o: o.upgrade_outer_key_set_equivalence,
         lambda c: PrunePreservedJoinKeys(),
         depends_on=JOIN_UPGRADES,
         reason=(

@@ -93,7 +93,7 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     dropping NULL-keyed groups. Existence references: an `IN (<set>)` resolves
     its set columns through existence_source_map, and dropping those entries
     strands the membership and lets the feeder CTE be pruned as unreferenced.
-    Partiality: a dropped partial mark lets UpgradeJoinOnGuards read a proof
+    Partiality: a dropped partial mark lets a later reader take a proof
     on a key the merged CTE binds partially (a region domain's span on the
     solid stream) as forcing it present, and INNER-narrow the join that pads
     it. DISTINCT counts: the child's aggregates now render over the parent's

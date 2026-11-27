@@ -2,9 +2,9 @@
 
 What is left of the 2026-08 simplification audit. Everything that landed has
 been removed from this file; the git history is the record of that. Two items
-remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 is down to the
-one optimizer pass the house rules keep (seam 29), and the grouping-set TVF (4)
-is done but for a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
+remain open (2.3(b), and 2.7, which is optional); 2.1 step 4 landed but for the
+two optimizer join rules it lists, and the grouping-set TVF (4) is done but for
+a short list of pinned readers. A set of verdicts exists to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -87,222 +87,42 @@ Detail: seam 11 of `docs/query_gen_simplification_audit_2026_10.md`.
   `tests/test_filter_concept_is_a_value.py`, the filters and windows oracle
   laws. Risk MEDIUM-HIGH (semantics), confidence MEDIUM.
 
-## 2. 2.1 step 4: the residual optimizer LEFT/RIGHT to INNER branches (decision)
+## 2. 2.1 step 4: the planner owns WHERE-driven join narrowing (landed)
 
-Steps 1-3 landed: the proof harvest is shared and
-`grain_utility.downgrade_join_for_proofs` narrows LEFT/RIGHT from the
-planner's own proofs. Optimizer flips fell from 436 to 45, and the statements
-depending on the rule from 110 to 55.
+`UpgradeJoinOnGuards` is deleted: seam 29 of
+`docs/query_gen_simplification_audit_2026_10.md` took its consumer channel
+and early pass, seam 30 its last pass (on a CTE's own WHERE once pushdown
+has run); seams 14 to 28 are the path there. The planner narrows every outer
+join a WHERE, HAVING or consumer join rejects the padding of
+(`grain_utility.downgrade_join_for_proofs`,
+`consumer_proofs.narrow_for_consumers`). With the last pass went the pushdown
+refire after it, the `after_join_upgrades` deferral of atom removal and the
+`upgrade_condition_joins` flag. The one plan only the last pass narrowed,
+`test_window_expression_join`, is planned by a value-domain proof (seam 31):
+a consumer key held to the concept's own values (`ConsumerProofs.keys`,
+`join_rejections`) lets the merge force a side that carries every value of
+the concept (`grain_utility.force_domain_sides`). Nothing else narrows less but
+`test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
+pushdown on purpose.
 
-`UpgradeJoinOnGuards` (CTE-to-CTE and base joins alike) was censused by
-proof channel (`local_scripts/sql_ab/guard_census_plugin.py`, seam 14 of the
-audit): of 1,539 flips over the suite, 475 needed only the CTE's own planned
-WHERE. The planner now makes those itself: a FULL reads `IS NOT NULL` on a
-column exclusive to one side, a RIGHT/FULL's padded side is the whole
-left-deep stream, and a later INNER equality on a padded side's key proves
-it present. 1,080 flips remain, 12 of them planned (5 are `union join` FULLs
-the planner may not re-side once the merge has ordered its sources).
+What is left of 2.1:
 
-The others rested on conditions the optimizer itself pushed and on
-cross-CTE consumer proofs (`join_upgrade._external_forced_map`, deleted in
-seam 29). Both are a
-WHERE or HAVING the planner placed above the merge, so the planner now
-reads them too (seam 15): `consumer_proofs.narrow_for_consumers` hands each
-merge what all of its consumers reject on columns read off it alone, through
-plain selects, merges and non-grouping-set groups (keys only). Flips fell
-from 1,059 to 608 (pushed 433, consumer 157, planned 12).
-
-A consumer's join equality now reads too (seam 16): a NULL never matches
-`=`, so `consumer_proofs.join_rejections` hands a merge the columns its
-consumers join on, on a side the join drops unmatched rows of, and the merge
-forces a side through any column it alone renders, partial or not. A
-consumer's join type can widen when it is re-resolved over the narrowed
-merge, so the channel is checked against the plan it built and dropped if a
-consumer stopped rejecting (tpc_h adhoc07). Flips fell from 597 to 529
-(pushed 431, consumer 77, planned 12, new CTE 9).
-
-A join key forces its side too (seam 17), wherever the merge reads it off
-that side alone: a `~` binding beside a complete one is never read, so the
-key is NULL on the complete side's padded rows. Consumer flips fell from 77
-to 49 (dimension chain 46 to 22, tpc_h adhoc07 6 to 0); 504 flips in all
-on this run's base of 515 (distinct flips 304 to 284).
-
-The 332 flips of one shape in `test_relation_rollup_laws` were discovery's
-(seam 18). A WHERE on a key an unnest is merged into (`ecoregion_id`) made
-every aggregate read the unnest as a row parent
-(`concept_graph._constrain_aggregates_by_merged_expansions`), even one
-grouped by that key, whose rows already reach it through the same unnest.
-The planner joined a second unnest of the merge's rows back on (key, row
-id) to read the key again, and put the WHERE above that self-join, where
-no proof reaches the merge's LEFT. An aggregate that reads the key itself
-now takes no such edge, so the WHERE lands on the merge. Flips fell from
-486 to 157 on one machine (pushed 416 to 87, distinct 284 to 142).
-
-Three gaps in the consumer walk itself were next (seam 19). A FilterNode
-stopped every proof, though its WHERE reads its parent's rows as a select's
-does: the filter laws' HAVING on a `_wscope` aggregate and the rowsets'
-`n > 0` both sit on one. The walk read each consumer once, before the merges
-under it narrowed, so a key a narrowing un-padded (a null-safe pair become
-plain `=`) never handed its rejection down: it now repeats to a fixpoint.
-And a merge that had ordered its sources could not narrow a FULL to the LEFT
-a later INNER on its stream proves (only the RIGHT that barred is unsound).
-Flips fell from 157 to 104 (pushed 87 to 55, consumer 49 to 30, planned 12
-to 10; distinct 142 to 80).
-
-Seam 20 opened the two places the walk still stopped. A proof drawn through
-a computed flag (`returned_orders <- order_number ? is_returned`, `is_returned
-<- _returned_order_number is not null`) names a column the node computing
-the flag reads but does not output; `computed_inputs` lets it through to the
-merge that pads it (tpc_ds q16, q94, q95). And a node reading another of its
-own relation (a joinless merge over the regroup it passes through) no longer
-stops the walk: both share what the relation's consumers reject (q58, q83,
-the return-date pins, filters seed 5331, the union-key HAVING semijoin, the
-subset join key sets). The case that backed this out before (dimension-chain
-seeds 258 and 280) is now caught: a narrowed merge stamps an extent-free key
-partial, and the joinless merge above re-resolves into a LEFT from the
-aircraft lookup, returning aircraft with no flight. `_widened` backs the
-join channel out when a re-resolved node's join types keep a parent's rows
-it dropped before and did not all match (`preserved_sources`). Flips fell
-from 101 to 82 on this run's base (pushed 52 to 36, consumer 30 to 28;
-distinct 80 to 64).
-
-Seam 21 took the filtered-aggregate rewrite and the dimension-chain
-fallback. A group whose every aggregate reads one filter (`count(x ? p)`,
-`sum(y ? p)`) passes `p`'s proofs to its parent as a WHERE where its
-consumers reject a group that counted none (`consumer_proofs.group_filter`;
-a COUNT is 0 there, so only a comparison 0 fails rejects it,
-`condition_utility.zero_rejections`). A grouped merge reads an aggregate
-off its parent as a key, so a HAVING on one reaches the group under it.
-The key channel now bars only the merges that fail `_failing_keys` or sit
-under a node that `_widened`, not the whole plan, and a narrowed merge's
-extent-free partials are masked to what it held before, as its joined
-partials are. Full suite census (`-n 4`): 125 flips to 92 (external 80 to
-51, pushed 26 to 22; distinct 116 to 83).
-
-Seam 22 found the cluster-key flips were an ordering gap in the planner's
-own narrowing. `narrow_join_types` calls `downgrade_join_for_proofs` twice
-per join: on the merge's and its consumers' proofs, then on its branches'.
-It acted on a FULL only, so a consumer key that forced one side first
-(FULL to RIGHT) left the branch proof forcing the other side nothing to
-narrow; the RIGHT kept the lookup's rows, `_widened` barred the merge and
-the optimizer flipped the LEFT. It now narrows any outer join
-(`unpadded_join_type` already maps a LEFT/RIGHT whose padded side is forced
-to INNER). Census, both trees on one machine: 92 flips to 59 (external 51
-to 24, planned 10 to 5, pushed 22 to 21; distinct 44 to 38).
-
-Seam 23 took the dimension chain. Its flips were not join generation
-reading partial marks, as seam 22 guessed, but a reader re-typing itself
-off the padding a narrowing dropped. Once the key channel narrows the
-`max(seats)` side, its `carrier_name` is no longer padded, so the merge
-pairing it with the count (never narrowed itself) re-resolves with the key
-nullable on one side alone and `_nullable_join` keeps that side: INNER to
-RIGHT. It stops rejecting `airport_name`, and `_failing_keys` / `_widened`
-barred every keyed merge under it. `narrow_for_consumers` now holds a merge
-whose joins grew to the types it planned (`MergeNode.planned_join_types`,
-`utility.keep_planned_join_types`) and narrows again, barring only where no
-merge can be held: the narrowing dropped only rows those types reject.
-Census, both trees on one machine: 59 flips to 53 (external 24 to 18;
-distinct 46 to 40); dimension chain 6 to 0.
-
-Seam 24 took four gaps the optimizer still covered. A consumer's join
-equality on a key the merge reads off one source forces the other side
-where that side holds the key completely, as a WHERE proof on the key
-tuple does (`_paired_key_reads`; only a key paired with itself: a subset
-join's `b.r_key = a.l_key` says nothing of `l_key`'s values). A merge
-re-takes its key reads when its own narrowing un-coalesces a key
-(`_reads_changed`). A filter's own WHERE reads its parent's aggregate per
-row, though the filter groups (`where_reads`). A proof on a value a node
-computes reaches its NULL-strict inputs (`lineage_proofs`), but not
-through a grouped or pinned value, read at its anchors' grain. And a
-MULTISELECT align's merge takes what its HAVING rejects. Census, both
-trees on one machine: 53 flips to 30 (external 18 to 4, pushed 21 to 12;
-distinct 44 to 26).
-
-Seam 25 took the planner's own WHERE where the optimizer still read more
-of it. A later INNER may narrow a FULL to RIGHT after the merge has ordered
-its sources, now that the source order is taken from the final join types
-(`inner_only` is deleted). A partial column only the padded side holds
-proves that side to a WHERE the merge renders, as the optimizer's
-`_blocked_partials` read it (a branch's own filter keeps the guard). And a
-flag proof follows the flag through a merge that passes it to the node
-computing it (`computed_inputs`). Census, both trees on one machine: 30
-flips to 24 (planned 5 to 1, pushed 12 to 10).
-
-Seam 26 took the sibling case. Nodes sharing one relation identifier
-render as one CTE over one row set (`CTE.__add__` fuses only copies of one
-grain and condition), so a column any of them reads that a consumer
-rejects rejects the relation's row. `_propagate` ANDed each sibling's reads
-of a shared parent, so a WHERE read off one of three regroups of a FULL
-merge (root partition `attribute_filter`) or one of two keyless merges
-(compositions seed 1481) never reached the merge; siblings that all pass
-rows now OR their reads first. Census, both trees on one machine: 24 flips
-to 21 (pushed 10 to 7).
-
-Seam 27 took the keyed-class trees. A HAVING above the final merge hands it
-`tree_id is not null` on the FULL's coalesced key, which the planner kept
-out of its key-tuple arm (`non_null_proofs` skips `IS NOT NULL`, so a
-shared key is never claimed per side). The key-tuple arm only claims that
-a side complete on the key has a match for a non-null value, which `k is
-not null` proves as `k = 5` does; the directional arm already read it off
-the full harvest, and the optimizer's `proves_key` too. The FULL arm now
-does (`_key_tuple_forced` over `side_proofs`). Census, full suite `-n 4`,
-both trees on one machine: 19 flips to 15 (pushed 7 to 3). Filters seed
-133525 flipped on neither tree this time, nor in isolation: its two
-external flips (seam 26's count of 21) depend on run order.
-
-Seam 28 settled the grain-pin question: a pinned value is NULL off its
-anchors' rows, as a property is without its key, so the planner reads
-`grain_pin(expr, anchors)` as NULL-strict on its anchors, as the optimizer
-always did (`consumer_proofs._evaluated_at_a_grain`). What had blocked it
-was a wrong-results bug on `main`, not the pin: a key-tuple proof forced
-any side that binds the key partially but for a lookup keyed by it, so an
-unnest side (a species with an empty array has no row there) was INNER
-joined under `species != 'oak'`, dropping another species' trees. The arm
-now forces only a side holding every key value (`_partial_keys`). Census:
-15 flips to 14 (pushed 3 to 2).
-
-Seam 29 measured the rule end to end instead of by flip (on `73b3199`,
-re-gated after seam 28): with
-`UpgradeJoinOnGuards` turned off, the suite (about 54,300 statements, `-n 4`
-and then serially for every move) changes two plans, and the corpus none.
-Both still return the same rows. A flip is not a plan change: the grain-pin
-flip, for one, is redone by later phases, and the SQL is byte-identical
-without it. The two that move:
-
-- `test_scoped_join_expression_keys::test_window_expression_join` (both
-  parsers) keeps `customers FULL JOIN ... WHERE customers.reg is not null`.
-  That WHERE is in the CTE only because pushdown put it there, by inlining the
-  customers scan into the sibling merge. A rewrite on pushed state is what
-  this rule is for. Planning it would need a value-domain proof (the
-  consumer's join matches only values its complete side holds), which the
-  consumer walk does not have.
-- `test_fixpoint_contract_laws::test_ungated_pushdown_cycles`, which ungates
-  pushdown on purpose.
-
-So the channels the planner now owns are deleted: the cross-CTE consumer
-proofs (`_external_forced_map` and its helpers; `consumer_proofs` plans
-them) and the early `left_only` pass before `UnionDimPushdown`. Over the
-suite each fired only on `test_join_upgrade`'s hand-built CTEs (the early
-pass also fired on 2 fuzzer grain-pin cases, whose SQL is unchanged without
-it). What is left is one pass, `upgrade_join_on_guards`, on a CTE's own
-WHERE once pushdown has run: post-multi-node state, which the house rules
-leave to the optimizer. Delete it only if pushdown's placement is ever
-planned. Before that, confirm with the census
-(`local_scripts/sql_ab/guard_census_plugin.py`, now `planned` / `pushed` /
-`new_cte`) and an A/B of the whole suite with the rule turned off, since
-a flip count overstates what the rule moves.
-
-The same holds for `UpgradeOuterFromKeySetEquivalence` (seam 2 of
-`docs/query_gen_simplification_audit_2026_10.md`): 87 firings over the
-whole suite, and its proof branches were ablated one by one (eleventh
-slice). The nine the planner's `complete_key_domain` already proves are
-deleted. Each branch kept names the plans or the test that move without it,
-so do not re-ablate them without a new premise. Its vetoes were not
-ablated, since turning one off makes the rule narrow more.
-
-`SimplifyNullSafeJoins` (`null_safe_join.py`) exists only because join types
-change after planning and leave stale NULLABLE modifiers. Re-measure it if the
-above ever moves; delete if it reaches 0.
+- `UpgradeOuterFromKeySetEquivalence` (seam 2 of the audit): 87 firings over
+  the whole suite, and its proof branches were ablated one by one (eleventh
+  slice). The nine the planner's `complete_key_domain` already proves are
+  deleted. Each branch kept names the plans or the test that move without it,
+  so do not re-ablate them without a new premise. Its vetoes were not
+  ablated, since turning one off makes the rule narrow more.
+- `SimplifyNullSafeJoins` (`null_safe_join.py`), re-measured in seam 30: it
+  still changes a join in 89 tests (mostly the filters, spellings and
+  compositions oracle laws and the dimension chain), so it stays. Its
+  premise was stale `NULLABLE` modifiers from join types that change after
+  planning; with the guard rule gone only the key-set rule changes them, so
+  the next measure is which of the 89 a planned modifier would cover.
+- The grain-pin render (seam 28): a pin renders as a bare `(expr)`, so a row
+  whose anchor is NULL shows the computed value where the semantics say
+  NULL. Guarding it with its anchors (`case when anchor is not null then
+  expr end`) rewrites every pinned value's SQL and needs its own A/B.
 
 ## 3. 2.7 symmetric coverage (optional, 0 firings today)
 

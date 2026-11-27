@@ -2556,6 +2556,93 @@ election, not the padded fallback.
     0 plans moved. Corpus 0 moved; fuzzer 522/522. Suite: the same 25
     credential-bound failures as `main`.
 
+30. **`UpgradeJoinOnGuards` is deleted (landed; handoff 2.1 step 4 closed
+    but for the key-set rules).**
+    - **What went.** The pass seam 29 kept (`join_upgrade.py`: the per-CTE
+      `_downgrade`, `_lineage_proofs`, `_blocked_partials`), its phase, and
+      the `upgrade_condition_joins` flag. Seam 29 kept it for the scoped-join
+      plan below, as post-multi-node state; this trades that one narrowing
+      for the rule and the code that existed only for it. Its one other
+      export, `prune_preserved_join_keys`, moved to `preserved_join_keys.py`.
+      The pushdown phases that existed for it went too:
+      `predicate_pushdown.after_final_upgrade` (a refire once the final pass
+      had made a consumer's join INNER) and
+      `predicate_pushdown.remove.after_join_upgrades`, with the
+      `_defers_to_join_upgrade` hold that kept a redundant WHERE atom on a
+      CTE with an outer join so the rule could read it. That atom is now
+      removed by the first remove pass, and the plan's fixpoint reruns
+      pushdown when a later phase changes something.
+    - **What it still moved.** The two plans seam 29 measured:
+      `test_window_expression_join` (both parsers) keeps its FULL beside
+      the pushed `customers.reg is not null`, and the ungated-pushdown test.
+      Both keep their rows; seam 31 plans the first. The rule's remaining
+      hand-built tests go with it.
+    - **`SimplifyNullSafeJoins`, re-measured.** It still changes a join in
+      89 tests, so it stays.
+
+    Gates, against `33753c9` (seam 28; seam 29 moved no plan, so they hold
+    against it): corpus (204 statements) 0 moved. Suite capture
+    (`sqlcap`, `-n 4`): 1,533 tests moved, 1,389 by column or ON-pair order
+    alone. A rerun of the three largest files on each tree shows that order
+    is run-dependent (`main` against itself moves 1,041 of their tests
+    between runs, and of the 176 cross-tree moves the 19 beyond line order
+    reverse direction between runs). What is deterministic: the 3 statements
+    above narrow less; `keyed_class_beside_trees` (6) and others drop a
+    redundant `tree_id is not null` the deferral kept; the union-dim
+    pushdown merged-fact tests plan one join fewer; the predrop-chain cells
+    render the same SQL with and without the remaining join flag. Every
+    moved test's rows pass. Suite: the same 25 credential-bound failures as
+    `main`.
+
+31. **A consumer matching only a concept's own values narrows a merge padded
+    on its complete side (landed; plans the one narrowing seam 30 lost).**
+    - **The shape.** `test_window_expression_join`: a merge FULL-joins the
+      customers scan to the orders' ranks on `customers.rnk =
+      _virt_window_rank` (a union join merges the window rank into the
+      rank). The final join keeps that merge's rows only where their rank
+      matches `abundant`'s, and every rank `abundant` carries is a
+      customer's. A row padded on customers carries a rank the customers
+      scan lacks, and the scan holds every customer rank, so the final join
+      never matches it: the merge may be LEFT, customers preserved. Seam 29
+      read this as a pushed WHERE the planner could not see; the WHERE only
+      narrows the final join to the RIGHT that drops the merge's unmatched
+      rows. Without it the final join is FULL and the rows stay, correctly.
+    - **The proof.** It is the key channel's own fact, made stricter. A
+      consumer's equality that drops a side's unmatched rows already tells
+      the merge under it that a NULL key reaches nothing (`keys`); where the
+      other side holds only the concept's own values, no value outside the
+      concept does either, and NULL is in no domain. So `ConsumerProofs.keys`
+      maps each rejected key to whether it is held to its own values
+      (`join_rejections`, `own_values`: a scan of the concept, or a coalesce
+      over sources the join equates on its key class,
+      `DomainGraph.canonical`, with one no join pads). It inherits the
+      channel's exclusions (null-safe pairs, opaque bindings, a coalesced
+      left), and `|`, `&` and `_failing_keys` (`covers`) treat the stricter
+      reading as the stronger. The merge takes the own-value keys as
+      `JoinProofs.domain_keys`, and `grain_utility.force_domain_sides`
+      forces a side that carries every value of the concept
+      (`complete_key_domain`, relation-level, so a filtered or limited side
+      does not count; the left only when it is the whole stream): a row
+      padded there holds a value it lacks, or NULL.
+    - **Only a join on that one key.** A row a composite key leaves
+      unmatched can hold a value of each key the side has: the multi-leg
+      scoped join tests (`test_multileg_sql_parity_via_not_null`, all three
+      walks) returned no rows when the proof forced the anchor's side of
+      the `(ticket, item, customer)` union join. A first cut required the
+      pair to join two different concepts instead: that kept those tests
+      green but excludes no composite join of different concepts, and is
+      not the condition the proof needs. `force_domain_sides` now takes a
+      single-pair join, of any two concepts.
+
+    Pinned (red on the seam 30 head):
+    `test_scoped_join_expression_keys::test_a_consumer_matching_only_customer_ranks_narrows_the_rank_merge`.
+    Gates, against the seam 30 head (`fe8e4c9`): corpus (204 statements) 0
+    moved; fuzzer 522/522. Suite capture (`sqlcap`, `-n 4`): join types
+    change in the 2 parsers of `test_window_expression_join` alone (a FULL
+    becomes LEFT); the other moves are column and ON-pair order, which this
+    suite's law tests reverse between runs of one tree, and the README's
+    run-order tests. Suite: the same 25 credential-bound failures as `main`.
+
 ## Gate used
 
 ```

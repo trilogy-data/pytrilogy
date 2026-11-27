@@ -1364,9 +1364,8 @@ def comparison_proves_non_null(
 ) -> set[str]:
     """Concept addresses a single comparison forces non-null in surviving rows.
 
-    Shared leaf logic for both null-proof walkers (this module's
-    ``condition_proves_non_null`` and ``join_upgrade._proves_non_null``); the
-    walkers differ only in their handling of nested conditionals/``BETWEEN``.
+    Leaf logic of this module's null-proof walkers, which differ only in
+    their handling of nested conditionals/``BETWEEN``.
     """
     left, right, op = atom.left, atom.right, atom.operator
     if (
