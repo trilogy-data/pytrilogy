@@ -983,4 +983,19 @@ theorem split_grain_join_pairs :
     (cities.flatMap fun c => kinds.map fun s => (c, s)).length = 8 ∧ pairs.length = 5 := by
   decide
 
+/-- `select coalesce(tree_form, 'none') as form0, city ? city = 'A' as v0
+where tag in (tag ? height between 3 and 7)`: the kept trees are `(form0,
+v0)` rows. The filter was grouped off them to `v0` alone, so FINAL held no
+column to pair it with `form0` on and showed every form with both values;
+the filter's node holds `tree_form`, from which `form0` is a row function,
+so it keeps the pair (`filter_derives_its_row_keys`, 268726). Forms are
+broadleaf 0, linden 1, none 2; `v0` 1 for A, 0 for NULL. -/
+theorem filter_derives_its_row_keys :
+    let rows : List (Nat × Nat) := [(0, 1), (0, 0), (2, 1), (1, 0), (0, 0)]
+    let forms := (rows.map (·.1)).eraseDups
+    let values := (rows.map (·.2)).eraseDups
+    rows.eraseDups.length = 4 ∧
+      (forms.flatMap fun f => values.map fun v => (f, v)).length = 6 := by
+  decide
+
 end Trilogy.Filters

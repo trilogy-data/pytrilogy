@@ -803,9 +803,17 @@ def _uncovered_exposing_output_contributor(
             *(buckets[gid].grain_components for gid in covered if gid in buckets)
         )
         keys -= _filters_the_keys_decide(keys, environment)
-        # a filter stream shown beside the host never passed the atom
+        # a filter stream shown beside the host never passed the atom: at the
+        # select grain and read by FINAL alone, its rows are FINAL's (a
+        # regrouped or windowed one's are not)
+        shown_unfiltered = any(
+            set(buckets[gid].grain_components) <= mandatory_addrs
+            and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
+            for gid in unfiltered
+            if gid in buckets
+        )
         return row_inputs <= final_exposable and (
-            bool(unfiltered)
+            shown_unfiltered
             or not any(build_fd_determines_all(environment, own, keys) for own in held)
         )
     for gid, b in buckets.items():

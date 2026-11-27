@@ -3461,6 +3461,28 @@ def _merge_component_count(visible: list[set[str]], live: list[int]) -> int:
     return len(set(component.values()))
 
 
+def _filter_built_columns(
+    environment: BuildEnvironment, node: StrategyNode, grain: Iterable[str]
+) -> frozenset[str]:
+    """What a built filter can be read on: its outputs, and each key of the grain
+    it claims that is a row function of them (`form0` off `tree_form`,
+    `Filters.filter_derives_its_row_keys`)."""
+    held = {o.address for o in node.output_concepts}
+    pending = set(grain) - held
+    while True:
+        derived = {
+            key
+            for key in pending
+            if (concept := environment.concepts.get(key)) is not None
+            and concept.derivation == Derivation.BASIC
+            and {a.address for a in concept.concept_arguments} <= held
+        }
+        if not derived:
+            return frozenset(held)
+        held |= derived
+        pending -= derived
+
+
 def _fold_covered_contributors(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -7214,7 +7236,7 @@ def _assemble_final_node(
     # cross-joining ON 1=1.
     # a filter holds what its node does, not the select grain it claims
     built_filters = {
-        gid: frozenset(o.address for o in node.output_concepts)
+        gid: _filter_built_columns(environment, node, attrs[gid].grain_components)
         for gid, node in built.items()
         if gid in attrs and attrs[gid].derivation == Derivation.FILTER
     }

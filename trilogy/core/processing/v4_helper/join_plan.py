@@ -1161,8 +1161,12 @@ def plan_final_join(
             siblings = sibling_keys
         held = held_by(gid, identity[gid], siblings)
         # a group's rows look up a property of its keys (`tree_form` beside
-        # `species`) to pair with a sibling holding only the property
-        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+        # `species`) to pair with a sibling holding only the property; a WHERE
+        # aggregate's group only gates the rows, pairing on its own keys
+        if (
+            attrs[gid].derivation in GROUPING_DERIVATIONS
+            and _scope_and_phase(attrs[gid].label)[1] != "condition"
+        ):
             held |= siblings
         # an extra row stream is joined as built: its input rows' columns are
         # no column of it (a filter at `tree_id` over rows holding `city`)
