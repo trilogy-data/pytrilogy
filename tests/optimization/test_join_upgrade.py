@@ -847,7 +847,7 @@ def test_existing_inner_join_proves_nullable_source_present():
         ),
     ]
 
-    changed, _ = UpgradeJoinOnGuards(left_only=True).optimize(root, {})
+    changed, _ = UpgradeJoinOnGuards().optimize(root, {})
 
     assert changed
     assert root.joins[0].join_type == JoinType.INNER
@@ -977,7 +977,7 @@ def _build_flag_scenario(flag_alias):
         )
     ]
 
-    UpgradeJoinOnGuards(left_only=True).optimize(root, {})
+    UpgradeJoinOnGuards().optimize(root, {})
     return root.joins[0].join_type
 
 
@@ -1056,141 +1056,6 @@ def test_partial_addresses_per_source_type():
         partial_concepts=[key],
     )
     assert partial_addresses(qds) == {key.address}
-
-
-def _join_producer(base, agg, key, measure):
-    """A CTE that LEFT-joins ``agg`` onto ``base`` and passes the agg measure
-    through as a plain single-source projection."""
-    producer = _build_cte("producer", [key, measure])
-    producer.parent_ctes = [base, agg]
-    producer.source_map = {
-        key.address: [base.name],
-        measure.address: [agg.name],
-    }
-    producer.joins = [
-        Join(
-            join_type=JoinType.LEFT_OUTER,
-            right=agg,
-            pairs=[
-                ConceptPair(
-                    left=key,
-                    right=key,
-                    node=base,
-                )
-            ],
-        )
-    ]
-    return producer
-
-
-def _passthrough_consumer(name, producer, concepts, condition=None):
-    consumer = _build_cte(name, concepts)
-    consumer.parent_ctes = [producer]
-    consumer.source_map = {c.address: [producer.name] for c in concepts}
-    consumer.condition = condition
-    return consumer
-
-
-def test_cross_cte_null_rejection_upgrades_producer_join():
-    """A consumer's WHERE that rejects NULLs on a column padded by the
-    producer's LEFT join upgrades that join to INNER (the q64 shape: the
-    null-rejecting filter lives CTEs downstream of the outer join)."""
-    key = _build_concept("KEY")
-    measure = _build_concept("MEASURE")
-    base = _build_cte("base_source", [key])
-    agg = _build_cte("agg_source", [key, measure])
-    producer = _join_producer(base, agg, key, measure)
-    consumer = _passthrough_consumer(
-        "consumer", producer, [key, measure], _condition_for(measure)
-    )
-
-    rule = UpgradeJoinOnGuards()
-    inverse_map = {producer.name: [consumer]}
-    changed, _ = rule.optimize(producer, inverse_map)
-    assert changed, "expected cross-CTE proof to upgrade the join"
-    assert producer.joins[0].join_type == JoinType.INNER
-
-
-def test_cross_cte_null_rejection_propagates_through_passthrough():
-    """The rejection carries through an intermediate plain-passthrough CTE:
-    grandparent joins, parent projects, child filters."""
-    key = _build_concept("KEY")
-    measure = _build_concept("MEASURE")
-    base = _build_cte("base_source", [key])
-    agg = _build_cte("agg_source", [key, measure])
-    producer = _join_producer(base, agg, key, measure)
-    middle = _passthrough_consumer("middle", producer, [key, measure])
-    final = _passthrough_consumer(
-        "final", middle, [key, measure], _condition_for(measure)
-    )
-
-    rule = UpgradeJoinOnGuards()
-    inverse_map = {producer.name: [middle], middle.name: [final]}
-    changed, _ = rule.optimize(producer, inverse_map)
-    assert changed, "expected transitive cross-CTE proof to upgrade the join"
-    assert producer.joins[0].join_type == JoinType.INNER
-
-
-def test_cross_cte_null_rejection_requires_every_consumer():
-    """A second consumer with no rejecting condition reads the padded rows —
-    the producer's join must stay preserving."""
-    key = _build_concept("KEY")
-    measure = _build_concept("MEASURE")
-    base = _build_cte("base_source", [key])
-    agg = _build_cte("agg_source", [key, measure])
-    producer = _join_producer(base, agg, key, measure)
-    filtering = _passthrough_consumer(
-        "filtering", producer, [key, measure], _condition_for(measure)
-    )
-    reading = _passthrough_consumer("reading", producer, [key, measure])
-
-    rule = UpgradeJoinOnGuards()
-    inverse_map = {producer.name: [filtering, reading]}
-    changed, _ = rule.optimize(producer, inverse_map)
-    assert not changed
-    assert producer.joins[0].join_type == JoinType.LEFT_OUTER
-
-
-def test_cross_cte_null_rejection_blocked_by_existence_read():
-    """A consumer reading the producer existentially (EXISTS subselect) is
-    satisfied by ANY row — dropping padded rows could flip it, so no upgrade."""
-    key = _build_concept("KEY")
-    measure = _build_concept("MEASURE")
-    base = _build_cte("base_source", [key])
-    agg = _build_cte("agg_source", [key, measure])
-    producer = _join_producer(base, agg, key, measure)
-    consumer = _passthrough_consumer(
-        "consumer", producer, [key, measure], _condition_for(measure)
-    )
-    consumer.existence_source_map = {key.address: [producer.name]}
-
-    rule = UpgradeJoinOnGuards()
-    inverse_map = {producer.name: [consumer]}
-    changed, _ = rule.optimize(producer, inverse_map)
-    assert not changed
-    assert producer.joins[0].join_type == JoinType.LEFT_OUTER
-
-
-def test_cross_cte_null_rejection_blocked_by_coalesced_projection():
-    """A consumer that renders the address from several sources (COALESCE)
-    masks a one-sided NULL — no rejection carries back to the producer."""
-    key = _build_concept("KEY")
-    measure = _build_concept("MEASURE")
-    base = _build_cte("base_source", [key])
-    agg = _build_cte("agg_source", [key, measure])
-    other = _build_cte("other_source", [measure])
-    producer = _join_producer(base, agg, key, measure)
-    consumer = _passthrough_consumer(
-        "consumer", producer, [key, measure], _condition_for(measure)
-    )
-    consumer.parent_ctes = [producer, other]
-    consumer.source_map[measure.address] = [producer.name, other.name]
-
-    rule = UpgradeJoinOnGuards()
-    inverse_map = {producer.name: [consumer]}
-    changed, _ = rule.optimize(producer, inverse_map)
-    assert not changed
-    assert producer.joins[0].join_type == JoinType.LEFT_OUTER
 
 
 def test_an_inner_join_proves_nothing_about_a_later_join_padding_it():

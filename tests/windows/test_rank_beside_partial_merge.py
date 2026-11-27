@@ -236,8 +236,11 @@ def test_rank_beside_partial_merge_random_rows(seed: int):
         executor.close()
 
 
-def test_a_rank_and_its_total_need_their_own_node(fixed: Executor):
-    env = fixed.environment.materialize_for_select()
+def test_a_rank_and_its_total_need_their_own_node():
+    executor = executor_for(model(VEHICLES, LAUNCHES, SATELLITES))
+    executor.parse_text(f"select vehicle_name, {RANK};")
+    env = executor.environment.materialize_for_select()
+    executor.close()
     rank = next(c for c in env.concepts.values() if c.derivation == Derivation.WINDOW)
     assert _carry_needs_own_node(rank)
     assert _carry_needs_own_node(rank.lineage.order_by[0].expr)
