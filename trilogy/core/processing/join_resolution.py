@@ -3252,10 +3252,18 @@ def _one_read(
     null-safely, and only where no span pads it for one side alone; a
     grouping set's subtotal NULL is no row of the stream."""
     na, nb = carries.nodes[a], carries.nodes[b]
-    if key in sides[a].rollup_padded | sides[b].rollup_padded or not same_rows(na, nb):
+    if key in sides[a].rollup_padded | sides[b].rollup_padded or not _same_filters(
+        na, nb
+    ):
         return False
-    providers = carries.providers(a, key)
-    if not providers or providers != carries.providers(b, key):
+    providers, others = carries.providers(a, key), carries.providers(b, key)
+    if not (
+        providers
+        and (providers == others and same_rows(na, nb))
+        or providers & others
+        and _one_value_set(na, carries.concepts[(a, key)], providers)
+        and _one_value_set(nb, carries.concepts[(b, key)], others)
+    ):
         return False
     nullable = [key in sides[side].nullables for side in (a, b)]
     if not any(nullable):
@@ -3269,6 +3277,42 @@ def _one_read(
             )
         )
     )
+
+
+def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]]:
+    """The leaf tables under `ds` binding `address`, grouped where an INNER
+    join on it equates them: every row of the source holds one value of it
+    from each table of a group."""
+    if not isinstance(ds, QueryDatasource):
+        if any(c.address == address for c in ds.output_concepts):
+            return [frozenset({ds.identifier})]
+        return []
+    groups = [_equated_binders(sub, address) for sub in ds.datasources]
+    slot = {sub.identifier: i for i, sub in enumerate(ds.datasources)}
+    for join in ds.joins:
+        if not isinstance(join, Join) or join.join_type != JoinType.INNER:
+            continue
+        for pair in join.pairs:
+            if pair.left.address != address or pair.right.address != address:
+                continue
+            left = slot.get(pair.node.identifier)
+            right = slot.get(join.right.identifier)
+            if left is None or right is None or left == right:
+                continue
+            if len(groups[left]) == 1 and len(groups[right]) == 1:
+                groups[left] = [groups[left][0] | groups[right][0]]
+                groups[right] = []
+                slot = {k: left if v == right else v for k, v in slot.items()}
+    return [group for found in groups for group in found]
+
+
+def _one_value_set(
+    ds: DataSource, concept: BuildConcept, providers: frozenset[str]
+) -> bool:
+    """Every table binding `concept` under `ds` is one of its `providers`,
+    and INNER joins on it equate them all: the source's values of it are any
+    one provider's that pass its filters."""
+    return _equated_binders(ds, concept.address) == [providers]
 
 
 def _null_alike(key: str, a: SideFacts, b: SideFacts) -> bool:

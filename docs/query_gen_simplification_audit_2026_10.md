@@ -2643,6 +2643,73 @@ election, not the padded fallback.
     suite's law tests reverse between runs of one tree, and the README's
     run-order tests. Suite: the same 25 credential-bound failures as `main`.
 
+32. **`SimplifyNullSafeJoins` is a post-multi-node rule (measured, closed;
+    handoff 2.1).** The handoff kept it on the premise that its `NULLABLE`
+    keys are stale: modifiers stamped from join types that change after
+    planning. A census (`local_scripts/sql_ab/null_safe_census_plugin.py`,
+    whole suite) records every key it strips with the proof that held and
+    the planned join behind it. 112 keys in 82 tests:
+    - **Two sit on a join planned FULL.** The premise is two keys.
+    - **The proofs are optimizer state.** 93 of the 112 sit on a join the
+      planner already typed INNER, and 17 on a join no planned source holds
+      (one the optimizer built or moved). The proof is the joining CTE's own
+      WHERE (63), a side's WHERE (17), a parent walk to one (28), or a side's
+      `nullable_concepts` (4). On 7 the planned merge's own condition
+      already held it. The rest of those WHEREs reach a CTE after planning.
+      With predicate pushdown off, the rule still strips 82 keys, 65 of
+      them on a WHERE the CTE has and its planned source lacks (a parent
+      collapsed into it).
+    - **No branch is dead.** Each layer of `proven_non_null` was switched
+      off alone against the 82 tests under a SQL capture. Only the
+      `UnionCTE` layer moved nothing, and `LowerFullJoins` (MySQL) reads the
+      same helper, so it stays as a helper fact rather than a harvest.
+      Without the rule, 63 of the 82 tests' plans move.
+
+    Verdict: the rule reads what pushdown and the parent collapse decide,
+    which is the house rule's "post-multi-node state". It stays. No code
+    change.
+
+33. **Twin aggregates of one stream through an INNER join on their key
+    (landed; seam 2, the planner's twin proof).** A census of
+    `UpgradeOuterFromKeySetEquivalence` after seam 31 (`upgrade_census_plugin`,
+    whole suite less the tpc-ds and tpc-h files, which need the DuckDB
+    extensions) puts the rule at 82 firings in 72 tests. 61 are the
+    equivalence upgrade, which fires on two GROUP BYs over one filter chain.
+    The planner's half of that proof is `_one_read` (`_twins`): both sides
+    read the same leaf tables through the same filters (`same_rows`), and
+    the key's providers (`key_providers`) are equal.
+    - **The shape it missed.** Law `spellings[71]`: a `(city, species,
+      tree_form)` group over `trees` INNER `enrichment` on `species` joins a
+      `(city, species)` group over `trees` alone, under one filter. `trees`
+      and `enrichment` are both preserved (`matched_left` and
+      `matched_right`), so the species providers are `{trees, enrichment}`
+      on one side and `{trees}` on the other, and the leaves differ. The
+      merge refused both keys, its join kept no `matched_*` flag, no
+      provider survived above it, and the final FULL on `(city, tree_form)`
+      was left to the optimizer.
+    - **The proof.** An INNER join on the key equates it on every row it
+      keeps (`_equated_binders`). A side whose every table binding the key
+      is one of its providers, and all of them one equated group
+      (`_one_value_set`), holds exactly the values of any one of those
+      providers that pass its filters. Two such sides with a provider in
+      common and the same filters (`_same_filters`) hold one value set. That
+      replaces `same_rows` and provider equality where they fail. The NULL
+      half of `_one_read` is unchanged.
+    - **What it moves.** Of the 82 firings, 8 are planned now (the
+      `spellings[71]` and `compositions[21]` pairs, `filters[66376]`,
+      `windows[5596]`) and none are new. Every join type in the 72 firing
+      tests is as before. The planned INNERs reorder some CTEs.
+
+    Pinned (red on `main`):
+    `test_planned_join_narrowing::test_twin_aggregates_of_one_stream_through_an_equating_join`.
+
+    **What is left (the lead).** 74 firings in 66 tests: 53 equivalence
+    upgrades (35 LEFT, 18 FULL), 17 directional, 4 rule B. The equivalence
+    firings are mostly the oracle laws over two keys, and the split-key
+    gates (seam 2, ninth slice: the merge's own WHERE filters the gate).
+    The next measure is the same trace (`_twins` per key at the merge the
+    optimizer later narrows) over the 53.
+
 ## Gate used
 
 ```
