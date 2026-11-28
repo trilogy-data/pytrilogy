@@ -3011,6 +3011,15 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
   - The first versions of the last two broke 110957, 177741, 178520, 219659
     and 244567, right on main; the full-range sweep found them after
     0-260,000 slices did not, and they are in `FOUND_SEEDS`.
+- **`filters` cover keys** (0.3.546). Over 0-320,000 (640,000 queries, main's
+  side swept once and reused) the round fixes 2 (seed 287310, both models)
+  and breaks none: wrong answers 57 to 55. 776 statements change; joins +21
+  (63 queries up, 33 down), CTEs +500, no scan more, summary reads +1.
+  - A row column shown without its key is a key of the select's rows: `city`
+    and `tag` beside a window over a filter came off separate groups and
+    showed `(B, x)` (`shown_properties_key_one_tuple`, 287310). The final
+    cover now counts a shown root property whose keys are all unshown among
+    the keys one tuple must supply.
 - **`filters` to 260,000** (0.3.544). On main seeds 240,000-260,000 (40,000
   queries) hold 4 wrong answers, 14 raises and 5 invalid statements; the
   round fixes 11 of them (4 wrong answers, 7 raises). Over the full range

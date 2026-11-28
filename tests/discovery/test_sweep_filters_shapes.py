@@ -1140,6 +1140,15 @@ SHAPES = [
         ),
         [("A", "b", "A", 17, 3), ("A", "o", "A", 17, 1), ("B", "b", "B", 17, 1)],
     ),
+    # row columns shown without their key come off one tuple (287310)
+    (
+        (
+            "select city, tag, city ? count(tree_id) by city > 3 as v0, "
+            "avg(count(tree_id) by city, tag, v0) over (partition by tag, v0) as v1 "
+            "where species in ('Acer', 'Ulmus');"
+        ),
+        [("A", "x", None, 2.0), ("A", "y", None, 1.0), ("B", "y", None, 1.0)],
+    ),
 ]
 
 

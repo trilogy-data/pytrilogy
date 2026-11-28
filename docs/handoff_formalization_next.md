@@ -13,7 +13,7 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.545.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.546.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
@@ -805,12 +805,10 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     sum(height) by * > count(tree_id) by city) as v0 where height between 2
     and 5` shows every city with every `fc` (261807): FINAL pairs `fc` with
     the filter on nothing.
-  - A window over a filter by its keys: `select city, tag, city ?
-    count(tree_id) by city > 3 as v0, avg(count(tree_id) by city, tag, v0)
-    over (partition by tag, v0) as v1 where species in ('Acer', 'Ulmus')`
-    adds `(B, x)` (287310): the window's `(tag, v0)` rows are met on `v0`
-    alone, the case 0.3.545 fixed for a filter keyed within the grouped side
-    (`pair_on_looked_up_value`) but not for a window reading the filter.
+  - 287310 (a window over a filter beside two shown properties) is fixed in
+    0.3.546: the cover takes shown row columns off one tuple
+    (`shown_properties_key_one_tuple`). It costs 500 CTEs over 776 statements
+    and 21 joins net, no scan; whether the extra CTEs can fold is open.
   - Wrong also 275116, 281660, 296704, 305799, 309283, 313914; raises
     263218, 264891, 297953 (summary), 282488, 288250, 311317; 294499 invalid.
 - **Left after 0.3.544** (seeds 240,000-260,000 and older; each fails on

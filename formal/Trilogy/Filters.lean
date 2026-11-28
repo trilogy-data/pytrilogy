@@ -1032,4 +1032,20 @@ theorem pair_on_looked_up_value :
     onFc.length = 5 ∧ onBoth.length = 3 := by
   decide
 
+/-- `select city, tag, city ? count(tree_id) by city > 3 as v0,
+avg(count(tree_id) by city, tag, v0) over (partition by tag, v0) as v1 where
+species in ('Acer', 'Ulmus')`: the kept trees hold (A, x), (A, y) and (B, y).
+`city` and `tag` are properties of the tree, shown without `tree_id`, so the
+pair is the key of the select's rows; the cover counted only declared keys,
+took each column off its own group and FINAL showed (B, x) too
+(`shown_properties_key_one_tuple`, 287310). Cities and tags are A 0, B 1,
+x 0, y 1. -/
+theorem shown_properties_key_one_tuple :
+    let rows : List (Nat × Nat) := [(0, 0), (0, 0), (0, 1), (1, 1)]
+    let cities := (rows.map (·.1)).eraseDups
+    let tags := (rows.map (·.2)).eraseDups
+    rows.eraseDups.length = 3 ∧
+      (cities.flatMap fun c => tags.map fun t => (c, t)).length = 4 := by
+  decide
+
 end Trilogy.Filters
