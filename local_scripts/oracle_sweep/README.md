@@ -24,8 +24,8 @@ python -m local_scripts.oracle_sweep show 38477 [--ref origin/main]
 
 ## A full-range A/B: do not sweep main here
 
-Planning is 95% of a sweep and filters costs 60 ms a query, so its 0-320,000
-on both models is 2.7 hours a side on four cores. A round needs main's side
+Planning is 95% of a sweep and filters costs 60 ms a query, so its 0-380,000
+on both models is 3.2 hours a side on four cores. A round needs main's side
 once and the branch's after each batch of fixes; CI takes the first off the
 round.
 
@@ -36,7 +36,7 @@ sweep` run (the Actions API gives an artifact a download URL), unzip it, and:
 
 ```bash
 python -m local_scripts.oracle_sweep import <unzipped dir>   # prints the commit
-python -m local_scripts.oracle_sweep ab --family filters --seeds 0:320000 --base <commit>
+python -m local_scripts.oracle_sweep ab --family filters --seeds 0:380000 --base <commit>
 ```
 
 `import` caches the records as that commit's, so `--base <commit>` sweeps

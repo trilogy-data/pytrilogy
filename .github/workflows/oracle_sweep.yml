@@ -32,7 +32,7 @@ env:
   # The family and seeds whose records main publishes each night: the round's
   # current family, its whole swept range.
   RECORDS_FAMILY: filters
-  RECORDS_SEEDS: ${{ github.event_name == 'pull_request' && '0:1000' || '0:320000' }}
+  RECORDS_SEEDS: ${{ github.event_name == 'pull_request' && '0:1000' || '0:380000' }}
   RECORDS_SHARDS: ${{ github.event_name == 'pull_request' && '2' || '4' }}
 
 jobs:
@@ -110,7 +110,7 @@ jobs:
     name: Records ${{ matrix.shard }}
     needs: records-plan
     runs-on: ubuntu-latest
-    # 320,000 filters seeds are ~3 hours of a four-core runner.
+    # 380,000 filters seeds are ~3.5 hours of a four-core runner.
     timeout-minutes: 180
     permissions:
       contents: 'read'

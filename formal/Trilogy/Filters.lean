@@ -1115,4 +1115,46 @@ theorem aggregate_filter_counts_once :
     acers.length = 2 ∧ acers.length * rows.length = 6 := by
   decide
 
+/-- `select city, species, (sum(height) by city) ? city in (city ? sum(height)
+by city, species = 1) as v0 where max(height) by species > 2`: the Ulmus has
+no height and the Tilia's is 2, so three `(city, species)` rows are kept. Both
+cities sum some kept tree, so the content's groups passed the gate; the
+filter's rows are finer than them, and read as hosted they showed all five
+(`hosted_content_keys_its_grain`, 360768; 339324). Rows are `(city, species,
+kept)`. -/
+theorem hosted_content_keys_its_grain :
+    let pairs : List (Nat × Nat × Bool) :=
+      [(0, 0, true), (0, 1, true), (0, 2, false), (1, 0, true), (1, 3, false)]
+    let passed := (pairs.filter (·.2.2)).map (·.1)
+    (pairs.filter fun p => passed.contains p.1).length = 5 ∧
+      (pairs.filter (·.2.2)).length = 3 := by
+  decide
+
+/-- `select city, species, city ? city = 'B' as v0, min(count(tree_id) by city,
+species, v0) over (partition by city, v0) as v1 where max(height) by species >
+2`: the same three kept pairs. The gate was hosted on the count by `(city,
+species)`, and the window regroups it by `city`: FINAL met the filter's
+unfiltered pairs with the window on `city` alone, so the host's `species` pinned
+none of them and all five showed (`regrouped_host_pins_no_finer_key`, 326039;
+367969, 371180). Rows are `(city, species, kept)`. -/
+theorem regrouped_host_pins_no_finer_key :
+    let pairs : List (Nat × Nat × Bool) :=
+      [(0, 0, true), (0, 1, true), (0, 2, false), (1, 0, true), (1, 3, false)]
+    let window := ((pairs.filter (·.2.2)).map (·.1)).eraseDups
+    (pairs.filter fun p => window.contains p.1).length = 5 ∧
+      (pairs.filter fun p => p.2.2 && window.contains p.1).length = 3 := by
+  decide
+
+/-- `select tree_id ? tag = 'x' as v0, city ? city in (city ? count(tree_id) by
+* - max(height) by tree_form > 3) as v1, count_distinct(tag) by * as v2 where
+min(height) by tree_form is not null`: the formless Ulmus has no height, so
+its tree a4 is dropped. The gate was hosted on the minimum by `tree_form`,
+which only the set reads; the shown filter read every tree beside it and FINAL
+never re-applied the gate (`unfiltered_stream_reapplied`, 333300). Trees are
+their forms: broadleaf 0, linden 1, none 2, and none has no minimum. -/
+theorem unfiltered_stream_reapplied :
+    let trees : List Nat := [0, 0, 0, 2, 0, 1]
+    (trees.filter (· != 2)).length = 5 ∧ trees.length = 6 := by
+  decide
+
 end Trilogy.Filters

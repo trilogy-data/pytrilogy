@@ -1193,6 +1193,54 @@ SHAPES = [
         ),
         [(None, 0)],
     ),
+    # a filter's rows finer than its hosted content never passed the gate
+    # (360768): the Ulmus has no height and the Tilia's is 2
+    (
+        (
+            "select city, species, (sum(height) by city) ? city in (city ? "
+            "sum(height) by city, species = 1) as v0 where max(height) by species > 2;"
+        ),
+        [("A", "Acer", None), ("A", "Quercus", None), ("B", "Acer", None)],
+    ),
+    # a host regrouped past a shown key pins none of its rows (326039)
+    (
+        (
+            "select city, species, city ? city = 'B' as v0, min(count(tree_id) by "
+            "city, species, v0) over (partition by city, v0) as v1 where max(height)"
+            " by species > 2;"
+        ),
+        [("A", "Acer", None, 1), ("A", "Quercus", None, 1), ("B", "Acer", "B", 1)],
+    ),
+    # ...nor does one no shown column comes off (367969): only Tilia's 2 and
+    # the Ulmus fail `2 != max(height) by city, species`
+    (
+        (
+            "select coalesce(tree_form, 'none') as form0, species ? tree_form in "
+            "(tree_form ? max(height) by city, species = 5) as v0 where not (city in"
+            " (city ? height <= 5)) or count_distinct(tag) by * != max(height) by "
+            "city, species;"
+        ),
+        [("broadleaf", "Acer"), ("broadleaf", "Quercus")],
+    ),
+    # a filter read beside a host its set reads is gated at FINAL (333300):
+    # the formless Ulmus a4 has no minimum
+    (
+        (
+            "select tree_id ? tag = 'x' as v0, city ? city in (city ? count(tree_id)"
+            " by * - max(height) by tree_form > 3) as v1, count_distinct(tag) by * as"
+            " v2 where min(height) by tree_form is not null;"
+        ),
+        [("a1", None, 2), ("a3", None, 2), ("b2", None, 2), (None, None, 2)],
+    ),
+    # ...and so is one read through a derived key (366506): only a Acer in B
+    # reaches 7
+    (
+        (
+            "select coalesce(tree_form, 'none') as form0, tree_form ? sum(height) by"
+            " * < 0 as v0 where max(height) by city, tree_form >= 7;"
+        ),
+        [("broadleaf", None)],
+    ),
 ]
 
 

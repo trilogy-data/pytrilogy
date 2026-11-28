@@ -950,11 +950,26 @@ def _unfiltered_filter_streams(
         and _reads_host_beside_rows(gid, chosen, shown, scope)
         and (
             build_fd_determines_all(scope.environment, b.grain_components, keys)
-            or set(scope.group_graph.successors(gid)) == {FINAL_NODE_ID}
+            or _read_by_final_alone(gid, scope)
         )
         and not _rows_filtered_by(gid, chosen, scope, memo)
         and not _content_hosted(b, chosen, scope)
     }
+
+
+def _read_by_final_alone(gid: str, scope: "_PlacementScope") -> bool:
+    """FINAL reads `gid`'s rows, directly or through a row value derived off
+    them (`coalesce(tree_form, 'none')` beside `tree_form ? c`)."""
+    graph, buckets = scope.group_graph, scope.buckets
+    return all(
+        succ == FINAL_NODE_ID
+        or (
+            (b := buckets.get(succ)) is not None
+            and b.derivation == Derivation.BASIC
+            and set(graph.successors(succ)) == {FINAL_NODE_ID}
+        )
+        for succ in graph.successors(gid)
+    )
 
 
 def _reads_host_beside_rows(
