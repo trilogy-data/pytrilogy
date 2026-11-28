@@ -1241,6 +1241,27 @@ SHAPES = [
         ),
         [("broadleaf", None)],
     ),
+    # a host whose keys only its own inputs show shows them itself: no gate
+    # is re-applied at FINAL (320174, right on main, broken by a first fix)
+    (
+        (
+            "select case when tree_form = 'broadleaf' then 'b' else 'o' end as fc, "
+            "tag ? not (city in (city ? count(tree_id) by city >= 8)) and species in "
+            "(species ? count_distinct(tag) by city, tree_form != 5) as v0, "
+            "avg(min(height)) over (partition by fc) as v1 where max(height) by city"
+            " is not null;"
+        ),
+        [("b", "x", 5), ("b", "y", 5), ("o", "x", 2)],
+    ),
+    # a row gate is no aggregate's to re-apply (363929, likewise): only the
+    # formless Ulmus is kept
+    (
+        (
+            "select city, height > 2 as big, tree_form ? count(tree_id) by species ="
+            " 10 as v0 where coalesce(tree_form, 'none') = 'none';"
+        ),
+        [("A", None, None)],
+    ),
 ]
 
 

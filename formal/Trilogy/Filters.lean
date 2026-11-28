@@ -1136,7 +1136,9 @@ species, v0) over (partition by city, v0) as v1 where max(height) by species >
 species)`, and the window regroups it by `city`: FINAL met the filter's
 unfiltered pairs with the window on `city` alone, so the host's `species` pinned
 none of them and all five showed (`regrouped_host_pins_no_finer_key`, 326039;
-367969, 371180). Rows are `(city, species, kept)`. -/
+367969, 371180). Where every other stream showing a key is an input the host
+groups (`fc` and `v0` of a minimum by both), FINAL reads the keys off the host
+and owes no gate (320174). Rows are `(city, species, kept)`. -/
 theorem regrouped_host_pins_no_finer_key :
     let pairs : List (Nat × Nat × Bool) :=
       [(0, 0, true), (0, 1, true), (0, 2, false), (1, 0, true), (1, 3, false)]
