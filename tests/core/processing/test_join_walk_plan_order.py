@@ -623,3 +623,60 @@ def test_a_late_gated_narrowing_is_traced():
         if isinstance(s.get("data"), dict)
     ]
     assert "gated_late" in rules
+
+
+def _onto_two(pred_type: JoinType, matched: bool = True) -> list[JoinOrderOutput]:
+    """`catalog` joined onto `web`, then both onto `store` on the same key."""
+    return [
+        JoinOrderOutput(right="catalog", type=pred_type, keys={"web": {"k"}}),
+        JoinOrderOutput(
+            right="store",
+            type=JoinType.RIGHT_OUTER,
+            keys={"web": {"k"}, "catalog": {"k"}},
+            matched_left=matched,
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "pred_type, lead",
+    [
+        (JoinType.LEFT_OUTER, "web"),
+        (JoinType.INNER, "web"),
+        (JoinType.RIGHT_OUTER, "catalog"),
+        (JoinType.FULL, None),
+    ],
+)
+def test_a_left_joined_onto_another_alone_is_read_as_it(pred_type, lead):
+    pred, join = _onto_two(pred_type)
+    assert jr._equated_lead(join, [pred]) == lead
+
+
+@pytest.mark.parametrize(
+    "pred_type, widened",
+    [
+        (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER),
+        (JoinType.FULL, JoinType.RIGHT_OUTER),
+        (JoinType.RIGHT_OUTER, JoinType.RIGHT_OUTER),
+    ],
+    ids=["padding_off_the_lead", "lefts_alone", "padding_before_the_lead"],
+)
+def test_a_matched_stream_keeps_its_padding_without_widening(pred_type, widened):
+    joins = _onto_two(pred_type)
+    jr.ensure_content_preservation(joins)
+    assert joins[1].type == widened
+
+
+def test_an_unmatched_stream_keeps_its_padding_by_widening():
+    joins = _onto_two(JoinType.LEFT_OUTER, matched=False)
+    jr.ensure_content_preservation(joins)
+    assert joins[1].type == JoinType.FULL
+
+
+def test_a_matched_stream_whose_lead_was_padded_widens():
+    joins = [
+        JoinOrderOutput(right="web", type=JoinType.LEFT_OUTER, keys={"seed": {"j"}}),
+        *_onto_two(JoinType.LEFT_OUTER),
+    ]
+    jr.ensure_content_preservation(joins)
+    assert joins[2].type == JoinType.FULL

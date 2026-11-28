@@ -3098,6 +3098,101 @@ election, not the padded fallback.
     The planner's debt is now 8 firings (9 keys), and none is a shape a
     modeling suite plans.
 
+39. **The planner owns the directional narrowings a merge plans (landed;
+    seam 2, the directional half of `UpgradeOuterFromKeySetEquivalence`).**
+    Seams 33 to 38 traced the rule's equivalence upgrade. Its directional
+    half (`_narrow_directionally`) had not been re-measured since the
+    handoff's "448 FULLs in 59 statements". Census (`upgrade_census_plugin`,
+    whole suite, laws and tpc included, on `5378f8c`): 42 firings, 17 of
+    them the equivalence upgrade and 25 directional. Of the 25, 15 were
+    joins the walk had already proved but then typed wider: two gaps.
+    - **A restored join keeps a side only if both its types keep it
+      (`restore_unpadded_joins`).** q64 (and its two plan-only twins, 9
+      firings): `agg_99` joins the item, store and two address lookups.
+      Each lookup covers it (rule B: the `union join` veto yields to the
+      graph's proof), so the walk types each join RIGHT, keeping only the
+      dimension's rows. The item join pads the stream first, so
+      `ensure_content_preservation` widens the other three to FULL. The
+      WHERE on both arms' counts rejects every padded row: item narrows to
+      INNER and the other three only to LEFT. The restore took a join back
+      to its own type only when that type was narrower than the current
+      one, and RIGHT is not narrower than LEFT, so the three stayed LEFT
+      until the optimizer narrowed them. Their meet keeps a side only
+      where both keep it, which is INNER. Each was a FULL widened from a
+      RIGHT, so the planned outer join had also put 8 `coalesce` key reads
+      in the final CTE: they go.
+    - **A stream of lefts read as one (`_equated_lead`, `_narrow_covered`,
+      `ensure_content_preservation`).** Six firings were multi-left joins
+      under the `shape_flipped` walk: `{web, catalog} -> store` on keys
+      store covers on each. `_narrow_covered` reads a multi-left ON only
+      off a lead an earlier INNER equated with every other left, so it
+      typed these FULL. Three more cases now read as one stream:
+      - `b` LEFT joined onto `a` alone, or `a` RIGHT joined onto `b`, on
+        every key (`_joined_onto`): a row holds `b` only beside the `a` row
+        it matched, so `coalesce(a.k, b.k)` is `a.k`;
+      - lefts that are every side walked, each joining on the same keys it
+        never NULLs and each covered by the right (`_narrow_lefts_alone`,
+        trace rule `covered_lefts`): every row holds one of them, and the
+        coalesce is that left's key;
+      - and the widening that followed: `ensure_content_preservation`
+        widened the narrowed join back to FULL to keep the earlier LEFT's
+        padding. A join whose left stream is matched keeps every stream
+        row, padded ones included, unless an earlier join padded a row the
+        proof does not hold for (`_stream_matched`: the lead padded by a
+        LEFT onto it or a RIGHT or FULL after it, or a side beyond the
+        lefts). The widening now adds only the preservation it still needs
+        (an authored axis's right relation still widens).
+    - **What it moves.** Census: 26 firings (directional 25 to 10, and the
+      equivalence upgrade 17 to 16: a grain-pin row,
+      `test_pinned_filter_beside_species_grain_outputs[...expected4-merged]`,
+      now plans its INNER). No firing is new. Suite capture (`sqlcap`,
+      `PYTHONHASHSEED=0`, base and new each run once under `-n 4`): 628
+      tests move, 27 of them with a join type or COALESCE count change, and
+      20 of those 27 are `tpc_ds_duckdb/test_queries.py` cases whose counts
+      move in multiples of 3 (the file compiles one statement a different
+      number of times per worker). The other 7 are real and none is wider:
+      q64's three tests (8 `coalesce` fewer each, and in
+      `test_a_union_join_member_read_off_its_lookup_is_covered` 3 LEFT joins
+      INNER), `test_join_merge_parity::test_chained_equality_join_matches_pairwise[shape_flipped]`
+      (2 FULL to INNER), `test_three_source_star_outer_join_anchor_preserved[shape_flipped]`
+      (a FULL the optimizer never narrowed, now RIGHT) and
+      `test_a_second_subset_member_is_not_padded_whichever_is_walked_first[shape_flipped]`
+      (a `coalesce` fewer). Each asserts its rows. Corpus (204 statements):
+      only q64 moves, 362 characters smaller with the same CTE and join
+      counts; `test_sixty_four` checks its rows.
+
+    Pinned (red on `main`): in `tests/discovery/test_planned_join_narrowing.py`,
+    `test_a_widened_lookup_takes_back_its_covered_type_under_the_where`
+    (q64's lookups planned INNER) and
+    `test_a_stream_of_lefts_each_covered_pairs_without_padding_them`. Unit
+    rows: `tests/generators/test_utility.py::test_a_restored_join_keeps_a_side_only_both_its_types_keep`;
+    `tests/core/processing/test_join_walk_plan_order.py` (the lead a LEFT,
+    RIGHT, INNER or FULL makes; a matched stream kept without widening, and
+    widened when its lead was padded or it is not matched).
+
+    Gates, against `5378f8c`: corpus 1 moved (q64); fuzzer 522/522; suite:
+    the same 25 credential-bound failures as `main`, and no test changes
+    outcome but the Rust-binary one (skipped on the base run).
+
+    **What is left.** 10 directional firings in 10 tests:
+    - **The dimension-chain laws (5)**, `test_dimension_chain_select_matches_raw_rows`
+      58, 112, 126, 193 and 197: aircraft RIGHT JOIN flight, then FULL to
+      the `~`-bound model dimension, which the optimizer narrows to LEFT on
+      the aircraft scan's completeness. The planner rightly does not claim
+      that cover: the RIGHT join already dropped every aircraft no flight
+      flew, so the stream need not hold every model an aircraft names. The
+      optimizer's `_null_extended_before` asks only whether the subset
+      side was padded, not whether the superset side lost rows. The law's
+      data references every dimension row, so it cannot tell the two
+      apart. This needs a row test (a model only an unflown aircraft names)
+      before either stage changes, and may be an optimizer defect rather
+      than planner debt.
+    - **Single shapes (3)**: tpc-ds q44 (RIGHT to INNER at a rowset
+      boundary), `test_self_filtered_rowset_anchor_subset_join_narrows` and
+      `test_merged_member_partial_stamp_blocks_completeness`.
+    - **No planned merge (2)**: `test_value_set_join_upgrade`'s hand-built
+      CTEs, the rule's own work.
+
 ## Gate used
 
 ```

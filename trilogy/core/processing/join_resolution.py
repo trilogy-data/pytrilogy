@@ -72,6 +72,7 @@ from trilogy.core.processing.utility import (
     padded_by,
     padded_sources,
     set_sources,
+    unpadded_join_type,
 )
 from trilogy.utility import string_to_hash
 
@@ -150,22 +151,26 @@ def prune_outer_join_pairs(joins: list[SourceJoin | UnnestJoin]) -> None:
 def restore_unpadded_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
     """A join widened to keep the rows an earlier join padded takes back its
     own type once narrowing made every such earlier join pad nothing: the
-    widening only held rows that no longer arrive."""
+    widening only held rows that no longer arrive. A side it keeps is one
+    both its own type and its narrowed one keep: a WHERE that dropped the
+    right's unmatched rows from the widened FULL drops them from a RIGHT the
+    walk planned on a covered left too."""
     for join, _, padded in padded_before(joins):
         own = join.own_type
-        if own is not None and own != join.join_type:
-            lefts = {source.identifier for source in join_left_sources(join)}
-            if not lefts & padded and own in _NARROWER.get(join.join_type, ()):
-                join.join_type = own
+        if own is None or own == join.join_type or own not in _TYPED:
+            continue
+        if join.join_type not in OUTER_JOIN_TYPES:
+            continue
+        lefts = {source.identifier for source in join_left_sources(join)}
+        if not lefts & padded:
+            join.join_type = unpadded_join_type(
+                join.join_type,
+                own not in PADS_LEFT_JOIN_TYPES,
+                own not in PADS_RIGHT_JOIN_TYPES,
+            )
 
 
-_NARROWER: dict[JoinType, frozenset[JoinType]] = {
-    JoinType.FULL: frozenset(
-        {JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.INNER}
-    ),
-    JoinType.LEFT_OUTER: frozenset({JoinType.INNER}),
-    JoinType.RIGHT_OUTER: frozenset({JoinType.INNER}),
-}
+_TYPED = frozenset({JoinType.INNER, *OUTER_JOIN_TYPES})
 
 
 def _pair_source(pair: ConceptPair) -> str:
@@ -1163,6 +1168,11 @@ def ensure_content_preservation(
             and right_grain <= review_keys
             and not review_keys & authored_axis_keys
         )
+        # a stream every row of which has a partner keeps its padded rows
+        # without being preserved
+        matched = review_join.matched_left and _stream_matched(
+            review_join, predecessors
+        )
         for pred in predecessors:
             on_pred_right = pred.right in review_join.lefts
             on_pred_left = any(x in review_join.lefts for x in pred.lefts)
@@ -1198,10 +1208,10 @@ def ensure_content_preservation(
                 has_prior_left = True
         # a prior right preservation only comes with a prior left one
         if has_prior_left:
-            widened = (
-                JoinType.FULL
-                if has_prior_right or review_join.type == JoinType.RIGHT_OUTER
-                else JoinType.LEFT_OUTER
+            widened = unpadded_join_type(
+                JoinType.FULL,
+                review_join.type not in PADS_LEFT_JOIN_TYPES and not has_prior_right,
+                review_join.type not in PADS_RIGHT_JOIN_TYPES and matched,
             )
             if widened != review_join.type:
                 review_join.own_type = review_join.type
@@ -1321,6 +1331,7 @@ def _narrow_covered(
     keeps of it (`_grain_keys`): the ON is then those keys (`join.on`)."""
     left = _equated_lead(join, joins)
     if left is None:
+        _narrow_lefts_alone(join, walked, facts)
         return
     keys = join.keys[left]
     others = [
@@ -1350,6 +1361,33 @@ def _narrow_covered(
             join.on = frozenset(kept)
     if narrowed != join.type and plan_trace.active():
         _trace_join_type(left, join.right, keys, facts, walked, narrowed, "covered")
+    join.type = narrowed
+
+
+def _narrow_lefts_alone(
+    join: JoinOrderOutput, walked: list[str], facts: JoinFacts
+) -> None:
+    """Lefts that are every side walked, each joining on the same keys it
+    never NULLs and each covered by the right: every row holds one of them,
+    and the ON's coalesce of their keys is that left's key, so the stream
+    has no unmatched row."""
+    every = set().union(*join.keys.values())
+    if not set(walked) <= join.keys.keys() or any(
+        keys != every or keys & facts.side(left).nullables
+        for left, keys in join.keys.items()
+    ):
+        return
+    if not all(
+        True in _covered_sides(left, join.right, keys, facts)
+        for left, keys in join.keys.items()
+    ):
+        return
+    join.matched_left = True
+    narrowed = _without_preserving(join.type, True)
+    if narrowed != join.type and plan_trace.active():
+        _trace_join_type(
+            walked[0], join.right, every, facts, walked, narrowed, "covered_lefts"
+        )
     join.type = narrowed
 
 
@@ -1404,20 +1442,56 @@ def _gated_keys(
 
 def _equated_lead(join: JoinOrderOutput, joins: list[JoinOrderOutput]) -> str | None:
     """The left a join's whole ON reads as one: its only left, or one holding
-    every key that an earlier INNER join equated each other left with on the
-    keys that left joins on. The ON's `coalesce(a.k, b.k)` is then `a.k` on
-    every row, so the pair is that left's."""
+    every key that an earlier join equated each other left with on the keys
+    that left joins on (`_inner_equated`, `_joined_onto`). The ON's
+    `coalesce(a.k, b.k)` is then `a.k` on every row, so the pair is that
+    left's."""
     if len(join.keys) == 1:
         return next(iter(join.keys))
     every = set().union(*join.keys.values())
     for lead, keys in join.keys.items():
         if keys == every and all(
             _inner_equated(lead, other, other_keys, joins)
+            or _joined_onto(lead, other, other_keys, joins)
             for other, other_keys in join.keys.items()
             if other != lead
         ):
             return lead
     return None
+
+
+def _joined_onto(a: str, b: str, keys: set[str], joins: list[JoinOrderOutput]) -> bool:
+    """A join of `a` and `b` alone on every one of `keys` after which a row
+    holds `b` only beside the `a` row it matched (`b` LEFT joined onto `a`,
+    or `a` RIGHT joined onto `b`), so `b.k` is NULL or `a.k`."""
+    for join in joins:
+        if join.right == b and join.type == JoinType.LEFT_OUTER:
+            left = a
+        elif join.right == a and join.type == JoinType.RIGHT_OUTER:
+            left = b
+        else:
+            continue
+        if join.keys.keys() == {left} and keys <= join.keys[left]:
+            return True
+    return False
+
+
+def _stream_matched(join: JoinOrderOutput, joins: list[JoinOrderOutput]) -> bool:
+    """No join before `join` padded a row the proof that its left stream is
+    matched (`JoinOrderOutput.matched_left`) does not hold for: one without
+    the left its ON reads (`_equated_lead`), or, of lefts that are the
+    stream's only sides, one without any of them."""
+    lead = _equated_lead(join, joins)
+    if lead is None:
+        return all({j.right, *j.lefts} <= join.keys.keys() for j in joins)
+    stream = set(joins[0].lefts) if joins else set()
+    for pred in joins:
+        if lead in stream and pred.type in PADS_LEFT_JOIN_TYPES:
+            return False
+        if pred.right == lead and pred.type in PADS_RIGHT_JOIN_TYPES:
+            return False
+        stream.add(pred.right)
+    return True
 
 
 def _inner_equated(

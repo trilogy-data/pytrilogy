@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join
 from trilogy.core.processing.join_resolution import (
@@ -559,3 +561,20 @@ def test_an_own_type_never_widens_a_join():
     joins = _chain(JoinType.INNER, JoinType.INNER, JoinType.LEFT_OUTER)
     restore_unpadded_joins(joins)  # type: ignore[arg-type]
     assert joins[1].join_type == JoinType.INNER
+
+
+@pytest.mark.parametrize(
+    "narrowed, own, restored",
+    [
+        (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.INNER),
+        (JoinType.RIGHT_OUTER, JoinType.LEFT_OUTER, JoinType.INNER),
+        (JoinType.FULL, JoinType.RIGHT_OUTER, JoinType.RIGHT_OUTER),
+        (JoinType.LEFT_OUTER, JoinType.FULL, JoinType.LEFT_OUTER),
+    ],
+)
+def test_a_restored_join_keeps_a_side_only_both_its_types_keep(
+    narrowed: JoinType, own: JoinType, restored: JoinType
+):
+    joins = _chain(JoinType.INNER, narrowed, own)
+    restore_unpadded_joins(joins)  # type: ignore[arg-type]
+    assert joins[1].join_type == restored

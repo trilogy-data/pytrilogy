@@ -136,7 +136,15 @@ What is left of 2.1:
   fuzz shapes, which need a proof over two joins together; 2 split-key keys
   that need the padding NULL told apart from the value NULL (the grain-pin
   question below); and the pair whose addresses differ. See seam 38's
-  "What is left".
+  "What is left". The rule's directional half (`_narrow_directionally`),
+  re-measured in seam 39 at 25 firings, fell to 10: a restored join keeps
+  a side only where its own and its narrowed type both keep it (q64), and
+  a multi-left ON reads as one stream when a LEFT or RIGHT joined one left
+  onto the other, or when the lefts are the whole stream and each is
+  covered. What is left there is 5 dimension-chain laws, which may be an
+  optimizer overreach rather than planner debt (seam 39's "What is
+  left"), 3 single shapes and 2 hand-built unit CTEs. The rule now fires
+  26 times over the whole suite.
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys
@@ -261,9 +269,6 @@ them.
   ON pairs coalesce (seam 13); the renderer only formats them. These stay
   CTE-level on purpose: the optimizer changes join types after planning,
   and an outer join's key class is a fact about the final joins.
-- **Design-level note, not a handoff**: 448 planner FULLs "because partial" are
-  narrowed by `_narrow_directionally` in 59 statements. That is the documented
-  preserving-render contract (`docs/subset_union_join_design.md`) and conflicts
-  with planner-owns-joins only in letter, since the planner has the same inputs.
-  Moving `_pair_side_fully_matches` / `_complete_values` to node level is
-  unmeasured.
+- **`_narrow_directionally` is measured (seam 39)**: the handoff's "448
+  planner FULLs in 59 statements" is stale. Over the whole suite it fires 10
+  times, 2 of them on hand-built CTEs; see 2.1 above.
