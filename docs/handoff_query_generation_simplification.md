@@ -125,14 +125,18 @@ What is left of 2.1:
   equivalence firings in 20 tests, 25 keys. Seam 37 plans 3 of the 4
   proved-but-not-narrowed keys (a side covered on the keys the right's
   grain keeps of the ON, which the walk now states): 20 firings in 19 tests,
-  23 keys, counting the tpc-ds file's one firing. The rest are the lead: see
-  seam 37's "What is left". 9 of the 20 are joins no planned merge holds
-  (5 hand-built unit CTEs, 4 an optimizer rule built or moved), which is
-  the rule's own post-multi-node work: the planner's debt is the other 11
-  firings (12 keys). Of those, the forced-FULL merge (1) is the most
-  tractable; the 6 different-streams keys are single fuzz shapes needing a
-  proof over two joins together, and of the 4 split-key keys, 2 need a
-  witness INNER joined after the join it proves.
+  23 keys, counting the tpc-ds file's one firing. Seam 38 plans 3 more: a
+  relation rollup's joins left to the walk (its forced FULL had overwritten
+  668 joins the walk typed LEFT, and one INNER), and a split-key gate whose
+  witnessing INNER is walked after the join it proves. 17 firings in 16
+  tests, 20 keys. 9 are joins no planned merge holds (5 hand-built unit
+  CTEs, 4 an optimizer rule built or moved), which is the rule's own
+  post-multi-node work. The planner's debt is the other 8 firings (9 keys),
+  none of them a modeling-suite shape: 6 different-streams keys in single
+  fuzz shapes, which need a proof over two joins together; 2 split-key keys
+  that need the padding NULL told apart from the value NULL (the grain-pin
+  question below); and the pair whose addresses differ. See seam 38's
+  "What is left".
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys

@@ -3068,7 +3068,35 @@ election, not the padded fallback.
     `test_a_split_key_gate_an_inner_walked_later_witnesses_the_key` and
     `test_a_relation_rollup_lookup_pairs_as_the_walk_types_it`.
 
-    CENSUS_AND_GATES_PLACEHOLDER
+    - **What it moves.** Census (`twins_census_plugin`, whole suite, tpc-ds
+      and tpc-h included): the equivalence upgrade falls from 20 firings in
+      19 tests to 17 in 16 (LEFT 11 to 9, FULL 9 to 8), and from 23 keys to
+      20. The three are `beside_property` and 11884 on both models; no
+      firing is new. Suite capture (`sqlcap`, `PYTHONHASHSEED=0`): those
+      three are the only tests whose joins or COALESCEs change. Each plans
+      the join INNER that the optimizer narrowed before, so the final join
+      types are the same, and each drops a padded count's `coalesce(..., 0)`
+      the planned outer join had made the source zero-fill. The other 650
+      moves are seam 37's capture noise (column and ON-pair order, and the
+      tpc files compiling one statement a different number of times per
+      worker: same distinct SQL).
+
+    Gates, against `b3078f4`: corpus (206 statements, tpc-ds aggregates
+    included) 0 moved; fuzzer 522/522; suite: the same 25 credential-bound
+    failures as `main`, and no test changes outcome.
+
+    **What is left.** 17 equivalence firings, 20 keys:
+    - **Different streams (6 keys in 5 firings)**, unchanged from seam 36:
+      a proof over two joins together (seam 37's trace of 4104).
+    - **Split-key gates (2)**: `test_derived_key_domain`'s absent-key
+      region, where the region pads `status` NULL on one side only
+      (`_nulls_pair`). It needs the padding NULL told apart from the value
+      NULL, the same question the grain-pin render (seam 28) is waiting on.
+    - **No planned merge (9)**, unchanged: the rule's post-multi-node work.
+      And the pair whose addresses differ (1).
+
+    The planner's debt is now 8 firings (9 keys), and none is a shape a
+    modeling suite plans.
 
 ## Gate used
 
