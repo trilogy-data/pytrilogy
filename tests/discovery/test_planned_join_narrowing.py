@@ -158,3 +158,36 @@ def test_a_join_onto_lefts_an_inner_equated_reads_its_lead_left():
         ("B", "x", "Tilia", 2, 2),
         ("B", "y", "Acer", 7, 7),
     ]
+
+
+def test_a_split_key_gate_pairs_inner_with_the_totals_it_gates():
+    query = (
+        "select city, species, count(tree_id) by species as v0, "
+        "count(tree_id) by city as v1 where max(height) by city, species < 7"
+    )
+    assert _planned(SWEEP_MODEL, query + ";") == {JoinType.INNER}
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by city, species;")
+        .fetchall()
+    )
+    assert rows == [("A", "Acer", 2, 3), ("A", "Quercus", 1, 3), ("B", "Tilia", 1, 1)]
+
+
+def test_a_split_key_gate_an_inner_equated_with_the_rows_witnesses_the_key():
+    query = (
+        "select city, tree_form, count(tree_id) by tree_form as v0, "
+        "count(tree_id) by city as v1 where min(height) by city, species != 7"
+    )
+    city_totals = [
+        jt
+        for ident, jt in _joins(SWEEP_MODEL, query + ";")
+        if ident.endswith("grouped_by_local.city_at_local_city")
+    ]
+    assert city_totals == [JoinType.INNER]
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by city, tree_form;")
+        .fetchall()
+    )
+    assert rows == [("A", "broadleaf", 3, 3), ("B", "linden", 1, 1)]

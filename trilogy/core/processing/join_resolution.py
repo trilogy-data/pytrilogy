@@ -405,6 +405,10 @@ class JoinFacts:
     # the ones on a FULL-declared key the graph proves anyway (rule B): a
     # directed subset path between the two concepts overrides the declaration
     proven_covered: frozenset[tuple[str, str, str]] = frozenset()
+    # (rows, filtered, key): `filtered` reads `rows`' stream past filters each
+    # a function of `rows`' grain, so every `rows` row passing them has a
+    # `filtered` partner on `key` (`_gated_twins`)
+    gated_covered: frozenset[tuple[str, str, str]] = frozenset()
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -1310,6 +1314,55 @@ def _narrow_covered(
     join.type = narrowed
 
 
+def _narrow_gated(
+    join: JoinOrderOutput, joins: list[JoinOrderOutput], facts: JoinFacts
+) -> None:
+    """A join keeping the unfiltered side of a pair whose filtered side holds
+    the key of each unfiltered row its extra filters pass
+    (`JoinFacts.gated_covered`), read off it or a side an earlier INNER
+    equated it with on the key: the merge re-applies those filters after its
+    joins (`_unfiltered_copy`), so INNER drops only rows its WHERE drops. Of
+    one left only: several coalesce their keys."""
+    if len(join.keys) != 1:
+        return
+    ((left, keys),) = join.keys.items()
+    for sub_is_left in (True, False):
+        if not _gated_keys(left, join.right, keys, sub_is_left, joins, facts):
+            continue
+        narrowed = _without_preserving(join.type, sub_is_left)
+        if narrowed != join.type and plan_trace.active():
+            _trace_join_type(left, join.right, keys, facts, [], narrowed, "gated")
+        join.type = narrowed
+
+
+def _gated_keys(
+    left: str,
+    right: str,
+    keys: set[str],
+    sub_is_left: bool,
+    joins: list[JoinOrderOutput],
+    facts: JoinFacts,
+) -> bool:
+    """Each key read off `left`'s unfiltered rows, or a witness an INNER
+    equated them with, which only a key `rows` never NULLs speaks for: the
+    witness may pair a NULL null-safely that this join's own pair does not."""
+    rows, filtered = (left, right) if sub_is_left else (right, left)
+    return bool(keys) and all(
+        any(
+            (witness, filtered, key) in facts.gated_covered
+            and _unfiltered_copy(
+                facts.side(witness), facts.side(filtered), facts.applied
+            )
+            is True
+            for witness in facts.sides
+            if witness == rows
+            or key not in facts.side(rows).nullables
+            and _inner_equated(rows, witness, {key}, joins)
+        )
+        for key in keys
+    )
+
+
 def _equated_lead(join: JoinOrderOutput, joins: list[JoinOrderOutput]) -> str | None:
     """The left a join's whole ON reads as one: its only left, or one holding
     every key that an earlier INNER join equated each other left with on the
@@ -1466,6 +1519,8 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
             join = _join_onto(right, walked, facts)
             if facts.covered:
                 _narrow_covered(join, walked, output, facts)
+            if facts.gated_covered:
+                _narrow_gated(join, output, facts)
             output.append(join)
         elif eligible_left:
             # a second island: its seed joins on nothing and the keyless-join
@@ -3193,6 +3248,7 @@ def _covered_keys(
     frozenset[tuple[str, str, str]],
     frozenset[tuple[str, str, str]],
     frozenset[tuple[str, str, str]],
+    frozenset[tuple[str, str, str]],
 ]:
     """`JoinFacts.covered`: a side whose key is never NULL beside one carrying
     every value of it, whose spelling the domain graph puts the first's
@@ -3207,7 +3263,9 @@ def _covered_keys(
     boundary carries (`JoinFacts.boundary_covered`) and those a FULL-declared
     key holds by a graph proof alone (`JoinFacts.proven_covered`), whether or
     not the graph also relates the two spellings (a `union join` member read
-    off the column it joins is within it, and still vetoed)."""
+    off the column it joins is within it, and still vetoed), and those that
+    hold only on the rows a side's extra filters pass
+    (`JoinFacts.gated_covered`)."""
     graph = environment.domain_graph
     carries = _Carries(ds_node_map, ds_concept_map, graph)
     vetoed = graph.full_relation_keys()
@@ -3215,6 +3273,7 @@ def _covered_keys(
     proven: set[tuple[str, str, str]] = set()
     declared = graph.declared_relation_keys()
     out: set[tuple[str, str, str]] = set()
+    gated: set[tuple[str, str, str]] = set()
     for sub, sub_facts in sides.items():
         for key in sub_facts.columns:
             sub_concept = ds_concept_map[(sub, key)]
@@ -3229,6 +3288,8 @@ def _covered_keys(
                 ):
                     if _twins(key, sub, sup, sides, carries, related):
                         out.add((sub, sup, key))
+                    elif _gated_twins(key, sub, sup, sides, carries):
+                        gated.add((sub, sup, key))
                     continue
                 within = (
                     graph.relation(sub_concept.address, sup_concept.address) in _WITHIN
@@ -3254,7 +3315,7 @@ def _covered_keys(
                         boundary.add((sub, sup, key))
                     if rule_b:
                         proven.add((sub, sup, key))
-    return frozenset(out), frozenset(boundary), frozenset(proven)
+    return frozenset(out), frozenset(boundary), frozenset(proven), frozenset(gated)
 
 
 _WITHIN = (ResolvedRelation.SUBSET, ResolvedRelation.EQUAL)
@@ -3348,6 +3409,14 @@ def _one_read(
         )
     ):
         return False
+    return _nulls_pair(key, a, b, sides, carries)
+
+
+def _nulls_pair(
+    key: str, a: str, b: str, sides: Mapping[str, SideFacts], carries: _Carries
+) -> bool:
+    """Two reads of one stream's key NULL it alike: neither does, or both
+    do, padded by the same spans, and the pair matches NULL null-safely."""
     nullable = [key in sides[side].nullables for side in (a, b)]
     if not any(nullable):
         return True
@@ -3356,10 +3425,72 @@ def _one_read(
         and sides[a].span_padding.get(key) == sides[b].span_padding.get(key)
         and bool(
             get_modifiers(
-                carries.concepts[(a, key)], carries.concepts[(b, key)], na, nb
+                carries.concepts[(a, key)],
+                carries.concepts[(b, key)],
+                carries.nodes[a],
+                carries.nodes[b],
             )
         )
     )
+
+
+def _gated_twins(
+    key: str,
+    rows: str,
+    filtered: str,
+    sides: Mapping[str, SideFacts],
+    carries: _Carries,
+) -> bool:
+    """`filtered` reads the key off the stream `rows` reads it off
+    (`key_providers`), past filters `rows` skipped, every input of which
+    `rows`' grain determines and none of which holds on a NULL
+    (`_null_rejecting`): a `rows` row passing them stands for stream rows
+    that pass them too, so its key is one of `filtered`'s. A split-key
+    gate beside the totals it gates (`test_split_key_gates`); the merge
+    re-applying those filters makes it a cover (`_narrow_gated`)."""
+    unfiltered, gated = sides[rows], sides[filtered]
+    if key in unfiltered.rollup_padded | gated.rollup_padded | gated.partials:
+        return False
+    extra = [a for a in gated.filters if not any(a == b for b in unfiltered.filters)]
+    if not extra or not _passed_all(gated.filters, unfiltered.filters):
+        return False
+    spelled = {
+        concept.address: node
+        for (side, node), concept in carries.concepts.items()
+        if side == rows
+    }
+    within = unfiltered.grain | unfiltered.determined
+    if not all(map(_null_rejecting, extra)) or not all(
+        spelled.get(arg.address) in within
+        for atom in extra
+        for arg in atom.concept_arguments
+    ):
+        return False
+    na, nb = carries.nodes[rows], carries.nodes[filtered]
+    providers, others = carries.providers(rows, key), carries.providers(filtered, key)
+    if not (
+        providers
+        and (providers == others and leaf_tables(na) == leaf_tables(nb))
+        or providers
+        and others
+        and bool(
+            _one_value_set(na, carries.concepts[(rows, key)])
+            & _one_value_set(nb, carries.concepts[(filtered, key)])
+        )
+    ):
+        return False
+    return _nulls_pair(key, rows, filtered, sides, carries)
+
+
+def _null_rejecting(atom: BoolExpr) -> bool:
+    """`atom` is false wherever an input it reads is NULL, padding included:
+    a later join padding the rows INNER dropped cannot pass it (`amount is
+    null` beside an outer region would)."""
+    # local import: grain_utility imports this module
+    from trilogy.core.processing.grain_utility import non_null_proofs
+
+    proofs = non_null_proofs(atom)
+    return all(arg.address in proofs for arg in atom.concept_arguments)
 
 
 def _matched_kept(ds: QueryDatasource) -> set[str]:
@@ -3720,7 +3851,7 @@ def get_node_joins(
             for ds_node, side in sides.items()
         }
     declared = frozenset(canon_node(a) for a in _declared_subset_keys(environment))
-    covered, boundary_covered, proven_covered = _covered_keys(
+    covered, boundary_covered, proven_covered, gated_covered = _covered_keys(
         sides, ds_node_map, ds_concept_map, environment
     )
     span_families = {
@@ -3759,6 +3890,7 @@ def get_node_joins(
         covered=covered,
         boundary_covered=boundary_covered,
         proven_covered=proven_covered,
+        gated_covered=gated_covered,
     )
     facts = replace(
         facts,

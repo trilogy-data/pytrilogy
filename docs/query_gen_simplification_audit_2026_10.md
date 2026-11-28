@@ -2811,6 +2811,73 @@ election, not the padded fallback.
     - **Proved, not narrowed (4)**, and one pair whose addresses differ:
       the key is a twin, but the join's other keys or a veto keep it.
 
+35. **A split-key gate pairs INNER with the totals it gates (landed; seam 2,
+    the planner's twin proof).** Seam 34's second class: `select city,
+    species, count(tree_id) by species, count(tree_id) by city where
+    max(height) by city, species < 7`. The final merge joins the gate group
+    (`trees` by `(city, species)`, unfiltered) to two totals over the trees
+    the gate passes, and applies the WHERE itself. `_unfiltered_copy` keeps
+    the gate's rows, LEFT, and the optimizer narrowed both joins.
+    - **The proof (`_gated_twins`, `JoinFacts.gated_covered`).** The total
+      reads the key off the stream the gate groups (`key_providers`, or one
+      equated value set), past filters the gate skipped. The gate's grain
+      determines every input of those filters. So a gate row that passes
+      them stands for stream rows that pass them too, and its key is one of
+      the total's. The NULL half is `_one_read`'s (`_nulls_pair`).
+    - **Where it narrows (`_narrow_gated`).** Beside `_narrow_covered` in
+      the walk, on a join with one left. The merge applies the filters after
+      every join (`_unfiltered_copy` holds), so INNER drops only rows its
+      WHERE drops. The key may be read off the left itself or off a side an
+      earlier INNER join equated it with, on that key (the optimizer's
+      `_equated_reads` witness): `where min(height) by city, species != 7`
+      under a `(city, tree_form)` select pairs the row stream with the gate
+      first. A witness speaks only for a key the left never NULLs: its
+      INNER may pair a NULL null-safely that this join's own pair does not.
+      No matched flag is set: the cover holds only on rows the WHERE keeps.
+    - **Only filters no NULL passes (`_null_rejecting`).** The first cut
+      took `_unfiltered_copy`'s padding test as enough. That test reads only
+      aggregates, so a row-level `amount is null` passed it. In
+      `test_padded_null_pairing`'s `shape_flipped` walk the orders then
+      INNER-joined the null-amount total, and a later FULL to the bucket
+      region padded the buckets that dropped (`a`, `b`); `amount is null`
+      held on that padding. Each filter must now force every input non-NULL
+      (`non_null_proofs`).
+    - **What it moves.** Census (`twins_census_plugin`, whole suite less the
+      tpc-ds and tpc-h files): the equivalence upgrade falls from 39 firings
+      in 36 tests to 28 in 26 (LEFT 23 to 12, FULL 16 unchanged), and from
+      45 keys to 34. 11 of the 15 split-key keys are planned; no other class
+      moves and no firing is new. Suite capture (`sqlcap`,
+      `PYTHONHASHSEED=0`, laws and tpc included): 57 joins in 45 tests are
+      narrower (LEFT to INNER), none wider. They are
+      `test_rule_soundness_laws` (24: `test_rule_keeps_rows` 18, the padded
+      model 6), `test_window_where_pushdown_matrix` (19) and
+      `test_derived_key_domain` (2). The optimizer never narrowed those, so
+      their final SQL changes; the law shapes it did narrow render the same
+      SQL, now planned. Every one passes its rows, and each of the 45 soundness
+      regression texts matches the prejoined model on both split models.
+
+    Pinned (red on `main`), in `tests/discovery/test_planned_join_narrowing.py`:
+    `test_a_split_key_gate_pairs_inner_with_the_totals_it_gates` and
+    `test_a_split_key_gate_an_inner_equated_with_the_rows_witnesses_the_key`.
+
+    Gates, against `31f98e7`: corpus (206 statements, tpc-ds aggregates
+    included) 0 moved; fuzzer 522/522; suite: the same 25 credential-bound
+    failures as `main`, and no test changes outcome but the Rust-binary one
+    (skipped on the base run).
+
+    **What is left.** 28 equivalence firings, 34 keys:
+    - **Different streams (19)**, unchanged from seam 34.
+    - **Split-key gates (4).** Two are law `spellings[11884]`: the gate's
+      INNER with the row stream comes after the join it would witness, and
+      the optimizer reaches it only because `OrderInnerJoinsFirst` moves that
+      INNER first. A later witness needs its own proof. Before it, a join
+      `ensure_content_preservation` widened, a left padded before, and a
+      nullable key paired through the witness each have to be excluded.
+      The other two are `test_derived_key_domain`'s absent-key region, where
+      the region pads `status` NULL on one side only (`_nulls_pair`).
+    - **Built after planning (6)**, **proved, not narrowed (4)** and the pair
+      whose addresses differ (1), unchanged.
+
 ## Gate used
 
 ```
