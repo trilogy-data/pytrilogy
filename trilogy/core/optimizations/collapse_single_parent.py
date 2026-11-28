@@ -319,11 +319,17 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
     scalar row projection over the parent's grain keys and aggregates:
     aggregate / window / unnest / recursive columns the child computes anew
     cannot ride in the parent's GROUP BY select. The same column kinds merely
-    passed through from the parent are already computed there and are fine."""
+    passed through from the parent are already computed there and are fine.
+    A stored partial the parent rolls up renders as its aggregate, so a child
+    column reading one stays apart: folded, it nests in the column's own
+    grouping render (`max(CASE WHEN max(hi) ...)`)."""
     parent_outputs = parent.output_lcl
+    rolled = {c.address for c in parent.rollup_concepts}
     for column in cte.output_columns:
         if column.address in parent_outputs:
             continue
+        if rolled and any(a.address in rolled for a in column.concept_arguments):
+            return False
         if (
             column.derivation in SENSITIVE_DERIVATIONS
             or column.derivation == Derivation.AGGREGATE

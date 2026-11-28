@@ -888,4 +888,148 @@ theorem sets_key_no_readers :
     buildable lineage [0, 1, 2, 3] 4 = true ∧
       buildable ((2, 1) :: (3, 0) :: lineage) [0, 1, 2, 3] 4 = false := by decide
 
+/-- `select city, city ? city in (city ? species = 'Tilia') as v0,
+sum(min(height)) over () as v1 where sum(height) by tree_form <= 2`: only the
+linden form sums to 2 or less, so the WHERE keeps B's Tilia and the select is
+one row for B. The minimum by city hosted the gate and fed only the window's
+total; the filter showing `city` read every row, its set the kept ones. FINAL
+dropped the host as covered, its gate counted as applied because the set
+under the filter had met it: A came back (`set_gate_restricts_no_row`,
+269661). Trees are `(city, form, height)`, form 2 for none, height 0 for
+NULL. -/
+theorem set_gate_restricts_no_row :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 3), (0, 0, 0), (0, 0, 5), (0, 2, 0), (1, 0, 7), (1, 1, 2)]
+    let formSum (f : Nat) := ((trees.filter (·.2.1 == f)).map (·.2.2)).foldl (· + ·) 0
+    let kept := trees.filter fun r => r.2.1 != 2 && formSum r.2.1 ≤ 2
+    let set := ((kept.filter (·.2.1 == 1)).map (·.1)).eraseDups
+    set = [1] ∧ (kept.map (·.1)).eraseDups = [1] ∧ (trees.map (·.1)).eraseDups = [0, 1] := by
+  decide
+
+/-- `select city, city ? city in (city ? sum(height) by city, tree_form > 3)
+as v0, sum(min(height)) over () as v1 where sum(height) by tree_form <= 2`:
+the same WHERE, and a set no kept tree satisfies. FINAL took `city` off the
+filter, whose rows never met the gate, over the gated minimum by city: the
+cover ranks rows that passed a WHERE first only for an atom holding on an
+absent group (`cover_reads_gated_rows`, 270862). -/
+theorem cover_reads_gated_rows :
+    let trees : List (Nat × Nat × Nat) :=
+      [(0, 0, 3), (0, 0, 0), (0, 0, 5), (0, 2, 0), (1, 0, 7), (1, 1, 2)]
+    let formSum (f : Nat) := ((trees.filter (·.2.1 == f)).map (·.2.2)).foldl (· + ·) 0
+    let kept := trees.filter fun r => r.2.1 != 2 && formSum r.2.1 ≤ 2
+    let pairSum (c f : Nat) :=
+      ((kept.filter fun t => t.1 == c && t.2.1 == f).map (·.2.2)).foldl (· + ·) 0
+    (kept.filter fun r => pairSum r.1 r.2.1 > 3) = [] ∧
+      (kept.map (·.1)).eraseDups = [1] := by
+  decide
+
+/-- `select city, tree_form, city ? city in (<set>) as v0, sum(height) by city
+as v1 where sum(height) by city, species <= 8`: A's Ulmus sums to NULL, so the
+WHERE drops it and A shows only broadleaf. The gate's host is the sum by city,
+species, whose members include `city`: a filtered `city` was taken for a
+value that host computes, whose groups had passed, though its rows were every
+tree's. A came back with no form (`key_content_hosts_no_rows`, 260615). Trees
+are `(city, species, form, height)`, form 2 for none, height 0 for NULL. -/
+theorem key_content_hosts_no_rows :
+    let trees : List (Nat × Nat × Nat × Nat) :=
+      [(0, 0, 0, 3), (0, 0, 0, 0), (0, 1, 0, 5), (0, 2, 2, 0), (1, 0, 0, 7), (1, 3, 1, 2)]
+    let measured (c s : Nat) := trees.any fun t => t.1 == c && t.2.1 == s && t.2.2.2 != 0
+    let kept := trees.filter fun r => measured r.1 r.2.1
+    let shown (rows : List (Nat × Nat × Nat × Nat)) := (rows.map fun r => (r.1, r.2.2.1)).eraseDups
+    shown kept = [(0, 0), (1, 0), (1, 1)] ∧ shown trees = [(0, 0), (0, 2), (1, 0), (1, 1)] := by
+  decide
+
+/-- `select species, species ? sum(height) by species >= 8 as v0 where city in
+(city ? height > 2)`: the summary stores the sum by city, species; Acer's are
+3 and 7. The filter read each stored partial as the sum by species and none
+reached 8, so Acer showed NULL; re-summed first, its 10 does
+(`filter_reads_finished_partial`, 294582). -/
+theorem filter_reads_finished_partial :
+    let acer : List Nat := [3, 7]
+    acer.all (· < 8) = true ∧ acer.foldl (· + ·) 0 ≥ 8 := by decide
+
+/-- `select species, (sum(height) by tree_form) ? tree_form = 'linden' as v0,
+max(height) as v1, count(tree_id) by tree_form as v2`: the maximum is grouped
+by `species, v0`, and the filter holds `tree_form, v0, v2`. The plan paired
+them on `species, v0`, the filter's claimed grain, though its node holds no
+species; rendered on `v0` alone, every species with no linden met both forms
+whose `v0` is NULL: Acer showed `v2` 4 and 1. Read off what the filter holds,
+the maximum looks up `tree_form` by `species` to pair
+(`filter_pairs_on_built_columns`, 279431). Species are `(species, form)`,
+filter rows `(form, v0, v2)` with 0 for NULL `v0`. -/
+theorem filter_pairs_on_built_columns :
+    let species : List (Nat × Nat) := [(0, 0), (1, 0), (2, 2), (3, 1)]
+    let filter : List (Nat × Nat × Nat) := [(0, 0, 4), (1, 2, 1), (2, 0, 1)]
+    let onForm := species.flatMap fun s =>
+      (filter.filter (·.1 == s.2)).map fun f => (s.1, f.2.2)
+    let onV0 := species.flatMap fun s =>
+      (filter.filter fun f => f.2.1 == (filter.filter (·.1 == s.2)).foldl (fun _ g => g.2.1) 0).map
+        fun f => (s.1, f.2.2)
+    onForm.length = 4 ∧ (onV0.filter (·.1 == 0)).eraseDups = [(0, 4), (0, 1)] := by
+  decide
+
+/-- `select city, species, species ? min(height) by species = 8 as v0,
+avg(sum(height)) over (partition by city, v0) as v1`: five `(city,
+species)` pairs. FINAL held the sums by city, species, the window by city,
+`v0` and the filter by species, `v0`. The first shares exactly its grain
+with the other two, so it was folded away as a join that adds nothing; but
+`city` sat on one survivor and `species` on the other, which then met on
+`v0` alone and showed every city with every species
+(`split_grain_join_pairs`, 261790). -/
+theorem split_grain_join_pairs :
+    let pairs : List (Nat × Nat) := [(0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let cities := (pairs.map (·.1)).eraseDups
+    let kinds := (pairs.map (·.2)).eraseDups
+    (cities.flatMap fun c => kinds.map fun s => (c, s)).length = 8 ∧ pairs.length = 5 := by
+  decide
+
+/-- `select coalesce(tree_form, 'none') as form0, city ? city = 'A' as v0
+where tag in (tag ? height between 3 and 7)`: the kept trees are `(form0,
+v0)` rows. The filter was grouped off them to `v0` alone, so FINAL held no
+column to pair it with `form0` on and showed every form with both values;
+the filter's node holds `tree_form`, from which `form0` is a row function,
+so it keeps the pair (`filter_derives_its_row_keys`, 268726). Forms are
+broadleaf 0, linden 1, none 2; `v0` 1 for A, 0 for NULL. -/
+theorem filter_derives_its_row_keys :
+    let rows : List (Nat × Nat) := [(0, 1), (0, 0), (2, 1), (1, 0), (0, 0)]
+    let forms := (rows.map (·.1)).eraseDups
+    let values := (rows.map (·.2)).eraseDups
+    rows.eraseDups.length = 4 ∧
+      (forms.flatMap fun f => values.map fun v => (f, v)).length = 6 := by
+  decide
+
+/-- `select city, species, tree_form, (max(height) by tree_form) ? tree_form
+in (<set>) as v0, min(height) by tree_form as v1, sum(height) as v2 where
+not (tree_form in (tree_form ? max(height) by city is null))`: five `(city,
+species)` rows. FINAL looked `tree_form` up off the WHERE set's stream, whose
+rows its gate kept: no city's maximum is NULL, so it held none and the join
+dropped every row. A filter supplies its own value, never a row column it
+passes through (`lookup_reads_ungated_rows`, 244567; 177741, 219659).
+Species are Acer 0, Quercus 1, Ulmus 2, Tilia 3. -/
+theorem lookup_reads_ungated_rows :
+    let rows : List (Nat × Nat) := [(0, 0), (0, 1), (0, 2), (1, 0), (1, 3)]
+    let forms : List (Nat × Nat) := [(0, 0), (1, 0), (2, 2), (3, 1)]
+    let gated : List (Nat × Nat) := forms.filter fun _ => false
+    let look (t : List (Nat × Nat)) := rows.flatMap fun r =>
+      (t.filter (·.1 == r.2)).map fun f => (r.1, r.2, f.2)
+    (look forms).length = 5 ∧ look gated = [] := by
+  decide
+
+/-- `select city, case when tree_form = 'broadleaf' then 'b' else 'o' end as
+fc, city ? avg(height) by city < 5 or city in ('B') as v0, max(count(tree_id))
+over (partition by fc, v0) as v2`: the `(city, fc)` pairs are (A, b), (A, o)
+and (B, b), and `v0` is the city. FINAL met the counts by `(city, fc)` with
+the window by `(fc, v0)` on `fc` alone and showed (A, b) beside B's window
+too; the counts look the filter up on `city`, its every key, so they pair
+on `(fc, v0)` (`pair_on_looked_up_value`, 110957). Cities and forms are A 0,
+B 1, b 0, o 1. -/
+theorem pair_on_looked_up_value :
+    let pairs : List (Nat × Nat) := [(0, 0), (0, 1), (1, 0)]
+    let window := pairs.map fun p => (p.2, p.1)
+    let onFc := pairs.flatMap fun p => (window.filter (·.1 == p.2)).map fun w => (p.1, p.2, w.2)
+    let onBoth := pairs.flatMap fun p =>
+      (window.filter fun w => w.1 == p.2 && w.2 == p.1).map fun w => (p.1, p.2, w.2)
+    onFc.length = 5 ∧ onBoth.length = 3 := by
+  decide
+
 end Trilogy.Filters

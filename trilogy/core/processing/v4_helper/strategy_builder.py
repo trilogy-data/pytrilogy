@@ -3054,6 +3054,7 @@ def _project_planned_keys(
     environment: BuildEnvironment,
     producers: Sequence[StrategyNode] = (),
     source: Callable[[list[BuildConcept]], StrategyNode | None] | None = None,
+    gated: Collection[int] = (),
 ) -> list[StrategyNode]:
     """Hand each parent the planned keys widening in place could not. One its
     outputs render is projected over it: the plan pairs `min(x) by row_key`
@@ -3061,7 +3062,9 @@ def _project_planned_keys(
     not render (`cluster_id`, computed off other aggregates) is looked up from
     a built producer keyed within the parent's outputs; with none, from a
     scan `source` plans of the key beside its own keys the parent holds
-    (`tree_form` by `species` beside a summary's rows by `species`)."""
+    (`tree_form` by `species` beside a summary's rows by `species`). A `gated`
+    producer's rows are those a condition kept: it supplies derived keys, never
+    a row column it passes through."""
     out: list[StrategyNode] = []
     authored = environment.all_scoped_join_group_members()
     for parent in parents:
@@ -3099,7 +3102,17 @@ def _project_planned_keys(
             and c.address not in authored
             and c.derivation != Derivation.ROWSET
             and (
-                lookup := _key_lookup(c, parent, determined, producers, environment)
+                lookup := _key_lookup(
+                    c,
+                    parent,
+                    determined,
+                    [
+                        p
+                        for p in producers
+                        if c.derivation != Derivation.ROOT or id(p) not in gated
+                    ],
+                    environment,
+                )
                 or _sourced_lookup(
                     c,
                     parent,
@@ -3405,6 +3418,21 @@ def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
     return conditions, opaque
 
 
+def _iter_row_nodes(root: StrategyNode) -> Iterator[StrategyNode]:
+    """`root` and every node its rows come from: a membership's set feeders are
+    read by subselect, so a filter under one restricts the set, not these rows
+    (`Filters.set_gate_restricts_no_row`)."""
+    seen: set[int] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        yield node
+        stack.extend(_row_source_parents(node))
+
+
 def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> bool:
     """Every row restriction `node` applies, a sibling applies too, so
     dropping it from the merge removes no rows."""
@@ -3413,9 +3441,12 @@ def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> b
         return False
     if not conditions:
         return True
-    sibling_conditions: list[BoolExpr] = []
-    for sibling in siblings:
-        sibling_conditions.extend(_subtree_restrictions(sibling)[0])
+    sibling_conditions = [
+        current.conditions
+        for sibling in siblings
+        for current in _iter_row_nodes(sibling)
+        if current.conditions is not None
+    ]
     return all(
         any(condition_implies(other, condition) for other in sibling_conditions)
         for condition in conditions
@@ -3441,6 +3472,28 @@ def _merge_component_count(visible: list[set[str]], live: list[int]) -> int:
                 for idx, group in component.items()
             }
     return len(set(component.values()))
+
+
+def _filter_built_columns(
+    environment: BuildEnvironment, node: StrategyNode, grain: Iterable[str]
+) -> frozenset[str]:
+    """What a built filter can be read on: its outputs, and each key of the grain
+    it claims that is a row function of them (`form0` off `tree_form`,
+    `Filters.filter_derives_its_row_keys`)."""
+    held = {o.address for o in node.output_concepts}
+    pending = set(grain) - held
+    while True:
+        derived = {
+            key
+            for key in pending
+            if (concept := environment.concepts.get(key)) is not None
+            and concept.derivation == Derivation.BASIC
+            and {a.address for a in concept.concept_arguments} <= held
+        }
+        if not derived:
+            return frozenset(held)
+        held |= derived
+        pending -= derived
 
 
 def _fold_covered_contributors(
@@ -3530,6 +3583,10 @@ def _fold_covered_contributors(
         # so dropping it is not a no-op even though every column still renders.
         shared = visible[idx] & set().union(*(visible[j] for j in others))
         if _resolved_grain(parent) != shared:
+            continue
+        # ...on one survivor: split over two, its join is what pairs them
+        # (`city` off one, `species` off another, met on a filtered value)
+        if not any(shared <= visible[j] for j in others):
             continue
         # a survivor sharing none of its columns pairs with it on nothing
         # (a one-row total): its filter restricts no key of these rows
@@ -7190,6 +7247,12 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
+    # a filter holds what its node does, not the select grain it claims
+    built_filters = {
+        gid: _filter_built_columns(environment, node, attrs[gid].grain_components)
+        for gid, node in built.items()
+        if gid in attrs and attrs[gid].derivation == Derivation.FILTER
+    }
     bridged = elect_bridges(
         group_graph,
         attrs,
@@ -7199,6 +7262,7 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         reader_grain=pairing_keys(final_contract.required_grain),
+        built=built_filters,
     )
     bridges = bridged.extras
     extras = _final_extra_sides(
@@ -7219,6 +7283,7 @@ def _assemble_final_node(
         environment,
         final_contract.authored_axes,
         extras=bridges + extras.groups,
+        built=built_filters,
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}
@@ -7307,7 +7372,14 @@ def _assemble_final_node(
     parents = _fold_constant_parents(parents, final_needed, folded)
     # the FINAL WHERE reads its filter-only args off these parents
     contracted = parents
-    reaches = {gid: cover.holds(gid) for gid in built}
+    reaches = {
+        gid: (
+            cover.holds(gid) & strict_fd_closure(environment, built_filters[gid])
+            if gid in built_filters
+            else cover.holds(gid)
+        )
+        for gid in built
+    }
     parents = _satisfy_parent_projection_contract(
         parents,
         [_final_parent_shaped(p, origin, attrs, projected) for p in parents],
@@ -7354,6 +7426,10 @@ def _assemble_final_node(
     # a planned key no widening reaches (a derived `cell` the per-tree step's
     # rows determine) is looked up from the step computing it: left unheld,
     # the sides pair on whatever else they share (#977)
+    # a filter's rows are those its condition kept (`Filters.lookup_reads_ungated_rows`)
+    gated = {
+        id(n) for g, n in built.items() if attrs[g].derivation == Derivation.FILTER
+    }
     parents = _project_planned_keys(
         parents,
         origin,
@@ -7365,6 +7441,7 @@ def _assemble_final_node(
                 outputs=outputs, environment=environment, graph=graph, history=history
             )
         ),
+        gated,
     )
     parents = [_rows_once(p, plan, origin, environment) for p in parents]
     side_cols = partial(
@@ -7415,6 +7492,7 @@ def _assemble_final_node(
                     history=history,
                 )
             ),
+            gated,
         )
     )
     parents = _pair_inside_padding_streams(
@@ -8190,7 +8268,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     ):
         parents = [_filtered_rows(parents, injected, environment)]
         condition_for_generator = None
-    if derivation == Derivation.BASIC and len(parents) == 1:
+    if derivation in (Derivation.BASIC, Derivation.FILTER) and len(parents) == 1:
         parents = [
             _finish_read_partials(parents[0], outputs, primary_addrs, environment)
         ]

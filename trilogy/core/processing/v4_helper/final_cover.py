@@ -303,7 +303,7 @@ def _where_atoms(attrs: dict[str, GroupAttrs], groups: Collection[str]) -> list:
         if _scope_and_phase(attrs[gid].label)[1] == "condition":
             continue
         for atom in attrs[gid].condition_atoms:
-            if atom not in seen and args_holding_on_absent(atom):
+            if atom not in seen:
                 seen.append(atom)
     return seen
 

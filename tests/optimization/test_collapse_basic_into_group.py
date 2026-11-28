@@ -31,7 +31,9 @@ def _col(address: str, derivation: Derivation, lineage=None) -> SimpleNamespace:
 
 
 def _parent(output_lcl: set[str]) -> SimpleNamespace:
-    return SimpleNamespace(output_lcl=output_lcl, output_columns=[], source_map={})
+    return SimpleNamespace(
+        output_lcl=output_lcl, output_columns=[], source_map={}, rollup_concepts=[]
+    )
 
 
 def _child(*columns: SimpleNamespace) -> SimpleNamespace:

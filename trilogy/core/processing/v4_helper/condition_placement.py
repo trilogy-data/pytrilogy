@@ -754,7 +754,8 @@ def _uncovered_exposing_output_contributor(
     covered: set[str] = set(chosen_groups)
     for gid in chosen_groups:
         covered |= nx.descendants(group_graph, gid)
-    covered -= _unfiltered_filter_streams(covered, chosen_groups, atom, scope)
+    unfiltered = _unfiltered_filter_streams(covered, chosen_groups, atom, scope)
+    covered -= unfiltered
     # Inputs FINAL can read off its own contributors, condition-phase groups
     # included: a population twin merges into FINAL keyed by its grain.
     final_exposable: set[str] = set()
@@ -802,9 +803,21 @@ def _uncovered_exposing_output_contributor(
             *(buckets[gid].grain_components for gid in covered if gid in buckets)
         )
         keys -= _filters_the_keys_decide(keys, environment)
-        return (
-            not any(build_fd_determines_all(environment, own, keys) for own in held)
-            and row_inputs <= final_exposable
+        # a filter stream shown beside the host never passed the atom: at the
+        # select grain and read by FINAL alone, its rows are FINAL's (a
+        # regrouped or windowed one's are not), which hold the row values the
+        # atom reads (`tag` of a set gate is no column of them)
+        shown_unfiltered = {
+            c.address for c in atom.row_arguments if not c.is_aggregate
+        } <= mandatory_addrs and any(
+            set(buckets[gid].grain_components) <= mandatory_addrs
+            and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
+            for gid in unfiltered
+            if gid in buckets
+        )
+        return row_inputs <= final_exposable and (
+            shown_unfiltered
+            or not any(build_fd_determines_all(environment, own, keys) for own in held)
         )
     for gid, b in buckets.items():
         if gid in covered:
@@ -962,7 +975,9 @@ def _content_hosted(
         and isinstance(lineage := c.lineage, BuildFilterItem)
     ]
     return bool(contents) and all(
-        isinstance(content, BuildConcept) and content.address in hosted
+        isinstance(content, BuildConcept)
+        and content.is_aggregate
+        and content.address in hosted
         for content in contents
     )
 
