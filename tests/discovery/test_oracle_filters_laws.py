@@ -373,24 +373,28 @@ FOUND_SEEDS = [
     126590, 127669, 129194, 135676, 137711, 142008, 147418, 151681, 159640,
     161496, 171031, 177584, 191855, 197547, 199349, 207061, 225740, 230844,
     235307, 240133, 240474, 241822, 254088, 256563, 257753,
+    # 0.3.545: a filter keeps the keys it derives and what its node
+    # determines, a roll-up stays out of a filter's grouping, a grouped side
+    # pairs on its siblings' keys, no lookup reads a filter's rows
+    3796, 5172, 6905, 8790, 14670, 23582, 25096, 34376, 39268, 44755, 53496,
+    69873, 71474, 73798, 76737, 77948, 80327, 85677, 92585, 92891, 94727,
+    100817, 102885, 109919, 110028, 116138, 117982, 121478, 123992, 126693,
+    128085, 129123, 135134, 137247, 139195, 139739, 139976, 141896, 143051,
+    148120, 150281, 150799, 153350, 153497, 156683, 156836, 159632, 162190,
+    170854, 225806, 255107, 260615, 261790, 269661, 270862, 275599, 279431,
+    279838, 282615, 283865, 285119, 294582, 299138, 300059, 302185, 310916,
+    311144, 311912, 319097,
+    # 0.3.545: right on main, broken by this round's first versions
+    110957, 177741, 178520, 219659, 244567,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. The last
 # ones were right on main.
 OPEN: dict[tuple[int, str], str | None] = {
-    (3796, "base"): None,
-    (3796, "summary"): None,
-    (5172, "base"): "keyless join",
-    (5172, "summary"): "keyless join",
     (5381, "base"): None,
     (5381, "summary"): None,
-    (6905, "base"): "keyless join",
-    (6905, "summary"): "keyless join",
-    (8790, "base"): "keyless join",
-    (8790, "summary"): "keyless join",
     (12425, "base"): "renders no column",
     (12425, "summary"): "renders no column",
-    (14670, "summary"): "aggregate function calls cannot",
     (18629, "base"): None,
     (18629, "summary"): None,
     (112517, "base"): None,
