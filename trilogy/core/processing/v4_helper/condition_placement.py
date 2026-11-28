@@ -787,12 +787,22 @@ def _uncovered_exposing_output_contributor(
     # a host's keys pin FINAL's rows only as far as a group showing an output
     # carries them on: one regrouped past (`min(count(x) by city, species)
     # over city`) leaves the finer key to an unfiltered stream
-    delivered: set[str] = set()
-    for gid in covered:
-        if gid in buckets and set(buckets[gid].primary_members) & mandatory_addrs:
-            delivered |= set(buckets[gid].primary_members)
-            delivered |= set(buckets[gid].grain_components) | carried[gid]
-    held = [own & delivered for own in held]
+    # (one-row totals alone beside no unfiltered stream leave them as they were)
+    suppliers = [
+        gid
+        for gid in covered
+        if gid in buckets and set(buckets[gid].primary_members) & mandatory_addrs
+    ]
+    if unfiltered or any(not _is_global(buckets[gid]) for gid in suppliers):
+        delivered = set().union(
+            *(
+                set(buckets[gid].primary_members)
+                | set(buckets[gid].grain_components)
+                | carried[gid]
+                for gid in suppliers
+            )
+        )
+        held = [own & delivered for own in held]
     # every output is the filtered branch's own, a group key it regroups the
     # kept rows by included (`tree_form` of `min(sum(x) by city, species)`):
     # FINAL reads nothing an unfiltered row stream adds. Keys split over two
@@ -828,7 +838,7 @@ def _uncovered_exposing_output_contributor(
         )
         return row_inputs <= final_exposable and (
             shown_unfiltered
-            or (not delivered and _aggregate_keys(atom))
+            or (not suppliers and _aggregate_keys(atom))
             or not any(build_fd_determines_all(environment, own, keys) for own in held)
         )
     for gid, b in buckets.items():
@@ -843,7 +853,11 @@ def _uncovered_exposing_output_contributor(
             return True
         # a filter shown beside the host read its rows past it
         # (`_unfiltered_filter_streams`): FINAL re-applies the atom on them
-        if gid in unfiltered and row_inputs <= final_exposable:
+        if (
+            gid in unfiltered
+            and _aggregate_keys(atom)
+            and row_inputs <= final_exposable
+        ):
             return True
         # The atom is hosted at an aggregate as a pre-aggregation filter, and
         # that filter reaches this contributor's rows only through a join on
