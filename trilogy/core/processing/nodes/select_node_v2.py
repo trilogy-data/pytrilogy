@@ -21,7 +21,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_existence_map,
 )
 from trilogy.core.processing.scan_partials import scan_partial_addresses
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
@@ -161,7 +161,7 @@ class SelectNode(StrategyNode):
             raise ValueError("Datasource not provided")
         datasource: BuildDatasource = self.datasource
 
-        all_concepts_final: list[BuildConcept] = unique(self.all_concepts, "address")
+        all_concepts_final = self.all_concepts
         source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
@@ -234,8 +234,8 @@ class SelectNode(StrategyNode):
             name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         resolution = QueryDatasource(
-            input_concepts=[],
-            output_concepts=unique(self.all_concepts, "address"),
+            input_concepts=UniqueList(),
+            output_concepts=self.all_concepts,
             source_map={concept.address: set() for concept in self.all_concepts},
             datasources=[datasource],
             grain=datasource.grain,

@@ -47,7 +47,7 @@ from trilogy.core.optimizations.reuse_parent_lookup import ReuseParentLookup
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
-from trilogy.utility import unique
+from trilogy.utility import assume_unique, unique
 
 MAX_OPTIMIZATION_LOOPS = 10
 MAX_OPTIMIZATION_PASSES = 10
@@ -103,7 +103,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
                 continue
             seen.add(live.name)
             deduped.append(live)
-        cte.parent_ctes = deduped
+        cte.parent_ctes = assume_unique(deduped)
         joins = cte.joins if isinstance(cte, CTE) else []
         for join in joins:
             if not isinstance(join, Join):
@@ -731,7 +731,9 @@ def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> boo
     phase_changed = False
     while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
         actions_taken = False
-        look_at = unique([state.root_cte, *reversed(state.input)], property="name")
+        look_at: list[CTE | UnionCTE] = unique(
+            [state.root_cte, *reversed(state.input)], property="name"
+        )
         look_at = _optimization_visit_order(rule, look_at)
         inverse_map = gen_inverse_map(look_at)
         for cte in look_at:

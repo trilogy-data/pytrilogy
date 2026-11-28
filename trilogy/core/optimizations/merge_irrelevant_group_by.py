@@ -28,6 +28,7 @@ from trilogy.core.processing.grain_utility import (
     join_preserves_left_rows,
     stacks_duplicate_rows,
 )
+from trilogy.utility import append_new, assume_unique
 
 # The child must be pure scalar transforms so its GROUP BY is vacuous
 # relative to the parent.
@@ -164,7 +165,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         if len(active_parents) != 1:
             return False, None
 
-        cte.parent_ctes = active_parents
+        cte.parent_ctes = assume_unique(active_parents)
         parent = active_parents[0]
         if cte.base_alias != parent.safe_identifier:
             self.debug(
@@ -237,10 +238,8 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
         # An empty source_map entry makes the renderer compute the expression
         # from concept lineage.
-        parent_output_addresses = output_addresses(parent)
         for x in cte.output_columns:
-            if x.address not in parent_output_addresses:
-                parent.output_columns.append(x)
+            append_new(parent.output_columns, x)
             if x.address not in parent.source_map:
                 parent.source_map[x.address] = []
 
@@ -249,9 +248,9 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         # The child's output_columns already carry the hidden group-by keys,
         # so the GROUP BY survives the swap.
         cte_output_addresses = output_addresses(cte)
-        parent.output_columns = [
-            x for x in parent.output_columns if x.address in cte_output_addresses
-        ]
+        parent.output_columns = assume_unique(
+            [x for x in parent.output_columns if x.address in cte_output_addresses]
+        )
         parent.grain = cte.grain
         parent.hidden_concepts = parent.hidden_concepts.union(cte.hidden_concepts)
 

@@ -109,7 +109,7 @@ from trilogy.core.processing.v4_helper.network_model import (
 )
 from trilogy.core.processing.v4_helper.network_search import search_sources
 from trilogy.core.processing.v4_helper.projection import inline_scalar, widen_projection
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 
 @dataclass(frozen=True)
@@ -212,14 +212,14 @@ def _concept_node_grain_addresses(node: str) -> set[str]:
     return {address for address in grain.split(",") if address}
 
 
-def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
+def _requested_concepts(request: SourceRequest) -> UniqueList[BuildConcept]:
     return unique(
         request.outputs + condition_row_args(request.conditions),
         "address",
     )
 
 
-def _usable_outputs(parents: Iterable[StrategyNode]) -> list[BuildConcept]:
+def _usable_outputs(parents: Iterable[StrategyNode]) -> UniqueList[BuildConcept]:
     return unique([c for parent in parents for c in parent.usable_outputs], "address")
 
 
@@ -359,7 +359,7 @@ def _concepts_with_grain_keys(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     expanded: list[BuildConcept] = []
     requested_addresses = {concept.address for concept in concepts}
     # A grain key is expanded so the request can REACH a concept living on

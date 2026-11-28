@@ -1253,7 +1253,7 @@ class MergeNode(StrategyNode):
                 c for c in extent_free if c.address in self.unfiltered_partials
             ]
         qds = QueryDatasource(
-            input_concepts=unique(self.input_concepts, "address"),
+            input_concepts=self.input_concepts,
             output_concepts=final_output_concepts,
             datasources=final_datasets,
             source_type=self.source_type,

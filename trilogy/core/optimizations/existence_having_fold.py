@@ -66,6 +66,7 @@ from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     decompose_condition,
 )
+from trilogy.utility import UniqueList, append_new, assume_unique, unique
 
 
 def _single_pair_inner(join: Join) -> bool:
@@ -332,7 +333,7 @@ def _rebase_on_dimension(
                 pairs=[replace(pair, node=aggregate)],
             )
         ]
-        rows.parent_ctes = [aggregate]
+        rows.parent_ctes = assume_unique([aggregate])
         rows.source.datasources = [aggregate.source, raw]
         rows.source.base_datasource = None
         rows.source.source_map = {
@@ -345,7 +346,7 @@ def _rebase_on_dimension(
             rows.regroup(False)
         return
     rows.joins = []
-    rows.parent_ctes = []
+    rows.parent_ctes = UniqueList()
     rows.source.datasources = [raw]
     rows.source.base_datasource = raw
     rows.source.source_map = {a: {raw} for a in rows.source_map}
@@ -395,13 +396,13 @@ def _read_through_rows(
     present = output_addresses(rows)
     for column in aggregate.output_columns:
         if column.address in carried and column.address not in present:
-            rows.output_columns.append(column)
-            rows.source.output_concepts.append(column)
+            append_new(rows.output_columns, column)
+            append_new(rows.source.output_concepts, column)
             rows.source_map[column.address] = [aggregate.name]
             rows.source.source_map[column.address] = {aggregate.source}
             rows.hidden_concepts.discard(column.address)
     consumer.joins = []
-    consumer.parent_ctes = [rows]
+    consumer.parent_ctes = assume_unique([rows])
     consumer.source.datasources = [rows.source]
     consumer.source.base_datasource = None
     consumer.source_map = {
@@ -434,7 +435,9 @@ def _join_dimension_directly(consumer: CTE, rows: CTE, dimension: Join) -> None:
             (replace(pair, node=lookup) if pair.node is rows else pair)
             for pair in join.pairs or []
         ]
-    consumer.parent_ctes = [lookup if p is rows else p for p in consumer.parent_ctes]
+    consumer.parent_ctes = unique(
+        [lookup if p is rows else p for p in consumer.parent_ctes], "name"
+    )
     consumer.source_map = {
         a: [lookup.name if name == rows.name else name for name in sources]
         for a, sources in consumer.source_map.items()

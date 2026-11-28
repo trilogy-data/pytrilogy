@@ -19,6 +19,11 @@ to function understanding. Keep a very high bar.
 
 Avoid comments in tests unless they substantially add code.
 
+`unique()` returns a `UniqueList` (typing-only; `list` at runtime). The planner's
+output/input concept lists and CTE parents are typed with it, so mypy flags a
+`unique()` over one and in-place growth of one. Grow one with `append_new`; mark a
+filter of one with `assume_unique`.
+
 Avoid defining functions inside functions where possible to make testing easier.
 
 ## Development

@@ -15,6 +15,7 @@ from trilogy.core.processing.consumer_proofs import (
     NULL_IGNORING_AGGREGATES,
     filtered_aggregate,
 )
+from trilogy.utility import assume_unique
 
 
 def _remove_filter(
@@ -32,13 +33,16 @@ def _remove_filter(
         ],
     )
     unfiltered = replace(concept, lineage=replace(concept.lineage, function=function))
-    cte.output_columns = [
-        unfiltered if c.address == concept.address else c for c in cte.output_columns
-    ]
-    cte.source.output_concepts = [
-        unfiltered if c.address == concept.address else c
-        for c in cte.source.output_concepts
-    ]
+    # same-address swaps keep each list unique
+    cte.output_columns = assume_unique(
+        [unfiltered if c.address == concept.address else c for c in cte.output_columns]
+    )
+    cte.source.output_concepts = assume_unique(
+        [
+            unfiltered if c.address == concept.address else c
+            for c in cte.source.output_concepts
+        ]
+    )
 
 
 def _global_rollup_ignores_null_groups(

@@ -18,7 +18,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 )
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import readable_outputs
-from trilogy.utility import string_to_hash, unique
+from trilogy.utility import string_to_hash
 
 if TYPE_CHECKING:
     from trilogy.core.processing.v4_helper.history import V4History
@@ -261,7 +261,7 @@ def gen_coalescing_axis_node(
             f" {len(sides)} member sides"
         )
         return MergeNode(
-            input_concepts=unique([concept] + readable_outputs(sides), "address"),
+            input_concepts=[concept] + readable_outputs(sides),
             output_concepts=[concept],
             environment=environment,
             parents=sides,

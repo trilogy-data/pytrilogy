@@ -63,7 +63,7 @@ from trilogy.core.models.environment import (
 )
 from trilogy.core.statements.common import SelectTypeMixin
 from trilogy.core.union_find import find
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 
 @dataclass
@@ -640,7 +640,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
         return base
 
     @property
-    def output_components(self) -> list[ConceptRef]:
+    def output_components(self) -> UniqueList[ConceptRef]:
         output = [x.reference for x in self.derived_concepts]
         for select in self.selects:
             output += [
@@ -711,7 +711,7 @@ class UnionSelectStatement(MultiSelectStatement):
         )
 
     @property
-    def output_components(self) -> list[ConceptRef]:
+    def output_components(self) -> UniqueList[ConceptRef]:
         # Only the bound union outputs; arm columns are internal.
         return unique([x.reference for x in self.derived_concepts], "address")
 

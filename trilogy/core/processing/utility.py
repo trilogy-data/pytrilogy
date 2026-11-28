@@ -38,6 +38,7 @@ from trilogy.core.processing.aggregate_rollup import sourced_arguments
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
+from trilogy.utility import unique
 
 
 class NodeType(Enum):
@@ -578,5 +579,5 @@ def sort_select_output_processed(
         for c in new_output
         if (c.address not in output_addresses or c.address in hidden)
     }
-    cte.output_columns = new_output
+    cte.output_columns = unique(new_output, "address")
     return cte

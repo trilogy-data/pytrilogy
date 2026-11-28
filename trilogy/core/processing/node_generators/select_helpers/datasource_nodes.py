@@ -48,7 +48,7 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.nodes.select_node_v2 import scan_stamps
 from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.core.processing.utility import padding
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -161,10 +161,10 @@ def finalize_select_node(
 
 def _filtered_partial_args(
     node: StrategyNode, outputs: list[BuildConcept]
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     datasource = getattr(node, "datasource", None)
     if not isinstance(datasource, BuildDatasource):
-        return []
+        return UniqueList()
     bound = {c.address for c in datasource.output_concepts}
     return unique(
         [
@@ -184,7 +184,7 @@ def subgraph_concepts(
     subgraph: list[str],
     environment: BuildEnvironment,
     requested: Sequence[BuildConcept],
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     """The concepts a datasource subgraph reads. The graph keys a node by
     canonical address, so two requested names for one expression (`total`
     beside `sum(amount) by order_id as explicit`) are one node: each of them

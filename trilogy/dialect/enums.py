@@ -131,7 +131,7 @@ class Dialects(Enum):
                 )
             return _engine_factory(conf, DatabricksConfig)
         elif self == Dialects.POSTGRES:
-            logger.warn(
+            logger.warning(
                 "WARN: Using experimental postgres dialect. Most functionality will not work."
             )
             import importlib

@@ -37,7 +37,7 @@ from trilogy.core.optimizations.utils import (
 from trilogy.core.processing.condition_utility import (
     gather_windows,
 )
-from trilogy.utility import unique
+from trilogy.utility import append_new, assume_unique, unique
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
@@ -386,7 +386,8 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             # a passthrough of the parent's own rename reads itself
             if consumed is not None and consumed.address != column.address:
                 column = rebind_rename_to_consumed(column, consumed)
-            parent.output_columns.append(column)
+            if not append_new(parent.output_columns, column):
+                continue
             # The child derives this column over the parent's rows. A column
             # of the same address the parent's own inputs expose is the value
             # BELOW the parent (a rename of a ROLLUP key computed before the
@@ -415,11 +416,13 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
 
     if merge_mode == MergeMode.AGGREGATE:
         # Keep only columns the child exposes; everything else is rolled up.
-        parent.output_columns = [
-            column
-            for column in parent.output_columns
-            if column.address in cte.output_lcl
-        ]
+        parent.output_columns = assume_unique(
+            [
+                column
+                for column in parent.output_columns
+                if column.address in cte.output_lcl
+            ]
+        )
         parent.grain = cte.grain
         # The child's re-sum of a summary column now runs over the parent's
         # rows, and so does the parent's, except one an aggregate the child

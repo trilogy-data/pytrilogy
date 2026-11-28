@@ -56,6 +56,7 @@ from trilogy.core.processing.condition_utility import (
     gather_non_null_proofs,
     is_scalar_condition,
 )
+from trilogy.utility import append_new, assume_unique
 
 HOISTABLE_JOIN_TYPES = {JoinType.INNER, JoinType.LEFT_OUTER}
 
@@ -359,11 +360,8 @@ class JoinHoist(OptimizationRule):
                 for c in dim_cte.output_columns
                 if c.address not in dim_cte.hidden_concepts
             ]
-            existing_input_addrs = {c.address for c in parent_cte.source.input_concepts}
             for c in visible:
-                if c.address not in existing_input_addrs:
-                    parent_cte.source.input_concepts.append(c)
-                    existing_input_addrs.add(c.address)
+                append_new(parent_cte.source.input_concepts, c)
             for c in visible:
                 parent_cte.source.source_map.setdefault(c.address, set()).add(dim_qds)
             new_pairs = [
@@ -422,11 +420,13 @@ class JoinHoist(OptimizationRule):
                     del cte.source.source_map[addr]
                 else:
                     cte.source.source_map[addr] = qds_sources
-        cte.source.input_concepts = [
-            c
-            for c in cte.source.input_concepts
-            if c.address not in dim_filter_addresses
-        ]
+        cte.source.input_concepts = assume_unique(
+            [
+                c
+                for c in cte.source.input_concepts
+                if c.address not in dim_filter_addresses
+            ]
+        )
         for addr in dim_filter_addresses:
             cte.source_map.pop(addr, None)
         # Join keys in cte.source_map that pointed to the dim redirect to the
@@ -469,9 +469,9 @@ class JoinHoist(OptimizationRule):
             for jj in cte.joins
         )
         if not still_used:
-            cte.parent_ctes = [
-                p for p in cte.dependency_nodes() if p.name != dim_cte.name
-            ]
+            cte.parent_ctes = assume_unique(
+                [p for p in cte.dependency_nodes() if p.name != dim_cte.name]
+            )
             # A folded dim with no remaining join is gone from the FROM: drop
             # it from inlined_parents and purge its dangling token from any
             # leftover source_map entries.

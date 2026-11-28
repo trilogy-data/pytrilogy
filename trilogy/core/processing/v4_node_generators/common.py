@@ -10,7 +10,7 @@ from trilogy.core.processing.aggregate_rollup import sourced_arguments
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.history import V4History
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 
 def collapse_conditions(
@@ -65,7 +65,7 @@ def parent_outputs_needed(
     parents: list[StrategyNode],
     conditions: BuildWhereClause | None = None,
     partials: Mapping[str, BuildConcept] = MappingProxyType({}),
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     """Which parent outputs do `outputs` consume (via their lineage, or the
     partial one is re-aggregated from), plus any concepts the optional
     `conditions` references? Returned in parent order, deduped by address."""

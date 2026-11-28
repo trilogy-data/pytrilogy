@@ -20,6 +20,7 @@ from trilogy.core.models.execute import ConceptPair
 from trilogy.core.processing.condition_utility import combine_where_clauses
 from trilogy.core.processing.nodes import MergeNode, NodeJoin, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.utility import append_new, unique
 
 from .condition_sources import resolve_and_inject_condition
 from .nested_select import plan_align_arms
@@ -121,7 +122,7 @@ def gen_multiselect(
         for out in list(arm_node.output_concepts):
             merge_name = lineage.get_merge_concept(out)
             if merge_name:
-                arm_node.output_concepts.append(environment.concepts[merge_name])
+                append_new(arm_node.output_concepts, environment.concepts[merge_name])
         arm_node.rebuild_cache()
         arm_nodes.append(arm_node)
 
@@ -155,6 +156,6 @@ def gen_multiselect(
             depth=depth,
         )
 
-    node.set_output_concepts(list(mandatory_list), rebuild=False)
+    node.set_output_concepts(unique(mandatory_list, "address"), rebuild=False)
     node.rebuild_cache()
     return node

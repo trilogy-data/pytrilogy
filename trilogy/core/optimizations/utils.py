@@ -30,7 +30,7 @@ from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
 )
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 # Derivations whose rows cannot be re-scoped: a window, unnest or recursive
 # output changes meaning when its CTE is folded into, or filtered by, another.
@@ -180,11 +180,11 @@ def seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     return []
 
 
-def accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> list[CTE | UnionCTE]:
+def accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> UniqueList[CTE | UnionCTE]:
     """What join ``idx`` reads on its left (left-deep): its explicit left, the
     FROM (``seed_ctes``) and every prior join's right side."""
     if not isinstance(cte, CTE):
-        return []
+        return UniqueList()
     join = cte.joins[idx] if idx < len(cte.joins) else None
     left: list[CTE | UnionCTE] = []
     if isinstance(join, Join) and join.left is not None:

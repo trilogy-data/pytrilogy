@@ -54,7 +54,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.utility import safe_quote
-from trilogy.utility import string_to_hash, unique
+from trilogy.utility import UniqueList, assume_unique, string_to_hash, unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 INVALID_ALIAS_PREFIX = "INVALID_ALIAS"
@@ -238,7 +238,7 @@ def filter_case_elided(cte: CTE | UnionCTE, lineage: BuildFilterItem) -> bool:
 class CTE:
     name: str
     source: QueryDatasource
-    output_columns: list[BuildConcept]
+    output_columns: UniqueList[BuildConcept]
     source_map: dict[str, list[str]]
     grain: BuildGrain
     group_to_grain: bool = False
@@ -248,7 +248,7 @@ class CTE:
     # predicates, and must stay invisible to the condition-rewriting rules
     # (pushdown, dedup, nullability refinement) that reason about author intent.
     semi_join_filters: list[SemiJoinFilter] = field(default_factory=list)
-    parent_ctes: list[CTE | UnionCTE] = field(default_factory=list)
+    parent_ctes: UniqueList[CTE | UnionCTE] = field(default_factory=UniqueList)
     joins: list[Join | UnnestJoin] = field(default_factory=list)
     condition: BoolExpr | None = None
     partial_concepts: list[BuildConcept] = field(default_factory=list)
@@ -279,8 +279,6 @@ class CTE:
             raise NotImplementedError(
                 "Multiple join derived concepts not yet supported."
             )
-        self.join_derived_concepts = unique(self.join_derived_concepts, "address")
-        self.output_columns = unique(self.output_columns, "address")
 
     @classmethod
     def from_datasource(cls, datasource: BuildDatasource) -> DatasourceCTE:
@@ -413,9 +411,9 @@ class CTE:
             if self.source_map.get(k):
                 continue
             self.source_map[k] = [inline_datasource.safe_identifier]
-        self.parent_ctes = [
-            x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier
-        ]
+        self.parent_ctes = assume_unique(
+            [x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier]
+        )
         if force_group:
             self.regroup(True)
         rendered_parent = parent
@@ -927,7 +925,7 @@ class CTE:
         # (distinct aliases over the same column).
         keys: list[BuildConcept] = []
         bindings: set[tuple[str, ...]] = set()
-        outputs = unique(self.output_columns, "address")
+        outputs = self.output_columns
         candidates = outputs + [
             value
             for c in outputs
@@ -1151,10 +1149,14 @@ class CTE:
         return self.source_key_for(parent)
 
     def replace_dependency(self, old: CTE, new: CTE | UnionCTE) -> None:
-        self.parent_ctes = [
-            new if x.safe_identifier == old.safe_identifier else x
-            for x in self.parent_ctes
-        ]
+        # `new` may already be a parent
+        self.parent_ctes = unique(
+            [
+                new if x.safe_identifier == old.safe_identifier else x
+                for x in self.parent_ctes
+            ],
+            "name",
+        )
         if isinstance(new, DatasourceCTE):
             self.inlined_parents = [
                 new if x.safe_identifier == old.safe_identifier else x
@@ -1609,8 +1611,8 @@ class Join(Generic[NodeT]):
 
 @dataclass
 class QueryDatasource:
-    input_concepts: list[BuildConcept]
-    output_concepts: list[BuildConcept]
+    input_concepts: UniqueList[BuildConcept]
+    output_concepts: UniqueList[BuildConcept]
     datasources: list[BuildDatasource | QueryDatasource]
     source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]
     grain: BuildGrain
@@ -1736,8 +1738,6 @@ class QueryDatasource:
             if pairing in unique_pairs:
                 raise SyntaxError(f"Duplicate join {join!s}")
             unique_pairs.add(pairing)
-        self.input_concepts = unique(self.input_concepts, "address")
-        self.output_concepts = unique(self.output_concepts, "address")
         self._fold_inferred_nullables()
         self.zero_filled = zero_filled_counts(
             self.output_concepts,
@@ -1788,7 +1788,7 @@ class QueryDatasource:
 
     @classmethod
     def from_datasource(cls, datasource: BuildDatasource) -> QueryDatasource:
-        output_concepts = datasource.output_concepts
+        output_concepts = unique(datasource.output_concepts, "address")
         return cls(
             input_concepts=output_concepts,
             output_concepts=output_concepts,
@@ -2308,7 +2308,7 @@ class RecursiveCTE(CTE):
         top = CTE(
             name=self.name,
             source=self.source,
-            output_columns=base_output,
+            output_columns=unique(base_output, "address"),
             source_map=self.source_map,
             grain=self.grain,
             existence_source_map=self.existence_source_map,
@@ -2334,11 +2334,11 @@ class RecursiveCTE(CTE):
         bottom = RecursiveStepCTE(
             name=self.name,
             source=self.source,
-            output_columns=bottom_output,
+            output_columns=unique(bottom_output, "address"),
             source_map=bottom_source_map,
             grain=self.grain,
             existence_source_map=self.existence_source_map,
-            parent_ctes=top_cte_array + parent_ctes,
+            parent_ctes=unique(top_cte_array + parent_ctes, "name"),
             # LEFT: a next node with no row of its own ends the walk there, as a
             # null edge does, so an orphan's walk stops at its missing parent.
             joins=[
@@ -2413,9 +2413,9 @@ class DatasourceCTE(CTE):
 class UnionCTE:
     name: str
     source: QueryDatasource
-    parent_ctes: list[CTE | UnionCTE]
+    parent_ctes: UniqueList[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
-    output_columns: list[BuildConcept]
+    output_columns: UniqueList[BuildConcept]
     grain: BuildGrain
     operator: str = "UNION ALL"
     order_by: BuildOrderBy | None = None
@@ -2509,10 +2509,14 @@ class UnionCTE:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
 
     def replace_dependency(self, old: CTE, new: CTE | UnionCTE) -> None:
-        self.parent_ctes = [
-            new if x.safe_identifier == old.safe_identifier else x
-            for x in self.parent_ctes
-        ]
+        # `new` may already be a parent
+        self.parent_ctes = unique(
+            [
+                new if x.safe_identifier == old.safe_identifier else x
+                for x in self.parent_ctes
+            ],
+            "name",
+        )
         new_internal: list[CTE | UnionCTE] = []
         for branch in self.internal_ctes:
             if branch.safe_identifier == old.safe_identifier:
@@ -2836,7 +2840,7 @@ def _absorb_join(existing: Join, join: Join) -> None:
     )
 
 
-def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
+def merge_ctes(ctes: list[CTE | UnionCTE]) -> UniqueList[CTE | UnionCTE]:
     final_ctes_dict: dict[str, CTE | UnionCTE] = {}
     for cte in ctes:
         if cte.name not in final_ctes_dict:
@@ -2844,8 +2848,7 @@ def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
         else:
             final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
 
-    final_ctes = list(final_ctes_dict.values())
-    return final_ctes
+    return assume_unique(list(final_ctes_dict.values()))
 
 
 def _collect_datasource_addresses(

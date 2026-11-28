@@ -14,6 +14,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.utility import unique
 
 from .nested_select import plan_align_arms
 
@@ -88,6 +89,6 @@ def gen_union_select(
         parents=arm_nodes,
         set_operator=lineage.operator,
     )
-    node.set_output_concepts(list(mandatory_list), rebuild=False)
+    node.set_output_concepts(unique(mandatory_list, "address"), rebuild=False)
     node.rebuild_cache()
     return node

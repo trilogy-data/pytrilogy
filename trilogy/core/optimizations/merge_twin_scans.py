@@ -20,6 +20,7 @@ from trilogy.core.models.build import BoolExpr, BuildConcept
 from trilogy.core.models.execute import CTE, DatasourceCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import repoint_consumers
+from trilogy.utility import append_new, assume_unique
 
 
 def _read(cte: DatasourceCTE) -> tuple | None:
@@ -60,9 +61,9 @@ def _absorb(keep: DatasourceCTE, drop: DatasourceCTE) -> None:
     for column in drop.output_columns:
         if column.address in present:
             continue
-        keep.output_columns.append(column)
+        append_new(keep.output_columns, column)
         keep.source_map.setdefault(column.address, drop.source_map[column.address])
-        keep.source.output_concepts.append(column)
+        append_new(keep.source.output_concepts, column)
         if column.address in drop.source.source_map:
             keep.source.source_map.setdefault(
                 column.address, drop.source.source_map[column.address]
@@ -130,19 +131,20 @@ def _rebase(
         rows.hidden_concepts.discard(column.address)
         if column.address in present:
             continue
+        present.add(column.address)
         # the table's claim travels with the column, or a filter over it
         # reads as tautological
         if column.address in nullable:
             rows.nullable_concepts.append(column)
-        rows.output_columns.append(column)
-        rows.source.output_concepts.append(column)
+        append_new(rows.output_columns, column)
+        append_new(rows.source.output_concepts, column)
         rows.source_map[column.address] = [rows.datasource.safe_identifier]
         rows.source.source_map[column.address] = {rows.datasource}
     # The driver's CTE list holds this object, so it becomes a plain CTE in
     # place rather than being replaced.
     group.__class__ = CTE  # type: ignore[assignment]
     del group.datasource
-    group.parent_ctes = [rows]
+    group.parent_ctes = assume_unique([rows])
     group.existence_source_map = {}
     if shared:
         group.condition = having

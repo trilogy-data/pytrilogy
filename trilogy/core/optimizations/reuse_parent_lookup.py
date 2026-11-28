@@ -31,6 +31,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import is_grouped_cte, output_addresses
+from trilogy.utility import append_new, assume_unique
 
 
 def _plain(join: Join) -> bool:
@@ -107,9 +108,9 @@ def _carry(holder: CTE, lookup: CTE, addresses: list[str]) -> None:
     for column in lookup.output_columns:
         if column.address not in addresses or column.address in present:
             continue
-        holder.output_columns.append(column)
+        append_new(holder.output_columns, column)
         holder.source_map[column.address] = [lookup.name]
-        holder.source.output_concepts.append(column)
+        append_new(holder.source.output_concepts, column)
         holder.source.source_map.setdefault(column.address, set()).add(lookup.source)
         if column.address not in {c.address for c in holder.nullable_concepts}:
             holder.nullable_concepts.append(column)
@@ -123,7 +124,9 @@ def _drop_lookup(consumer: CTE, join: Join, lookup: CTE, holder: CTE) -> None:
         for ds in consumer.source.datasources
         if ds.identifier != lookup.source.identifier
     ]
-    consumer.parent_ctes = [p for p in consumer.parent_ctes if p.name != lookup.name]
+    consumer.parent_ctes = assume_unique(
+        [p for p in consumer.parent_ctes if p.name != lookup.name]
+    )
     for address, sources in list(consumer.source_map.items()):
         if sources == [lookup.name]:
             consumer.source_map[address] = [holder.name]

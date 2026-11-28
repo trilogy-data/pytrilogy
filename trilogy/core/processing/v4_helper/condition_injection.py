@@ -20,7 +20,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import PlannedPairs
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import region_reads
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 
 @dataclass
@@ -55,9 +55,9 @@ def _where_of(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     return BuildWhereClause(conditional=combined) if combined is not None else None
 
 
-def condition_row_args(conditions: BuildWhereClause | None) -> list[BuildConcept]:
+def condition_row_args(conditions: BuildWhereClause | None) -> UniqueList[BuildConcept]:
     if conditions is None:
-        return []
+        return UniqueList()
     return unique(list(conditions.row_arguments), "address")
 
 
@@ -110,7 +110,7 @@ def pairs_on_outer_relation(
 
 def _condition_inputs(
     explicit: list[BuildConcept] | None, node: StrategyNode, sources: ConditionSources
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     return unique(
         list(explicit if explicit is not None else node.usable_outputs)
         + sources.row_concepts,
