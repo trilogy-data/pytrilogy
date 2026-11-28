@@ -1048,4 +1048,71 @@ theorem shown_properties_key_one_tuple :
       (cities.flatMap fun c => tags.map fun t => (c, t)).length = 4 := by
   decide
 
+/-! ## A set's two readings, a literal list, a gate's host, a filtered aggregate's step (0.3.547)
+
+One membership text names two sets: in the WHERE the values of every row, in a
+select target the values of the rows the WHERE kept, so a row the WHERE passed
+on the first proves nothing of the second. A literal list reads no set: it is
+the comparison it spells. A filter shown beside the group a WHERE gate was
+hosted on never passed it. And a filtered aggregate's step built per row
+repeats once per row of its keys, like a filtered column's. -/
+
+/-- `select tree_form, count(tree_id ? tag in (tag ? height > 2)) as v2 where
+tree_id = 'a4' and tag in (tag ? height > 2)`: a4 alone is kept, an x tree
+with no height. Over every tree x is in the set, so the WHERE passes a4; over
+the kept rows the set is empty and the count is 0. The CASE was elided as
+implied by the WHERE's twin atom and counted a4
+(`kept_set_is_no_where_set`, 275116). Trees are `(tag, height)`, x 0, y 1,
+0 for no height. -/
+theorem kept_set_is_no_where_set :
+    let trees : List (Nat × Nat) := [(0, 3), (1, 0), (0, 5), (0, 0), (1, 7), (0, 2)]
+    let inSet (rows : List (Nat × Nat)) (t : Nat) := rows.any fun r => r.1 == t && r.2 > 2
+    let kept := (trees.drop 3).take 1
+    kept.all (fun r => inSet trees r.1) ∧
+      (kept.filter fun r => inSet trees r.1).length = 1 ∧
+      (kept.filter fun r => inSet kept r.1).length = 0 := by
+  decide
+
+/-- `select tree_form, tree_form ? <...> as v0 where (count_distinct(tag) by *
+!= 2 or city in ('B'))`: there are two tags, so the WHERE is `city = 'B'` and
+keeps B's broadleaf and linden trees. The literal list was taken for a set,
+the atom got no gate grain, and A's formless Ulmus showed
+(`literal_list_is_a_comparison`, 313914). Trees are `(city, form)`: A 0, B 1;
+broadleaf 0, linden 1, none 2. -/
+theorem literal_list_is_a_comparison :
+    let trees : List (Nat × Nat) := [(0, 0), (0, 0), (0, 0), (0, 2), (1, 0), (1, 1)]
+    let viaList := trees.filter fun r => (2 != 2) || [1].contains r.1
+    let viaEq := trees.filter fun r => (2 != 2) || r.1 == 1
+    viaList = viaEq ∧ (viaList.map (·.2)).eraseDups = [0, 1] ∧
+      (trees.map (·.2)).eraseDups.length = 3 := by
+  decide
+
+/-- `select tree_form, tree_form ? tree_form in (tree_form ? min(height) by
+species < 2) as v0, min(height) by * as v1 where sum(height) by species = 2`:
+only the Tilia sums to 2, so one linden row. The gate was hosted on the
+by-species minimum the set and the total share; the shown filter read the
+rows beside it and showed all three forms (`filter_beside_host_owes_gate`,
+309283). Trees are `(species, height)`, 0 for no height; species Acer 0,
+Quercus 1, Ulmus 2, Tilia 3 have forms 0, 0, 2, 1. -/
+theorem filter_beside_host_owes_gate :
+    let trees : List (Nat × Nat) := [(0, 3), (0, 0), (1, 5), (2, 0), (0, 7), (3, 2)]
+    let form (s : Nat) := if s == 3 then 1 else if s == 2 then 2 else 0
+    let sum (s : Nat) := ((trees.filter (·.1 == s)).map (·.2)).foldl (· + ·) 0
+    let kept := trees.filter fun r => r.1 != 2 && sum r.1 == 2
+    (kept.map fun r => form r.1).eraseDups = [1] ∧
+      (trees.map fun r => form r.1).eraseDups.length = 3 := by
+  decide
+
+/-- `select city, tree_form, (sum(height) by tree_form) ? avg(height) by city =
+1 as v0, count(tree_id ? species in (species ? species = 'Acer')) as v2`: A's
+broadleaf trees are a1, a2 and a3, two of them Acers. The `v0` step, built
+per tree, was paired with them on `(city, tree_form)` as is, so each Acer met
+all three and the count read 6 (`aggregate_filter_counts_once`, 305799;
+18629). Species are Acer 0, Quercus 1. -/
+theorem aggregate_filter_counts_once :
+    let rows : List Nat := [0, 0, 1]
+    let acers := rows.filter (· == 0)
+    acers.length = 2 ∧ acers.length * rows.length = 6 := by
+  decide
+
 end Trilogy.Filters

@@ -2920,7 +2920,7 @@ def build_concept_graph(
         for atom in decompose_condition(clause.conditional):
             atom_row_addrs = [c.address for c in atom.row_arguments]
             row_arg_addresses.update(atom_row_addrs)
-            if not atom.existence_arguments:
+            if not any(atom.existence_arguments):
                 atom_grain = frozenset(
                     k
                     for c in atom.row_arguments
@@ -2930,7 +2930,7 @@ def build_concept_graph(
                 for address in atom_row_addrs:
                     gate_grains[address] |= atom_grain
                     gate_peers[address] |= set(atom_row_addrs) - {address}
-            if atom.existence_arguments:
+            if any(atom.existence_arguments):
                 beside_sets.update(atom_row_addrs)
             for arg_group in atom.existence_arguments or ():
                 existence_arg_addresses.update(ec.address for ec in arg_group)

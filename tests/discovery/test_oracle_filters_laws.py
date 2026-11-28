@@ -388,6 +388,8 @@ FOUND_SEEDS = [
     110957, 177741, 178520, 219659, 244567,
     # 0.3.546: shown properties without their key are keys of one tuple
     287310,
+    # 0.3.547
+    18629, 275116, 305799, 309283, 313914,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. The last
@@ -397,8 +399,6 @@ OPEN: dict[tuple[int, str], str | None] = {
     (5381, "summary"): None,
     (12425, "base"): "renders no column",
     (12425, "summary"): "renders no column",
-    (18629, "base"): None,
-    (18629, "summary"): None,
     (112517, "base"): None,
     # right on main, raised since 0.3.537 (area 4b)
     (91381, "base"): "keyless join",

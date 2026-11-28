@@ -194,6 +194,20 @@ def zero_filled_counts(
     }
 
 
+def _reads_same_sets(
+    cte: CTE | UnionCTE, parent: CTE, lineage: BuildFilterItem
+) -> bool:
+    """A parent's WHERE guarantees a membership only against the set this CTE
+    reads: one text is two sets where a WHERE reads every row and a select
+    target the rows it kept (`Filters.kept_set_is_no_where_set`)."""
+    return all(
+        set(cte.existence_source_map.get(m.address, ()))
+        == set(parent.existence_source_map.get(m.address, ()))
+        for group in lineage.where.existence_arguments
+        for m in group
+    )
+
+
 def filter_case_elided(cte: CTE | UnionCTE, lineage: BuildFilterItem) -> bool:
     """A filter's per-row CASE WHEN is redundant, and renders as bare content,
     when the CTE's WHERE implies its predicate, or its parents guarantee it:
@@ -223,6 +237,7 @@ def filter_case_elided(cte: CTE | UnionCTE, lineage: BuildFilterItem) -> bool:
             where_cond == parent.condition
             or condition_implies(parent.condition, where_cond)
         )
+        and _reads_same_sets(cte, parent, lineage)
     }
     if not guaranteeing:
         return False

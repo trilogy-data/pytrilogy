@@ -784,6 +784,15 @@ def _uncovered_exposing_output_contributor(
             own |= set(buckets[gid].grain_components)
             regrouped |= set(buckets[gid].grain_components)
         held.append(own)
+    # a host's keys pin FINAL's rows only as far as a group showing an output
+    # carries them on: one regrouped past (`min(count(x) by city, species)
+    # over city`) leaves the finer key to an unfiltered stream
+    delivered: set[str] = set()
+    for gid in covered:
+        if gid in buckets and set(buckets[gid].primary_members) & mandatory_addrs:
+            delivered |= set(buckets[gid].primary_members)
+            delivered |= set(buckets[gid].grain_components) | carried[gid]
+    held = [own & delivered for own in held]
     # every output is the filtered branch's own, a group key it regroups the
     # kept rows by included (`tree_form` of `min(sum(x) by city, species)`):
     # FINAL reads nothing an unfiltered row stream adds. Keys split over two
@@ -806,17 +815,20 @@ def _uncovered_exposing_output_contributor(
         # a filter stream shown beside the host never passed the atom: at the
         # select grain and read by FINAL alone, its rows are FINAL's (a
         # regrouped or windowed one's are not), which hold the row values the
-        # atom reads (`tag` of a set gate is no column of them)
+        # atom reads (`tag` of a set gate is no column of them); so are they
+        # where the filtered branch keys no shown column, which then pins none
+        # (`Filters.filter_beside_host_owes_gate`)
         shown_unfiltered = {
             c.address for c in atom.row_arguments if not c.is_aggregate
         } <= mandatory_addrs and any(
-            set(buckets[gid].grain_components) <= mandatory_addrs
+            (set(buckets[gid].grain_components) <= mandatory_addrs or not keys)
             and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
             for gid in unfiltered
             if gid in buckets
         )
         return row_inputs <= final_exposable and (
             shown_unfiltered
+            or (not delivered and _aggregate_keys(atom))
             or not any(build_fd_determines_all(environment, own, keys) for own in held)
         )
     for gid, b in buckets.items():
@@ -828,6 +840,10 @@ def _uncovered_exposing_output_contributor(
         if not (members & mandatory_addrs):
             continue
         if row_inputs <= members:
+            return True
+        # a filter shown beside the host read its rows past it
+        # (`_unfiltered_filter_streams`): FINAL re-applies the atom on them
+        if gid in unfiltered and row_inputs <= final_exposable:
             return True
         # The atom is hosted at an aggregate as a pre-aggregation filter, and
         # that filter reaches this contributor's rows only through a join on
@@ -864,6 +880,17 @@ def _uncovered_exposing_output_contributor(
         ):
             return True
     return False
+
+
+def _aggregate_keys(atom: BoolExpr) -> set[str]:
+    """The keys of the aggregates `atom` reads: what FINAL pairs a re-applied
+    gate on, none for totals alone."""
+    return {
+        k
+        for c in atom.row_arguments
+        if c.is_aggregate
+        for k in pairing_keys(c.grain.components)
+    }
 
 
 def _filters_the_keys_decide(keys: set[str], environment: BuildEnvironment) -> set[str]:
@@ -911,12 +938,7 @@ def _unfiltered_filter_streams(
     memo: dict[str, bool] = {}
     shown = {c.address for c in scope.mandatory_list}
     # FINAL re-applies the atom on the filter's rows: they hold its keys
-    keys = {
-        k
-        for c in atom.row_arguments
-        if c.is_aggregate
-        for k in pairing_keys(c.grain.components)
-    }
+    keys = _aggregate_keys(atom)
     return {
         gid
         for gid in covered
@@ -974,10 +996,15 @@ def _content_hosted(
         if (c := scope.environment.concepts.get(m)) is not None
         and isinstance(lineage := c.lineage, BuildFilterItem)
     ]
+    keys = set(bucket.grain_components) - set(bucket.primary_members)
     return bool(contents) and all(
         isinstance(content, BuildConcept)
         and content.is_aggregate
         and content.address in hosted
+        and content.grain is not None
+        and build_fd_determines_all(
+            scope.environment, set(pairing_keys(content.grain.components)), keys
+        )
         for content in contents
     )
 

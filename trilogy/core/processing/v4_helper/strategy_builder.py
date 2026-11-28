@@ -4218,8 +4218,8 @@ def _hold_lookup_sides(
             continue
         group, keys = attrs[gid], plan.keys_for(gid)
         # a membership's step holds its set's feeder as a parent: a dedup
-        # over it would read the feeder's rows; a filtered aggregate or row
-        # identity (`tree_id ? c`) is no value of the keys it pairs on
+        # over it would read the feeder's rows; a filtered row identity
+        # (`tree_id ? c`) is no value of the keys it pairs on
         lookups = (
             (Derivation.BASIC, Derivation.FILTER)
             if not parent.existence_concepts
@@ -4240,6 +4240,20 @@ def _hold_lookup_sides(
         wanted = columns[idx] if needed is None else columns[idx] & needed
         if wanted - determined - supplied:
             continue
+        # the reader's row columns only this side outputs stay whole on it
+        others = {
+            o.address
+            for j, p in enumerate(parents)
+            if j != idx
+            for o in p.usable_outputs
+        }
+        if (
+            needed is not None
+            and (needed & {o.address for o in parent.usable_outputs})
+            - determined
+            - others
+        ):
+            continue
         columns[idx] &= determined
         exposed = {o.address: o for o in parent.usable_outputs}
         concepts = [c for address, c in exposed.items() if address in determined]
@@ -4251,11 +4265,15 @@ def _filtered_off_keys(
     group: GroupAttrs, keys: frozenset[str], environment: BuildEnvironment
 ) -> bool:
     """Every value `group` filters is a column it is paired on (`species ? c`
-    beside `species`)."""
+    beside `species`) or an aggregate, one value per group of its own grain
+    (`Filters.aggregate_filter_counts_once`)."""
     return all(
         isinstance(lineage := environment.concepts[m].lineage, BuildFilterItem)
         and isinstance(lineage.content, BuildConcept)
-        and lineage.content.address in keys
+        and (
+            lineage.content.address in keys
+            or lineage.content.derivation == Derivation.AGGREGATE
+        )
         for m in group.primary_members
     )
 

@@ -1149,6 +1149,50 @@ SHAPES = [
         ),
         [("A", "x", None, 2.0), ("A", "y", None, 1.0), ("B", "y", None, 1.0)],
     ),
+    # a filtered aggregate's step built per row is a lookup on its keys
+    # (305799): A's broadleaf trees are a1, a2 and a3, two of them Acers
+    (
+        (
+            "select city, tree_form, (sum(height) by tree_form) ? avg(height) by "
+            "city = 1 as v0, count(tree_id ? species in (species ? species = 'Acer'))"
+            " as v2;"
+        ),
+        [
+            ("A", "broadleaf", None, 2),
+            ("A", None, None, 0),
+            ("B", "broadleaf", None, 1),
+            ("B", "linden", None, 0),
+        ],
+    ),
+    # a literal list beside a total is no set (313914): B's Acer is over 6,
+    # its Tilia is not
+    (
+        (
+            "select tree_form, tree_form ? not (species in (species ? sum(height) by"
+            " species < 6)) as v0 where (count_distinct(tag) by * != 2 or city in "
+            "('B'));"
+        ),
+        [("broadleaf", "broadleaf"), ("linden", None)],
+    ),
+    # a filter beside the gate's host never passed it (309283): only the
+    # Tilia sums to 2
+    (
+        (
+            "select tree_form, tree_form ? tree_form in (tree_form ? min(height) by "
+            "species < 2) as v0, min(height) by * as v1 where sum(height) by species"
+            " = 2;"
+        ),
+        [("linden", None, 2)],
+    ),
+    # the WHERE's set is not the select's (275116): a4 alone is kept, and it
+    # has no height
+    (
+        (
+            "select tree_form, count(tree_id ? tag in (tag ? height > 2)) as v2 "
+            "where tree_id = 'a4' and tag in (tag ? height > 2);"
+        ),
+        [(None, 0)],
+    ),
 ]
 
 
