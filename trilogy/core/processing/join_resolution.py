@@ -1512,8 +1512,37 @@ def resolve_join_order_v2(facts: JoinFacts) -> list[JoinOrderOutput]:
         facts.demanded_domains,
         {node: side.grain for node, side in facts.sides.items()},
     )
+    if facts.gated_covered:
+        _narrow_late_gated(output, facts)
     restore_full_join_providers(output)
     return output
+
+
+def _narrow_late_gated(joins: list[JoinOrderOutput], facts: JoinFacts) -> None:
+    """`_narrow_gated` with a witness an INNER walked after the join: on every
+    row that INNER keeps, the key is the witness's. Only in a stream nothing
+    pads (no RIGHT or FULL join, no LEFT onto the rows), where a row the
+    narrowed join drops would reach every later join only to fail the WHERE.
+    Only a LEFT no widening made and no later join reads: narrowing it leaves
+    every other join's type as `ensure_content_preservation` decided."""
+    if any(j.type in PADS_LEFT_JOIN_TYPES for j in joins):
+        return
+    for join in joins:
+        if join.type != JoinType.LEFT_OUTER or join.own_type or len(join.keys) != 1:
+            continue
+        ((rows, keys),) = join.keys.items()
+        if any(
+            join.right in j.lefts or j.right == rows and j.type in PADS_RIGHT_JOIN_TYPES
+            for j in joins
+            if j is not join
+        ):
+            continue
+        if _gated_keys(rows, join.right, keys, True, joins, facts):
+            if plan_trace.active():
+                _trace_join_type(
+                    rows, join.right, keys, facts, [], JoinType.INNER, "gated_late"
+                )
+            join.type = JoinType.INNER
 
 
 def _stitched(facts: JoinFacts, sides: Iterable[str], walked: set[str]) -> list[str]:

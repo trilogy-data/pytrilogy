@@ -9,6 +9,8 @@ from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
 from tests.discovery.test_oracle_sweep_laws import BASE as SWEEP_MODEL
+from tests.discovery.test_summary_cover_laws import BASE as SUMMARY_BASE
+from tests.discovery.test_summary_cover_laws import SUMMARY
 from tests.engine.test_duckdb_partial_key_assembly import _FORKED as FORKED_MODEL
 from tests.engine.test_grain_pin_unnest_merge_filter import MERGED_SPECIES
 from tests.engine.test_grain_pin_unnest_merge_filter import MODEL as PIN_MODEL
@@ -249,4 +251,46 @@ def test_a_side_covered_on_the_rights_grain_pairs_inner_past_a_key_it_prunes():
         (101, 10, 120),
         (102, 20, 210),
         (None, 30, None),
+    ]
+
+
+def test_a_split_key_gate_an_inner_walked_later_witnesses_the_key():
+    query = (
+        "select tree_id, max(height) by city, tree_form as v0 "
+        "where sum(height) by species < 30 having count_distinct(tag) by species = 1 "
+        "or max(height) by city, tree_form > 1"
+    )
+    species_totals = [
+        jt
+        for ident, jt in _joins(SWEEP_MODEL, query + ";")
+        if "filtered_by" in ident and ident.endswith("_at_local_species")
+    ]
+    assert species_totals == [JoinType.INNER]
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by tree_id;")
+        .fetchall()
+    )
+    assert rows == [("a1", 5), ("a2", 5), ("a3", 5), ("b1", 7), ("b2", 2)]
+
+
+def test_a_relation_rollup_lookup_pairs_as_the_walk_types_it():
+    """The FULL a merged relation key's pairs join on is the walk's to infer,
+    not a force on the summary's own lookup."""
+    query = "select bucket, biome, count(tree_id) as n"
+    lookups = [
+        jt
+        for right, jt in _joins(SUMMARY_BASE + SUMMARY, query + ";")
+        if right.startswith("enrichment")
+    ]
+    assert lookups == [JoinType.INNER]
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SUMMARY_BASE + SUMMARY))
+        .execute_query(query + " order by bucket nulls last, biome;")
+        .fetchall()
+    )
+    assert rows == [
+        ("Introduced", "desert", 2),
+        ("Native", "forest", 4),
+        (None, "forest", 1),
     ]

@@ -2224,8 +2224,9 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
     the targets it relates them to, then summed to the requested grain
     (`Cover.distinct_pairs_resum_exact`). LEFT, as the tree plan joins an
     unnest: a key whose list is empty or NULL keeps its rows under a NULL
-    target. FULL for a merged key, as the tree plan joins its pairs: a value
-    only a key with no rows lists answers an empty group."""
+    target, and the scan seeds the walk. Otherwise the walk types each join,
+    a merged key's pairs and the lookup on the summary's grain alike: a
+    forced FULL re-typed joins the walk had planned narrower."""
     match = _relation_rollup_source(request)
     if match is None:
         return None
@@ -2272,7 +2273,7 @@ def _plan_relation_rollup(request: SourceRequest) -> StrategyNode | None:
         force_join_type=(
             JoinType.LEFT_OUTER
             if all(c.derivation == Derivation.UNNEST for c in related.values())
-            else JoinType.FULL
+            else None
         ),
     )
     return _resummed(joined, outputs, environment, request.depth)

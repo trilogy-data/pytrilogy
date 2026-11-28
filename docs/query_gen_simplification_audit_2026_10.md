@@ -3032,6 +3032,72 @@ election, not the padded fallback.
       post-multi-node work and stay with it. And the pair whose addresses
       differ (1).
 
+38. **A relation rollup's joins are the walk's, and a split-key gate's
+    witness may come after the join it proves (landed; seam 2, the
+    planner's twin proof).** Two of seam 37's planner-debt classes.
+    - **No forced FULL on a relation rollup (`_plan_relation_rollup`).**
+      The summary's star merge forced every join FULL unless every related
+      target was an unnest, on the premise that the tree plan joins a
+      merged key's pairs FULL. It does not. Under the force, the walk had
+      typed 668 of the 669 joins it overwrote LEFT and the other INNER (the
+      `beside_property` lookup onto `enrichment`, matched both ways), so a
+      later stage narrowed each one back. Every one of those plans now keeps
+      the walk's type: the 448 relation-law tests render the same SQL, and
+      `beside_property` plans its lookup INNER and drops a padded count's
+      `coalesce(..., 0)`. The forced LEFT of an all-unnest relation stays:
+      it seeds the walk at the scan (`_forced_seed`), and without it the
+      `shape_flipped` laws render the same join as a RIGHT OUTER.
+    - **A later witness (`_narrow_late_gated`).** Law `spellings[11884]`
+      (both models): the walk joins the row stream LEFT to the filtered
+      per-species total, and only after that INNER to the unfiltered gate
+      group on `species`. `_narrow_gated` reads only INNER joins walked
+      before, so the join stayed LEFT until `OrderInnerJoinsFirst` moved
+      the gate first for the optimizer. The new pass runs once the walk and
+      `ensure_content_preservation` are done, and reuses `_gated_keys` over
+      every join. It narrows only where a row the LEFT would have kept
+      reaches every later join and then fails the WHERE:
+      - nothing pads the stream: no RIGHT or FULL join, and no LEFT onto
+        the rows;
+      - the join is a LEFT no widening made (`own_type`), of one left;
+      - no later join reads its right, so every other join keeps the type
+        `ensure_content_preservation` gave it (0.3.503's seed 38273: a
+        widening kept past a LEFT that narrowed);
+      - the key is one the rows never NULL, as for an earlier witness.
+
+    Pinned (red on `main`), in `tests/discovery/test_planned_join_narrowing.py`:
+    `test_a_split_key_gate_an_inner_walked_later_witnesses_the_key` and
+    `test_a_relation_rollup_lookup_pairs_as_the_walk_types_it`.
+
+    - **What it moves.** Census (`twins_census_plugin`, whole suite, tpc-ds
+      and tpc-h included): the equivalence upgrade falls from 20 firings in
+      19 tests to 17 in 16 (LEFT 11 to 9, FULL 9 to 8), and from 23 keys to
+      20. The three are `beside_property` and 11884 on both models; no
+      firing is new. Suite capture (`sqlcap`, `PYTHONHASHSEED=0`): those
+      three are the only tests whose joins or COALESCEs change. Each plans
+      the join INNER that the optimizer narrowed before, so the final join
+      types are the same, and each drops a padded count's `coalesce(..., 0)`
+      the planned outer join had made the source zero-fill. The other 650
+      moves are seam 37's capture noise (column and ON-pair order, and the
+      tpc files compiling one statement a different number of times per
+      worker: same distinct SQL).
+
+    Gates, against `b3078f4`: corpus (206 statements, tpc-ds aggregates
+    included) 0 moved; fuzzer 522/522; suite: the same 25 credential-bound
+    failures as `main`, and no test changes outcome.
+
+    **What is left.** 17 equivalence firings, 20 keys:
+    - **Different streams (6 keys in 5 firings)**, unchanged from seam 36:
+      a proof over two joins together (seam 37's trace of 4104).
+    - **Split-key gates (2)**: `test_derived_key_domain`'s absent-key
+      region, where the region pads `status` NULL on one side only
+      (`_nulls_pair`). It needs the padding NULL told apart from the value
+      NULL, the same question the grain-pin render (seam 28) is waiting on.
+    - **No planned merge (9)**, unchanged: the rule's post-multi-node work.
+      And the pair whose addresses differ (1).
+
+    The planner's debt is now 8 firings (9 keys), and none is a shape a
+    modeling suite plans.
+
 ## Gate used
 
 ```

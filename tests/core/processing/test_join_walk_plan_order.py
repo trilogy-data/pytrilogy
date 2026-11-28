@@ -1,11 +1,18 @@
+import json
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
+from tests.discovery.test_oracle_sweep_laws import BASE as SWEEP_MODEL
 from tests.helpers.walk_order import flip_walk_spelling
+from trilogy import Environment
 from trilogy.core.enums import JoinType
+from trilogy.core.processing import join_resolution as jr
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
+    JoinOrderOutput,
     PlannedPairs,
     SideFacts,
     _shape_terms,
@@ -15,6 +22,7 @@ from trilogy.core.processing.join_resolution import (
 )
 from trilogy.core.processing.nodes.merge_node import _forced_seed
 from trilogy.core.processing.v4_helper.join_plan import JoinPlan, Pairing, PairingKind
+from trilogy.core.query_processor import get_query_datasources
 
 
 def test_a_star_ranks_its_hub_first():
@@ -563,3 +571,55 @@ def test_a_grain_the_on_holds_part_of_keeps_the_whole_on():
     )
     assert join.type != JoinType.INNER
     assert join.on is None
+
+
+def _late_gated_joins(*later: JoinOrderOutput) -> list[JoinOrderOutput]:
+    return [
+        JoinOrderOutput(right="total", type=JoinType.LEFT_OUTER, keys={"rows": {"k"}}),
+        *later,
+    ]
+
+
+def _late_gated(joins: list[JoinOrderOutput], monkeypatch) -> list[JoinType]:
+    monkeypatch.setattr(jr, "_gated_keys", lambda *args: True)
+    jr._narrow_late_gated(joins, cast(JoinFacts, None))
+    return [j.type for j in joins]
+
+
+def test_a_later_inner_witness_narrows_a_left_in_an_unpadded_stream(monkeypatch):
+    gate = JoinOrderOutput(right="gate", type=JoinType.INNER, keys={"rows": {"k"}})
+    assert _late_gated(_late_gated_joins(gate), monkeypatch) == [
+        JoinType.INNER,
+        JoinType.INNER,
+    ]
+
+
+@pytest.mark.parametrize(
+    "later",
+    [
+        JoinOrderOutput(right="pad", type=JoinType.FULL, keys={"rows": {"j"}}),
+        JoinOrderOutput(right="reader", type=JoinType.INNER, keys={"total": {"j"}}),
+        JoinOrderOutput(right="rows", type=JoinType.LEFT_OUTER, keys={"seed": {"j"}}),
+    ],
+    ids=["a_padding_join", "a_later_reader", "a_left_onto_the_rows"],
+)
+def test_a_late_witness_keeps_the_left_past(later, monkeypatch):
+    assert _late_gated(_late_gated_joins(later), monkeypatch)[0] == JoinType.LEFT_OUTER
+
+
+def test_a_late_gated_narrowing_is_traced():
+    env = Environment()
+    env.parse(SWEEP_MODEL)
+    _, statements = env.parse(
+        "select tree_id, max(height) by city, tree_form as v0 "
+        "where sum(height) by species < 30 having count_distinct(tag) by species = 1 "
+        "or max(height) by city, tree_form > 1;"
+    )
+    with plan_trace.recording("late") as trace:
+        get_query_datasources(env, statements[-1])
+    rules = [
+        s["data"].get("rule")
+        for s in json.loads(json.dumps(trace.to_dict()))["steps"]
+        if isinstance(s.get("data"), dict)
+    ]
+    assert "gated_late" in rules
