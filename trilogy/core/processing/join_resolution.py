@@ -1685,9 +1685,15 @@ def _same_filters(left: DataSource, right: DataSource) -> bool:
 
 
 def leaf_tables(source: DataSource) -> frozenset[str]:
-    if isinstance(source, QueryDatasource):
-        return frozenset().union(*(leaf_tables(sub) for sub in source.datasources))
-    return frozenset({source.identifier})
+    out: set[str] = set()
+    stack = [source]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, QueryDatasource):
+            stack.extend(current.datasources)
+        else:
+            out.add(current.identifier)
+    return frozenset(out)
 
 
 def same_rows(left: DataSource, right: DataSource) -> bool:
