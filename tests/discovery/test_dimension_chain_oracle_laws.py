@@ -19,6 +19,7 @@ import pytest
 from tests.helpers.rows import fetch_rows
 from tests.helpers.walk_order import WALKS, flip_walk_spelling
 from trilogy import Dialects
+from trilogy.constants import CONFIG
 
 SEEDS = 600
 NAMES = ["737", "A320", "E175"]
@@ -190,3 +191,39 @@ def _assert_matches_raw_rows(seed: int) -> None:
     query = f"select {select};"
     got = [tuple(r) for r in fetch_rows(executor, query)]
     assert _sorted(got) == _sorted(_oracle(rows, attrs, measures)), (query, text)
+
+
+UNFLOWN = """
+key model_code string;
+property model_code.model_maker string;
+datasource aircraft_model (model_code: {model}model_code, model_maker)
+grain (model_code)
+query '''SELECT * FROM (VALUES ('M0', 'BOEING'), ('M9', 'EMBRAER'))
+    t(model_code, model_maker)''';
+key aircraft_id int;
+unique property aircraft_id.tail_num string;
+key id int;
+datasource flight (id, tail_num: ?tail_num) grain (id)
+query '''SELECT * FROM (VALUES (0, 'N0'), (1, null)) t(id, tail_num)''';
+datasource aircraft (aircraft_id, tail_num, model_code) grain (aircraft_id)
+query '''SELECT * FROM (VALUES (0, 'N0', 'M0'), (9, 'N9', 'M9'))
+    t(aircraft_id, tail_num, model_code)''';
+"""
+
+
+@pytest.mark.parametrize("model", ["", "~"])
+@pytest.mark.parametrize("upgrade", [True, False])
+def test_a_model_only_an_unflown_aircraft_names_is_no_flights_row(
+    model: str, upgrade: bool, monkeypatch: pytest.MonkeyPatch
+):
+    """The aircraft carry every model, so a `~` on the model table licenses no
+    extension row: M9's only aircraft never flew, and the walk's RIGHT join to
+    the flights already shed it. The answer is the plain join's, whether or
+    not the optimizer narrows the lookup."""
+    monkeypatch.setattr(
+        CONFIG.optimizations, "upgrade_outer_key_set_equivalence", upgrade
+    )
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(UNFLOWN.format(model=model))
+    rows = fetch_rows(executor, "select model_maker, count(id) as n;")
+    assert _sorted([tuple(r) for r in rows]) == [("BOEING", 1), (None, 1)]
