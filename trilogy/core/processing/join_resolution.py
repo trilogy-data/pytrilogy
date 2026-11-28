@@ -399,6 +399,8 @@ class JoinFacts:
     # domains the node emits: a `~` key outside this set licenses no extension
     # rows here, so empty means none of them do
     demanded_domains: frozenset[str] = frozenset()
+    # spans of regions nothing in the statement demands (`SpanScope.unextended`)
+    unextended_keys: frozenset[str] = frozenset()
     # an arm key of a merged attribute -> the attribute it reaches
     span_families: Mapping[str, str] = field(default_factory=dict)
     # two sides -> the keys the join plan pairs them on, each a column both
@@ -789,10 +791,12 @@ def _partial_domain_join(
     # keyed by it) licenses no extension rows here. When the pair is
     # recognizably fact-to-dimension (one side's grain is the connecting keys
     # themselves) the dimension is a pure lookup whose unmatched rows are
-    # grainless, so anchor the fact side; preserving it keeps a value-null
-    # fact key's rows too (`Lookup.where_on_lookup_is_inner`). A demanded key
-    # or ambiguous topology (which a side with no known grain is) stays
-    # row-preserving.
+    # grainless, so anchor the fact side. A demanded key, ambiguous topology
+    # (which a side with no known grain is), or a value-null fact key on a
+    # region the statement demands stays row-preserving; on one it does not
+    # (read only by a WHERE), preserving the fact keeps its NULL-keyed rows
+    # and a dimension row would be one no fact holds
+    # (`Lookup.where_on_lookup_is_inner`).
     if (
         partial_keys
         and not partial_keys & facts.demanded_domains
@@ -801,7 +805,9 @@ def _partial_domain_join(
         left_is_dim = bool(left_facts.grain) and left_facts.grain <= keys
         right_is_dim = bool(right_facts.grain) and right_facts.grain <= keys
         if left_is_dim != right_is_dim:
-            return _preserving(right_is_dim)
+            fact = right_facts if left_is_dim else left_facts
+            if not keys & fact.value_nullables or partial_keys <= facts.unextended_keys:
+                return _preserving(right_is_dim)
     return JoinType.FULL
 
 
@@ -3977,6 +3983,7 @@ def get_node_joins(
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
     *,
+    unextended_spans: frozenset[str] = frozenset(),
     planned_pairs: Mapping[frozenset[str], frozenset[str]],
     side_ranks: Mapping[str, int] | None = None,
     seed: str | None = None,
@@ -4119,6 +4126,12 @@ def get_node_joins(
             frozenset(canon_node(span) for span in spans) for spans in keyspace.families
         ),
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
+        # an arm of a merged attribute is demanded through it, which the
+        # region demand does not read (`Keyspace.output_demanded_spans`)
+        unextended_keys=frozenset(
+            canon_node(a)
+            for a in unextended_spans - frozenset().union(*keyspace.axis_arms)
+        ),
         span_families=span_families,
         pair_keys=pair_nodes,
         seed=f"ds~{seed}" if seed else None,

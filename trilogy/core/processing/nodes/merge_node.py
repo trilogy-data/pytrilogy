@@ -600,6 +600,7 @@ class MergeNode(StrategyNode):
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
+                    unextended_spans=self.span_scope.unextended,
                     planned_pairs=planned_pairs,
                     side_ranks=side_ranks or {},
                     seed=_forced_seed(self.force_join_type, side_ranks or {}),
