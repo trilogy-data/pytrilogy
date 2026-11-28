@@ -14,6 +14,18 @@ on:
       swept_to:
         description: Sweep seeds 0 up to this one
         default: "390000"
+      family:
+        description: "A/B instead: this family on the dispatched branch against `base`"
+        default: ""
+      seeds:
+        description: "A/B: the seeds, as `--seeds` takes them"
+        default: "0:320000"
+      base:
+        description: "A/B: the branch, tag or commit to compare with"
+        default: main
+      shards:
+        description: "A/B: runners to fan out over (4 cores each)"
+        default: "16"
   # A change to the sweep itself runs a short range, so the workflow is tested
   # before the night it is needed.
   pull_request:
@@ -21,7 +33,7 @@ on:
     paths: ["local_scripts/oracle_sweep/**", ".github/workflows/oracle_sweep.yml"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.family }}
   cancel-in-progress: true
 
 env:
@@ -29,11 +41,17 @@ env:
   # (docs/handoff_formalization_next.md, "State").
   SWEPT_TO: ${{ github.event_name == 'pull_request' && '4000' || inputs.swept_to || '390000' }}
   SHARDS: 4
+  # The A/B a round runs by dispatch (local_scripts/oracle_sweep/README.md); a
+  # pull request that touches the sweep runs a short one.
+  AB_FAMILY: ${{ inputs.family || 'filters' }}
+  AB_SEEDS: ${{ inputs.seeds || '0:1000' }}
+  AB_BASE: ${{ inputs.base || 'main' }}
+  AB_SHARDS: ${{ github.event_name == 'pull_request' && '2' || inputs.shards || '16' }}
 
 jobs:
   sweep:
     name: ${{ matrix.family }} ${{ matrix.shard }}
-    if: github.repository == 'trilogy-data/pytrilogy'
+    if: github.repository == 'trilogy-data/pytrilogy' && !inputs.family
     runs-on: ubuntu-latest
     # ~25 minutes a shard at 390,000 seeds on four cores.
     timeout-minutes: 90
@@ -84,3 +102,125 @@ jobs:
         with:
           name: sweep-${{ matrix.family }}-${{ matrix.shard }}
           path: records.jsonl
+
+  ab-plan:
+    name: A/B plan
+    if: github.repository == 'trilogy-data/pytrilogy' && (inputs.family || github.event_name == 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: 'read'
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - id: plan
+        run: |
+          git fetch --depth 1 origin "$AB_BASE"
+          echo "base=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          echo "shards=[$(seq -s, 0 $(( AB_SHARDS - 1 )))]" >> "$GITHUB_OUTPUT"
+
+  ab:
+    name: A/B ${{ matrix.shard }}
+    needs: ab-plan
+    runs-on: ubuntu-latest
+    # 320,000 filters seeds, both sides, over 16 shards: ~25 minutes each.
+    timeout-minutes: 120
+    permissions:
+      contents: 'read'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.ab-plan.outputs.shards) }}
+    env:
+      MATURIN_PEP517_USE_BASE_PYTHON: '1'
+      BASE_SHA: ${{ needs.ab-plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: stable
+          cache-workspaces: trilogy/scripts/dependency
+          cache-key: laws
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            requirements.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
+      - name: Build Rust extension
+        run: |
+          python -m pip install -e .
+      # The base side is paid once per commit, generators and native planner:
+      # a later A/B of the round restores it and sweeps the branch alone.
+      - id: key
+        run: |
+          echo "ab=$(echo "$AB_FAMILY $BASE_SHA $AB_SEEDS ${{ matrix.shard }}/$AB_SHARDS" | sha1sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: The base's records, if an earlier A/B swept them
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        with:
+          path: base.jsonl
+          key: oracle-ab-${{ steps.key.outputs.ab }}-${{ hashFiles('tests/discovery/test_oracle_*_laws.py', 'tests/discovery/test_rollup_resolution_laws.py', 'local_scripts/oracle_sweep/runner.py', 'trilogy/scripts/dependency/src/**') }}
+      - name: Sweep both sides
+        run: |
+          git fetch --depth 1 origin "$BASE_SHA"
+          # exits 1 when the branch breaks a seed: the report job says so
+          python -m local_scripts.oracle_sweep ab --family "$AB_FAMILY" --seeds "$AB_SEEDS" \
+            --shard "${{ matrix.shard }}/$AB_SHARDS" --base "$BASE_SHA" \
+            --base-records base.jsonl --out new.jsonl || [ -s new.jsonl ]
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: ab-${{ matrix.shard }}
+          path: |
+            base.jsonl
+            new.jsonl
+
+  ab-report:
+    name: A/B report
+    needs: [ab-plan, ab]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: 'read'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: ab-*
+          path: shards
+      - name: Compare
+        shell: bash  # pipefail: the comparison's exit code, not tee's
+        run: |
+          cat shards/*/base.jsonl > base.jsonl
+          cat shards/*/new.jsonl > new.jsonl
+          {
+            echo "$AB_FAMILY $AB_SEEDS: ${{ github.sha }} against ${{ needs.ab-plan.outputs.base }}"
+            # exits 1 when the branch breaks a seed the base answers
+            python -m local_scripts.oracle_sweep diff base.jsonl new.jsonl --show 400
+          } | tee report.txt
+      - name: Summarize
+        if: always()
+        run: |
+          { echo '```'; cut -c1-4000 report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          gzip base.jsonl new.jsonl
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        if: always()
+        with:
+          name: ab-records
+          path: |
+            report.txt
+            base.jsonl.gz
+            new.jsonl.gz

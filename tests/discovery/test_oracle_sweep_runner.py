@@ -20,6 +20,36 @@ def test_parse_seeds_file(tmp_path: Path):
     assert runner.parse_seeds(f"@{path}") == [3, 9]
 
 
+def test_shards_split_the_seeds_by_chunk():
+    seeds = runner.parse_seeds("100:1100")
+    shards = [runner.shard_seeds(seeds, f"{i}/3") for i in range(3)]
+    assert sorted(s for shard in shards for s in shard) == seeds
+    assert shards[0] == [*range(100, 250), *range(750, 1000)]
+    assert all(len({s // runner.CHUNK % 3 for s in shard}) == 1 for shard in shards)
+
+
+def test_held_base_records_are_not_swept_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    swept = {(s, m): {**OK, "seed": s, "model": m} for s in (1, 2) for m in ("base",)}
+    calls = []
+
+    def sweep(family: str, seeds: list[int], **kwargs: object) -> dict:
+        calls.append(seeds)
+        return {k: r for k, r in swept.items() if k[0] in seeds}
+
+    monkeypatch.setattr(runner, "sweep", sweep)
+    held = tmp_path / "base.jsonl"
+    first = runner.base_side("filters", [1, 2], "main", held, models=["base"])
+    again = runner.base_side("filters", [2], "main", held, models=["base"])
+    assert first == swept and again == {(2, "base"): swept[(2, "base")]}
+    assert calls == [[1, 2]]
+    assert runner.base_side("filters", [1, 3], "main", held, models=["base"]) == {
+        (1, "base"): swept[(1, "base")]
+    }
+    assert calls == [[1, 2], [1, 3]]
+
+
 def test_compare_names_what_moved():
     base = {
         (1, "base"): OK,

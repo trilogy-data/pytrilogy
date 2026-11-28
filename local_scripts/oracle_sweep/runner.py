@@ -239,6 +239,13 @@ def parse_seeds(spec: str) -> list[int]:
     return sorted(seeds)
 
 
+def shard_seeds(seeds: list[int], spec: str) -> list[int]:
+    """Shard `i/n` of `seeds`: every n-th chunk, so the shards cost alike and a
+    `--carry-state` chunk stays whole."""
+    index, _, count = spec.partition("/")
+    return [s for s in seeds if s // CHUNK % int(count) == int(index)]
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=REPO, check=True, capture_output=True, text=True
@@ -467,6 +474,24 @@ def _sweep(
     return out
 
 
+def base_side(
+    family: str,
+    seeds: list[int],
+    ref: str,
+    held: Path | None = None,
+    **kwargs: Any,
+) -> dict[Key, Record]:
+    """The base's records: read from `held` when it has every one, else swept
+    and written there. The caller keys `held` on the commit and generators."""
+    wanted = [(s, m) for s in seeds for m in kwargs.get("models", MODELS)]
+    if held and (records := read_records(held)).keys() >= set(wanted):
+        return {key: records[key] for key in wanted}
+    base = sweep(family, seeds, ref=ref, **kwargs)
+    if held:
+        write_records(held, base.values())
+    return base
+
+
 def summarize(records: dict[Key, Record]) -> Record:
     status = Counter(r["status"] for r in records.values())
     planned = [r for r in records.values() if "sql" in r]
@@ -582,6 +607,7 @@ def _parser() -> argparse.ArgumentParser:
             help=f"keep each select's definitions for the next, per {CHUNK} seeds",
         )
         p.add_argument("--no-cache", action="store_true", help="run every seed again")
+        p.add_argument("--shard", help="i/n: every n-th chunk of the seeds, from i")
 
     run = sub.add_parser("run", help="sweep the working tree, or --ref")
     common(run)
@@ -592,6 +618,11 @@ def _parser() -> argparse.ArgumentParser:
     common(ab)
     ab.add_argument("--base", default="origin/main")
     ab.add_argument("--out", type=Path, help="the working tree's records")
+    ab.add_argument(
+        "--base-records",
+        type=Path,
+        help="the base's records: read if complete, else swept and written",
+    )
     ab.add_argument("--show", type=int, default=20)
 
     diff = sub.add_parser("diff", help="compare two record files")
@@ -620,6 +651,8 @@ def main(argv: list[str] | None = None) -> int:
         show_seed(args.family, args.seed, models, args.ref)
         return 0
     seeds = parse_seeds(args.seeds)
+    if args.shard:
+        seeds = shard_seeds(seeds, args.shard)
     kwargs = {
         "models": models,
         "jobs": args.jobs,
@@ -633,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(summarize(records)))
         return 0 if not print_bad(args.family, records) else 1
     print(f"base {args.base}", file=sys.stderr)
-    base = sweep(args.family, seeds, ref=args.base, **kwargs)
+    base = base_side(args.family, seeds, args.base, args.base_records, **kwargs)
     print("working tree", file=sys.stderr)
     new = sweep(args.family, seeds, proven=base, **kwargs)
     write_records(args.out or CACHE / f"last-{args.family}.jsonl", new.values())

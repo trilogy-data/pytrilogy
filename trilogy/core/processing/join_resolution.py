@@ -1621,7 +1621,10 @@ def _same_filters(left: DataSource, right: DataSource) -> bool:
     no member, so a pairing on it does not restrict either side: a lookup
     that skipped the WHERE pairs every padded row it has (each customer with
     no order, of any nation) with the other side's."""
-    lefts, rights = applied_atoms(left), applied_atoms(right)
+    return _same_atoms(applied_atoms(left), applied_atoms(right))
+
+
+def _same_atoms(lefts: Sequence[BoolExpr], rights: Sequence[BoolExpr]) -> bool:
     return all(any(a == b for b in rights) for a in lefts) and all(
         any(a == b for b in lefts) for a in rights
     )
@@ -3329,10 +3332,36 @@ class _Carries:
     concepts: Mapping[tuple[str, str], BuildConcept]
     graph: DomainGraph
     memo: dict[tuple[str, str, bool], bool] = field(default_factory=dict)
+    atoms: dict[str, list[BoolExpr]] = field(default_factory=dict)
+    filter_memo: dict[tuple[str, str], bool] = field(default_factory=dict)
+    leaves: dict[str, frozenset[str]] = field(default_factory=dict)
 
     @cached_property
     def relation_stamps(self) -> frozenset[str]:
         return frozenset(self.graph.subset_sources())
+
+    def _atoms(self, side: str) -> list[BoolExpr]:
+        if side not in self.atoms:
+            self.atoms[side] = applied_atoms(self.nodes[side])
+        return self.atoms[side]
+
+    def same_filters(self, a: str, b: str) -> bool:
+        """`_same_filters` of two sides, walked once per side and pair."""
+        entry = (a, b)
+        if entry not in self.filter_memo:
+            self.filter_memo[entry] = self.filter_memo[(b, a)] = _same_atoms(
+                self._atoms(a), self._atoms(b)
+            )
+        return self.filter_memo[entry]
+
+    def same_leaves(self, a: str, b: str) -> bool:
+        for side in (a, b):
+            if side not in self.leaves:
+                self.leaves[side] = leaf_tables(self.nodes[side])
+        return self.leaves[a] == self.leaves[b]
+
+    def same_rows(self, a: str, b: str) -> bool:
+        return self.same_leaves(a, b) and self.same_filters(a, b)
 
     def providers(self, side: str, key: str) -> frozenset[str]:
         return _concept_providers(
@@ -3376,7 +3405,7 @@ def _twins(
         and (
             related
             or key not in sides[a].nullables | sides[b].nullables
-            or same_rows(carries.nodes[a], carries.nodes[b])
+            or carries.same_rows(a, b)
         )
         and carries(a, key)
         and carries(b, key)
@@ -3393,14 +3422,14 @@ def _one_read(
     null-safely, and only where no span pads it for one side alone; a
     grouping set's subtotal NULL is no row of the stream."""
     na, nb = carries.nodes[a], carries.nodes[b]
-    if key in sides[a].rollup_padded | sides[b].rollup_padded or not _same_filters(
-        na, nb
+    if key in sides[a].rollup_padded | sides[b].rollup_padded or not (
+        carries.same_filters(a, b)
     ):
         return False
     providers, others = carries.providers(a, key), carries.providers(b, key)
     if not (
         providers
-        and (providers == others and same_rows(na, nb))
+        and (providers == others and carries.same_rows(a, b))
         or providers
         and others
         and bool(
@@ -3470,7 +3499,7 @@ def _gated_twins(
     providers, others = carries.providers(rows, key), carries.providers(filtered, key)
     if not (
         providers
-        and (providers == others and leaf_tables(na) == leaf_tables(nb))
+        and (providers == others and carries.same_leaves(rows, filtered))
         or providers
         and others
         and bool(
