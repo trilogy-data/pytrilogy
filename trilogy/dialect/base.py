@@ -365,18 +365,63 @@ def _own_aggregate_definition(cte: "CTE | UnionCTE", c: BuildConcept) -> BuildCo
     return c
 
 
-def _aggregate_operator(cte: "CTE | UnionCTE", c: BuildConcept) -> FunctionType:
+def _aggregate_operator(
+    cte: "CTE | UnionCTE", c: BuildConcept, zero_tested: frozenset[str] = frozenset()
+) -> FunctionType:
     """A COUNT this CTE computes over a stream repeating its counted key
-    renders DISTINCT (`QueryDatasource.distinct_counts`)."""
+    renders DISTINCT (`QueryDatasource.distinct_counts`), unless it is only
+    tested against zero, which repeats cannot change."""
     assert isinstance(c.lineage, BuildAggregateWrapper)
     operator = c.lineage.function.operator
     if (
         operator == FunctionType.COUNT
         and isinstance(cte, CTE)
         and c.address in cte.distinct_counts
+        and c.address not in zero_tested
     ):
         return FunctionType.COUNT_DISTINCT
     return operator
+
+
+_ZERO_TEST_OPERATORS: dict[str, Callable[[int, int], bool]] = {
+    ">": lambda n, k: n > k,
+    ">=": lambda n, k: n >= k,
+    "<": lambda n, k: n < k,
+    "<=": lambda n, k: n <= k,
+    "=": lambda n, k: n == k,
+    "!=": lambda n, k: n != k,
+}
+
+_MIRRORED = {">": "<", "<": ">", ">=": "<=", "<=": ">="}
+
+
+def _unwrap_parenthetical(e: Any) -> Any:
+    while isinstance(e, BuildParenthetical):
+        e = e.content
+    return e
+
+
+def zero_tested_count(e: BuildComparison) -> str | None:
+    """The COUNT `e` compares to an integer literal when the comparison holds
+    alike for every count of one or more: it only asks whether there are rows
+    (`count(x) > 0`, `count(x) = 0`), so DISTINCT cannot change its answer."""
+    left, right = _unwrap_parenthetical(e.left), _unwrap_parenthetical(e.right)
+    operator = e.operator.value
+    if isinstance(left, int) and not isinstance(left, bool):
+        left, right = right, left
+        operator = _MIRRORED.get(operator, operator)
+    test = _ZERO_TEST_OPERATORS.get(operator)
+    if (
+        test is None
+        or not isinstance(right, int)
+        or isinstance(right, bool)
+        or not isinstance(left, BuildConcept)
+        or not isinstance(left.lineage, BuildAggregateWrapper)
+        or left.lineage.function.operator != FunctionType.COUNT
+    ):
+        return None
+    answers = {test(n, right) for n in range(1, max(right, 1) + 3)}
+    return left.address if len(answers) == 1 else None
 
 
 def _existence_alias(target: str, cte: "CTE | UnionCTE | None") -> str:
@@ -1282,6 +1327,8 @@ class BaseDialect:
         # rendering membership-subselect expression operands whose columns must
         # resolve against the existence source rather than the host CTE
         self._existence_ref_overrides: dict[str, str] = {}
+        # COUNTs a comparison being rendered only tests against zero
+        self._zero_tested_counts: frozenset[str] = frozenset()
 
     def prepare_sources(
         self, addresses: Iterable[Address], executor: "Executor"
@@ -1817,7 +1864,7 @@ class BaseDialect:
                     f"({arg})" if _needs_arithmetic_parentheses(v) else arg
                     for arg, v in zip(args, c.lineage.function.arguments)
                 ]
-                operator = _aggregate_operator(cte, c)
+                operator = _aggregate_operator(cte, c, self._zero_tested_counts)
                 if cte.group_to_grain:
                     if (
                         _aggregate_over_collapsed_filter(cte, c.lineage)
@@ -2650,14 +2697,21 @@ class BaseDialect:
 
             return f"{self.render_expr(e.left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
-            return self.render_comparison(
-                e.left,
-                e.right,
-                e.operator,
-                cte=cte,
-                raise_invalid=raise_invalid,
-                materialized_addresses=materialized_addresses,
-            )
+            zero_tested = zero_tested_count(e)
+            prior_tested = self._zero_tested_counts
+            if zero_tested:
+                self._zero_tested_counts = prior_tested | {zero_tested}
+            try:
+                return self.render_comparison(
+                    e.left,
+                    e.right,
+                    e.operator,
+                    cte=cte,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
+            finally:
+                self._zero_tested_counts = prior_tested
         elif isinstance(e, CONDITIONAL_ITEMS):
             left_rendered = self.render_expr(
                 e.left,

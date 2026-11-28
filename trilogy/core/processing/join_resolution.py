@@ -789,8 +789,9 @@ def _partial_domain_join(
     # keyed by it) licenses no extension rows here. When the pair is
     # recognizably fact-to-dimension (one side's grain is the connecting keys
     # themselves) the dimension is a pure lookup whose unmatched rows are
-    # grainless, so anchor the fact side. A demanded key, ambiguous topology
-    # (which a side with no known grain is), or a value-null fact key stays
+    # grainless, so anchor the fact side; preserving it keeps a value-null
+    # fact key's rows too (`Lookup.where_on_lookup_is_inner`). A demanded key
+    # or ambiguous topology (which a side with no known grain is) stays
     # row-preserving.
     if (
         partial_keys
@@ -800,9 +801,7 @@ def _partial_domain_join(
         left_is_dim = bool(left_facts.grain) and left_facts.grain <= keys
         right_is_dim = bool(right_facts.grain) and right_facts.grain <= keys
         if left_is_dim != right_is_dim:
-            fact = right_facts if left_is_dim else left_facts
-            if not keys & fact.value_nullables:
-                return _preserving(right_is_dim)
+            return _preserving(right_is_dim)
     return JoinType.FULL
 
 

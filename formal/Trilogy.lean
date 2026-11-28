@@ -35,3 +35,4 @@ import Trilogy.ValueSet
 import Trilogy.Identity
 import Trilogy.Nullability
 import Trilogy.Filters
+import Trilogy.Lookup
