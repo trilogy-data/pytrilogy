@@ -92,6 +92,8 @@ class JoinOrderOutput:
     # every row of the left stream (the right) has a partner (`_narrow_covered`)
     matched_left: bool = False
     matched_right: bool = False
+    # the keys the ON keeps, when the walk narrowed on them alone (`_grain_keys`)
+    on: frozenset[str] | None = None
 
     @property
     def lefts(self) -> set[str]:
@@ -381,6 +383,9 @@ class JoinFacts:
     anchor_keys: frozenset[str] = frozenset()
     # keys of ROOT-member authored join groups
     authored_join_keys: frozenset[str] = frozenset()
+    # each side of every authored join declaration: a pair on one is never
+    # implied by another
+    authored_members: frozenset[str] = frozenset()
     # spans the statement elected another group to own
     extent_free_keys: frozenset[str] = frozenset()
     # the plan's regions in this merge's spelling: a holder unions the spans of
@@ -1283,6 +1288,23 @@ def _intact(side: str, walked: list[str], joins: list[JoinOrderOutput]) -> bool:
     return present
 
 
+def _grain_keys(left: str, right: str, keys: set[str], facts: JoinFacts) -> set[str]:
+    """The `keys` an ON between `left` and `right` keeps: the right's grain
+    alone when the ON holds all of it, since one right row per value of it
+    leaves every other pair to that row (`reduce_concept_pairs`). Not a grain
+    either side NULLs, which may pair null-safely and decides nothing, nor
+    past a pair an author declared, which no grain implies."""
+    grain = facts.side(right).grain
+    if (
+        not grain
+        or not grain < keys
+        or grain & (facts.side(left).nullables | facts.side(right).nullables)
+        or (keys - grain) & facts.authored_members
+    ):
+        return keys
+    return set(grain)
+
+
 def _narrow_covered(
     join: JoinOrderOutput,
     walked: list[str],
@@ -1294,7 +1316,9 @@ def _narrow_covered(
     subset side's unmatched rows, since it has none. A right subset side
     needs the covering left's rows all still in the stream; a subset side
     padded in earlier is kept by `ensure_content_preservation`. Of several
-    lefts, the one holding every key decides (`_equated_lead`)."""
+    lefts, the one holding every key decides (`_equated_lead`). A side the
+    whole ON does not cover may be covered on the keys the right's grain
+    keeps of it (`_grain_keys`): the ON is then those keys (`join.on`)."""
     left = _equated_lead(join, joins)
     if left is None:
         return
@@ -1304,8 +1328,15 @@ def _narrow_covered(
         for other, other_keys in join.keys.items()
         if other != left
     ]
+    whole = _covered_sides(left, join.right, keys, facts)
+    kept = keys if others else _grain_keys(left, join.right, keys, facts)
+    on_grain = (
+        [s for s in _covered_sides(left, join.right, kept, facts) if s not in whole]
+        if kept != keys
+        else []
+    )
     narrowed = join.type
-    for sub_is_left in _covered_sides(left, join.right, keys, facts):
+    for sub_is_left in whole + on_grain:
         if not all(sub_is_left in covered for covered in others):
             continue
         if sub_is_left:
@@ -1315,6 +1346,8 @@ def _narrow_covered(
         else:
             continue
         narrowed = _without_preserving(narrowed, sub_is_left)
+        if sub_is_left in on_grain:
+            join.on = frozenset(kept)
     if narrowed != join.type and plan_trace.active():
         _trace_join_type(left, join.right, keys, facts, walked, narrowed, "covered")
     join.type = narrowed
@@ -3970,6 +4003,9 @@ def get_node_joins(
             canon_node(pair.canonical.address)
             for pair in authored_join_pair_candidates(environment)
         ),
+        authored_members=frozenset(
+            canon_node(a) for a in environment.domain_graph.authored_join_members()
+        ),
         extent_free_keys=frozenset(canon_node(a) for a in extent_free_spans),
         region_partition=tuple(
             frozenset(canon_node(span) for span in spans) for spans in keyspace.families
@@ -4038,6 +4074,7 @@ def get_node_joins(
                     # greedily in input order, so unordered iteration would
                     # make the surviving pair set vary run to run.
                     for concept in sorted(v)
+                    if j.on is None or concept in j.on
                 ],
                 ds_node_map[j.right],
                 j.type,

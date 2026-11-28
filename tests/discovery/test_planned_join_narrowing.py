@@ -9,6 +9,7 @@ from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
 from tests.discovery.test_oracle_sweep_laws import BASE as SWEEP_MODEL
+from tests.engine.test_duckdb_partial_key_assembly import _FORKED as FORKED_MODEL
 from tests.engine.test_grain_pin_unnest_merge_filter import MERGED_SPECIES
 from tests.engine.test_grain_pin_unnest_merge_filter import MODEL as PIN_MODEL
 from tests.engine.test_unmodelled_regions import (
@@ -225,3 +226,27 @@ def test_twins_of_one_stream_beside_the_set_its_filter_reads():
         .fetchall()
     )
     assert rows == [("A", "broadleaf", 3, 5, 2.5), ("A", None, 1, None, None)]
+
+
+def test_a_side_covered_on_the_rights_grain_pairs_inner_past_a_key_it_prunes():
+    """Items pair orders on `(order_id, user_id)`; `user_id` is `~` on both
+    and covers neither way, but the ON keeps only the orders grain."""
+    query = "select order_id, product_id, total_pair_cost"
+    orders = [
+        jt
+        for right, jt in _joins(FORKED_MODEL, query + ";")
+        if right.startswith("orders")
+    ]
+    assert orders == [JoinType.INNER]
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(FORKED_MODEL))
+        .execute_query(query + " order by order_id nulls last, product_id;")
+        .fetchall()
+    )
+    assert rows == [
+        (100, 10, 100),
+        (100, 20, 150),
+        (101, 10, 120),
+        (102, 20, 210),
+        (None, 30, None),
+    ]

@@ -122,11 +122,17 @@ What is left of 2.1:
   firings in 26 tests, 34 keys. Seam 36 plans 11 more keys of the
   different-streams class (twins of one stream each beside the one-row
   total over it, or beside the set a subselect of its filter reads): 22
-  equivalence firings in 20 tests, 25 keys. The rest are the lead: see seam
-  36's "What is left". Of them, the 4 proved-but-not-narrowed keys look the
-  most tractable: the walk judges coverage on keys `reduce_concept_pairs`
-  later prunes. Of the 4 split-key keys, 2 need a witness INNER joined after
-  the join it proves.
+  equivalence firings in 20 tests, 25 keys. Seam 37 plans 3 of the 4
+  proved-but-not-narrowed keys (a side covered on the keys the right's
+  grain keeps of the ON, which the walk now states): 20 firings in 19 tests,
+  23 keys, counting the tpc-ds file's one firing. The rest are the lead: see
+  seam 37's "What is left". 9 of the 20 are joins no planned merge holds
+  (5 hand-built unit CTEs, 4 an optimizer rule built or moved), which is
+  the rule's own post-multi-node work: the planner's debt is the other 11
+  firings (12 keys). Of those, the forced-FULL merge (1) is the most
+  tractable; the 6 different-streams keys are single fuzz shapes needing a
+  proof over two joins together, and of the 4 split-key keys, 2 need a
+  witness INNER joined after the join it proves.
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys

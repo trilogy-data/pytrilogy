@@ -507,3 +507,59 @@ def test_a_pairing_on_a_sides_whole_grain_leaves_nothing_out():
     facts = replace(facts, sides={**facts.sides, "ds~a_facts": a_facts})
     assert not facts.chords
     assert resolve_join_order_v2(facts)[0].right == "ds~b_facts"
+
+
+def _grain_facts(**changes) -> JoinFacts:
+    """Items and orders paired on `(order, user)`: each holds every order,
+    `user` is `~` on both, and an order is one row of `orders`."""
+    return replace(
+        _keyed(
+            {("items", "orders"): {"order", "user"}},
+            items=SideFacts(
+                columns=frozenset({"order", "user"}),
+                partials=frozenset({"user"}),
+                grain=frozenset({"item"}),
+            ),
+            orders=SideFacts(
+                columns=frozenset({"order", "user"}),
+                partials=frozenset({"user"}),
+                grain=frozenset({"order"}),
+            ),
+        ),
+        covered=frozenset({("items", "orders", "order"), ("orders", "items", "order")}),
+        **changes,
+    )
+
+
+def test_a_side_is_covered_on_the_keys_the_rights_grain_keeps():
+    (join,) = resolve_join_order_v2(_grain_facts())
+    assert join.right == "orders"
+    assert join.type == JoinType.INNER
+    assert join.on == frozenset({"order"})
+    assert join.matched_left and join.matched_right
+
+
+def test_a_grain_a_side_nulls_keeps_the_whole_on():
+    facts = _grain_facts()
+    orders = replace(facts.sides["orders"], nullables=frozenset({"order"}))
+    (join,) = resolve_join_order_v2(
+        replace(facts, sides={**facts.sides, "orders": orders})
+    )
+    assert join.type != JoinType.INNER
+    assert join.on is None
+
+
+def test_an_authored_pair_beside_the_grain_keeps_the_whole_on():
+    (join,) = resolve_join_order_v2(_grain_facts(authored_members=frozenset({"user"})))
+    assert join.type != JoinType.INNER
+    assert join.on is None
+
+
+def test_a_grain_the_on_holds_part_of_keeps_the_whole_on():
+    facts = _grain_facts()
+    orders = replace(facts.sides["orders"], grain=frozenset({"order", "line"}))
+    (join,) = resolve_join_order_v2(
+        replace(facts, sides={**facts.sides, "orders": orders})
+    )
+    assert join.type != JoinType.INNER
+    assert join.on is None
