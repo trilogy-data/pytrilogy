@@ -70,6 +70,7 @@ from trilogy.core.processing.utility import (
     left_deep_joins,
     padded_before,
     padded_by,
+    padded_sources,
 )
 from trilogy.utility import string_to_hash
 
@@ -1282,12 +1283,21 @@ def _narrow_covered(
     subset side with one carrying its key's whole domain keeps none of the
     subset side's unmatched rows, since it has none. A right subset side
     needs the covering left's rows all still in the stream; a subset side
-    padded in earlier is kept by `ensure_content_preservation`."""
-    if len(join.keys) != 1:
+    padded in earlier is kept by `ensure_content_preservation`. Of several
+    lefts, the one holding every key decides (`_equated_lead`)."""
+    left = _equated_lead(join, joins)
+    if left is None:
         return
-    ((left, keys),) = join.keys.items()
+    keys = join.keys[left]
+    others = [
+        set(_covered_sides(other, join.right, other_keys, facts))
+        for other, other_keys in join.keys.items()
+        if other != left
+    ]
     narrowed = join.type
     for sub_is_left in _covered_sides(left, join.right, keys, facts):
+        if not all(sub_is_left in covered for covered in others):
+            continue
         if sub_is_left:
             join.matched_left = True
         elif _intact(left, walked, joins):
@@ -1298,6 +1308,41 @@ def _narrow_covered(
     if narrowed != join.type and plan_trace.active():
         _trace_join_type(left, join.right, keys, facts, walked, narrowed, "covered")
     join.type = narrowed
+
+
+def _equated_lead(join: JoinOrderOutput, joins: list[JoinOrderOutput]) -> str | None:
+    """The left a join's whole ON reads as one: its only left, or one holding
+    every key that an earlier INNER join equated each other left with on the
+    keys that left joins on. The ON's `coalesce(a.k, b.k)` is then `a.k` on
+    every row, so the pair is that left's."""
+    if len(join.keys) == 1:
+        return next(iter(join.keys))
+    every = set().union(*join.keys.values())
+    for lead, keys in join.keys.items():
+        if keys == every and all(
+            _inner_equated(lead, other, other_keys, joins)
+            for other, other_keys in join.keys.items()
+            if other != lead
+        ):
+            return lead
+    return None
+
+
+def _inner_equated(
+    a: str, b: str, keys: set[str], joins: list[JoinOrderOutput]
+) -> bool:
+    """An INNER join between `a` and `b` paired every one of `keys`: on every
+    row since, the two hold the same value of each (both padded alike after)."""
+    return any(
+        join.type == JoinType.INNER
+        and (
+            join.right == b
+            and keys <= join.keys.get(a, set())
+            or join.right == a
+            and keys <= join.keys.get(b, set())
+        )
+        for join in joins
+    )
 
 
 def _join_onto(right: str, walked: list[str], facts: JoinFacts) -> JoinOrderOutput:
@@ -1816,11 +1861,18 @@ def _unnested_list(unnests: list[UnnestJoin], address: str) -> BuildConcept | No
 
 
 def key_providers(
-    ds: DataSource, address: str, relation_stamps: Collection[str] = frozenset()
+    ds: DataSource,
+    address: str,
+    relation_stamps: Collection[str] = frozenset(),
+    computed: bool = False,
 ) -> frozenset[str]:
     """The leaf tables binding ``address`` complete whose every row passing
     this source's filters is still in it: the key's values here are theirs.
-    Empty when a LIMIT, a `~` stamp or a join drops a row of every one."""
+    Empty when a LIMIT, a `~` stamp or a join drops a row of every one. Under
+    `computed`, a source emitting the key where none of those survives (it
+    derives the key, or its joins drop rows of every table binding it) is
+    the leaf: two reads of every row of that one source read one value
+    set, where no join pads it (`_computed_unpadded`)."""
     stamped = any(c.address == address for c in ds.partial_concepts)
     if isinstance(ds, BuildDatasource):
         binds = any(c.address == address for c in ds.output_concepts)
@@ -1830,12 +1882,38 @@ def key_providers(
     if (stamped and address not in relation_stamps) or ds.limit is not None:
         return frozenset()
     preserved = preserved_sources(ds.datasources, ds.joins)
-    return frozenset().union(
+    padded = padded_sources(ds.joins) if computed else set()
+    out: frozenset[str] = frozenset().union(
         *(
-            key_providers(sub, address, relation_stamps)
+            _computed_unpadded(
+                sub, key_providers(sub, address, relation_stamps, computed), padded
+            )
             for sub in ds.datasources
             if sub.identifier in preserved
         )
+    )
+    if out or not computed:
+        return out
+    if any(c.address == address for c in ds.output_concepts):
+        return frozenset({ds.identifier})
+    return out
+
+
+def _computed_unpadded(
+    sub: DataSource, found: frozenset[str], padded: Collection[str]
+) -> frozenset[str]:
+    """`found` unless it names a source computing the key (no leaf table) and
+    a join pads `sub`: a row with `sub` padded holds a NULL key that source
+    never computed (`derived_attribute` in the null-group matrix)."""
+    if sub.identifier in padded and found - leaf_tables(sub):
+        return frozenset()
+    return found
+
+
+def _computes(ds: QueryDatasource, address: str) -> bool:
+    """`ds` emits `address` and no source under it does: it derives it."""
+    return any(c.address == address for c in ds.output_concepts) and not any(
+        c.address == address for sub in ds.datasources for c in sub.output_concepts
     )
 
 
@@ -3091,17 +3169,19 @@ def _carries_every_value(
 def _concept_providers(
     datasource: DataSource, concept: BuildConcept, relation_stamps: Collection[str]
 ) -> frozenset[str]:
-    """`key_providers`, through BASIC and ROWSET lineage."""
+    """`key_providers`, through BASIC and ROWSET lineage, else the source
+    deriving the key (`computed`)."""
     out = key_providers(datasource, concept.address, relation_stamps)
-    if out or concept.derivation not in _COMPLETENESS_TRANSFERRING:
+    if out:
         return out
-    args = [
-        _concept_providers(datasource, arg, relation_stamps)
-        for arg in concept.concept_arguments
-    ]
-    if not args or not all(args):
-        return frozenset()
-    return frozenset().union(*args)
+    if concept.derivation in _COMPLETENESS_TRANSFERRING:
+        args = [
+            _concept_providers(datasource, arg, relation_stamps)
+            for arg in concept.concept_arguments
+        ]
+        if args and all(args):
+            return frozenset().union(*args)
+    return key_providers(datasource, concept.address, relation_stamps, computed=True)
 
 
 def _covered_keys(
@@ -3310,11 +3390,16 @@ def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]] | Non
         if any(c.address == address for c in ds.output_concepts):
             return [frozenset({ds.identifier})]
         return []
+    if _computes(ds, address):
+        return [frozenset({ds.identifier})]
     kept = _matched_kept(ds)
+    padded = padded_sources(ds.joins)
     groups: list[list[frozenset[str]]] = []
     for sub in ds.datasources:
         found = _equated_binders(sub, address)
         if found is None or found and sub.identifier not in kept:
+            return None
+        if found and not _computed_unpadded(sub, frozenset().union(*found), padded):
             return None
         groups.append(found)
     slot = {sub.identifier: i for i, sub in enumerate(ds.datasources)}

@@ -2739,6 +2739,78 @@ election, not the padded fallback.
     The next measure is the same trace (`_twins` per key at the merge the
     optimizer later narrows) over the 53.
 
+34. **A key a shared stream computes, and a join onto lefts an INNER
+    equated (landed; seam 2, the planner's twin proof).** The trace seam 33
+    asked for is `local_scripts/sql_ab/twins_census_plugin.py`: per
+    equivalence upgrade, `_twins` per key at the planned merge, and the first
+    test that failed. Over the 53, the planner's proof failed for one of
+    four reasons, with one exception: it proved the key but never asked.
+    - **No provider (most).** `key_providers` returns the leaf tables a
+      side keeps every row of. A key no leaf binds (`species ? cond as v0`,
+      an aggregate value) has none. Neither does a side whose INNER joins
+      drop rows of every binding table (`trees` INNER `enrichment` beneath
+      both groups). Twin aggregates of one stream then share nothing to
+      compare.
+    - **The provider is the source that emits the key** (`computed`). When no
+      leaf survives, the source closest to the side that emits the key, and
+      keeps all its rows up to it, is the provider. Two sides that read
+      every row of that one source, through the same filters, read one value
+      set. `_concept_providers` asks only after the leaf and lineage
+      answers fail, and `_equated_binders` treats a source deriving the key
+      (`_computes`) as its binder.
+    - **Only where no join pads it** (`_computed_unpadded`). A row with that
+      source padded holds a NULL key the source never computed. The first
+      cut missed this: `test_null_group_matrix`'s `derived_attribute` cells
+      (`key = y + 1` over a dimension FULL-joined to a different fact on each
+      side) typed the final join INNER and lost the NULL group only one side
+      pads. Leaf providers keep their rules.
+    - **Multi-left (`_equated_lead`).** `_narrow_covered` skipped a join with
+      more than one left. Its ON renders each shared key as `coalesce(a.k,
+      b.k)`. When one left holds every key, and an earlier INNER join paired
+      each other left with it on that left's keys, the coalesce is the lead's
+      key on every row. So the lead's pair decides, provided each other
+      left's own pair is covered the same way (law 257753, `(city, v0)`
+      then `(v0, v1)`).
+    - **What it moves.** Census, whole suite less the tpc-ds and tpc-h files:
+      74 firings in 66 tests become 60 in 54. Equivalence upgrades fall from
+      53 to 39 (35 LEFT and 18 FULL become 23 and 16); the directional and
+      rule-B firings are unchanged. 15 firings are planned now, and one is
+      new: spellings 114, whose first join the planner now types INNER, so
+      the optimizer takes the second as its own firing. Suite capture
+      (`sqlcap`, `PYTHONHASHSEED=0`, laws and tpc included, by distinct
+      statement): 38 joins in 30 tests are narrower, none wider. They are
+      oracle laws (filters 10, expressions 3, spellings, sweep shapes and
+      dimension chain 2 each), `test_cluster_key_lookup` (4),
+      `test_non_benchmark_queries` (4) and one scoped-join test. The other
+      moves are statement counts and column order. Every test passes
+      its rows.
+
+    Pinned (red on `main`), in `tests/discovery/test_planned_join_narrowing.py`:
+    `test_twin_aggregates_of_a_key_their_shared_stream_computes` and
+    `test_a_join_onto_lefts_an_inner_equated_reads_its_lead_left`. Unit rows:
+    `tests/core/processing/test_equated_binders.py`.
+
+    Gates, against `14708e9`: corpus (206 statements, tpc-ds aggregates
+    included) 0 moved; fuzzer 522/522. Suite: the same 25 credential-bound
+    failures as `main`, and no test changes outcome but the Rust-binary
+    one (skipped on the base run, passed on this one).
+
+    **What is left.** 39 equivalence firings, 45 keys. The trace sorts the
+    keys:
+    - **Different streams (19).** Each side groups a different merge of
+      the same tables: 152426's `(city, tree_form)` pair, one over a
+      `(city, species)` gate INNER-joined to `trees` INNER `enrichment`,
+      the other over `vacuous` INNER `questionable`. Equal only through the
+      filters each join applies, which no provider proof sees.
+    - **The merge's own WHERE (15).** Split-key gates: the gate group is
+      unfiltered at plan time, the merge's WHERE filters it
+      (`_unfiltered_copy` keeps it preserved), and the optimizer reads the
+      key off the gate through an earlier INNER (`_equated_reads`,
+      `witness`). That is the ninth slice's "where the filter sits".
+    - **Built after planning (6).** No planned merge holds the pair.
+    - **Proved, not narrowed (4)**, and one pair whose addresses differ:
+      the key is a twin, but the join's other keys or a veto keep it.
+
 ## Gate used
 
 ```

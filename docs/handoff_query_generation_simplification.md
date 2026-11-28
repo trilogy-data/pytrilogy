@@ -114,8 +114,12 @@ What is left of 2.1:
   makes the rule narrow more. Re-measured after seam 31 (seam 33): 82
   firings in 72 tests outside the tpc-ds and tpc-h files (which need the
   DuckDB extensions), 61 of them the equivalence upgrade. Seam 33 plans 8
-  (twin aggregates of one stream through an INNER join on the key). The
-  rest are the lead: see seam 33's "What is left".
+  (twin aggregates of one stream through an INNER join on the key). Seam 34
+  plans 15 more (a key the shared stream computes or keeps, and a join onto
+  lefts an earlier INNER equated): 60 firings in 54 tests, 39 of them
+  equivalence. The rest are the lead: see seam 34's "What is left". The
+  split-key gate keys (15 of 45) need the merge's own WHERE read as a side's
+  filter; the different-streams keys (19) have no provider proof.
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys

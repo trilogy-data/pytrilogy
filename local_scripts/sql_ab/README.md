@@ -144,6 +144,16 @@ merge's own condition, and the type it planned the join).
 NULL_SAFE_CENSUS=/tmp/ns.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p null_safe_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
 ```
 
+`twins_census_plugin.py` traces each equivalence upgrade back to the planned
+merge: per key, the planner's twin proof (`_twins`) and the first test of it
+that failed, with the joins that dropped a side's last key provider and the
+left an earlier INNER join equated the key with (the optimizer's witness).
+Group the verdicts to name the class a plan-time proof has to take over next.
+
+```bash
+TWINS_CENSUS=/tmp/tw.jsonl PYTHONPATH=local_scripts/sql_ab python -m pytest -p twins_census_plugin tests -q -p no:cacheprovider -n 4 -m "not adventureworks_execution"
+```
+
 ## Region census
 
 `domain_kind_plugin.py` records, per test, each region domain the planner
