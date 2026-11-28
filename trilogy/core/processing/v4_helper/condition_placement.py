@@ -869,6 +869,7 @@ def _uncovered_exposing_output_contributor(
         if (
             gid in unfiltered
             and _aggregate_keys(atom)
+            and not _pairs_on_host_grain(gid, chosen_groups, scope)
             and row_inputs <= final_exposable
         ):
             return True
@@ -982,6 +983,34 @@ def _unfiltered_filter_streams(
         and not _rows_filtered_by(gid, chosen, scope, memo)
         and not _content_hosted(b, chosen, scope)
     }
+
+
+def _pairs_on_host_grain(
+    gid: str, chosen: tuple[str, ...], scope: "_PlacementScope"
+) -> bool:
+    """`gid` reads a host's rows: a row stream's directly, or a keyed
+    group's INNER on its whole grain, every aggregate its condition reads
+    being the group's own. Either way its rows passed the atom."""
+    buckets = scope.buckets
+    reads = {
+        c.address
+        for m in buckets[gid].primary_members
+        if isinstance(lineage := scope.environment.concepts[m].lineage, BuildFilterItem)
+        for c in lineage.where.row_arguments
+        if c.is_aggregate
+    }
+    for h in scope.group_graph.predecessors(gid):
+        if h not in chosen or h not in buckets:
+            continue
+        if not _emits_group_by(h, buckets):
+            return True
+        if (
+            reads
+            and not _is_global(buckets[h])
+            and reads <= set(buckets[h].primary_members)
+        ):
+            return True
+    return False
 
 
 def _read_by_final_alone(gid: str, scope: "_PlacementScope") -> bool:

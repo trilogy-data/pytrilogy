@@ -389,7 +389,10 @@ FOUND_SEEDS = [
     # 0.3.546: shown properties without their key are keys of one tuple
     287310,
     # 0.3.547
-    18629, 275116, 305799, 309283, 313914,
+    18629, 275116, 305799, 309283, 313914, 326039, 333300, 339324, 360768,
+    366506, 367871, 367969, 371180,
+    # 0.3.547: right on main, broken by this round's first versions
+    320174, 337508, 360794, 363929, 366732,
 ]  # fmt: skip
 # leads, failing on main too (docs/handoff_formalization_next.md, area 4b):
 # what the planner raises or DuckDB rejects, or None for wrong rows. The last
