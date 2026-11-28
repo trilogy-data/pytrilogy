@@ -802,6 +802,19 @@ def _uncovered_exposing_output_contributor(
                 for gid in suppliers
             )
         )
+        # a host shows its own keys when every other stream showing an output
+        # is one of its inputs (`fc` and `v0` of a min by `fc, v0`)
+        for gid in chosen_groups:
+            inputs = nx.ancestors(group_graph, gid)
+            if gid in buckets and not any(
+                other not in covered
+                and other not in inputs
+                and other in buckets
+                and buckets[other].depth_label not in NESTED_DEPTHS
+                and set(buckets[other].primary_members) & mandatory_addrs
+                for other in group_graph.predecessors(FINAL_NODE_ID)
+            ):
+                delivered |= set(buckets[gid].grain_components)
         held = [own & delivered for own in held]
     # every output is the filtered branch's own, a group key it regroups the
     # kept rows by included (`tree_form` of `min(sum(x) by city, species)`):
