@@ -22,28 +22,47 @@ python -m local_scripts.oracle_sweep diff old.jsonl new.jsonl --family spellings
 python -m local_scripts.oracle_sweep show 38477 [--ref origin/main]
 ```
 
-## A full-range A/B: on CI, not here
+## A full-range A/B: do not sweep main here
 
-A family's whole range is hours on four cores (filters is 64 ms a query:
-0-320,000 on both models is 2.9 hours a side). The `Oracle sweep` workflow
-fans the same `ab` over runners instead, and a round's container stays free
-for reducing seeds. Push the branch, then dispatch the workflow on it:
+Planning is 95% of a sweep and filters costs 60 ms a query, so its 0-320,000
+on both models is 2.7 hours a side on four cores. A round needs main's side
+once and the branch's after each batch of fixes. Two things take the first
+off the round and, where a workflow can be dispatched, the second too.
+
+**Main's records come from CI.** Every merge to main that touches the planner
+or the generators sweeps `RECORDS_FAMILY` over `RECORDS_SEEDS`
+(`.github/workflows/oracle_sweep.yml`; raise them with the round) and uploads
+a `main-records` artifact. Download it from the latest `Oracle sweep` run on
+main (the Actions API gives an artifact a download URL), unzip it, and:
+
+```bash
+python -m local_scripts.oracle_sweep import <unzipped dir>   # prints the commit
+python -m local_scripts.oracle_sweep ab --family filters --seeds 0:320000 --base <commit>
+```
+
+`import` caches the records as that commit's, so `--base <commit>` sweeps
+nothing, and refuses an export whose generators wrote other queries than this
+checkout's. Cut the branch from that commit, or merge it in, so the A/B
+compares the branch with its own base.
+
+**The whole A/B fans out over runners by dispatch**, which takes a session
+that may run workflows (`gh`, or the Actions page):
 
 ```bash
 gh workflow run oracle_sweep.yml --ref <branch> \
   -f family=filters -f seeds=0:320000 -f base=main -f shards=16
 ```
 
-(An agent without `gh` runs the workflow through the GitHub API with the same
-inputs.) Each shard sweeps every 16th 250-seed chunk on both sides
-(`--shard i/16`); the `A/B report` job joins the shards and prints what `ab`
-prints, to its log and the run's summary, and fails when the branch breaks a
-seed the base answers. Its `ab-records` artifact holds the report and both
-sides' records for `diff`. The base's records are cached per commit, family,
-range and generators, so a second A/B of the round sweeps the branch alone.
+Each shard sweeps every 16th 250-seed chunk on both sides (`--shard i/16`),
+about 25 minutes for the range above; the `A/B report` job joins the shards
+and prints what `ab` prints, to its log and the run's summary, and fails when
+the branch breaks a seed the base answers. Its `ab-records` artifact holds
+the report and both sides' records for `diff`. The base's records are cached
+per commit, family, range and generators, so a second A/B of the round sweeps
+the branch alone.
 
-Sweep here only what a fix needs: `--seeds @file` of the seeds the report
-named, or a slice.
+Sweep here only what a fix needs between full passes: `--seeds @file` of the
+seeds a report named, or a slice.
 
 `--seeds` takes ranges and lists (`5,17,100:200`) or `@file` of seeds, so a
 round can replay only the seeds a diff named. `ab` and `run` exit 1 when a
@@ -55,8 +74,8 @@ query is newly wrong, raising or invalid.
 rounds have swept clean (`SWEPT_TO`), both families, on main each night, in
 four shards a family. `run` prints each wrong, raising or invalid seed with its
 query and exits 1, and a failing shard uploads its records. A pull request
-that touches the sweep runs the first 4,000 seeds, and a two-shard A/B of
-1,000 filters seeds through the dispatch path.
+that touches the sweep runs the first 4,000 seeds, and 1,000 filters seeds
+through the A/B and the records jobs, two shards each.
 
 ## Killed, repeated and concurrent runs
 

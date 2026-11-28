@@ -38,9 +38,10 @@ or fix their planning beyond keeping existing tests green.
 1. **Probe before modelling.** A scratchpad script runs the same Trilogy text
    on two engines (`Dialects.X.default_executor(environment=Environment())`,
    then `execute_text(...)[-1].fetchall()`), or pairs two spellings the docs
-   say are equal. Disagreements are the leads. For the planner, sweep
-   `--ref origin/main` over a new seed range first: it lists the leads and
-   fills main's cache for the A/B.
+   say are equal. Disagreements are the leads. For the planner, import
+   main's records for the swept range (below) and sweep `--ref <commit>`
+   over a new seed range: it lists the leads and fills main's cache for the
+   A/B.
 2. **Model in Lean** under `formal/Trilogy/<Area>.lean`, imported from
    `formal/Trilogy.lean`: the reference semantics (small, over `Int`/`List`;
    no Mathlib, so fractions are structs, see `Functions.Frac`), the laws a
@@ -85,7 +86,7 @@ or fix their planning beyond keeping existing tests green.
 |---|---|---|
 | Lean | `cd formal && ~/.elan/bin/lake build` | 50 s clean, under 1 s for an untouched module |
 | One law suite | `.venv/bin/python -m pytest tests/<area>/test_<area>_laws.py -q` | seconds to minutes |
-| Oracle sweep | `python -m local_scripts.oracle_sweep ab --seeds A:B` | ~7 ms a query; main's side once per commit |
+| Oracle sweep | `python -m local_scripts.oracle_sweep ab --seeds A:B` | 7-16 ms a query by family (filters 16); main's side imported from CI |
 | One seed | `python -m local_scripts.oracle_sweep show <seed> [--ref origin/main]` | 2 s |
 
 - **Lean.** `lake` is not on PATH; the toolchain is in `~/.elan` (`elan show`
@@ -104,6 +105,12 @@ or fix their planning beyond keeping existing tests green.
   and cannot see a bug that needs an earlier statement's definition. A
   family's law file is part of its cache key: edit `OPEN`/`FOUND_SEEDS` after
   the last sweep, or copy the ref's records to the new key.
+- **Main's side is not swept here.** CI publishes main's records for the
+  round's family on every merge (`main-records`, an artifact of the `Oracle
+  sweep` run): `import` them and A/B against that commit. A session that can
+  dispatch workflows fans the whole A/B over 16 runners in ~25 minutes. Both
+  are in the sweep's README. When a round changes family or extends the
+  range, raise `RECORDS_FAMILY`/`RECORDS_SEEDS` in the workflow.
 - **Sweep limits.** A background command stops at 2 hours and a container can
   restart: rerun the same command and it continues. One sweep at a time; a
   second on the same records refuses to start. Never start one with a

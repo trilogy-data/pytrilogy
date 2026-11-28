@@ -50,6 +50,30 @@ def test_held_base_records_are_not_swept_again(
     assert calls == [[1, 2], [1, 3]]
 
 
+def test_an_export_is_joined_and_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(runner, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runner, "_git", lambda *args: "abc123")
+    seeds = runner.parse_seeds("0:500")
+    for i in range(2):
+        records = {
+            (s, "base"): {**OK, "seed": s, "model": "base"}
+            for s in runner.shard_seeds(seeds, f"{i}/2")
+        }
+        runner.export_records(tmp_path / f"s{i}", "filters", "0:500", records, False)
+    meta = runner.join_exports([tmp_path / "s0", tmp_path / "s1"], tmp_path / "all")
+    assert meta["sha"] == "abc123"
+    _, count = runner.import_records(tmp_path / "all")
+    assert count == 500
+    cached = next((tmp_path / "cache" / "results").glob("abc123-filters-*.jsonl"))
+    assert set(runner.read_records(cached)) == {(s, "base") for s in seeds}
+
+    monkeypatch.setattr(runner, "generator_probe", lambda family, seeds: "other")
+    with pytest.raises(SystemExit, match="generators here differ"):
+        runner.import_records(tmp_path / "all")
+
+
 def test_compare_names_what_moved():
     base = {
         (1, "base"): OK,
