@@ -193,6 +193,7 @@ def _address_token(address: Address | str) -> str:
         *address.partition_columns,
         *additional,
         *([f"#{address.source_name}"] if address.source_name else []),
+        *(["args", *address.script_args] if address.script_args else []),
     )
 
 

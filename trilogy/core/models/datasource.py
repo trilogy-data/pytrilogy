@@ -1,5 +1,6 @@
 import copy
 import glob as glob_module
+import shlex
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -218,6 +219,9 @@ class Address:
     # The source a multi-source program serves (``file `x.py#name```), passed
     # to it as ``--source name``.
     source_name: str | None = None
+    # Static arguments a program is run with (``file `x.py` args ('a')``),
+    # ahead of ``--source`` and pushed-down filters.
+    script_args: list[str] = field(default_factory=list)
     # Set for a table-function address (``address fn(col, k := 'v')``).
     arguments: list[AddressArgument] | None = None
 
@@ -232,7 +236,8 @@ class Address:
     @property
     def source_args(self) -> str:
         """The command line that selects this address's source of its program."""
-        return f"--source {self.source_name}" if self.source_name else ""
+        selector = ["--source", self.source_name] if self.source_name else []
+        return shlex.join([*self.script_args, *selector])
 
     @property
     def is_query(self):
@@ -573,10 +578,14 @@ class Datasource(HasUUID, Namespaced):
     @property
     def safe_address(self) -> str:
         if isinstance(self.address, Address):
-            # Sources of one program share its location but are distinct assets.
+            # Sources of one program share its location but are distinct assets,
+            # as are runs of it with different arguments.
+            address = self.address.location
             if self.address.source_name:
-                return f"{self.address.location}#{self.address.source_name}"
-            return self.address.location
+                address = f"{address}#{self.address.source_name}"
+            if self.address.script_args:
+                address = f"{address} {shlex.join(self.address.script_args)}"
+            return address
         return self.address
 
     def repoint(self, address: "str | Address") -> "Datasource":

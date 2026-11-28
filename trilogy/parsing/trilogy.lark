@@ -133,7 +133,9 @@
 
     file_path_list: "[" (F_FILE_PATH | FILE_PATH) ("," (F_FILE_PATH | FILE_PATH))* ","? "]"
     file_const_ref: IDENTIFIER
-    file: "file" ((F_FILE_PATH ":" F_FILE_PATH) | (FILE_PATH ":" FILE_PATH) | F_FILE_PATH | FILE_PATH | EXEC_PATH | file_path_list | file_const_ref)
+    file: "file" ((F_FILE_PATH ":" F_FILE_PATH) | (FILE_PATH ":" FILE_PATH) | F_FILE_PATH | FILE_PATH | EXEC_PATH | file_path_list | file_const_ref) file_args?
+    file_args: "args"i "(" _file_arg ("," _file_arg)* ","? ")"
+    _file_arg: string_lit | float_lit | int_lit
     
     concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     

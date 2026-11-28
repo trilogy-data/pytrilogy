@@ -129,6 +129,25 @@ a `TypeError`. A source name is an identifier (`[A-Za-z_][A-Za-z0-9_]*`);
 registering any other name fails at registration, before the program serves
 anything.
 
+### Static arguments
+
+An `args (...)` clause passes literals to the program, so one script can back
+many datasources. They come first on its command line, ahead of `--source` and
+the contract flags; each distinct set of arguments is its own source, with its
+own probe, watermark and staged output:
+
+```
+datasource belfast_probe (updated_through: updated_through)
+file `../osm_probe.py` args ('USBEL');
+```
+
+The program reads them as positional arguments and hands the rest to `run`:
+
+```python
+city, *rest = sys.argv[1:]
+raise SystemExit(run(probe_for(city), argv=rest))
+```
+
 ## The contract
 
 ```

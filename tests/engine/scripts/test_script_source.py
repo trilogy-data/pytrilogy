@@ -246,6 +246,56 @@ def test_a_source_fragment_on_a_data_file_is_rejected():
         )
 
 
+SCRIPT_ARGS_MODEL = """
+key city string;
+
+datasource belfast (city: city)
+grain (city)
+file `./multi_source.py#regions` args ('USBEL', 3);
+
+datasource boston (city: city)
+grain (city)
+file `./multi_source.py#regions` args ('USBOS', 3);
+"""
+
+
+def test_file_args_are_passed_first_and_keep_sources_distinct():
+    from trilogy.execution.state.snapshot import address_type_of, stable_asset_key
+    from trilogy.parsing.render import Renderer
+
+    executor = python_source_executor()
+    executor.parse_text(SCRIPT_ARGS_MODEL)
+    belfast = executor.environment.datasources["belfast"]
+    boston = executor.environment.datasources["boston"]
+    assert belfast.address.script_args == ["USBEL", "3"]
+    assert belfast.address.source_args == "USBEL 3 --source regions"
+
+    sql = executor.generate_sql("select city;")[-1]
+    assert "args := 'USBEL 3 --source regions')" in sql
+
+    root = Path(executor.environment.working_path)
+    assert {
+        stable_asset_key(ds.safe_address, address_type_of(ds), root)
+        for ds in (belfast, boston)
+    } == {
+        "script::multi_source.py#regions USBEL 3",
+        "script::multi_source.py#regions USBOS 3",
+    }
+    assert "multi_source.py#regions` args ('USBOS', '3');" in Renderer().to_string(
+        boston
+    )
+
+
+def test_file_args_on_a_data_file_are_rejected():
+    from trilogy.parsing.v2.model import HydrationError
+
+    executor = python_source_executor()
+    with pytest.raises(HydrationError, match="passes arguments to a program"):
+        executor.parse_text(
+            "key id int;\ndatasource d (id: id) grain (id) file `./data.csv` args ('x');"
+        )
+
+
 def test_two_sources_of_one_program_join():
     executor = python_source_executor()
     executor.parse_text(MULTI_SOURCE_MODEL)

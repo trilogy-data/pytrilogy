@@ -280,8 +280,15 @@ fn extract_datasource(pair: Pair<Rule>) -> Result<Option<DatasourceDeclaration>,
             Rule::query => address_kind = Some(AddressKind::Query),
             Rule::file => {
                 address_kind = Some(AddressKind::File);
-                // Raw spec after the (always 4-byte) `file` keyword.
-                address = Some(child.as_str()[4..].trim().to_string());
+                // Raw spec after the (always 4-byte) `file` keyword, up to any
+                // `args (...)`: those are passed to the program, not part of its path.
+                let start = child.as_span().start();
+                let end = child
+                    .clone()
+                    .into_inner()
+                    .find(|p| p.as_rule() == Rule::file_args)
+                    .map_or(child.as_span().end(), |p| p.as_span().start());
+                address = Some(child.as_str()[4..end - start].trim().to_string());
             }
             Rule::datasource_partition_clause => is_partitioned = true,
             _ => {}
