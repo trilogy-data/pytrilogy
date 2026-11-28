@@ -71,6 +71,7 @@ from trilogy.core.processing.utility import (
     padded_before,
     padded_by,
     padded_sources,
+    set_sources,
 )
 from trilogy.utility import string_to_hash
 
@@ -342,6 +343,11 @@ class SideFacts:
     filters: tuple[BoolExpr, ...] = ()
     # the tables the side reads
     leaves: frozenset[str] = frozenset()
+    # the tables every row of the side holds a row of (no join pads them)
+    row_tables: frozenset[str] = frozenset()
+    # the one table a one-row total reads every row of, bare: the total holds
+    # its row exactly when that table holds one (`_total_input`)
+    total_of: str | None = None
     # extent-free span or `~` key -> the leaf tables whose own `~` column
     # binds it here
     span_bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -1547,10 +1553,61 @@ def _walk(facts: JoinFacts, seed: str | None = None) -> list[JoinOrderOutput]:
                     right=ds,
                     type=JoinType.INNER if one_row else JoinType.FULL,
                     keys={},
+                    matched_left=_total_beside_its_rows(ds, eligible_left, facts),
                 )
             )
         eligible_left.add(ds)
     return output
+
+
+def _total_beside_its_rows(
+    total: str, walked: Collection[str], facts: JoinFacts
+) -> bool:
+    """A one-row total over a bare table, joined onto sides every row of which
+    holds a row of that table: the stream having a row means the table does,
+    so the total has its row and the join keeps every row of the stream."""
+    table = facts.side(total).total_of
+    return (
+        table is not None
+        and facts.side(total).one_row
+        and all(table in facts.side(side).row_tables for side in walked)
+    )
+
+
+def _row_tables(ds: DataSource) -> frozenset[str]:
+    """The leaf tables every row of `ds` holds a row of: those under a source
+    no join of `ds` NULL-pads, bar a set only a subselect reads. A union's
+    rows are either arm's."""
+    if not isinstance(ds, QueryDatasource):
+        return frozenset({ds.identifier})
+    if ds.source_type in (SourceType.UNION, SourceType.RECURSIVE):
+        return frozenset()
+    skipped = padded_sources(ds.joins, _join_bases(ds)) | set_sources(ds)
+    return frozenset().union(
+        *(_row_tables(sub) for sub in ds.datasources if sub.identifier not in skipped)
+    )
+
+
+def _join_bases(ds: QueryDatasource) -> list[str]:
+    right = joined_right_ids(ds.joins)
+    return [sub.identifier for sub in ds.datasources if sub.identifier not in right]
+
+
+def _total_input(ds: DataSource) -> str | None:
+    """The table a total reads every row of with no join, filter or limit
+    between: a total holds its row exactly when its input does (an empty
+    input's group is no row), so it has one wherever that table has one."""
+    while isinstance(ds, QueryDatasource):
+        if (
+            ds.joins
+            or ds.condition is not None
+            or ds.limit is not None
+            or len(ds.datasources) != 1
+            or ds.source_type in (SourceType.UNION, SourceType.RECURSIVE)
+        ):
+            return None
+        ds = ds.datasources[0]
+    return ds.identifier
 
 
 def restore_full_join_providers(joins: list[JoinOrderOutput]) -> None:
@@ -3148,6 +3205,8 @@ def _side_facts(
         ),
         filters=tuple(applied_atoms(datasource)),
         leaves=leaf_tables(datasource),
+        row_tables=_row_tables(datasource),
+        total_of=_total_input(datasource),
         span_bindings={
             canon_node(address): partial_binding_sources(datasource, address)
             for address in extent_free_spans
@@ -3525,8 +3584,12 @@ def _equated_binders(ds: DataSource, address: str) -> list[frozenset[str]] | Non
         return [frozenset({ds.identifier})]
     kept = _matched_kept(ds)
     padded = padded_sources(ds.joins)
+    sets = set_sources(ds)
     groups: list[list[frozenset[str]]] = []
     for sub in ds.datasources:
+        if sub.identifier in sets:
+            groups.append([])
+            continue
         found = _equated_binders(sub, address)
         if found is None or found and sub.identifier not in kept:
             return None
