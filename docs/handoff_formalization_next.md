@@ -13,11 +13,11 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.544.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.545.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 260,000; the PR of each
+group key of aggregates and windows, in a HAVING) to 320,000; the PR of each
 round holds its sweep totals. `filters` has 12 `OPEN` seeds (area 4b),
 `windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
@@ -774,6 +774,38 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     402 gained.
   - Raises: 201703, 204919, 207061, 207567, 208889, 209669, 211780, 212468,
     213174, 213328, 213931, 216560, 217204; 208977 is invalid on the summary.
+- **Left after 0.3.545** (seeds 0-320,000, every query swept on main and
+  the branch; each fails on main too: 57 wrong, 57 raises, 16 invalid):
+  - Sweep the full range against a full main record before calling a round
+    done. Main's cache held no record for 174,615-259,999, so a comparison
+    over what it held showed 3 broken seeds where there were 5; and fixes
+    checked on slices broke 110957, 177741, 178520, 219659 and 244567
+    elsewhere. Each is in `FOUND_SEEDS` now.
+  - Efficiency, first: on queries main answers, joins +7,044 over 639,724
+    (6,634 up, mostly by one; 1,147 down) and 8 queries scan the trees twice
+    (9374, 94250, 155320, 224093, 225578, 292356). The scans come from
+    `elect_cover` ranking by every WHERE atom (`cover_reads_gated_rows`):
+    `select tall, tree_form ? species in (<set>) as v0 where species in
+    (species ? species = 'Acer')` takes `tall` off the gated root beside the
+    `v0` filter, which could supply both. Ranking only by atoms that hold on
+    an absent group keeps 16847 but breaks 269661. `_rows_pass` says the
+    filter's rows failed the atom although they are read off the gated
+    rows; deciding that from the group graph would retire the second scan.
+    Bisect the join growth by commit of this round first.
+  - A derived key beside a filter whose set reads a total: `select city,
+    case when tree_form = 'broadleaf' then 'b' else 'o' end as fc, (max(height)
+    by city) ? city in (city ? sum(height) by tree_form is not null or
+    sum(height) by * > count(tree_id) by city) as v0 where height between 2
+    and 5` shows every city with every `fc` (261807): FINAL pairs `fc` with
+    the filter on nothing.
+  - A window over a filter by its keys: `select city, tag, city ?
+    count(tree_id) by city > 3 as v0, avg(count(tree_id) by city, tag, v0)
+    over (partition by tag, v0) as v1 where species in ('Acer', 'Ulmus')`
+    adds `(B, x)` (287310): the window's `(tag, v0)` rows are met on `v0`
+    alone, the case 0.3.545 fixed for a filter keyed within the grouped side
+    (`pair_on_looked_up_value`) but not for a window reading the filter.
+  - Wrong also 275116, 281660, 296704, 305799, 309283, 313914; raises
+    263218, 264891, 297953 (summary), 282488, 288250, 311317; 294499 invalid.
 - **Left after 0.3.544** (seeds 240,000-260,000 and older; each fails on
   main too):
   - Sweep the whole range before trusting a slice. Taking every set reader

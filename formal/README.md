@@ -2977,6 +2977,40 @@ test: they run in separate CI jobs and can be re-seeded or narrowed.
     (47078). 25496 is main's stray WHERE row beside a window, which a limit
     used to hide. 129123 in full still pairs on one column: the filter cannot
     expose its grain keys.
+- **`filters` to 320,000** (0.3.545). On main seeds 260,000-320,000
+  (120,000 queries) hold 31 wrong answers, 21 raises and 6 invalid
+  statements; the round fixes 31 of them (15 wrong answers, 12 raises, 4
+  invalid). Over the full range 0-320,000 (640,000 queries, every one swept
+  on main) it fixes 146 (88 seeds): wrong answers 97 to 57, raises 137 to 57,
+  invalid 42 to 16, none broken. On the 639,724 queries both answer: joins
+  +7,044 (6,634 queries gain one or more, 1,147 lose one), 8 more scans,
+  summary reads +1, none lost.
+  - A set's gate restricts the set, not a sibling row: the filter beside it
+    reads every row (`set_gate_restricts_no_row`, 269661).
+  - The cover prefers a group whose rows passed every WHERE atom, not only
+    the atoms that hold on an absent group (`cover_reads_gated_rows`, 270862;
+    16847). This is what costs the 8 scans (below).
+  - A key's content is no hosted group: A came back with no form
+    (`key_content_hosts_no_rows`, 260615).
+  - A filter reads finished partials (`filter_reads_finished_partial`,
+    294582), and FINAL reads a built filter only on the columns it was built
+    with (`filter_pairs_on_built_columns`, 279431), each key of its claimed
+    grain that is a row function of them included
+    (`filter_derives_its_row_keys`, 268726).
+  - A shared-grain join is kept when it is the only side holding both halves
+    of a split grain (`split_grain_join_pairs`, 261790).
+  - A roll-up stays out of a filter's grouping: the summary model rendered
+    `max(CASE WHEN max(hi) ...)` (262536, 265046, 278425).
+  - A grouped side carries a grouped or filter sibling's row key its own
+    keys determine (`species` of `tree_id`; 44547, 66658, 70364, 178520), and
+    a filter's value it holds every key of: the counts by `(city, fc)` beside
+    a window by `(fc, v0)` pair on `v0` (`pair_on_looked_up_value`, 110957).
+  - FINAL looks a row column up off no filter's rows, which its condition
+    kept: `tree_form` read off a WHERE set's gated stream dropped every row
+    (`lookup_reads_ungated_rows`, 244567; 177741, 219659).
+  - The first versions of the last two broke 110957, 177741, 178520, 219659
+    and 244567, right on main; the full-range sweep found them after
+    0-260,000 slices did not, and they are in `FOUND_SEEDS`.
 - **`filters` to 260,000** (0.3.544). On main seeds 240,000-260,000 (40,000
   queries) hold 4 wrong answers, 14 raises and 5 invalid statements; the
   round fixes 11 of them (4 wrong answers, 7 raises). Over the full range
