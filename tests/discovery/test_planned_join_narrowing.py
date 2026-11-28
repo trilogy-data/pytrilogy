@@ -125,3 +125,36 @@ def test_twin_aggregates_of_one_stream_through_an_equating_join():
         "where not (height is not null) having tree_form = 'linden';",
     )
     assert JoinType.FULL not in planned, planned
+
+
+def test_twin_aggregates_of_a_key_their_shared_stream_computes():
+    query = (
+        "select city, species ? max(height) by city > 5 as v0, "
+        "sum(height) by v0 as v2, count(tree_id) as v3"
+    )
+    assert _planned(SWEEP_MODEL, query + ";") == {JoinType.INNER}
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by city, v0;")
+        .fetchall()
+    )
+    assert rows == [("A", None, 8, 4), ("B", "Acer", 7, 1), ("B", "Tilia", 2, 1)]
+
+
+def test_a_join_onto_lefts_an_inner_equated_reads_its_lead_left():
+    query = (
+        "select city, tag, species ? max(height) by city > 5 as v0, "
+        "sum(height) by city, v0 as a, sum(height) by v0, tag as b"
+    )
+    assert _planned(SWEEP_MODEL, query + ";") == {JoinType.INNER}
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by city, tag;")
+        .fetchall()
+    )
+    assert rows == [
+        ("A", "x", None, 8, 8),
+        ("A", "y", None, 8, None),
+        ("B", "x", "Tilia", 2, 2),
+        ("B", "y", "Acer", 7, 7),
+    ]

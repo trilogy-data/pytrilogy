@@ -7,7 +7,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import ConceptPair, Join, QueryDatasource
-from trilogy.core.processing.join_resolution import _one_value_set
+from trilogy.core.processing.join_resolution import _one_value_set, key_providers
 
 CITY, SPECIES = "local.city", "local.species"
 
@@ -80,3 +80,18 @@ def test_an_outer_join_keeps_rows_but_equates_nothing():
     assert _one_value_set(_merge(JoinType.FULL), _concept(SPECIES)) == frozenset()
     assert _one_value_set(_merge(JoinType.FULL), _concept(CITY)) == {"trees"}
     assert _one_value_set(_merge(JoinType.LEFT_OUTER), _concept(SPECIES)) == frozenset()
+
+
+def test_a_merge_dropping_every_binder_is_the_computed_provider():
+    merge = _merge(JoinType.INNER)
+    assert key_providers(merge, CITY) == frozenset()
+    assert key_providers(merge, CITY, computed=True) == {merge.identifier}
+    kept = _merge(JoinType.INNER, matched_left=True)
+    assert key_providers(kept, CITY, computed=True) == {"trees"}
+
+
+def test_a_derived_key_is_one_value_set_at_its_source():
+    merge = _merge(JoinType.INNER)
+    merge.output_concepts.append(_concept("local.v0"))
+    assert key_providers(merge, "local.v0", computed=True) == {merge.identifier}
+    assert _one_value_set(merge, _concept("local.v0")) == {merge.identifier}
