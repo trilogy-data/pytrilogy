@@ -1157,13 +1157,19 @@ def plan_final_join(
                 ),
                 environment,
             )
-            # a grouped side carries a grouped sibling's key its own keys
-            # determine (`species` of `tree_id`) and the keys it shares do not
+            # a grouped side carries a grouped or filter sibling's key its own
+            # keys determine (`species` of `tree_id`) and the keys it shares do
+            # not, and a filter's value it holds every key of (`v0` by `city`
+            # beside a window by `fc, v0`: `Filters.pair_on_looked_up_value`)
             if attrs[gid].derivation in GROUPING_DERIVATIONS:
                 grouped_keys = frozenset(
                     k
                     for o in contributors
-                    if o != gid and attrs[o].derivation in GROUPING_DERIVATIONS
+                    if o != gid
+                    and (
+                        attrs[o].derivation in GROUPING_DERIVATIONS
+                        or attrs[o].derivation == Derivation.FILTER
+                    )
                     for k in identity[o]
                     if (c := environment.concepts.get(k)) is not None
                     and c.derivation in _ROW_STREAMS
@@ -1171,6 +1177,16 @@ def plan_final_join(
                 siblings |= (
                     grouped_keys & strict_fd_closure(environment, identity[gid])
                 ) - strict_fd_closure(environment, identity[gid] & sibling_keys)
+                siblings |= frozenset(
+                    k
+                    for o in contributors
+                    if o != gid
+                    and attrs[o].derivation == Derivation.FILTER
+                    and identity[o]
+                    and identity[o] <= identity[gid]
+                    for k in attrs[o].output_concepts
+                    if k in sibling_keys and k not in identity[gid]
+                )
         else:
             siblings = sibling_keys
         held = held_by(gid, identity[gid], siblings)

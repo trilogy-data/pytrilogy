@@ -1015,4 +1015,21 @@ theorem lookup_reads_ungated_rows :
     (look forms).length = 5 ∧ look gated = [] := by
   decide
 
+/-- `select city, case when tree_form = 'broadleaf' then 'b' else 'o' end as
+fc, city ? avg(height) by city < 5 or city in ('B') as v0, max(count(tree_id))
+over (partition by fc, v0) as v2`: the `(city, fc)` pairs are (A, b), (A, o)
+and (B, b), and `v0` is the city. FINAL met the counts by `(city, fc)` with
+the window by `(fc, v0)` on `fc` alone and showed (A, b) beside B's window
+too; the counts look the filter up on `city`, its every key, so they pair
+on `(fc, v0)` (`pair_on_looked_up_value`, 110957). Cities and forms are A 0,
+B 1, b 0, o 1. -/
+theorem pair_on_looked_up_value :
+    let pairs : List (Nat × Nat) := [(0, 0), (0, 1), (1, 0)]
+    let window := pairs.map fun p => (p.2, p.1)
+    let onFc := pairs.flatMap fun p => (window.filter (·.1 == p.2)).map fun w => (p.1, p.2, w.2)
+    let onBoth := pairs.flatMap fun p =>
+      (window.filter fun w => w.1 == p.2 && w.2 == p.1).map fun w => (p.1, p.2, w.2)
+    onFc.length = 5 ∧ onBoth.length = 3 := by
+  decide
+
 end Trilogy.Filters

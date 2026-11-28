@@ -1074,6 +1074,72 @@ SHAPES = [
         ),
         [("Acer", "y", None, 1), ("Tilia", "x", None, 1)],
     ),
+    # a filter's rows are those its condition kept: FINAL looks `tree_form` up off
+    # no filter (219659, 244567, 177741)
+    (
+        (
+            "select city, species, tree_form, (sum(height) by tree_form) ? tree_form in "
+            "(tree_form ? count(tree_id) by city, species - count(tree_id) by tree_form ="
+            " 3) as v0, count(tree_id) by tree_form as v1, count_distinct(tag) as v2;"
+        ),
+        [
+            ("A", "Acer", "broadleaf", None, 4, 2),
+            ("A", "Quercus", "broadleaf", None, 4, 1),
+            ("A", "Ulmus", None, None, 1, 1),
+            ("B", "Acer", "broadleaf", None, 4, 1),
+            ("B", "Tilia", "linden", None, 1, 1),
+        ],
+    ),
+    (
+        (
+            "select city, species, tree_form, (max(height) by tree_form) ? tree_form in "
+            "(tree_form ? max(height) by city, tree_form - sum(height) by tree_form > 2 "
+            "or city in ('B')) as v0, min(height) by tree_form as v1, sum(height) as v2 "
+            "where not (tree_form in (tree_form ? max(height) by city is null));"
+        ),
+        [
+            ("A", "Acer", "broadleaf", 7, 3, 3),
+            ("A", "Quercus", "broadleaf", 7, 3, 5),
+            ("A", "Ulmus", None, None, None, None),
+            ("B", "Acer", "broadleaf", 7, 3, 7),
+            ("B", "Tilia", "linden", 2, 2, 2),
+        ],
+    ),
+    (
+        (
+            "select city, tree_form, (sum(height) by tree_form) ? tree_form in (tree_form"
+            " ? sum(height) by city, species - sum(height) by * = 1) as v0 where not (tag"
+            " in (tag ? avg(height) by city > 0)) or coalesce(tree_form, 'none') = 'none'"
+            " order by tree_form desc nulls last, v0 asc nulls last, city desc nulls "
+            "first limit 2;"
+        ),
+        [("A", None, None)],
+    ),
+    # a grouped side carries a filter sibling's key its keys determine (178520)
+    (
+        (
+            "select species, tree_form, (sum(height) by tree_form) ? tree_form = 'linden'"
+            " as v0, count_distinct(tag) as v1, sum(height) by tree_form as v2 order by "
+            "v2 asc nulls last, v0 desc nulls first, species desc nulls first, v1 desc "
+            "nulls first, tree_form desc nulls last limit 3;"
+        ),
+        [
+            ("Acer", "broadleaf", None, 2, 15),
+            ("Quercus", "broadleaf", None, 1, 15),
+            ("Tilia", "linden", 2, 1, 2),
+        ],
+    ),
+    # a grouped side pairs on a filter's value it holds every key of (110957)
+    (
+        (
+            "select city, case when tree_form = 'broadleaf' then 'b' else 'o' end as fc, "
+            "city ? avg(height) by city < 5 or city in ('B') as v0, sum(height) by * as "
+            "v1, max(count(tree_id)) over (partition by fc, v0) as v2 order by v2 desc "
+            "nulls first, v1 asc nulls last, fc asc nulls last, v0 asc nulls first, city "
+            "asc nulls first limit 3;"
+        ),
+        [("A", "b", "A", 17, 3), ("A", "o", "A", 17, 1), ("B", "b", "B", 17, 1)],
+    ),
 ]
 
 
