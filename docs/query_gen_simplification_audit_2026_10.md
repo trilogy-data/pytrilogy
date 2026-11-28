@@ -2954,6 +2954,84 @@ election, not the padded fallback.
     - **No planned merge (8)**: 5 are `test_value_set_join_upgrade`'s
       hand-built CTEs. And the pair whose addresses differ (1).
 
+37. **A side covered on the keys the right's grain keeps (landed; seam 2,
+    the planner's twin proof).** Seam 36's "proved, not narrowed" keys.
+    `test_pair_grain_aggregate` pairs the items group with `orders` on
+    `(order_id, user_id)`. Both hold every order; `user_id` is `~` on both
+    and covers neither way, so `_covered_sides` refused the pair and the
+    walk kept the join outer. `reduce_concept_pairs` then kept only the
+    orders grain's pair, `order_id`: the cover was judged on a key the ON
+    never had, and the optimizer narrowed the join on the ON as rendered.
+    - **The keys the ON keeps (`_grain_keys`).** An ON holding the right's
+      whole grain pairs each left row with at most one right row, and that
+      row decides every other pair. So the walk judges a side the whole ON
+      does not cover on the grain keys alone. Only of one left, only where
+      neither side NULLs a grain key (a null-safe grain pair decides
+      nothing, as in the reduction), and never past a pair an author
+      declared (`JoinFacts.authored_members`).
+    - **The walk states the ON it judged (`JoinOrderOutput.on`).** When the
+      grain keys are what narrowed the join, `get_node_joins` builds the
+      join's pairs from those keys only. The ON cannot hold a key the cover
+      was not judged on, whatever the reduction would have kept. Where the
+      whole ON already covers a side, nothing changes.
+    - **What it moves.** Census (`twins_census_plugin`, whole suite,
+      tpc-ds and tpc-h included this time, which adds one firing,
+      `test_where_clause_inputs`; re-measured on `287f32e`: 23 firings in
+      21 tests, 26 keys): the equivalence upgrade falls to 20 firings in 19
+      tests (LEFT 14 to 11, FULL 9 unchanged), 23 keys. The three are
+      `test_pair_grain_aggregate` and two
+      `test_two_families_with_attributes_on_both_streams` cells; no firing
+      is new. Suite capture (`sqlcap`, `PYTHONHASHSEED=0`): 23 outer joins
+      in 18 tests are INNER, and in 3 more tests a LEFT join is gone (the
+      narrowed group is now the same CTE as an INNER one beside it, and the
+      two share). None is wider. They are the partial-key suites
+      (`test_duckdb_partial_key_assembly` 7, `test_region_dimension_attributes`
+      5, the field report 2, `test_bigquery_full_join_keys` 2), two
+      dimension-chain laws, windows law 9668 and
+      `test_a_narrowing_that_widens_a_consumer_is_backed_out`. The optimizer
+      never narrowed any of those, so their final SQL changes; the three
+      census firings render the same SQL, now planned. Every one
+      passes its rows. `test_forked_full_column_set` pinned 6 joins and now
+      asserts 5.
+    - **Reading the capture.** 653 other tests moved between the two suite
+      runs with no join type changing (column and ON-pair order, a
+      `MATERIALIZED`). Re-run alone on both trees, in one process and the
+      same order, all but 7 are byte-identical, and those 7 are ports and
+      temp names. The law executors are module-scoped, so a plan's spelling
+      depends on which tests a worker ran before it, and five new tests
+      shift the xdist split. Confirm a moved law this way before reading it.
+
+    Pinned (red on `main`):
+    `test_planned_join_narrowing::test_a_side_covered_on_the_rights_grain_pairs_inner_past_a_key_it_prunes`.
+    Unit rows: `tests/core/processing/test_join_walk_plan_order.py` (the
+    grain keeps the ON; a NULLed grain, an authored pair and a part-held
+    grain each keep the whole ON).
+
+    Gates, against `287f32e`: corpus (204 statements) 0 moved; fuzzer
+    522/522; suite: the same 25 credential-bound failures as `main`, and no
+    test changes outcome.
+
+    **What is left.** 20 equivalence firings, 23 keys:
+    - **Different streams (6 keys in 5 firings)**, unchanged from seam 36.
+      Traced on 4104: one side groups `thoughtful` (the filtered rows INNER
+      the city gate), the other the filtered rows INNER a per-species group
+      of `thoughtful` INNER the same gate. They are one row set only because
+      the gate join restores what the species join could have dropped, a
+      proof about two joins together that no per-join flag carries. These are
+      single fuzz shapes; none is a shape a modeling suite plans.
+    - **Split-key gates (4)**, unchanged from seam 35.
+    - **Proved, not narrowed (1).**
+      `test_relation_keyed_on_the_grain[beside_property-none]`: the walk
+      plans the summary INNER `enrichment` (matched both ways), and the
+      merge's `force_join_type` then re-types every join FULL. A forced
+      type could keep a first join the walk matched on both sides.
+    - **No planned merge (9)**: 5 are `test_value_set_join_upgrade`'s
+      hand-built CTEs; the others are filters law 260615 (2),
+      `hackernews::test_adhoc05` and tpc-ds `test_where_clause_inputs`,
+      joins an optimizer rule built or moved. These are the rule's
+      post-multi-node work and stay with it. And the pair whose addresses
+      differ (1).
+
 ## Gate used
 
 ```
