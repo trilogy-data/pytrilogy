@@ -7,7 +7,6 @@ key sk int; # surrogate key
 
 properties sk (
     id string, # business identifier
-    _date_string string, # Intermediate raw string backing `date`.
     date date,
     year int::year,
     day_of_week enum<int>[0, 1, 2, 3, 4, 5, 6], # 0 = Sunday … 6 = Saturday.
@@ -23,8 +22,7 @@ properties sk (
 datasource date (
     D_DATE_SK: sk,
     D_DATE_ID: id,
-    D_DATE: _date_string,
-    _date_string::date: date,
+    D_DATE: date,
     D_DOW: day_of_week,
     D_DOM: day_of_month,
     D_DAY_NAME: day_name,

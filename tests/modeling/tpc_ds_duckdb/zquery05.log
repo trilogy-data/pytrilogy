@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 9664
+gen_length = 9499
 preql_size = 1726
 comp_size = 4238
 generated_sql = """
@@ -10,28 +10,37 @@ SELECT
      'CATALOG'  as \"s_channel\",
     \"s_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"s_channel_dim_id\",
     \"s_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"s_net_profit\",
-    \"s_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"s_sale_date_sk\"
+    \"s_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"s_net_profit\"
 FROM
     \"memory\".\"catalog_sales\" as \"s_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_sale_date_date\" on \"s_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"s_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_sale_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+
 UNION ALL
 SELECT
      'STORE'  as \"s_channel\",
     \"s_store_sales_unified\".\"SS_STORE_SK\" as \"s_channel_dim_id\",
     \"s_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_store_sales_unified\".\"SS_NET_PROFIT\" as \"s_net_profit\",
-    \"s_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"s_sale_date_sk\"
+    \"s_store_sales_unified\".\"SS_NET_PROFIT\" as \"s_net_profit\"
 FROM
     \"memory\".\"store_sales\" as \"s_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_sale_date_date\" on \"s_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"s_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_sale_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+
 UNION ALL
 SELECT
      'WEB'  as \"s_channel\",
     \"s_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"s_channel_dim_id\",
     \"s_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"s_ext_sales_price\",
-    \"s_web_sales_unified\".\"WS_NET_PROFIT\" as \"s_net_profit\",
-    \"s_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"s_sale_date_sk\"
+    \"s_web_sales_unified\".\"WS_NET_PROFIT\" as \"s_net_profit\"
 FROM
-    \"memory\".\"web_sales\" as \"s_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"s_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_sale_date_date\" on \"s_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"s_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_sale_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+),
 macho as (
 SELECT
      'CATALOG'  as \"s_channel\",
@@ -71,10 +80,6 @@ SELECT
 FROM
     \"kaput\"
     INNER JOIN \"macho\" on \"kaput\".\"s_channel\" = \"macho\".\"s_channel\" AND \"kaput\".\"s_channel_dim_id\" = \"macho\".\"s_channel_dim_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"s_sale_date_date\" on \"kaput\".\"s_sale_date_sk\" = \"s_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    CASE WHEN regexp_full_match(CAST(\"s_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"s_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
-
 GROUP BY
     1,
     2),
@@ -108,30 +113,39 @@ SELECT
     \"s_catalog_returns_unified\".\"CR_ITEM_SK\" as \"s_item_sk\",
     \"s_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"s_order_id\",
     \"s_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"s_return_amount\",
-    \"s_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_catalog_returns_unified\".\"CR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
     \"memory\".\"catalog_returns\" as \"s_catalog_returns_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"s_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" = \"s_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_return_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+
 UNION ALL
 SELECT
      'STORE'  as \"s_channel\",
     \"s_store_returns_unified\".\"SR_ITEM_SK\" as \"s_item_sk\",
     \"s_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"s_order_id\",
     \"s_store_returns_unified\".\"SR_RETURN_AMT\" as \"s_return_amount\",
-    \"s_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_store_returns_unified\".\"SR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
     \"memory\".\"store_returns\" as \"s_store_returns_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"s_store_returns_unified\".\"SR_RETURNED_DATE_SK\" = \"s_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_return_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+
 UNION ALL
 SELECT
      'WEB'  as \"s_channel\",
     \"s_web_returns_unified\".\"WR_ITEM_SK\" as \"s_item_sk\",
     \"s_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"s_order_id\",
     \"s_web_returns_unified\".\"WR_RETURN_AMT\" as \"s_return_amount\",
-    \"s_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"s_return_date_sk\",
     \"s_web_returns_unified\".\"WR_NET_LOSS\" as \"s_return_net_loss\"
 FROM
-    \"memory\".\"web_returns\" as \"s_web_returns_unified\"),
+    \"memory\".\"web_returns\" as \"s_web_returns_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"s_web_returns_unified\".\"WR_RETURNED_DATE_SK\" = \"s_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"s_return_date_date\".\"D_DATE\" BETWEEN :period_start AND :period_end
+),
 cheerful as (
 SELECT
      'CATALOG'  as \"s_channel\",
@@ -171,11 +185,7 @@ SELECT
 FROM
     \"abundant\"
     INNER JOIN \"yummy\" on \"abundant\".\"s_channel\" = \"yummy\".\"s_channel\" AND \"abundant\".\"s_item_sk\" = \"yummy\".\"s_item_sk\" AND \"abundant\".\"s_order_id\" = \"yummy\".\"s_order_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"s_return_date_date\" on \"abundant\".\"s_return_date_sk\" = \"s_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"abundant\".\"s_channel\" = \"cheerful\".\"s_channel\" AND \"yummy\".\"s_return_channel_dim_id\" = \"cheerful\".\"s_return_channel_dim_id\"
-WHERE
-    CASE WHEN regexp_full_match(CAST(\"s_return_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"s_return_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END BETWEEN :period_start AND :period_end
-
 GROUP BY
     1,
     2),

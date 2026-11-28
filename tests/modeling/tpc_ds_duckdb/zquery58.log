@@ -1,6 +1,6 @@
 query_id = "58"
-gen_length = 5011
-preql_size = 1377
+gen_length = 5016
+preql_size = 1375
 comp_size = 2250
 generated_sql = """
 
@@ -11,7 +11,7 @@ SELECT
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
 WHERE
-    \"date_date\".\"D_DATE\" = '2000-01-03'
+    \"date_date\".\"D_DATE\" = date '2000-01-03'
 
 GROUP BY
     1),
