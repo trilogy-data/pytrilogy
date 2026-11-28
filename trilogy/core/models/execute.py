@@ -425,6 +425,12 @@ class CTE:
         return True
 
     def __add__(self, other: CTE | UnionCTE):
+        return self.merge(other)
+
+    def merge(self, other: CTE | UnionCTE, merge_parents: bool = True) -> CTE:
+        """Fold `other`, a copy of this CTE, into it. A caller that merges
+        every CTE of the tree by name itself passes `merge_parents=False`:
+        merging the parents here as well repeats that work at every depth."""
         if isinstance(other, UnionCTE):
             # ValueError asserted by tests/test_execute_models.py.
             raise ValueError("cannot merge CTE and union CTE")  # noqa: TRY004
@@ -448,7 +454,10 @@ class CTE:
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
-        self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
+        parents = self.parent_ctes + other.parent_ctes
+        self.parent_ctes = (
+            merge_ctes(parents) if merge_parents else unique(parents, "name")
+        )
         self.inlined_parents = unique(
             self.inlined_parents + other.inlined_parents, "name"
         )

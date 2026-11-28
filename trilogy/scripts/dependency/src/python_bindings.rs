@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::exceptions::PyAttributeError;
+use pyo3::types::{PyDict, PyList, PySet, PyString};
 use std::path::PathBuf;
 
 use crate::graph::GraphCore;
@@ -22,7 +23,34 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_count, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_calls, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_network_covers, m)?)?;
+    m.add_function(wrap_pyfunction!(unique_by_attr, m)?)?;
     Ok(())
+}
+
+/// `trilogy.utility.unique` for an attribute name: the first item holding
+/// each value of `name` (`default` where an item has no such attribute), in
+/// first-seen order.
+#[pyfunction]
+fn unique_by_attr<'py>(
+    py: Python<'py>,
+    inputs: &Bound<'py, PyList>,
+    name: &Bound<'py, PyString>,
+    default: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyList>> {
+    let out = PyList::empty(py);
+    let seen = PySet::empty(py)?;
+    for item in inputs.iter() {
+        let key = match item.getattr(name) {
+            Ok(key) => key,
+            Err(e) if e.is_instance_of::<PyAttributeError>(py) => default.clone(),
+            Err(e) => return Err(e),
+        };
+        if !seen.contains(&key)? {
+            seen.add(key)?;
+            out.append(item)?;
+        }
+    }
+    Ok(out)
 }
 
 /// The v4 network-search enumeration walk (`_enumerate_covers`). Takes the

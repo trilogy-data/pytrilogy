@@ -254,6 +254,20 @@ def padded_sources(
 ) -> set[str]:
     """Every source some join in `joins` NULL-pads."""
     padded: set[str] = set()
+    pads_left = False
+    for join in joins:
+        if not isinstance(join, Join):
+            continue
+        join_type = join.join_type
+        if join_type in PADS_LEFT_JOIN_TYPES:
+            pads_left = True
+            break
+        if join_type is JoinType.LEFT_OUTER:
+            padded.add(join.right.identifier)
+    if not pads_left:
+        # only a RIGHT/FULL pads the accumulated left input
+        return padded
+    padded = set()
     for join, left in left_deep_joins(joins, base_ids):
         padded |= padded_by(join, left)
     return padded
@@ -285,14 +299,22 @@ def collect_applied_conditions(
     anywhere within its tree, but not under a side a join there pads, whose
     padded rows passed nothing."""
     out: list[BoolExpr] = []
-    if isinstance(source, QueryDatasource):
-        if source.condition is not None:
-            out.append(source.condition)
-        padded = padded_sources(source.joins)
-        for parent in source.datasources:
-            if parent.identifier not in padded:
-                out.extend(collect_applied_conditions(parent))
+    _collect_applied_conditions(source, out)
     return out
+
+
+def _collect_applied_conditions(
+    source: BuildDatasource | QueryDatasource, out: list[BoolExpr]
+) -> None:
+    if not isinstance(source, QueryDatasource):
+        return
+    if source.condition is not None:
+        out.append(source.condition)
+    joins = source.joins
+    padded = padded_sources(joins) if joins else None
+    for parent in source.datasources:
+        if not padded or parent.identifier not in padded:
+            _collect_applied_conditions(parent, out)
 
 
 def row_applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExpr]:

@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from functools import partial
 from functools import singledispatchmethod as _stdlib_singledispatchmethod
 from os import PathLike
-from typing import TextIO, TypeVar, cast
+from typing import Any, TextIO, TypeVar, cast
+
+from _preql_import_resolver import unique_by_attr as _unique_by_attr
 
 from trilogy.constants import DEFAULT_NAMESPACE
 
@@ -67,17 +69,21 @@ UniqueArg = TypeVar("UniqueArg")
 
 
 def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]:
-    final = []
-    dedupe = set()
-    name = property if isinstance(property, str) else ""
-    getter = None if isinstance(property, str) else property
+    if not inputs:
+        return []
+    if isinstance(property, str):
+        if type(inputs) is list:
+            return _unique_by_attr(inputs, property, DEFAULT_NAMESPACE)
+        property = partial(_attr_or_default, property)
+    # dict.setdefault keeps the first holder of each key, in first-seen order
+    first: dict[Any, UniqueArg] = {}
     for input in inputs:
-        key = getter(input) if getter else getattr(input, name, DEFAULT_NAMESPACE)
-        if key in dedupe:
-            continue
-        dedupe.add(key)
-        final.append(input)
-    return final
+        first.setdefault(property(input), input)
+    return list(first.values())
+
+
+def _attr_or_default(name: str, item: object) -> Any:
+    return getattr(item, name, DEFAULT_NAMESPACE)
 
 
 def _dispatch_bound(dispatch: Callable, obj, cls, arg, *args, **kwargs):

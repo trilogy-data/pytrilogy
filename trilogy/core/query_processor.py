@@ -375,14 +375,32 @@ def _referenced_parents(
 
 
 def datasource_to_cte(
-    query_datasource: QueryDatasource, name_map: dict[str, str]
+    query_datasource: QueryDatasource,
+    name_map: dict[str, str],
+    built: dict[int, CTE | UnionCTE] | None = None,
+) -> CTE | UnionCTE:
+    """`built` holds the CTE of each source of this plan already converted,
+    by object: a source several consumers read is one CTE, where converting
+    it per consumer made copies for the caller to merge back."""
+    built = {} if built is None else built
+    held = built.get(id(query_datasource))
+    if held is None:
+        held = _datasource_to_cte(query_datasource, name_map, built)
+        built[id(query_datasource)] = held
+    return held
+
+
+def _datasource_to_cte(
+    query_datasource: QueryDatasource,
+    name_map: dict[str, str],
+    built: dict[int, CTE | UnionCTE],
 ) -> CTE | UnionCTE:
     parents: list[CTE | UnionCTE] = []
     if query_datasource.source_type == SourceType.UNION:
         direct_parents: list[CTE | UnionCTE] = []
         for child in query_datasource.datasources:
             assert isinstance(child, QueryDatasource)
-            child_cte = datasource_to_cte(child, name_map=name_map)
+            child_cte = datasource_to_cte(child, name_map, built)
             direct_parents.append(child_cte)
             parents += child_cte.parent_ctes
         human_id = generate_cte_name(query_datasource.identifier, name_map)
@@ -422,7 +440,7 @@ def datasource_to_cte(
             else:
                 sub_datasource = datasource_to_query_datasource(datasource)
 
-            sub_cte = datasource_to_cte(sub_datasource, name_map)
+            sub_cte = datasource_to_cte(sub_datasource, name_map, built)
             parents.append(sub_cte)
             all_new_ctes.append(sub_cte)
         source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
@@ -1703,15 +1721,20 @@ def _process_query(
         hook.process_root_cte(root_cte)
     flattened = flatten_ctes(root_cte)
     raw_ctes: list[CTE | UnionCTE] = list(reversed(flattened))
-    seen = {}
+    seen: dict[str, CTE | UnionCTE] = {}
     # we can have duplicate CTEs at this point
     # so merge them together
     for cte in raw_ctes:
-        if cte.name not in seen:
+        held = seen.get(cte.name)
+        if held is None:
             seen[cte.name] = cte
-        else:
-            # merge them up
-            seen[cte.name] = seen[cte.name] + cte
+        elif held is not cte:
+            # merge them up; every parent is in raw_ctes, so merged here too
+            seen[cte.name] = (
+                held.merge(cte, merge_parents=False)
+                if isinstance(held, CTE)
+                else held + cte
+            )
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
