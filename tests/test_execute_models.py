@@ -147,6 +147,22 @@ def test_build_datasource_effective_grain_includes_key_outputs():
     assert prop.address not in grain.components
 
 
+def test_cte_merge_can_leave_parents_to_the_caller():
+    concept = _key_concept("k")
+    deep, deep_copy = _query_cte("deep", concept), _query_cte("deep", concept)
+    deep_copy.limit = 5
+    held = _query_cte("top", concept, [deep])
+    held.merge(_query_cte("top", concept, [deep_copy]), merge_parents=False)
+    assert held.parent_ctes == [deep]
+    assert deep.limit is None
+
+    merged = _query_cte("top", concept, [deep]) + _query_cte(
+        "top", concept, [deep_copy]
+    )
+    assert merged.parent_ctes == [deep]
+    assert deep.limit == 5
+
+
 def test_cte_rejects_multiple_join_derived_concepts():
     with raises(NotImplementedError):
         CTE(

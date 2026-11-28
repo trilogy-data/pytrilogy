@@ -695,11 +695,10 @@ class ComparisonOperator(Enum):
     ELSE = "else"
 
     def __eq__(self, other):
-        if isinstance(other, str):
-            return self.value == other
-        if not isinstance(other, ComparisonOperator):
-            return False
-        return self.value == other.value
+        # members are singletons: another member is never equal
+        if self is other:
+            return True
+        return isinstance(other, str) and self._value_ == other
 
     @classmethod
     def _missing_(cls, value):
