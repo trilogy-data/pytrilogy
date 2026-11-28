@@ -304,6 +304,19 @@ def row_applied_atoms(source: BuildDatasource | QueryDatasource) -> list[BoolExp
     return [atom for atom, keys in _atoms_at(source) if keys is None]
 
 
+def set_sources(source: QueryDatasource) -> set[str]:
+    """The sources only a subselect of the condition reads: they feed no rows."""
+    existence = source.existence_source_map
+    fed = {
+        s.identifier
+        for address, sources in source.source_map.items()
+        if address not in existence
+        for s in sources
+        if not isinstance(s, UnnestJoin)
+    }
+    return {s.identifier for sources in existence.values() for s in sources} - fed
+
+
 def _atoms_at(
     source: BuildDatasource | QueryDatasource,
 ) -> list[tuple[BoolExpr, frozenset[str] | None]]:

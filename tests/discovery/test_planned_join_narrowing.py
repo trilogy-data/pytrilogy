@@ -191,3 +191,37 @@ def test_a_split_key_gate_an_inner_equated_with_the_rows_witnesses_the_key():
         .fetchall()
     )
     assert rows == [("A", "broadleaf", 3, 3), ("B", "linden", 1, 1)]
+
+
+def test_twins_of_one_stream_each_beside_the_total_over_it():
+    query = (
+        "select species, max(height) by tree_form as a, count(tree_id) by tree_form as b "
+        "where count_distinct(tag) by * > 1"
+    )
+    assert _planned(SWEEP_MODEL, query + ";") == {JoinType.INNER}
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by species;")
+        .fetchall()
+    )
+    assert rows == [
+        ("Acer", 7, 4),
+        ("Quercus", 7, 4),
+        ("Tilia", 2, 1),
+        ("Ulmus", None, 1),
+    ]
+
+
+def test_twins_of_one_stream_beside_the_set_its_filter_reads():
+    query = (
+        "select city, tree_form, count(tree_id) as v0, max(height) as v1, "
+        "max(min(height) by city, species) / (count(tree_id) - 1) as v2 "
+        "where not (city in (city ? min(height) by city != 3))"
+    )
+    assert _planned(SWEEP_MODEL, query + ";") == {JoinType.INNER}
+    rows = (
+        Dialects.DUCK_DB.default_executor(environment=_env(SWEEP_MODEL))
+        .execute_query(query + " order by tree_form nulls last;")
+        .fetchall()
+    )
+    assert rows == [("A", "broadleaf", 3, 5, 2.5), ("A", None, 1, None, None)]

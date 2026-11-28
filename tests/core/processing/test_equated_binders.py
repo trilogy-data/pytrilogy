@@ -7,7 +7,12 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import ConceptPair, Join, QueryDatasource
-from trilogy.core.processing.join_resolution import _one_value_set, key_providers
+from trilogy.core.processing.join_resolution import (
+    _one_value_set,
+    _row_tables,
+    _total_input,
+    key_providers,
+)
 
 CITY, SPECIES = "local.city", "local.species"
 
@@ -95,3 +100,46 @@ def test_a_derived_key_is_one_value_set_at_its_source():
     merge.output_concepts.append(_concept("local.v0"))
     assert key_providers(merge, "local.v0", computed=True) == {merge.identifier}
     assert _one_value_set(merge, _concept("local.v0")) == {merge.identifier}
+
+
+def _beside_set(existence: bool) -> QueryDatasource:
+    trees = _table("trees", [CITY, SPECIES])
+    gate = _table("gate", [CITY])
+    return QueryDatasource(
+        input_concepts=[],
+        output_concepts=[_concept(CITY)],
+        datasources=[trees, gate],
+        source_map={CITY: {trees} | (set() if existence else {gate})},
+        existence_source_map={"local.member": {gate}} if existence else {},
+        grain=BuildGrain(),
+        joins=[],
+        source_type=SourceType.SELECT,
+    )
+
+
+def test_a_set_only_a_subselect_reads_binds_no_value():
+    assert _one_value_set(_beside_set(True), _concept(CITY)) == {"trees"}
+    assert _row_tables(_beside_set(True)) == {"trees"}
+    assert _one_value_set(_beside_set(False), _concept(CITY)) == frozenset()
+    assert _row_tables(_beside_set(False)) == {"trees", "gate"}
+
+
+def test_rows_of_a_padded_side_hold_no_row_of_it():
+    assert _row_tables(_merge(JoinType.INNER)) == {"trees", "enrichment"}
+    assert _row_tables(_merge(JoinType.LEFT_OUTER)) == {"trees"}
+    assert _row_tables(_merge(JoinType.FULL)) == frozenset()
+
+
+def test_a_total_reads_its_table_bare_or_not_at_all():
+    trees = _table("trees", [CITY])
+    total = QueryDatasource(
+        input_concepts=[],
+        output_concepts=[_concept(CITY)],
+        datasources=[trees],
+        source_map={CITY: {trees}},
+        grain=BuildGrain(),
+        joins=[],
+        source_type=SourceType.GROUP,
+    )
+    assert _total_input(total) == "trees"
+    assert _total_input(_merge(JoinType.INNER)) is None

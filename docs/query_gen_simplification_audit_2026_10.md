@@ -2878,6 +2878,82 @@ election, not the padded fallback.
     - **Built after planning (6)**, **proved, not narrowed (4)** and the pair
       whose addresses differ (1), unchanged.
 
+36. **Twins of one stream beside the total over it, and beside the set its
+    filter reads (landed; seam 2, the planner's twin proof).** Seam 35's
+    largest class, the different-streams keys: two groups of the same
+    tables, `(city, tree_form)` or `tree_form`, each assembled by its own
+    merges. The census (`twins_census_plugin`) put most of them at
+    `value_set_empty`: providers on both sides, but no one value set. Two
+    plan facts hid it, neither of them a join that drops rows.
+    - **A keyless INNER join to a one-row total (`_total_beside_its_rows`).**
+      `where count_distinct(tag) by * > 3` puts the total beside every
+      stream that reads the WHERE, on `1=1`. The walk typed it INNER and
+      set no flag, so `preserved_sources` and `_equated_binders` read it as
+      dropping rows of both sides, and every provider past it was the
+      merge itself (`computed`). A total over a bare table, with no join,
+      filter or limit between (`SideFacts.total_of`, `_total_input`), holds
+      its row exactly when the table holds one: an empty input's group is
+      no row (the render's `count(*) > 0`). Joined onto sides every row of
+      which holds a row of that table (`SideFacts.row_tables`,
+      `_row_tables`: no join pads it), the stream having a row means the
+      total has one, so the join keeps every row of the stream
+      (`matched_left`).
+    - **A set only a subselect reads (`set_sources`).** `not (city in (city
+      ? min(height) by city != 1))` puts the membership set's source among
+      the filtered node's `datasources`, joined to nothing: the WHERE reads
+      it as `not exists (...)`. `_equated_binders` counted its city as a
+      second binder group, so `_one_value_set` was empty. A source only the
+      condition's `existence_source_map` reads (and no output's
+      `source_map`) feeds no rows, as `_atoms_at` already reads it; it binds
+      nothing, and no row holds a row of it. `_atoms_at` keeps its looser
+      skip (every existence source), which this does not change.
+    - **What it moves.** Census, whole suite less the tpc-ds and tpc-h
+      files (re-measured on `e93d658`: 30 firings in 28 tests, 36 keys, two
+      more than seam 35's count): the equivalence upgrade falls to 22
+      firings in 20 tests (LEFT 14 to 13, FULL 16 to 9), and from 36 keys to
+      25. The different-streams keys fall from 19 to 6 (and 2 more in
+      their firings now prove); no other class moves and no firing is new. Suite capture (`sqlcap`,
+      `PYTHONHASHSEED=0`, laws and tpc included): 37 joins in 34 tests are
+      narrower (an outer join fewer), none wider. They are oracle laws
+      (spellings 11, expressions 10, windows 5, sweep 3, compositions 2) and
+      the sweep shape files (3). The optimizer never narrowed those, so
+      their final SQL changes. Where it did narrow (166064), the INNER is
+      now planned, and a padded count's `coalesce(..., 0)` goes with it.
+      Another 6 law plans move without changing a join type (CTE shape and
+      order); the rest is column or ON-pair order. Every one passes its
+      rows.
+
+    Pinned (red on `main`), in `tests/discovery/test_planned_join_narrowing.py`:
+    `test_twins_of_one_stream_each_beside_the_total_over_it` (planned FULL on
+    `main`, which the optimizer never narrowed: the final SQL kept it) and
+    `test_twins_of_one_stream_beside_the_set_its_filter_reads`. Unit rows:
+    `tests/core/processing/test_equated_binders.py`.
+
+    Gates, against `e93d658`: corpus (206 statements, tpc-ds aggregates
+    included) 0 moved; fuzzer 522/522; suite: the same 25 credential-bound
+    failures as `main`, and no test changes outcome but the Rust-binary one
+    (skipped on the base run).
+
+    **What is left.** 22 equivalence firings, 25 keys:
+    - **Different streams (6)**, and 2 keys these firings carry that the
+      planner now proves. 152426's final pair NULLs `city` on one side
+      only and filters differently (its WHERE's `or min(height) by * is
+      null` arm). 4104 pairs a filtered read with an unfiltered `(city)`
+      group of the same table. That is a subset, but the planner trusts one
+      only under a `~` declaration (`_covered_keys`' same-address branch asks
+      for twins), so it needs its own proof. 185880's summary model is the
+      third.
+    - **Split-key gates (4)**, unchanged from seam 35.
+    - **Proved, not narrowed (4).** Traced on `test_pair_grain_aggregate`:
+      the walk plans the items-orders join FULL on `(order_id, user_id)`,
+      and `user_id` is `~` on the items side, so `_covered_sides` refuses
+      it. `reduce_concept_pairs` then keeps only the orders grain's pair,
+      `order_id`, which both sides hold whole: the cover was judged on keys
+      the ON no longer has. The planner would need to judge coverage on the
+      keys the reduction keeps.
+    - **No planned merge (8)**: 5 are `test_value_set_join_upgrade`'s
+      hand-built CTEs. And the pair whose addresses differ (1).
+
 ## Gate used
 
 ```
