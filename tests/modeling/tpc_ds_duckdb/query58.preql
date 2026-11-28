@@ -1,7 +1,7 @@
 import all_sales as sales;
 import date as date;
 
-auto target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';
+auto target_week_seq <- date.week_seq ? date.date = '2000-01-03'::date;
 
 def channel_item_rev(channel) -> sum(sales.ext_sales_price ? sales.channel = channel) by sales.item.id;
 

@@ -1,5 +1,5 @@
 query_id = "38"
-gen_length = 3251
+gen_length = 3516
 preql_size = 1247
 comp_size = 1032
 generated_sql = """
@@ -12,6 +12,10 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
@@ -19,28 +23,33 @@ SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+),
 questionable as (
 SELECT
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
+    \"sales_sale_date_date\".\"D_DATE\" as \"sales_sale_date_date\",
     \"sales_sale_date_date\".\"D_MONTH_SEQ\" as \"sales_sale_date_month_seq\",
     \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    \"thoughtful\".\"sales_channel\" as \"sales_channel\",
-    CASE WHEN regexp_full_match(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), '^[[:space:]]*[0-9][0-9][0-9][0-9](-[0-9][0-9]?-[0-9][0-9]?|/[0-9][0-9]?/[0-9][0-9]?)([ T]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?)?[[:space:]]*$') THEN TRY_CAST(trim(CAST(\"sales_sale_date_date\".\"D_DATE\" AS VARCHAR), ' ' || chr(9) || chr(10) || chr(13)) AS date) END as \"sales_sale_date_date\"
+    \"thoughtful\".\"sales_channel\" as \"sales_channel\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
-
 GROUP BY
     1,
     2,
