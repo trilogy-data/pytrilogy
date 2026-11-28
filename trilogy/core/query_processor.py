@@ -134,7 +134,7 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
 )
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.utility import gc_paused, unique
+from trilogy.utility import assume_unique, gc_paused, unique
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -407,17 +407,21 @@ def _datasource_to_cte(
         final = UnionCTE(
             name=human_id,
             source=query_datasource,
-            parent_ctes=parents,
+            # same-name copies stay until `_process_query`'s dedupe merges them
+            parent_ctes=assume_unique(parents),
             internal_ctes=direct_parents,
-            output_columns=[
-                c.with_grain(query_datasource.grain)
-                for c in query_datasource.output_concepts
-                + (
-                    [query_datasource.presence_marker]
-                    if query_datasource.presence_marker is not None
-                    else []
-                )
-            ],
+            output_columns=unique(
+                [
+                    c.with_grain(query_datasource.grain)
+                    for c in query_datasource.output_concepts
+                    + (
+                        [query_datasource.presence_marker]
+                        if query_datasource.presence_marker is not None
+                        else []
+                    )
+                ],
+                "address",
+            ),
             grain=direct_parents[0].grain,
             operator=query_datasource.set_operator.value,
             order_by=query_datasource.ordering,
@@ -512,20 +516,24 @@ def _datasource_to_cte(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by
-        output_columns=[
-            c.with_grain(query_datasource.grain)
-            for c in query_datasource.output_concepts
-            + passthrough_columns
-            + ([marker] if marker is not None else [])
-        ],
+        output_columns=unique(
+            [
+                c.with_grain(query_datasource.grain)
+                for c in query_datasource.output_concepts
+                + passthrough_columns
+                + ([marker] if marker is not None else [])
+            ],
+            "address",
+        ),
         source_map=source_map,
         existence_source_map=existence_map,
         joins=final_joins,
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
-        # as this set is used as the base for rendering the query
-        parent_ctes=parents,
+        # as this set is used as the base for rendering the query; same-name
+        # copies stay until `_process_query`'s dedupe merges them
+        parent_ctes=assume_unique(parents),
         condition=query_datasource.condition,
         partial_concepts=query_datasource.partial_concepts,
         rollup_concepts=query_datasource.rollup_concepts,
@@ -694,7 +702,7 @@ def _demand_order_by_leaves(ds: StrategyNode, order_by: BuildOrderBy) -> None:
         if unhide and {c.address for c in parent.output_concepts} & unhide:
             parent.hidden_concepts = parent_hidden - unhide
             parent.rebuild_cache()
-    ds.input_concepts.extend(carry)
+    ds.input_concepts = assume_unique(ds.input_concepts + carry)
 
 
 def _scalar_order_leaves(
@@ -1736,7 +1744,7 @@ def _process_query(
                 else held + cte
             )
     for cte in raw_ctes:
-        cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
+        cte.parent_ctes = unique([seen[x.name] for x in cte.parent_ctes], "name")
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
     if plan_trace.active():
         plan_trace.record(

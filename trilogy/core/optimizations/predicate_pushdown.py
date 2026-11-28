@@ -47,7 +47,7 @@ from trilogy.core.processing.condition_utility import (
     gather_windows,
     is_scalar_condition,
 )
-from trilogy.utility import unique
+from trilogy.utility import assume_unique, unique
 
 
 def _predicate_safe_past_null_extension(
@@ -1090,9 +1090,11 @@ class PredicatePushdownRemove(OptimizationRule):
         )
         cte.condition = combine_condition_atoms(removal.surviving)
         if removal.existence_only:
-            cte.parent_ctes = [
-                x
-                for x in cte.dependency_nodes()
-                if x.name not in removal.existence_only
-            ]
+            cte.parent_ctes = assume_unique(
+                [
+                    x
+                    for x in cte.dependency_nodes()
+                    if x.name not in removal.existence_only
+                ]
+            )
         return True, None

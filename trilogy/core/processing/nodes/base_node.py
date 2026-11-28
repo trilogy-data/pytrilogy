@@ -28,7 +28,7 @@ from trilogy.core.processing.condition_utility import (
     drop_proven_non_null,
     merge_conditions_and_dedup,
 )
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, append_new, assume_unique, unique
 
 
 def resolve_concept_map(
@@ -174,7 +174,7 @@ def get_all_parent_partial(
     all_concepts: list[BuildConcept],
     parents: list["StrategyNode"],
     environment: BuildEnvironment,
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     partial_addrs = [{x.address for x in p.partial_concepts} for p in parents]
     subset_anchors = environment.domain_graph.declared_subset_anchors()
     return unique(
@@ -252,7 +252,7 @@ def get_computed_partial(
 def get_all_parent_nullable(
     all_concepts: list[BuildConcept],
     parents: Sequence["StrategyNode | QueryDatasource | BuildDatasource"],
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     """Accepts nodes or RESOLVED sources; only `nullable_concepts` is read.
     Prefer resolved sources where available: a node's attribute is a
     construction-time snapshot that grows at its first resolve."""
@@ -310,7 +310,7 @@ def _readable(concept: BuildConcept, visible: tuple[set[str], set[str]]) -> bool
     return concept.address in visible[0] or concept.canonical_address in visible[1]
 
 
-def readable_outputs(parents: Sequence["StrategyNode"]) -> list[BuildConcept]:
+def readable_outputs(parents: Sequence["StrategyNode"]) -> UniqueList[BuildConcept]:
     """Every parent output a child may take as input. A hidden output (a root
     scan's fallback column) qualifies only when some parent exposes it."""
     visible = _visible_addresses(parents)
@@ -391,10 +391,12 @@ class StrategyNode:
         existence_concepts: list[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
     ):
-        self.input_concepts: list[BuildConcept] = (
-            unique(input_concepts, "address") if input_concepts else []
+        self.input_concepts: UniqueList[BuildConcept] = unique(
+            input_concepts, "address"
         )
-        self.output_concepts: list[BuildConcept] = unique(output_concepts, "address")
+        self.output_concepts: UniqueList[BuildConcept] = unique(
+            output_concepts, "address"
+        )
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         self.environment = environment
@@ -477,7 +479,7 @@ class StrategyNode:
 
         # TODO: make this accurate
         if self.parents and partial_concepts is None:
-            partials = get_all_parent_partial(
+            partials: list[BuildConcept] = get_all_parent_partial(
                 self.output_concepts, self.parents, self.environment
             )
         elif partial_concepts is None:
@@ -513,8 +515,9 @@ class StrategyNode:
         nullable_addresses = {x.address for x in self.nullable_concepts}
         added: list[BuildConcept] = []
         for concept in concepts:
-            if concept.address not in self.output_lcl.addresses:
-                self.output_concepts.append(concept)
+            if concept.address not in self.output_lcl.addresses and append_new(
+                self.output_concepts, concept
+            ):
                 added.append(concept)
                 if concept.address not in nullable_addresses and (
                     nullability_aliases(concept) & upstream_nullable
@@ -555,7 +558,7 @@ class StrategyNode:
 
     def set_output_concepts(
         self,
-        concepts: list[BuildConcept],
+        concepts: UniqueList[BuildConcept],
         rebuild: bool = True,
         change_visibility: bool = True,
     ):
@@ -582,18 +585,18 @@ class StrategyNode:
         return self
 
     @property
-    def usable_outputs(self) -> list[BuildConcept]:
-        return [
-            x for x in self.output_concepts if x.address not in self.hidden_concepts
-        ]
+    def usable_outputs(self) -> UniqueList[BuildConcept]:
+        return assume_unique(
+            [x for x in self.output_concepts if x.address not in self.hidden_concepts]
+        )
 
     @property
     def logging_prefix(self) -> str:
         return "\t" * self.depth
 
     @property
-    def all_concepts(self) -> list[BuildConcept]:
-        return [*self.output_concepts]
+    def all_concepts(self) -> UniqueList[BuildConcept]:
+        return assume_unique([*self.output_concepts])
 
     def __repr__(self):
         concepts = self.all_concepts

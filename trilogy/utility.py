@@ -1,12 +1,21 @@
 import gc
 import hashlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
 from functools import singledispatchmethod as _stdlib_singledispatchmethod
 from os import PathLike
-from typing import Any, TextIO, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Self,
+    SupportsIndex,
+    TextIO,
+    TypeVar,
+    cast,
+    overload,
+)
 
 from _preql_import_resolver import unique_by_attr as _unique_by_attr
 
@@ -67,8 +76,48 @@ def string_to_hash(input: str) -> int:
 
 UniqueArg = TypeVar("UniqueArg")
 
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
-def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]:
+    class UniqueList(list[UniqueArg]):
+        """A list `unique` built: no two items share a key (address for
+        concepts, name for CTEs). Typing-only - at runtime it is `list`, so
+        marking one costs nothing. Concatenating gives a plain list again;
+        in-place mutation is flagged, so a holder stays unique."""
+
+        @overload
+        def __init__(self) -> None: ...
+
+        @overload
+        def __init__(self, iterable: "UniqueList[UniqueArg]", /) -> None: ...
+
+        def __init__(self, *args: Any) -> None: ...
+
+        @deprecated("may add a duplicate; build a new list with unique()")
+        def append(self, object: UniqueArg, /) -> None: ...
+
+        @deprecated("may add duplicates; build a new list with unique()")
+        def extend(self, iterable: Iterable[UniqueArg], /) -> None: ...
+
+        @deprecated("may add a duplicate; build a new list with unique()")
+        def insert(self, index: SupportsIndex, object: UniqueArg, /) -> None: ...
+
+        @deprecated("may add duplicates; build a new list with unique()")
+        def __iadd__(self, value: Iterable[UniqueArg], /) -> Self: ...  # type: ignore[override, misc]
+
+    @overload  # type: ignore[no-overload-impl]
+    @deprecated("already unique: drop this call")
+    def unique(
+        inputs: UniqueList[UniqueArg], property: str | Callable
+    ) -> UniqueList[UniqueArg]: ...
+
+    @overload
+    def unique(
+        inputs: list[UniqueArg], property: str | Callable
+    ) -> UniqueList[UniqueArg]: ...
+
+
+def _unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]:
     if not inputs:
         return []
     if isinstance(property, str):
@@ -80,6 +129,27 @@ def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]
     for input in inputs:
         first.setdefault(property(input), input)
     return list(first.values())
+
+
+if not TYPE_CHECKING:
+    UniqueList = list
+    unique = _unique
+
+
+def assume_unique(items: list[UniqueArg]) -> UniqueList[UniqueArg]:
+    """Mark a list the caller knows is unique, such as a filter of one."""
+    return cast("UniqueList[UniqueArg]", items)
+
+
+def append_new(
+    items: UniqueList[UniqueArg], item: UniqueArg, property: str = "address"
+) -> bool:
+    """Append `item` unless an item already holds its key; whether it did."""
+    key = getattr(item, property, DEFAULT_NAMESPACE)
+    if any(getattr(x, property, DEFAULT_NAMESPACE) == key for x in items):
+        return False
+    list.append(items, item)
+    return True
 
 
 def _attr_or_default(name: str, item: object) -> Any:

@@ -106,7 +106,7 @@ from trilogy.core.processing.nodes.base_node import (
     region_reads,
 )
 from trilogy.core.processing.scan_partials import scan_partial_addresses
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, assume_unique, unique
 
 from .concept_graph import (
     _function_of,
@@ -577,7 +577,9 @@ class _CleanFeederCache:
             # Side-channel-only: slice to the subselect's columns so a shared
             # extra output can't promote the feeder to a row-join candidate
             # (mirrors `resolve_existence_sources`).
-            sliced = [o for o in node.output_concepts if o.address in addresses]
+            sliced = assume_unique(
+                [o for o in node.output_concepts if o.address in addresses]
+            )
             if sliced and len(sliced) < len(node.output_concepts):
                 node.set_output_concepts(sliced)
         return node
@@ -2010,7 +2012,7 @@ def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
     if any(concept.address not in visible for concept in node.input_concepts):
         return node
     collapsed = parent.copy()
-    collapsed.set_output_concepts(list(node.output_concepts), rebuild=False)
+    collapsed.set_output_concepts(UniqueList(node.output_concepts), rebuild=False)
     collapsed.hidden_concepts = set(node.hidden_concepts)
     collapsed.partial_concepts = collapsed.derive_partials(list(node.partial_concepts))
     collapsed.nullable_concepts = list(node.nullable_concepts)
@@ -2409,9 +2411,9 @@ def _project_basic_aggregate_inputs(
 
     keep = _aggregate_input_keep(outputs, primary_addrs, scalar_inputs)
     keep |= set(region_spans) | {concept.address for concept in between}
-    projected = [
-        concept for concept in parent.output_concepts if concept.address in keep
-    ]
+    projected = assume_unique(
+        [concept for concept in parent.output_concepts if concept.address in keep]
+    )
     if not projected:
         return parents
     parent.set_output_concepts(projected)
@@ -4801,7 +4803,7 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     if not bridges:
         return
     node.set_output_concepts(
-        list(node.output_concepts) + bridges,
+        unique(node.output_concepts + bridges, "address"),
         rebuild=False,
         change_visibility=False,
     )
@@ -5070,10 +5072,8 @@ def _join_element_filters(
     keys = frozenset(elements | {o.address for o in expanded})
     distinct = [_distinct_rows(f, elements) for f in filters]
     return MergeNode(
-        input_concepts=unique(
-            node.output_concepts + [o for f in filters for o in f.output_concepts],
-            "address",
-        ),
+        input_concepts=node.output_concepts
+        + [o for f in filters for o in f.output_concepts],
         output_concepts=node.output_concepts,
         environment=environment,
         parents=[node, *distinct],
@@ -6291,7 +6291,9 @@ def _dedup_to_targets(
         # exposes its join/filter columns as outputs, so force_group alone
         # would GROUP BY the full merge grain and dedup nothing.
         node.force_group = True
-        node.set_output_concepts(targets, rebuild=False, change_visibility=False)
+        node.set_output_concepts(
+            unique(targets, "address"), rebuild=False, change_visibility=False
+        )
         node.rebuild_cache()
         return node
     # A rollable aggregate exposed by a row-preserving scan being grouped to a

@@ -27,7 +27,7 @@ from trilogy.core.processing.v4_helper.condition_injection import (
     inject_condition_at_node,
 )
 from trilogy.core.processing.v4_helper.history import V4History
-from trilogy.utility import unique
+from trilogy.utility import assume_unique, unique
 
 from .common import search_parent
 
@@ -121,7 +121,9 @@ def resolve_existence_sources(
         # across the rowset boundary. The feeder renders as the bare
         # subselect column; match it.
         existence_addrs = {c.address for c in existence_args}
-        sliced = [o for o in ex_node.output_concepts if o.address in existence_addrs]
+        sliced = assume_unique(
+            [o for o in ex_node.output_concepts if o.address in existence_addrs]
+        )
         if sliced and len(sliced) < len(ex_node.output_concepts):
             ex_node.set_output_concepts(sliced)
         for concept in existence_args:

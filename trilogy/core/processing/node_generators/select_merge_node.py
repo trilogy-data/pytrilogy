@@ -960,12 +960,9 @@ def gen_select_merge_node(
 
         candidate = MergeNode(
             output_concepts=list(rollup_targets if rollup_at_merge else all_concepts),
-            input_concepts=unique(
-                normals
-                + abstract_props
-                + (list(merge_conditions.row_arguments) if merge_conditions else []),
-                "address",
-            ),
+            input_concepts=normals
+            + abstract_props
+            + (list(merge_conditions.row_arguments) if merge_conditions else []),
             environment=environment,
             depth=depth,
             parents=parents,

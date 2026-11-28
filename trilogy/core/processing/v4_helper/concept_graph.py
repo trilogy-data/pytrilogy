@@ -56,7 +56,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
     probe_member_address,
 )
 from trilogy.core.processing.node_generators.select_node import root_is_unsourced
-from trilogy.utility import unique
+from trilogy.utility import UniqueList, unique
 
 from .constants import (
     IN_SET_PLAN,
@@ -136,12 +136,12 @@ def _rowset_of(concept: BuildConcept) -> str | None:
 
 def _union_key_siblings(
     concept: BuildConcept, environment: BuildEnvironment
-) -> list[BuildConcept]:
+) -> UniqueList[BuildConcept]:
     """Sibling `union(...)` concepts that stack a key for every arm of this
     union, e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
     Such a sibling is the stacked row identity of this union's output."""
     if not isinstance(concept.lineage, BuildFunction):
-        return []
+        return UniqueList()
     arms = concept.lineage.concept_arguments
     out: list[BuildConcept] = []
     for other in environment.concepts.values():

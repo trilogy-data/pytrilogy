@@ -18,6 +18,7 @@ from trilogy.core.models.build_environment import (
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 from trilogy.core.processing.nodes.select_node_v2 import RowsetNode
+from trilogy.utility import append_new
 
 from .constants import ROW_SHAPE_BARRIER_DERIVATIONS, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
@@ -357,7 +358,7 @@ def widen_projection(
         ):
             continue
         if concept.address not in in_addrs:
-            node.input_concepts.append(concept)
+            append_new(node.input_concepts, concept)
             in_addrs.add(concept.address)
             changed = True
     new_outputs = [c for c in output_concepts if c.address not in out_addrs]

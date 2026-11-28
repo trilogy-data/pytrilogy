@@ -17,6 +17,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
 )
 from trilogy.core.statements.execute import ProcessedQuery
+from trilogy.utility import UniqueList, assume_unique, unique
 
 # how many violating rows a failed check reports before it just says "at least N"
 SAMPLE_LIMIT = 10
@@ -71,9 +72,10 @@ def easy_query(
     prefix = name or f"datasource_{datasource.name}"
     datasource_outputs = {c.address: c for c in datasource.concepts}
     first_qds_concepts = datasource.concepts + concepts
+    columns = unique(concepts, "address")
     root_qds = QueryDatasource(
-        input_concepts=first_qds_concepts,
-        output_concepts=concepts,
+        input_concepts=unique(first_qds_concepts, "address"),
+        output_concepts=columns,
         datasources=[datasource],
         joins=[],
         source_map={
@@ -90,7 +92,7 @@ def easy_query(
     cte = CTE(
         name=f"{prefix}_base",
         source=root_qds,
-        output_columns=concepts,
+        output_columns=UniqueList(columns),
         source_map={
             concept.address: (
                 [datasource.safe_identifier]
@@ -114,7 +116,7 @@ def easy_query(
             grain=cte.grain,
             base_datasource=root_qds,
         ),
-        parent_ctes=[cte],
+        parent_ctes=assume_unique([cte]),
         output_columns=cte.output_columns,
         source_map={
             concept.address: [cte.identifier] for concept in cte.output_columns

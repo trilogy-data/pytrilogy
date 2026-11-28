@@ -47,6 +47,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import optimization_log
 from trilogy.core.optimizations.null_safe_join import proven_non_null
+from trilogy.utility import UniqueList, assume_unique, unique
 
 COMPONENT = "LowerFullJoins"
 
@@ -313,28 +314,29 @@ def _branch_cte(
     shape a leaf ``DatasourceCTE`` renders.
     """
     grain = BuildGrain.from_concepts(concepts)
+    columns = unique(concepts, "address")
     if inlined is not None:
         datasource = inlined.datasource
         return DatasourceCTE(
             name=name,
             source=QueryDatasource(
-                input_concepts=list(concepts),
-                output_concepts=list(concepts),
+                input_concepts=UniqueList(columns),
+                output_concepts=UniqueList(columns),
                 datasources=[datasource],
                 source_map={c.address: {datasource} for c in concepts},
                 grain=grain,
                 joins=[],
                 base_datasource=datasource,
             ),
-            output_columns=list(concepts),
+            output_columns=UniqueList(columns),
             source_map={c.address: [datasource.safe_identifier] for c in concepts},
             grain=grain,
-            parent_ctes=[],
+            parent_ctes=UniqueList(),
             datasource=datasource,
         )
     source = QueryDatasource(
-        input_concepts=list(concepts),
-        output_concepts=list(concepts),
+        input_concepts=UniqueList(columns),
+        output_concepts=UniqueList(columns),
         datasources=[node.source],
         source_map={c.address: {node.source} for c in concepts},
         grain=grain,
@@ -343,10 +345,10 @@ def _branch_cte(
     return CTE(
         name=name,
         source=source,
-        output_columns=list(concepts),
+        output_columns=columns,
         source_map={c.address: [node.name] for c in concepts},
         grain=grain,
-        parent_ctes=[node],
+        parent_ctes=assume_unique([node]),
     )
 
 
@@ -361,9 +363,10 @@ def _build_spine(
         for index, (node, concepts) in enumerate(participants)
     ]
     grain = BuildGrain.from_concepts(slots)
+    columns = unique(slots, "address")
     source = QueryDatasource(
-        input_concepts=list(slots),
-        output_concepts=list(slots),
+        input_concepts=UniqueList(columns),
+        output_concepts=UniqueList(columns),
         datasources=[branch.source for branch in branches],
         source_map={c.address: {b.source for b in branches} for c in slots},
         grain=grain,
@@ -375,9 +378,11 @@ def _build_spine(
         source=source,
         # The arms render inline; their own sources are what need WITH entries
         # (an inlined participant reads its raw table, so it contributes none).
-        parent_ctes=[node for node, _ in participants if node.name not in inlined],
+        parent_ctes=unique(
+            [node for node, _ in participants if node.name not in inlined], "name"
+        ),
         internal_ctes=list(branches),
-        output_columns=list(slots),
+        output_columns=columns,
         grain=grain,
         # Distinct, not UNION ALL: the spine is a key domain, and SQL's UNION
         # treats NULL keys as equal, which is exactly the pairing we want.
@@ -434,7 +439,7 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
         join for join in cte.joins if join not in joins
     ]
     cte.joins = [*spine_joins, *remaining]
-    cte.parent_ctes = [spine, *cte.parent_ctes]
+    cte.parent_ctes = unique([spine, *cte.parent_ctes], "name")
     cte.base_name_override = spine.name
     cte.base_alias_override = spine.name
     _log(

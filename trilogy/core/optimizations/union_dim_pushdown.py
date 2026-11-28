@@ -77,7 +77,7 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
-from trilogy.utility import unique
+from trilogy.utility import append_new, assume_unique, unique
 
 
 def _datasource_wraps(
@@ -691,11 +691,8 @@ class UnionDimPushdown(OptimizationRule):
         if d.strip_safe:
             # Consumers resolve the dim concepts through the union after the
             # strip.
-            existing = output_addresses(union)
             for concept in d.dim_concepts:
-                if concept.address not in existing:
-                    union.output_columns.append(concept)
-                    existing.add(concept.address)
+                append_new(union.output_columns, concept)
 
             for consumer in consumers:
                 _narrow_null_extending_joins(
@@ -748,11 +745,8 @@ class UnionDimPushdown(OptimizationRule):
             target, context.dim_cte, d, context.source_consumer
         ):
             return False
-        existing = output_addresses(target)
         for concept in d.dim_concepts:
-            if concept.address not in existing:
-                target.output_columns.append(concept)
-                existing.add(concept.address)
+            append_new(target.output_columns, concept)
         for consumer in consumers:
             _narrow_null_extending_joins(
                 consumer, target.name, context.dim_cte.name, d.where_atoms
@@ -825,9 +819,9 @@ class UnionDimPushdown(OptimizationRule):
             if droppable & self._rendered_addrs(consumer):
                 return False
 
-        target.output_columns = [
-            x for x in target.output_columns if x.address not in droppable
-        ]
+        target.output_columns = assume_unique(
+            [x for x in target.output_columns if x.address not in droppable]
+        )
         target.grain = BuildGrain(
             components=output_addresses(target),
             where_clause=target.grain.where_clause,
@@ -860,20 +854,13 @@ class UnionDimPushdown(OptimizationRule):
         if left_ds is None:
             return False
         add_datasource_sorted(branch, d.dim_qds)
-        existing_input = {c.address for c in branch.source.input_concepts}
-        existing_qds_out = {c.address for c in branch.source.output_concepts}
-        new_outputs: list[BuildConcept] = []
         for c in d.dim_concepts:
-            if c.address not in existing_input:
-                branch.source.input_concepts.append(c)
-                existing_input.add(c.address)
-            if c.address not in existing_qds_out:
-                new_outputs.append(c)
-                existing_qds_out.add(c.address)
-        if new_outputs:
+            append_new(branch.source.input_concepts, c)
+        outputs = unique(branch.source.output_concepts + d.dim_concepts, "address")
+        if len(outputs) > len(branch.source.output_concepts):
             # Reassign (not append) so QueryDatasource.__setattr__ drops the
             # memoized identifier; output_concepts feeds the group-by key.
-            branch.source.output_concepts = branch.source.output_concepts + new_outputs
+            branch.source.output_concepts = outputs
         for c in d.dim_concepts:
             branch.source.source_map.setdefault(c.address, set()).add(d.dim_qds)
         cte_pairs: list[ConceptPair[CTE | UnionCTE]] = [
@@ -911,7 +898,6 @@ class UnionDimPushdown(OptimizationRule):
             branch.add_dependency(dim_cte)
             dim_source_key = branch.source_key_for(dim_cte)
         branch.joins.append(new_join)
-        existing_out = output_addresses(branch)
         # FK concepts already resolve via the branch's fact ds; a dim
         # source_map entry for them too would make render_expr coalesce two
         # sources.
@@ -919,9 +905,7 @@ class UnionDimPushdown(OptimizationRule):
             c.address for c in d.dim_concepts if c.address not in d.fk_left_addrs
         }
         for c in d.dim_concepts:
-            if c.address not in existing_out:
-                branch.output_columns.append(c)
-                existing_out.add(c.address)
+            append_new(branch.output_columns, c)
             if c.address not in non_key_dim_addrs:
                 continue
             branch.source_map.setdefault(c.address, [])
@@ -994,9 +978,9 @@ class UnionDimPushdown(OptimizationRule):
             for ds in consumer.source.datasources
             if not _datasource_matches_dim(ds, d.dim_qds)
         ]
-        consumer.parent_ctes = [
-            p for p in consumer.dependency_nodes() if p.name != dim_cte.name
-        ]
+        consumer.parent_ctes = assume_unique(
+            [p for p in consumer.dependency_nodes() if p.name != dim_cte.name]
+        )
         # Dim concepts now resolve via the union CTE.
         union_outputs_now = output_addresses(union)
         for c in d.dim_concepts:

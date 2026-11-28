@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pytest
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.utility import unique
+from trilogy.utility import append_new, assume_unique, unique
 
 
 @dataclass
@@ -40,3 +40,16 @@ def test_unique_missing_attribute_shares_default_key():
 def test_unique_propagates_attribute_errors():
     with pytest.raises(ValueError, match="boom"):
         unique([Raises()], "address")
+
+
+def test_append_new_skips_held_key():
+    items = unique([Item("a", 1)], "address")
+    assert append_new(items, Item("b", 2))
+    assert not append_new(items, Item("a", 3))
+    assert [i.tag for i in items] == [1, 2]
+
+
+def test_unique_list_is_a_plain_list_at_runtime():
+    items = [Item("a")]
+    assert assume_unique(items) is items
+    assert type(unique(items, "address")) is list

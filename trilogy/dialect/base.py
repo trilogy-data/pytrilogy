@@ -167,7 +167,7 @@ from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join as render_join_clause
 from trilogy.dialect.common import render_unnest, render_window_substring
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.utility import safe_open
+from trilogy.utility import assume_unique, safe_open
 
 
 @dataclass
@@ -3007,9 +3007,11 @@ class BaseDialect:
             if not auto_sort:
                 position = {c.address: i for i, c in enumerate(cte.output_columns)}
                 for child in cte.internal_ctes:
-                    child.output_columns = sorted(
-                        child.output_columns,
-                        key=lambda c: position.get(c.address, len(position)),
+                    child.output_columns = assume_unique(
+                        sorted(
+                            child.output_columns,
+                            key=lambda c: position.get(c.address, len(position)),
+                        )
                     )
             base_statement = f"\n{operator}\n".join(
                 [
