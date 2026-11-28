@@ -11,6 +11,7 @@ from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_M
 from tests.core.processing.test_keyed_class_beside_trees import _statement
 from tests.core.processing.test_v4_root_partition import _MODEL as ROOT_MODEL
 from tests.core.processing.test_v4_root_partition import _REV, _REV_KEYS
+from tests.discovery.test_dimension_chain_oracle_laws import UNFLOWN
 from tests.discovery.test_oracle_sweep_laws import BASE as SWEEP_MODEL
 from tests.discovery.test_summary_cover_laws import BASE as SUMMARY_BASE
 from tests.discovery.test_summary_cover_laws import SUMMARY
@@ -348,3 +349,18 @@ def test_a_stream_of_lefts_each_covered_pairs_without_padding_them(
     _, statements = env.parse(THREE_SOURCE_CHAINED)
     planned = {jt for _, jt in _join_types(get_query_datasources(env, statements[-1]))}
     assert JoinType.FULL not in planned
+
+
+def test_a_covered_lookup_past_a_thinned_left_keeps_none_of_its_own_rows():
+    """The aircraft cover the `~` model table, but the RIGHT join to the
+    flights dropped the aircraft no flight flew. A model only those name is
+    no extension member, so the lookup joins LEFT, as the optimizer narrowed
+    it, not FULL."""
+    lookups = [
+        jt
+        for right, jt in _joins(
+            UNFLOWN.format(model="~"), "select model_maker, count(id) as n;"
+        )
+        if right.startswith("aircraft_model")
+    ]
+    assert lookups == [JoinType.LEFT_OUTER]

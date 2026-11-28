@@ -1298,6 +1298,15 @@ def _intact(side: str, walked: list[str], joins: list[JoinOrderOutput]) -> bool:
     return present
 
 
+def _lookup(side: str, keys: set[str], facts: JoinFacts) -> bool:
+    """`side` is keyed by the ON: a row of it the stream does not match is a
+    member of the key's domain. Under a cover the covering side holds that
+    member, so the row is one an earlier join dropped, not an extension the
+    `~` licenses, and preserving it would bring back what the walk shed."""
+    grain = facts.side(side).grain
+    return bool(grain) and grain <= keys
+
+
 def _grain_keys(left: str, right: str, keys: set[str], facts: JoinFacts) -> set[str]:
     """The `keys` an ON between `left` and `right` keeps: the right's grain
     alone when the ON holds all of it, since one right row per value of it
@@ -1324,7 +1333,8 @@ def _narrow_covered(
     """The planner's half of the subset proof: a join whose whole ON pairs a
     subset side with one carrying its key's whole domain keeps none of the
     subset side's unmatched rows, since it has none. A right subset side
-    needs the covering left's rows all still in the stream; a subset side
+    needs the covering left's rows all still in the stream, unless it is a
+    lookup (`_lookup`), whose rows an earlier join shed; a subset side
     padded in earlier is kept by `ensure_content_preservation`. Of several
     lefts, the one holding every key decides (`_equated_lead`). A side the
     whole ON does not cover may be covered on the keys the right's grain
@@ -1354,7 +1364,7 @@ def _narrow_covered(
             join.matched_left = True
         elif _intact(left, walked, joins):
             join.matched_right = True
-        else:
+        elif not _lookup(join.right, keys, facts):
             continue
         narrowed = _without_preserving(narrowed, sub_is_left)
         if sub_is_left in on_grain:

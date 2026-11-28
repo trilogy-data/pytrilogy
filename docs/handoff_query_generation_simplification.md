@@ -141,10 +141,14 @@ What is left of 2.1:
   a side only where its own and its narrowed type both keep it (q64), and
   a multi-left ON reads as one stream when a LEFT or RIGHT joined one left
   onto the other, or when the lefts are the whole stream and each is
-  covered. What is left there is 5 dimension-chain laws, which may be an
-  optimizer overreach rather than planner debt (seam 39's "What is
-  left"), 3 single shapes and 2 hand-built unit CTEs. The rule now fires
-  26 times over the whole suite.
+  covered. The 5 dimension-chain laws seam 39 suspected of an optimizer
+  overreach were planner debt (seam 40): a row test shows the planner's
+  FULL kept a `~` model table's row that no extension licenses, so the
+  answer changed with the optimizer off. A covered lookup now drops its
+  preservation past a left an earlier join thinned. What is left there is
+  3 single shapes and 2 hand-built unit CTEs. The rule now fires 21 times
+  over the whole suite: 11 are its own post-multi-node work and 10 are
+  planner debt, none of them a modeling-suite shape.
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys
@@ -269,6 +273,6 @@ them.
   ON pairs coalesce (seam 13); the renderer only formats them. These stay
   CTE-level on purpose: the optimizer changes join types after planning,
   and an outer join's key class is a fact about the final joins.
-- **`_narrow_directionally` is measured (seam 39)**: the handoff's "448
-  planner FULLs in 59 statements" is stale. Over the whole suite it fires 10
+- **`_narrow_directionally` is measured (seams 39-40)**: the handoff's "448
+  planner FULLs in 59 statements" is stale. Over the whole suite it fires 5
   times, 2 of them on hand-built CTEs; see 2.1 above.

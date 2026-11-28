@@ -3193,6 +3193,82 @@ election, not the padded fallback.
     - **No planned merge (2)**: `test_value_set_join_upgrade`'s hand-built
       CTEs, the rule's own work.
 
+40. **A covered lookup past a thinned left keeps none of its own rows
+    (landed; seam 2, seam 39's dimension-chain laws).** Seam 39 left 5
+    directional firings in `test_dimension_chain_select_matches_raw_rows`
+    (58, 112, 126, 193, 197) as a possible optimizer overreach: aircraft
+    RIGHT JOIN flight, then FULL to the `~`-bound model table, which the
+    optimizer narrows to LEFT on the aircraft scan's completeness although
+    the RIGHT join had already dropped every aircraft no flight flew. The
+    row test it asked for (`UNFLOWN`: a model only an unflown aircraft
+    names) settles it the other way. The planner was wrong, not the
+    optimizer:
+    - Same data, and every declaration true of it. With both bindings
+      complete the planner joins the model LEFT and the answer has no
+      EMBRAER row. A `~` on the model table alone made the planner join
+      FULL (`partial_domain`) and return `('EMBRAER', 0)` with the
+      optimizer off and none with it on. A rule that changes rows is a
+      defect in one of the two stages, and the docs name which:
+      `docs/extent_ownership.md` licenses an extension row only for a
+      member of the dimension that the fact side lacks. The aircraft carry
+      every model, so the `~` on the model table licenses none. The
+      optimizer's LEFT is the answer, and the planner's FULL is a row
+      nothing licenses.
+    - The planner had the proof (`JoinFacts.covered`: model within
+      aircraft on `model_code`). `_narrow_covered` declined it on `_intact`:
+      the aircraft's rows were no longer all in the stream. That guard
+      protects a claim the narrowing does not need here. Dropping the
+      subset side's preservation needs only that its unmatched rows are no
+      extension rows. For a side keyed by the ON (`_lookup`: its grain
+      within the join's keys), an unmatched row is a member of the key's
+      domain, the cover puts that member in the covering side, and the
+      stream lacks it only because an earlier join shed it. So such a join
+      drops the subset side's preservation whether or not the left is
+      intact. It does not set `matched_right`, because rows of the right
+      are dropped, so the right is not intact for the joins after it.
+      A right with rows of its own (a fact, not a lookup) keeps the guard:
+      its unmatched rows are its own content.
+
+    Pinned (red on `main`): `tests/discovery/test_dimension_chain_oracle_laws.py::test_a_model_only_an_unflown_aircraft_names_is_no_flights_row`
+    (rows, with the upgrade on and off; on `main` the `~` model with the
+    upgrade off returns the EMBRAER row) and
+    `tests/discovery/test_planned_join_narrowing.py::test_a_covered_lookup_past_a_thinned_left_keeps_none_of_its_own_rows`.
+
+    - **What it moves.** Census (`upgrade_census_plugin`, whole suite, tpc
+      included): 26 firings to 21. Directional goes from 10 to 5: the five
+      dimension-chain laws plan the LEFT themselves. The equivalence upgrade
+      stays at 16. No firing is new. Suite capture (`sqlcap`,
+      `PYTHONHASHSEED=0`, base and new each run once under `-n 4`): 1,492
+      tests move, 36 of them with a join type or COALESCE count change, and
+      33 of those 36 compile a different number of statements per worker
+      (the tpc-ds `test_queries` cases, the dashboard batch compile, the
+      CLI and config bootstraps). The other 3 are real, and none is wider:
+      dimension-chain laws 112 and 197 lose their final FULL joins (the
+      optimizer had narrowed only some of them), and 193 a `coalesce`.
+      Each asserts its rows. Corpus (206
+      statements, tpc-ds aggregates included): 0 moved.
+
+    Gates, against `4f04c77`: corpus 0 moved; fuzzer 522/522; suite:
+    the same 25 credential-bound (BigQuery/GCS) failures as `main`, and no
+    test changes outcome.
+
+    **What is left.** 5 directional firings, all of them seam 39's other
+    shapes:
+    - **Single shapes (3)**: tpc-ds q44, an `equal join` of two rank
+      rowsets that the optimizer upgrades RIGHT to INNER on the EQUAL
+      declaration (`_complete_values` on both sides), which is the
+      equivalence class's question more than the directional one;
+      `test_self_filtered_rowset_anchor_subset_join_narrows` (LEFT to
+      INNER) and `test_merged_member_partial_stamp_blocks_completeness`
+      (FULL to LEFT).
+    - **No planned merge (2)**: `test_value_set_join_upgrade`'s hand-built
+      CTEs, the rule's own work.
+
+    The rule fires 21 times over the whole suite: 11 of them are the rule's
+    own post-multi-node work (9 equivalence, 2 directional), and the
+    planner's debt is 10 (7 equivalence firings, seam 38's lists, and the
+    3 directional single shapes).
+
 ## Gate used
 
 ```
