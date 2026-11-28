@@ -3,6 +3,9 @@ upgrade narrowed before (handoff 2.1 step 4): read off the planned
 `QueryDatasource`, before any optimizer phase runs."""
 
 from decimal import Decimal
+from pathlib import Path
+
+import pytest
 
 from tests.core.processing.test_keyed_class_beside_trees import MODEL as TREES_MODEL
 from tests.core.processing.test_keyed_class_beside_trees import _statement
@@ -18,12 +21,30 @@ from tests.engine.test_unmodelled_regions import (
     TWO_FACT_JOIN_DERIVED,
     TWO_FACT_JOIN_MATERIALIZED,
 )
+from tests.helpers.walk_order import flip_walk_spelling
 from tests.optimization.test_multihop_not_null_preserved import NULLABLE_FK_MODEL
 from tests.optimization.test_null_rejection_laws import SPLIT
+from tests.test_three_source_scoped_outer_join import (
+    _CATALOG,
+    _CUSTOMER,
+    _ITEM,
+    _STORE,
+    _WEB,
+    THREE_SOURCE_CHAINED,
+)
 from trilogy import Dialects, Environment
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join, QueryDatasource
 from trilogy.core.query_processor import get_query_datasources
+
+TPC_DS = Path(__file__).parents[1] / "modeling" / "tpc_ds_duckdb"
+THREE_SOURCE_MODELS = {
+    "item": _ITEM,
+    "customer": _CUSTOMER,
+    "store_sales": _STORE,
+    "catalog_sales": _CATALOG,
+    "web_sales": _WEB,
+}
 
 
 def _join_types(ds: QueryDatasource) -> list[tuple[str, JoinType]]:
@@ -294,3 +315,36 @@ def test_a_relation_rollup_lookup_pairs_as_the_walk_types_it():
         ("Native", "forest", 4),
         (None, "forest", 1),
     ]
+
+
+def test_a_widened_lookup_takes_back_its_covered_type_under_the_where():
+    """q64: each dimension the `agg_99` arm joins is covered by it, so the
+    walk types the join to keep only the dimension's rows (RIGHT), widened to
+    FULL past the item lookup's padding. The WHERE on both arms' counts drops
+    that padding and the dimension's own unmatched rows: neither side keeps a
+    row, so the restored join is INNER, not the LEFT the optimizer narrowed."""
+    env = Environment(working_path=TPC_DS)
+    _, statements = env.parse((TPC_DS / "query64.preql").read_text())
+    lookups = [
+        jt
+        for right, jt in _join_types(get_query_datasources(env, statements[-1]))
+        if right.startswith(
+            ("ss.store.", "ss.pos_address.", "ss.customer.current_address.")
+        )
+    ]
+    assert lookups == [JoinType.INNER] * 3
+
+
+def test_a_stream_of_lefts_each_covered_pairs_without_padding_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Walked web first, the chain `catalog ⊆ web ⊆ store` joins catalog LEFT
+    onto web, then both onto store: every row is one of web's, which store
+    covers, so the store join keeps only store's rows."""
+    flip_walk_spelling(monkeypatch, "shape_flipped")
+    for name, text in THREE_SOURCE_MODELS.items():
+        (tmp_path / f"{name}.preql").write_text(text)
+    env = Environment(working_path=tmp_path)
+    _, statements = env.parse(THREE_SOURCE_CHAINED)
+    planned = {jt for _, jt in _join_types(get_query_datasources(env, statements[-1]))}
+    assert JoinType.FULL not in planned
