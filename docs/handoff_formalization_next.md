@@ -106,10 +106,9 @@ or fix their planning beyond keeping existing tests green.
   family's law file is part of its cache key: edit `OPEN`/`FOUND_SEEDS` after
   the last sweep, or copy the ref's records to the new key.
 - **Main's side is not swept here.** CI publishes main's records for the
-  round's family on every merge (`main-records`, an artifact of the `Oracle
-  sweep` run): `import` them and A/B against that commit. A session that can
-  dispatch workflows fans the whole A/B over 16 runners in ~25 minutes. Both
-  are in the sweep's README. When a round changes family or extends the
+  round's family each night (`main-records`, an artifact of the scheduled
+  `Oracle sweep` run): `import` them and A/B against that commit, as the
+  sweep's README says. When a round changes family or extends the
   range, raise `RECORDS_FAMILY`/`RECORDS_SEEDS` in the workflow.
 - **Sweep limits.** A background command stops at 2 hours and a container can
   restart: rerun the same command and it continues. One sweep at a time; a

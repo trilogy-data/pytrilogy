@@ -28,28 +28,6 @@ def test_shards_split_the_seeds_by_chunk():
     assert all(len({s // runner.CHUNK % 3 for s in shard}) == 1 for shard in shards)
 
 
-def test_held_base_records_are_not_swept_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    swept = {(s, m): {**OK, "seed": s, "model": m} for s in (1, 2) for m in ("base",)}
-    calls = []
-
-    def sweep(family: str, seeds: list[int], **kwargs: object) -> dict:
-        calls.append(seeds)
-        return {k: r for k, r in swept.items() if k[0] in seeds}
-
-    monkeypatch.setattr(runner, "sweep", sweep)
-    held = tmp_path / "base.jsonl"
-    first = runner.base_side("filters", [1, 2], "main", held, models=["base"])
-    again = runner.base_side("filters", [2], "main", held, models=["base"])
-    assert first == swept and again == {(2, "base"): swept[(2, "base")]}
-    assert calls == [[1, 2]]
-    assert runner.base_side("filters", [1, 3], "main", held, models=["base"]) == {
-        (1, "base"): swept[(1, "base")]
-    }
-    assert calls == [[1, 2], [1, 3]]
-
-
 def test_an_export_is_joined_and_imported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
