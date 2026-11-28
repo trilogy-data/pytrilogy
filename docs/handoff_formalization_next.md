@@ -13,7 +13,7 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.545.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.546.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
@@ -38,9 +38,10 @@ or fix their planning beyond keeping existing tests green.
 1. **Probe before modelling.** A scratchpad script runs the same Trilogy text
    on two engines (`Dialects.X.default_executor(environment=Environment())`,
    then `execute_text(...)[-1].fetchall()`), or pairs two spellings the docs
-   say are equal. Disagreements are the leads. For the planner, sweep
-   `--ref origin/main` over a new seed range first: it lists the leads and
-   fills main's cache for the A/B.
+   say are equal. Disagreements are the leads. For the planner, import
+   main's records for the swept range (below) and sweep `--ref <commit>`
+   over a new seed range: it lists the leads and fills main's cache for the
+   A/B.
 2. **Model in Lean** under `formal/Trilogy/<Area>.lean`, imported from
    `formal/Trilogy.lean`: the reference semantics (small, over `Int`/`List`;
    no Mathlib, so fractions are structs, see `Functions.Frac`), the laws a
@@ -85,7 +86,7 @@ or fix their planning beyond keeping existing tests green.
 |---|---|---|
 | Lean | `cd formal && ~/.elan/bin/lake build` | 50 s clean, under 1 s for an untouched module |
 | One law suite | `.venv/bin/python -m pytest tests/<area>/test_<area>_laws.py -q` | seconds to minutes |
-| Oracle sweep | `python -m local_scripts.oracle_sweep ab --seeds A:B` | ~7 ms a query; main's side once per commit |
+| Oracle sweep | `python -m local_scripts.oracle_sweep ab --seeds A:B` | 7-16 ms a query by family (filters 16); main's side imported from CI |
 | One seed | `python -m local_scripts.oracle_sweep show <seed> [--ref origin/main]` | 2 s |
 
 - **Lean.** `lake` is not on PATH; the toolchain is in `~/.elan` (`elan show`
@@ -104,6 +105,11 @@ or fix their planning beyond keeping existing tests green.
   and cannot see a bug that needs an earlier statement's definition. A
   family's law file is part of its cache key: edit `OPEN`/`FOUND_SEEDS` after
   the last sweep, or copy the ref's records to the new key.
+- **Main's side is not swept here.** CI publishes main's records for the
+  round's family each night (`main-records`, an artifact of the scheduled
+  `Oracle sweep` run): `import` them and A/B against that commit, as the
+  sweep's README says. When a round changes family or extends the
+  range, raise `RECORDS_FAMILY`/`RECORDS_SEEDS` in the workflow.
 - **Sweep limits.** A background command stops at 2 hours and a container can
   restart: rerun the same command and it continues. One sweep at a time; a
   second on the same records refuses to start. Never start one with a
@@ -798,12 +804,10 @@ recursions, 8 `Could not resolve connections`, 8 `Missing source`, 8
     sum(height) by * > count(tree_id) by city) as v0 where height between 2
     and 5` shows every city with every `fc` (261807): FINAL pairs `fc` with
     the filter on nothing.
-  - A window over a filter by its keys: `select city, tag, city ?
-    count(tree_id) by city > 3 as v0, avg(count(tree_id) by city, tag, v0)
-    over (partition by tag, v0) as v1 where species in ('Acer', 'Ulmus')`
-    adds `(B, x)` (287310): the window's `(tag, v0)` rows are met on `v0`
-    alone, the case 0.3.545 fixed for a filter keyed within the grouped side
-    (`pair_on_looked_up_value`) but not for a window reading the filter.
+  - 287310 (a window over a filter beside two shown properties) is fixed in
+    0.3.546: the cover takes shown row columns off one tuple
+    (`shown_properties_key_one_tuple`). It costs 500 CTEs over 776 statements
+    and 21 joins net, no scan; whether the extra CTEs can fold is open.
   - Wrong also 275116, 281660, 296704, 305799, 309283, 313914; raises
     263218, 264891, 297953 (summary), 282488, 288250, 311317; 294499 invalid.
 - **Left after 0.3.544** (seeds 240,000-260,000 and older; each fails on

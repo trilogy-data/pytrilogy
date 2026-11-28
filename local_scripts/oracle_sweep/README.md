@@ -22,6 +22,31 @@ python -m local_scripts.oracle_sweep diff old.jsonl new.jsonl --family spellings
 python -m local_scripts.oracle_sweep show 38477 [--ref origin/main]
 ```
 
+## A full-range A/B: do not sweep main here
+
+Planning is 95% of a sweep and filters costs 60 ms a query, so its 0-320,000
+on both models is 2.7 hours a side on four cores. A round needs main's side
+once and the branch's after each batch of fixes; CI takes the first off the
+round.
+
+**Main's records come from CI.** The nightly run sweeps `RECORDS_FAMILY` over `RECORDS_SEEDS`
+(`.github/workflows/oracle_sweep.yml`; raise them with the round) and uploads
+a `main-records` artifact. Download it from the latest scheduled `Oracle
+sweep` run (the Actions API gives an artifact a download URL), unzip it, and:
+
+```bash
+python -m local_scripts.oracle_sweep import <unzipped dir>   # prints the commit
+python -m local_scripts.oracle_sweep ab --family filters --seeds 0:320000 --base <commit>
+```
+
+`import` caches the records as that commit's, so `--base <commit>` sweeps
+nothing, and refuses an export whose generators wrote other queries than this
+checkout's. Cut the branch from that commit, or merge it in, so the A/B
+compares the branch with its own base.
+
+Sweep here only what a fix needs between full passes: `--seeds @file` of the
+seeds a report named, or a slice.
+
 `--seeds` takes ranges and lists (`5,17,100:200`) or `@file` of seeds, so a
 round can replay only the seeds a diff named. `ab` and `run` exit 1 when a
 query is newly wrong, raising or invalid.
@@ -32,7 +57,8 @@ query is newly wrong, raising or invalid.
 rounds have swept clean (`SWEPT_TO`), both families, on main each night, in
 four shards a family. `run` prints each wrong, raising or invalid seed with its
 query and exits 1, and a failing shard uploads its records. A pull request
-that touches the sweep runs the first 4,000 seeds.
+that touches the sweep runs the first 4,000 seeds, and 1,000 filters seeds
+through the records jobs.
 
 ## Killed, repeated and concurrent runs
 

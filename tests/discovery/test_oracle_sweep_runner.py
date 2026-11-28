@@ -20,6 +20,38 @@ def test_parse_seeds_file(tmp_path: Path):
     assert runner.parse_seeds(f"@{path}") == [3, 9]
 
 
+def test_shards_split_the_seeds_by_chunk():
+    seeds = runner.parse_seeds("100:1100")
+    shards = [runner.shard_seeds(seeds, f"{i}/3") for i in range(3)]
+    assert sorted(s for shard in shards for s in shard) == seeds
+    assert shards[0] == [*range(100, 250), *range(750, 1000)]
+    assert all(len({s // runner.CHUNK % 3 for s in shard}) == 1 for shard in shards)
+
+
+def test_an_export_is_joined_and_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(runner, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runner, "_git", lambda *args: "abc123")
+    seeds = runner.parse_seeds("0:500")
+    for i in range(2):
+        records = {
+            (s, "base"): {**OK, "seed": s, "model": "base"}
+            for s in runner.shard_seeds(seeds, f"{i}/2")
+        }
+        runner.export_records(tmp_path / f"s{i}", "filters", "0:500", records, False)
+    meta = runner.join_exports([tmp_path / "s0", tmp_path / "s1"], tmp_path / "all")
+    assert meta["sha"] == "abc123"
+    _, count = runner.import_records(tmp_path / "all")
+    assert count == 500
+    cached = next((tmp_path / "cache" / "results").glob("abc123-filters-*.jsonl"))
+    assert set(runner.read_records(cached)) == {(s, "base") for s in seeds}
+
+    monkeypatch.setattr(runner, "generator_probe", lambda family, seeds: "other")
+    with pytest.raises(SystemExit, match="generators here differ"):
+        runner.import_records(tmp_path / "all")
+
+
 def test_compare_names_what_moved():
     base = {
         (1, "base"): OK,

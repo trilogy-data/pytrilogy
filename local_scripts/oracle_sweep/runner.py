@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import _thread
 import argparse
+import gzip
 import hashlib
 import importlib
 import importlib.util
@@ -239,6 +240,13 @@ def parse_seeds(spec: str) -> list[int]:
     return sorted(seeds)
 
 
+def shard_seeds(seeds: list[int], spec: str) -> list[int]:
+    """Shard `i/n` of `seeds`: every n-th chunk, so the shards cost alike and a
+    `--carry-state` chunk stays whole."""
+    index, _, count = spec.partition("/")
+    return [s for s in seeds if s // CHUNK % int(count) == int(index)]
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=REPO, check=True, capture_output=True, text=True
@@ -467,6 +475,66 @@ def _sweep(
     return out
 
 
+def generator_probe(family: str, seeds: list[int]) -> str:
+    """A digest of what the generators write for a sample of `seeds`: two
+    checkouts that agree on it sweep the same queries against the same oracle."""
+    shape = shape_fn(family)
+    sample = seeds[:: max(1, len(seeds) // 200)]
+    return hashlib.sha1(repr([shape(s) for s in sample]).encode()).hexdigest()[:12]
+
+
+def export_records(
+    out: Path, family: str, spec: str, records: dict[Key, Record], carry: bool
+) -> None:
+    """A sweep of HEAD as a directory another checkout can `import`."""
+    meta = {
+        "sha": _git("rev-parse", "HEAD"),
+        "family": family,
+        "seeds": spec,
+        "carry": carry,
+        "probe": generator_probe(family, parse_seeds(spec)),
+    }
+    write_records(out / "records.jsonl", records.values())
+    (out / "meta.json").write_text(json.dumps(meta, sort_keys=True))
+
+
+def join_exports(parts: list[Path], out: Path) -> Record:
+    """The shards of one sweep as one export, gzipped."""
+    metas = [json.loads((part / "meta.json").read_text()) for part in parts]
+    if any(meta != metas[0] for meta in metas):
+        raise SystemExit(f"shards of different sweeps: {metas}")
+    out.mkdir(parents=True, exist_ok=True)
+    with gzip.open(out / "records.jsonl.gz", "wt") as f:
+        for part in parts:
+            f.write((part / "records.jsonl").read_text())
+    (out / "meta.json").write_text(json.dumps(metas[0], sort_keys=True))
+    return metas[0]
+
+
+def import_records(source: Path) -> tuple[Record, int]:
+    """Cache an export as its commit's records, so `--ref`/`--base` of that
+    commit sweeps only what it lacks. Refused when this checkout's generators
+    write other queries than the export's did."""
+    meta = json.loads((source / "meta.json").read_text())
+    family, seeds = meta["family"], parse_seeds(meta["seeds"])
+    if generator_probe(family, seeds) != meta["probe"]:
+        raise SystemExit(
+            f"the {family} generators here differ from the export's: sweep "
+            f"{meta['sha'][:9]} here instead"
+        )
+    with gzip.open(source / "records.jsonl.gz", "rt") as f:
+        records = [json.loads(line) for line in f]
+    carry = "-carry" if meta["carry"] else ""
+    name = f"{meta['sha']}-{family}-{generator_hash(family)}{carry}.jsonl"
+    path = CACHE / "results" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _locked(path):
+        known = read_records(path)
+        known.update({(r["seed"], r["model"]): r for r in records})
+        write_records(path, known.values())
+    return meta, len(records)
+
+
 def summarize(records: dict[Key, Record]) -> Record:
     status = Counter(r["status"] for r in records.values())
     planned = [r for r in records.values() if "sql" in r]
@@ -582,11 +650,13 @@ def _parser() -> argparse.ArgumentParser:
             help=f"keep each select's definitions for the next, per {CHUNK} seeds",
         )
         p.add_argument("--no-cache", action="store_true", help="run every seed again")
+        p.add_argument("--shard", help="i/n: every n-th chunk of the seeds, from i")
 
     run = sub.add_parser("run", help="sweep the working tree, or --ref")
     common(run)
     run.add_argument("--ref", help="a commit to sweep instead (cached)")
     run.add_argument("--out", type=Path)
+    run.add_argument("--export", type=Path, help="a directory `import` reads")
 
     ab = sub.add_parser("ab", help="sweep --base and the working tree, and compare")
     common(ab)
@@ -599,6 +669,13 @@ def _parser() -> argparse.ArgumentParser:
     diff.add_argument("new", type=Path)
     diff.add_argument("--family", choices=list(FAMILIES))
     diff.add_argument("--show", type=int, default=20)
+
+    join = sub.add_parser("join", help="the shards of one exported sweep as one")
+    join.add_argument("parts", type=Path, nargs="+")
+    join.add_argument("--out", type=Path, required=True)
+
+    fetch = sub.add_parser("import", help="cache a joined export as its commit's")
+    fetch.add_argument("source", type=Path)
 
     show = sub.add_parser("show", help="one seed: query, oracle rows, SQL, rows")
     show.add_argument("seed", type=int)
@@ -615,11 +692,22 @@ def main(argv: list[str] | None = None) -> int:
             read_records(args.base), read_records(args.new), args.family, args.show
         )
         return 0 if ok else 1
+    if args.command == "join":
+        print(json.dumps(join_exports(args.parts, args.out)))
+        return 0
+    if args.command == "import":
+        meta, count = import_records(args.source)
+        print(
+            f"{count} {meta['family']} records of {meta['sha']}: --base {meta['sha']}"
+        )
+        return 0
     models = args.models.split(",")
     if args.command == "show":
         show_seed(args.family, args.seed, models, args.ref)
         return 0
     seeds = parse_seeds(args.seeds)
+    if args.shard:
+        seeds = shard_seeds(seeds, args.shard)
     kwargs = {
         "models": models,
         "jobs": args.jobs,
@@ -630,6 +718,10 @@ def main(argv: list[str] | None = None) -> int:
         records = sweep(args.family, seeds, ref=args.ref, **kwargs)
         if args.out:
             write_records(args.out, records.values())
+        if args.export:
+            export_records(
+                args.export, args.family, args.seeds, records, args.carry_state
+            )
         print(json.dumps(summarize(records)))
         return 0 if not print_bad(args.family, records) else 1
     print(f"base {args.base}", file=sys.stderr)
