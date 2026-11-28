@@ -13,12 +13,12 @@ History lives elsewhere, so this file stays short:
 - `git log` and the PRs: what each round measured.
 - This file: how to run a round, what the rounds taught, and the leads left.
 
-**State at 0.3.546.** Areas 0-12 below each have a module and a law suite. The
+**State at 0.3.547.** Areas 0-12 below each have a module and a law suite. The
 `first` and `spellings` oracle families were swept to seed 450,000, the
 `expressions` family to 800,000, `compositions` to 260,000, `windows` to
 60,000 and `filters` (a `?` as a select target: alone, beside keys, as a
-group key of aggregates and windows, in a HAVING) to 320,000; the PR of each
-round holds its sweep totals. `filters` has 12 `OPEN` seeds (area 4b),
+group key of aggregates and windows, in a HAVING) to 380,000; the PR of each
+round holds its sweep totals. `filters` has 10 `OPEN` seeds (area 4b),
 `windows` 14 (area 4); `expressions` 8628 raises on the summary model on main
 (area 1).
 
