@@ -117,9 +117,12 @@ What is left of 2.1:
   (twin aggregates of one stream through an INNER join on the key). Seam 34
   plans 15 more (a key the shared stream computes or keeps, and a join onto
   lefts an earlier INNER equated): 60 firings in 54 tests, 39 of them
-  equivalence. The rest are the lead: see seam 34's "What is left". The
-  split-key gate keys (15 of 45) need the merge's own WHERE read as a side's
-  filter; the different-streams keys (19) have no provider proof.
+  equivalence. Seam 35 plans 11 more keys (a split-key gate beside the
+  totals it gates, INNER under the merge's own WHERE): 28 equivalence
+  firings in 26 tests, 34 keys. The rest are the lead: see seam 35's "What
+  is left". The different-streams keys (19) have no provider proof; of the
+  4 split-key keys left, 2 need a witness INNER joined after the join it
+  proves.
 - `SimplifyNullSafeJoins` (`null_safe_join.py`) is closed as a
   post-multi-node rule (seam 32). Its premise, stale `NULLABLE` modifiers
   from join types that change after planning, does not hold: of the 112 keys
